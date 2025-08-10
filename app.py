@@ -274,6 +274,40 @@ Use the interactive menu for advanced features like multi-trade management, port
         return response, None
     
     else:
+        # Check if it's a numeric input for trade configuration
+        if chat_id in user_selected_trade:
+            trade_id = user_selected_trade[chat_id]
+            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                config = user_trade_configs[chat_id][trade_id]
+                
+                # Try to parse as numeric value for amount/price setting
+                try:
+                    value = float(text)
+                    
+                    # Check if we're expecting an amount input
+                    if not config.amount:
+                        config.amount = value
+                        return f"✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
+                    
+                    # Check if we're expecting an entry price
+                    elif not config.entry_price and config.symbol:
+                        config.entry_price = value
+                        return f"✅ Set entry price to ${value:.4f}", get_trading_menu(chat_id)
+                    
+                    # Check if we're expecting take profit values
+                    elif not config.tp1_percent:
+                        config.tp1_percent = value
+                        return f"✅ Set TP1 to {value}%", get_trading_menu(chat_id)
+                    elif not config.tp2_percent:
+                        config.tp2_percent = value
+                        return f"✅ Set TP2 to {value}%", get_trading_menu(chat_id)
+                    elif not config.tp3_percent:
+                        config.tp3_percent = value
+                        return f"✅ Set TP3 to {value}%", get_trading_menu(chat_id)
+                    
+                except ValueError:
+                    pass
+        
         return "🤔 I didn't understand that command. Type /help to see available commands.", None
 
 def get_mock_price(symbol):
@@ -566,11 +600,21 @@ def handle_callback_query(callback_data, chat_id, user):
             symbol = pair.replace("/", "")
             price = get_mock_price(symbol)
             if price:
+                # Set the symbol in the current trade if one is selected
+                if chat_id in user_selected_trade:
+                    trade_id = user_selected_trade[chat_id]
+                    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                        config = user_trade_configs[chat_id][trade_id]
+                        config.symbol = symbol
+                
                 response = f"💰 {pair} Current Price: ${price:.4f}\n\nWhat would you like to do?"
                 keyboard = {
                     "inline_keyboard": [
-                        [{"text": "📈 Quick Buy", "callback_data": f"quick_buy_{symbol}"},
-                         {"text": "📉 Quick Sell", "callback_data": f"quick_sell_{symbol}"}],
+                        [{"text": "📈 Quick Buy Market", "callback_data": f"quick_buy_market_{symbol}"},
+                         {"text": "📉 Quick Sell Market", "callback_data": f"quick_sell_market_{symbol}"}],
+                        [{"text": "📈 Quick Buy Limit", "callback_data": f"quick_buy_limit_{symbol}"},
+                         {"text": "📉 Quick Sell Limit", "callback_data": f"quick_sell_limit_{symbol}"}],
+                        [{"text": "🎯 Set as Trade Symbol", "callback_data": f"set_symbol_{symbol}"}],
                         [{"text": "🔄 Refresh Price", "callback_data": f"pair_{pair.replace('/', '_')}"}],
                         [{"text": "🏠 Back to Pairs", "callback_data": "select_pair"}]
                     ]
@@ -581,18 +625,29 @@ def handle_callback_query(callback_data, chat_id, user):
         
         # Quick trading
         elif callback_data.startswith("quick_buy_") or callback_data.startswith("quick_sell_"):
-            action = "buy" if callback_data.startswith("quick_buy_") else "sell"
-            symbol = callback_data.replace(f"quick_{action}_", "")
+            parts = callback_data.split("_")
+            action = parts[1]  # buy or sell
+            order_type = parts[2]  # market or limit
+            symbol = "_".join(parts[3:])  # handle symbols with underscores
+            
             price = get_mock_price(symbol)
             quantity = 0.001  # Default small quantity
             
             if price:
+                # For limit orders, adjust price slightly
+                if order_type == "limit":
+                    if action == "buy":
+                        price = price * 0.999  # Buy slightly below market
+                    else:
+                        price = price * 1.001  # Sell slightly above market
+                
                 # Record the trade
                 trade = {
                     'id': len(bot_trades) + 1,
                     'user_id': str(user.get('id', 'unknown')),
                     'symbol': symbol,
                     'action': action,
+                    'order_type': order_type,
                     'quantity': quantity,
                     'price': price,
                     'status': 'executed',
@@ -601,8 +656,9 @@ def handle_callback_query(callback_data, chat_id, user):
                 bot_trades.append(trade)
                 bot_status['total_trades'] += 1
                 
-                response = f"✅ {action.capitalize()} order executed!\n\n"
+                response = f"✅ {action.capitalize()} {order_type} order executed!\n\n"
                 response += f"Symbol: {symbol}\n"
+                response += f"Type: {order_type.title()}\n"
                 response += f"Quantity: {quantity}\n"
                 response += f"Price: ${price:.4f}\n"
                 response += f"Total: ${quantity * price:.4f}"
@@ -610,6 +666,17 @@ def handle_callback_query(callback_data, chat_id, user):
                 return response, get_trading_menu()
             else:
                 return f"❌ Could not execute {action} order for {symbol}", get_trading_menu()
+        
+        # Set symbol for current trade
+        elif callback_data.startswith("set_symbol_"):
+            symbol = callback_data.replace("set_symbol_", "")
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    config.symbol = symbol
+                    return f"✅ Set symbol to {symbol}", get_trading_menu(chat_id)
+            return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
         
         # Portfolio handlers
         elif callback_data == "portfolio_summary":
@@ -809,6 +876,32 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data.startswith("config_trade_"):
             trade_id = callback_data.replace("config_trade_", "")
             return handle_config_trade(chat_id, trade_id)
+        elif callback_data.startswith("edit_trade_"):
+            trade_id = callback_data.replace("edit_trade_", "")
+            return handle_edit_trade(chat_id, trade_id)
+        
+        # Trading configuration input handlers
+        elif callback_data == "set_takeprofit":
+            return "🎯 Take Profit Settings\n\nConfigure your take profit levels:", get_takeprofit_menu()
+        elif callback_data == "set_stoploss":
+            return "🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
+        elif callback_data.startswith("tp_"):
+            tp_level = callback_data.replace("tp_", "")
+            return f"🎯 Set Take Profit {tp_level}\n\nEnter percentage (e.g., 10 for 10% profit):", get_trading_menu(chat_id)
+        elif callback_data.startswith("sl_"):
+            sl_data = callback_data.replace("sl_", "")
+            if sl_data == "custom":
+                return "🛑 Enter custom stop loss percentage (e.g., 7.5):", get_trading_menu(chat_id)
+            else:
+                return handle_set_stoploss(chat_id, float(sl_data))
+        
+        # Entry price setting
+        elif callback_data == "set_entry":
+            return "🎯 Entry Price Options:", get_entry_price_menu()
+        elif callback_data == "entry_market":
+            return handle_set_entry_price(chat_id, "market")
+        elif callback_data == "entry_limit":
+            return "🎯 Enter your limit price (e.g., 45000.50):", get_trading_menu(chat_id)
         
         else:
             return "🤔 Unknown action. Please try again.", get_main_menu()
@@ -949,6 +1042,72 @@ def handle_config_trade(chat_id, trade_id):
         response = f"⚙️ Configuring: {config.get_display_name()}\n\n{config.get_config_summary()}"
         return response, get_trading_menu(chat_id)
     return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
+def handle_edit_trade(chat_id, trade_id):
+    """Handle editing a specific trade"""
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        user_selected_trade[chat_id] = trade_id
+        config = user_trade_configs[chat_id][trade_id]
+        response = f"✏️ Editing: {config.get_display_name()}\n\n{config.get_config_summary()}"
+        return response, get_trading_menu(chat_id)
+    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
+def handle_set_stoploss(chat_id, sl_percent):
+    """Handle setting stop loss percentage"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.stop_loss_percent = sl_percent
+            return f"✅ Set stop loss to {sl_percent}%", get_trading_menu(chat_id)
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def get_takeprofit_menu():
+    """Get take profit configuration menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "🎯 TP1 (First Target)", "callback_data": "tp_1"}],
+            [{"text": "🎯 TP2 (Second Target)", "callback_data": "tp_2"}],
+            [{"text": "🎯 TP3 (Third Target)", "callback_data": "tp_3"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def get_stoploss_menu():
+    """Get stop loss configuration menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "🛑 2%", "callback_data": "sl_2"}],
+            [{"text": "🛑 3%", "callback_data": "sl_3"}],
+            [{"text": "🛑 5%", "callback_data": "sl_5"}],
+            [{"text": "🛑 10%", "callback_data": "sl_10"}],
+            [{"text": "🛑 Custom", "callback_data": "sl_custom"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def get_entry_price_menu():
+    """Get entry price configuration menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "📊 Market Price", "callback_data": "entry_market"}],
+            [{"text": "🎯 Limit Price", "callback_data": "entry_limit"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def handle_set_entry_price(chat_id, entry_type):
+    """Handle setting entry price"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            if entry_type == "market":
+                config.entry_price = None  # None means market price
+                return f"✅ Set entry to Market Price", get_trading_menu(chat_id)
+            else:
+                return f"✅ Entry type set to {entry_type}. Please specify price.", get_trading_menu(chat_id)
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 if __name__ == "__main__":
     # Setup webhook on startup
