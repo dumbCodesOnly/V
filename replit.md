@@ -23,6 +23,7 @@ Preferred communication style: Simple, everyday language.
 - Fixed break-even settings, trailing stop configuration, and default settings management
 - Enhanced multi-take profit system with proper TP1/TP2/TP3 configuration
 - Debugged all callback handlers and text input processing for complete functionality
+- **FINAL UPDATE**: Removed quick config options after trading pair selection per user request - users now go directly to trading menu
 
 ## System Architecture
 

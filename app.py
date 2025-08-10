@@ -611,68 +611,18 @@ def handle_callback_query(callback_data, chat_id, user):
                     if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
                         config = user_trade_configs[chat_id][trade_id]
                         config.symbol = symbol
-                
-                response = f"💰 {pair} Current Price: ${price:.4f}\n\nWhat would you like to do?"
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "📈 Quick Buy Market", "callback_data": f"quick_buy_market_{symbol}"},
-                         {"text": "📉 Quick Sell Market", "callback_data": f"quick_sell_market_{symbol}"}],
-                        [{"text": "📈 Quick Buy Limit", "callback_data": f"quick_buy_limit_{symbol}"},
-                         {"text": "📉 Quick Sell Limit", "callback_data": f"quick_sell_limit_{symbol}"}],
-                        [{"text": "🎯 Set as Trade Symbol", "callback_data": f"set_symbol_{symbol}"}],
-                        [{"text": "🔄 Refresh Price", "callback_data": f"pair_{pair.replace('/', '_')}"}],
-                        [{"text": "🏠 Back to Pairs", "callback_data": "select_pair"}]
-                    ]
-                }
-                return response, keyboard
+                        
+                        # Directly go to trading menu after selecting pair
+                        response = f"✅ Selected trading pair: {pair}\n💰 Current Price: ${price:.4f}\n\n📊 Configure your trade below:"
+                        return response, get_trading_menu(chat_id)
+                else:
+                    # If no trade is selected, show the basic pair info and trading menu
+                    response = f"💰 {pair} Current Price: ${price:.4f}\n\n📊 Use the trading menu to configure your trade:"
+                    return response, get_trading_menu(chat_id)
             else:
                 return f"❌ Could not fetch price for {pair}", get_pairs_menu()
         
-        # Quick trading
-        elif callback_data.startswith("quick_buy_") or callback_data.startswith("quick_sell_"):
-            parts = callback_data.split("_")
-            action = parts[1]  # buy or sell
-            order_type = parts[2]  # market or limit
-            symbol = "_".join(parts[3:])  # handle symbols with underscores
-            
-            price = get_mock_price(symbol)
-            quantity = 0.001  # Default small quantity
-            
-            if price:
-                # For limit orders, adjust price slightly
-                if order_type == "limit":
-                    if action == "buy":
-                        price = price * 0.999  # Buy slightly below market
-                    else:
-                        price = price * 1.001  # Sell slightly above market
-                
-                # Record the trade
-                trade = {
-                    'id': len(bot_trades) + 1,
-                    'user_id': str(user.get('id', 'unknown')),
-                    'symbol': symbol,
-                    'action': action,
-                    'order_type': order_type,
-                    'quantity': quantity,
-                    'price': price,
-                    'status': 'executed',
-                    'timestamp': datetime.utcnow().isoformat()
-                }
-                bot_trades.append(trade)
-                bot_status['total_trades'] += 1
-                
-                response = f"✅ {action.capitalize()} {order_type} order executed!\n\n"
-                response += f"Symbol: {symbol}\n"
-                response += f"Type: {order_type.title()}\n"
-                response += f"Quantity: {quantity}\n"
-                response += f"Price: ${price:.4f}\n"
-                response += f"Total: ${quantity * price:.4f}"
-                
-                return response, get_trading_menu()
-            else:
-                return f"❌ Could not execute {action} order for {symbol}", get_trading_menu()
-        
-        # Set symbol for current trade
+        # Set symbol for current trade (keeping this for compatibility)
         elif callback_data.startswith("set_symbol_"):
             symbol = callback_data.replace("set_symbol_", "")
             if chat_id in user_selected_trade:
