@@ -24,6 +24,7 @@ Preferred communication style: Simple, everyday language.
 - Enhanced multi-take profit system with proper TP1/TP2/TP3 configuration
 - Debugged all callback handlers and text input processing for complete functionality
 - **FINAL UPDATE**: Removed quick config options after trading pair selection per user request - users now go directly to trading menu
+- **TAKE PROFIT SYSTEM REWRITE**: Completely rewrote buggy take profit system with new two-phase approach: set percentages first (TP1, TP2, TP3), then set position allocation for each TP level with validation to ensure total allocation doesn't exceed 100%
 
 ## System Architecture
 

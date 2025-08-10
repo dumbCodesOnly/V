@@ -45,9 +45,9 @@ class TradeConfig:
         self.amount = None
         self.leverage = 1
         self.entry_price = None
-        self.tp1_percent = None
-        self.tp2_percent = None
-        self.tp3_percent = None
+        # Take profit system - percentages and allocations
+        self.take_profits = []  # List of {percentage: float, allocation: float}
+        self.tp_config_step = "percentages"  # "percentages" or "allocations"
         self.stop_loss_percent = None
         self.breakeven_after = None
         self.trailing_stop = False
@@ -69,6 +69,16 @@ class TradeConfig:
         summary += f"Amount: {self.amount or 'Not set'}\n"
         summary += f"Leverage: {self.leverage}x\n"
         summary += f"Entry: {self.entry_price or 'Market'}\n"
+        
+        # Show take profits
+        if self.take_profits:
+            summary += f"Take Profits:\n"
+            for i, tp in enumerate(self.take_profits, 1):
+                summary += f"  TP{i}: {tp.get('percentage', 0)}% ({tp.get('allocation', 0)}%)\n"
+        else:
+            summary += f"Take Profits: Not set\n"
+            
+        summary += f"Stop Loss: {self.stop_loss_percent}%" if self.stop_loss_percent else "Stop Loss: Not set\n"
         summary += f"Status: {self.status.title()}\n"
         return summary
 
@@ -294,16 +304,37 @@ Use the interactive menu for advanced features like multi-trade management, port
                         config.entry_price = value
                         return f"✅ Set entry price to ${value:.4f}", get_trading_menu(chat_id)
                     
-                    # Check if we're expecting take profit values
-                    elif not config.tp1_percent:
-                        config.tp1_percent = value
-                        return f"✅ Set TP1 to {value}%\n\n🎯 Set TP2 (optional):", get_tp_percentage_menu("2")
-                    elif not config.tp2_percent:
-                        config.tp2_percent = value
-                        return f"✅ Set TP2 to {value}%\n\n🎯 Set TP3 (optional):", get_tp_percentage_menu("3")
-                    elif not config.tp3_percent:
-                        config.tp3_percent = value
-                        return f"✅ Set TP3 to {value}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                    # Check if we're expecting take profit percentages or allocations
+                    elif config.tp_config_step == "percentages":
+                        # Add new take profit percentage
+                        config.take_profits.append({"percentage": value, "allocation": None})
+                        tp_num = len(config.take_profits)
+                        
+                        if tp_num < 3:  # Allow up to 3 TPs
+                            return f"✅ Added TP{tp_num}: {value}%\n\n🎯 Add another TP percentage or continue to allocations:", get_tp_percentage_input_menu()
+                        else:
+                            config.tp_config_step = "allocations"
+                            return f"✅ Added TP{tp_num}: {value}%\n\n📊 Now set position allocation for each TP:", get_tp_allocation_menu(chat_id)
+                    
+                    elif config.tp_config_step == "allocations":
+                        # Set allocation for the next TP that needs it
+                        for tp in config.take_profits:
+                            if tp["allocation"] is None:
+                                tp["allocation"] = value
+                                tp_num = config.take_profits.index(tp) + 1
+                                
+                                # Check if more allocations needed
+                                remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
+                                if remaining:
+                                    return f"✅ Set TP{tp_num} allocation: {value}%\n\n📊 Set allocation for next TP:", get_tp_allocation_menu(chat_id)
+                                else:
+                                    # All allocations set, validate and continue
+                                    total_allocation = sum(tp["allocation"] for tp in config.take_profits)
+                                    if total_allocation > 100:
+                                        return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset allocations:", get_tp_allocation_reset_menu()
+                                    else:
+                                        return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                                break
                     
                     # Check if we're expecting stop loss
                     elif not config.stop_loss_percent:
@@ -856,12 +887,84 @@ def handle_callback_query(callback_data, chat_id, user):
         
         # Trading configuration input handlers
         elif callback_data == "set_takeprofit":
-            return "🎯 Take Profit Settings\n\nConfigure your take profit levels:", get_takeprofit_menu()
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    config.take_profits = []  # Reset take profits
+                    config.tp_config_step = "percentages"  # Start with percentages
+                    return "🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):", get_tp_percentage_input_menu()
+            return "❌ No trade selected.", get_trading_menu(chat_id)
         elif callback_data == "set_stoploss":
             return "🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
-        elif callback_data.startswith("tp_"):
-            tp_level = callback_data.replace("tp_", "")
-            return handle_tp_wizard(chat_id, tp_level)
+        # New take profit system handlers
+        elif callback_data.startswith("tp_add_percent_"):
+            percent = float(callback_data.replace("tp_add_percent_", ""))
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    config.take_profits.append({"percentage": percent, "allocation": None})
+                    tp_num = len(config.take_profits)
+                    
+                    if tp_num < 3:
+                        return f"✅ Added TP{tp_num}: {percent}%\n\n🎯 Add another TP or continue to allocations:", get_tp_percentage_input_menu()
+                    else:
+                        config.tp_config_step = "allocations"
+                        return f"✅ Added TP{tp_num}: {percent}%\n\n📊 Now set allocation for TP1:", get_tp_allocation_menu(chat_id)
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
+        elif callback_data == "tp_continue_allocations":
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    if config.take_profits:
+                        config.tp_config_step = "allocations"
+                        return f"📊 Set allocation for TP1 ({config.take_profits[0]['percentage']}%):", get_tp_allocation_menu(chat_id)
+                    else:
+                        return "❌ No take profits set. Add TP percentages first.", get_tp_percentage_input_menu()
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
+        elif callback_data.startswith("tp_alloc_"):
+            alloc = float(callback_data.replace("tp_alloc_", ""))
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    
+                    # Find next TP that needs allocation
+                    for tp in config.take_profits:
+                        if tp["allocation"] is None:
+                            tp["allocation"] = alloc
+                            tp_num = config.take_profits.index(tp) + 1
+                            
+                            # Check if more allocations needed
+                            remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
+                            if remaining:
+                                next_tp = remaining[0]
+                                next_num = config.take_profits.index(next_tp) + 1
+                                return f"✅ Set TP{tp_num} allocation: {alloc}%\n\n📊 Set allocation for TP{next_num} ({next_tp['percentage']}%):", get_tp_allocation_menu(chat_id)
+                            else:
+                                # All allocations set
+                                total_allocation = sum(tp["allocation"] for tp in config.take_profits)
+                                if total_allocation > 100:
+                                    return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset and try again:", get_tp_allocation_reset_menu()
+                                else:
+                                    return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                            break
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
+        elif callback_data == "tp_reset_alloc":
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    for tp in config.take_profits:
+                        tp["allocation"] = None
+                    return "🔄 Reset all allocations\n\n📊 Set allocation for TP1:", get_tp_allocation_menu(chat_id)
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
         elif callback_data.startswith("sl_"):
             sl_data = callback_data.replace("sl_", "")
             if sl_data == "custom":
@@ -884,16 +987,6 @@ def handle_callback_query(callback_data, chat_id, user):
                 return "💰 Enter custom amount in USDT (e.g., 150):", get_trading_menu(chat_id)
             else:
                 return handle_set_amount_wizard(chat_id, float(amount_data))
-        
-        # Take profit handlers
-        elif callback_data.startswith("tp_set_"):
-            parts = callback_data.replace("tp_set_", "").split("_")
-            tp_level = parts[0]
-            tp_percent = float(parts[1])
-            return handle_set_tp_percent(chat_id, tp_level, tp_percent)
-        elif callback_data.startswith("tp_custom_"):
-            tp_level = callback_data.replace("tp_custom_", "")
-            return f"🎯 Enter custom TP{tp_level} percentage (e.g., 12.5):", get_trading_menu(chat_id)
         
         else:
             return "🤔 Unknown action. Please try again.", get_main_menu()
@@ -1054,13 +1147,46 @@ def handle_set_stoploss(chat_id, sl_percent):
             return f"✅ Set stop loss to {sl_percent}%", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
-def get_takeprofit_menu():
-    """Get take profit configuration menu"""
+def get_tp_percentage_input_menu():
+    """Get take profit percentage input menu"""
     return {
         "inline_keyboard": [
-            [{"text": "🎯 TP1 (First Target)", "callback_data": "tp_1"}],
-            [{"text": "🎯 TP2 (Second Target)", "callback_data": "tp_2"}],
-            [{"text": "🎯 TP3 (Third Target)", "callback_data": "tp_3"}],
+            [{"text": "🎯 2%", "callback_data": "tp_add_percent_2"}],
+            [{"text": "🎯 5%", "callback_data": "tp_add_percent_5"}],
+            [{"text": "🎯 10%", "callback_data": "tp_add_percent_10"}],
+            [{"text": "🎯 15%", "callback_data": "tp_add_percent_15"}],
+            [{"text": "🎯 25%", "callback_data": "tp_add_percent_25"}],
+            [{"text": "📊 Continue to Allocations", "callback_data": "tp_continue_allocations"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def get_tp_allocation_menu(chat_id):
+    """Get take profit allocation menu"""
+    if chat_id not in user_selected_trade:
+        return get_trading_menu(chat_id)
+    
+    trade_id = user_selected_trade[chat_id]
+    if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+        return get_trading_menu(chat_id)
+    
+    keyboard = [
+        [{"text": "📊 25%", "callback_data": "tp_alloc_25"}],
+        [{"text": "📊 30%", "callback_data": "tp_alloc_30"}],
+        [{"text": "📊 40%", "callback_data": "tp_alloc_40"}],
+        [{"text": "📊 50%", "callback_data": "tp_alloc_50"}],
+        [{"text": "🔄 Reset Allocations", "callback_data": "tp_reset_alloc"}],
+        [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+    ]
+    
+    return {"inline_keyboard": keyboard}
+
+def get_tp_allocation_reset_menu():
+    """Get take profit allocation reset menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "🔄 Reset All Allocations", "callback_data": "tp_reset_all_alloc"}],
+            [{"text": "🔄 Reset Last Allocation", "callback_data": "tp_reset_last_alloc"}],
             [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
         ]
     }
@@ -1097,7 +1223,7 @@ def handle_set_entry_price(chat_id, entry_type):
             if entry_type == "market":
                 config.entry_price = None  # None means market price
                 # Continue wizard to take profits
-                return f"✅ Set entry to Market Price\n\n🎯 Now let's set your take profits:", get_takeprofit_menu()
+                return f"✅ Set entry to Market Price\n\n🎯 Now let's set your take profits:", get_tp_percentage_input_menu()
             else:
                 return f"✅ Entry type set to {entry_type}. Please specify price.", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
