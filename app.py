@@ -971,6 +971,30 @@ def handle_callback_query(callback_data, chat_id, user):
                     return "🔄 Reset all allocations\n\n📊 Set allocation for TP1:", get_tp_allocation_menu(chat_id)
             return "❌ No trade selected.", get_trading_menu(chat_id)
         
+        elif callback_data == "tp_reset_all_alloc":
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    for tp in config.take_profits:
+                        tp["allocation"] = None
+                    return "🔄 Reset all allocations\n\n📊 Set allocation for TP1:", get_tp_allocation_menu(chat_id)
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
+        elif callback_data == "tp_reset_last_alloc":
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    # Find the last TP with an allocation and reset it
+                    for tp in reversed(config.take_profits):
+                        if tp["allocation"] is not None:
+                            tp["allocation"] = None
+                            tp_num = config.take_profits.index(tp) + 1
+                            return f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:", get_tp_allocation_menu(chat_id)
+                    return "❌ No allocations to reset.", get_tp_allocation_menu(chat_id)
+            return "❌ No trade selected.", get_trading_menu(chat_id)
+        
         elif callback_data.startswith("sl_"):
             sl_data = callback_data.replace("sl_", "")
             if sl_data == "custom":
