@@ -984,7 +984,7 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data == "entry_market":
             return handle_set_entry_price(chat_id, "market")
         elif callback_data == "entry_limit":
-            return "🎯 Enter your limit price (e.g., 45000.50):", get_trading_menu(chat_id)
+            return handle_set_entry_price(chat_id, "limit")
         
         # Amount wizard handlers
         elif callback_data.startswith("amount_"):
@@ -1066,14 +1066,18 @@ def handle_execute_trade(chat_id, user):
         return "❌ Trade configuration incomplete. Please set symbol, side, and amount.", get_trading_menu(chat_id)
     
     # Determine execution price based on order type
+    logging.info(f"Executing trade: entry_type={config.entry_type}, entry_price={config.entry_price}")
+    
     if config.entry_type == "limit" and config.entry_price:
         # For limit orders, use the specified limit price
         price = config.entry_price
         order_type = "LIMIT"
+        logging.info(f"Using LIMIT order with price: ${price}")
     else:
         # For market orders, use current market price
         price = get_mock_price(config.symbol)
         order_type = "MARKET"
+        logging.info(f"Using MARKET order with price: ${price}")
         
     if price:
         trade = {
