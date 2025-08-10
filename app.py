@@ -45,6 +45,8 @@ class TradeConfig:
         self.amount = None
         self.leverage = 1
         self.entry_price = None
+        self.entry_type = None  # 'market' or 'limit'
+        self.waiting_for_limit_price = False  # Track if waiting for limit price input
         # Take profit system - percentages and allocations
         self.take_profits = []  # List of {percentage: float, allocation: float}
         self.tp_config_step = "percentages"  # "percentages" or "allocations"
@@ -68,7 +70,10 @@ class TradeConfig:
         summary += f"Side: {self.side or 'Not set'}\n"
         summary += f"Amount: {self.amount or 'Not set'}\n"
         summary += f"Leverage: {self.leverage}x\n"
-        summary += f"Entry: {self.entry_price or 'Market'}\n"
+        if self.entry_type == "limit" and self.entry_price:
+            summary += f"Entry: ${self.entry_price:.4f} (LIMIT)\n"
+        else:
+            summary += f"Entry: Market Price\n"
         
         # Show take profits
         if self.take_profits:
@@ -299,10 +304,11 @@ Use the interactive menu for advanced features like multi-trade management, port
                         config.amount = value
                         return f"✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
                     
-                    # Check if we're expecting an entry price
-                    elif not config.entry_price and config.symbol:
+                    # Check if we're expecting a limit price
+                    elif config.waiting_for_limit_price:
                         config.entry_price = value
-                        return f"✅ Set entry price to ${value:.4f}", get_trading_menu(chat_id)
+                        config.waiting_for_limit_price = False
+                        return f"✅ Set limit price to ${value:.4f}\n\n🎯 Now let's set your take profits:", get_tp_percentage_input_menu()
                     
                     # Check if we're expecting take profit percentages or allocations
                     elif config.tp_config_step == "percentages":
@@ -1059,8 +1065,16 @@ def handle_execute_trade(chat_id, user):
     if not config.is_complete():
         return "❌ Trade configuration incomplete. Please set symbol, side, and amount.", get_trading_menu(chat_id)
     
-    # Execute the trade
-    price = get_mock_price(config.symbol)
+    # Determine execution price based on order type
+    if config.entry_type == "limit" and config.entry_price:
+        # For limit orders, use the specified limit price
+        price = config.entry_price
+        order_type = "LIMIT"
+    else:
+        # For market orders, use current market price
+        price = get_mock_price(config.symbol)
+        order_type = "MARKET"
+        
     if price:
         trade = {
             'id': len(bot_trades) + 1,
@@ -1070,6 +1084,7 @@ def handle_execute_trade(chat_id, user):
             'quantity': config.amount / price if config.amount else 0.001,
             'price': price,
             'leverage': config.leverage,
+            'order_type': order_type,
             'status': 'executed',
             'timestamp': datetime.utcnow().isoformat()
         }
@@ -1077,12 +1092,13 @@ def handle_execute_trade(chat_id, user):
         bot_status['total_trades'] += 1
         config.status = "active"
         
-        response = f"🚀 Trade Executed!\n\n"
+        response = f"🚀 {order_type} Order Executed!\n\n"
         response += f"Symbol: {config.symbol}\n"
         response += f"Side: {config.side.upper()}\n"
         response += f"Amount: {config.amount} USDT\n"
         response += f"Leverage: {config.leverage}x\n"
         response += f"Entry Price: ${price:.4f}\n"
+        response += f"Order Type: {order_type}\n"
         response += f"Quantity: {trade['quantity']:.6f}"
         
         return response, get_trading_menu(chat_id)
@@ -1222,10 +1238,14 @@ def handle_set_entry_price(chat_id, entry_type):
             config = user_trade_configs[chat_id][trade_id]
             if entry_type == "market":
                 config.entry_price = None  # None means market price
+                config.entry_type = "market"
+                config.waiting_for_limit_price = False
                 # Continue wizard to take profits
                 return f"✅ Set entry to Market Price\n\n🎯 Now let's set your take profits:", get_tp_percentage_input_menu()
-            else:
-                return f"✅ Entry type set to {entry_type}. Please specify price.", get_trading_menu(chat_id)
+            elif entry_type == "limit":
+                config.entry_type = "limit"
+                config.waiting_for_limit_price = True
+                return f"🎯 Enter your limit price (e.g., 45000.50):", None
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 def handle_set_leverage_wizard(chat_id, leverage):

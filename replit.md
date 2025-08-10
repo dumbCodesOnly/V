@@ -25,6 +25,7 @@ Preferred communication style: Simple, everyday language.
 - Debugged all callback handlers and text input processing for complete functionality
 - **FINAL UPDATE**: Removed quick config options after trading pair selection per user request - users now go directly to trading menu
 - **TAKE PROFIT SYSTEM REWRITE**: Completely rewrote buggy take profit system with new two-phase approach: set percentages first (TP1, TP2, TP3), then set position allocation for each TP level with validation to ensure total allocation doesn't exceed 100%
+- **LIMIT ORDER BUG FIX**: Fixed critical bug where limit orders were always executing as market orders. Added proper state tracking with `waiting_for_limit_price` flag and `entry_type` field. System now correctly executes LIMIT orders at user-specified prices vs MARKET orders at current market price
 
 ## System Architecture
 
