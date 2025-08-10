@@ -28,6 +28,50 @@ bot_status = {
     'last_heartbeat': None
 }
 
+# Multi-trade management storage
+user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
+user_selected_trade = {}  # {user_id: trade_id}
+trade_counter = 0
+
+# User configuration storage
+user_configs = {}  # {user_id: {setting: value}}
+
+class TradeConfig:
+    def __init__(self, trade_id, name="New Trade"):
+        self.trade_id = trade_id
+        self.name = name
+        self.symbol = None
+        self.side = None  # 'long' or 'short'
+        self.amount = None
+        self.leverage = 1
+        self.entry_price = None
+        self.tp1_percent = None
+        self.tp2_percent = None
+        self.tp3_percent = None
+        self.stop_loss_percent = None
+        self.breakeven_after = None
+        self.trailing_stop = False
+        self.trail_percent = None
+        self.status = "configured"  # configured, active, stopped
+        
+    def get_display_name(self):
+        if self.symbol and self.side:
+            return f"{self.name} ({self.symbol} {self.side.upper()})"
+        return self.name
+        
+    def is_complete(self):
+        return all([self.symbol, self.side, self.amount])
+        
+    def get_config_summary(self):
+        summary = f"📋 {self.get_display_name()}\n\n"
+        summary += f"Symbol: {self.symbol or 'Not set'}\n"
+        summary += f"Side: {self.side or 'Not set'}\n"
+        summary += f"Amount: {self.amount or 'Not set'}\n"
+        summary += f"Leverage: {self.leverage}x\n"
+        summary += f"Entry: {self.entry_price or 'Market'}\n"
+        summary += f"Status: {self.status.title()}\n"
+        return summary
+
 @app.route('/')
 def dashboard():
     """Bot dashboard"""
@@ -360,15 +404,63 @@ def get_main_menu():
         ]
     }
 
-def get_trading_menu():
+def get_multitrade_menu(user_id):
+    """Get multi-trade management menu"""
+    user_trades = user_trade_configs.get(user_id, {})
+    
+    keyboard = [
+        [{"text": "📋 View All Trades", "callback_data": "multitrade_list"}],
+        [{"text": "➕ Create New Trade", "callback_data": "multitrade_new"}],
+    ]
+    
+    if user_trades:
+        keyboard.extend([
+            [{"text": "🎯 Select Trade", "callback_data": "multitrade_select"}],
+            [{"text": "🚀 Start Selected Trade", "callback_data": "multitrade_start"}],
+            [{"text": "⏹️ Stop All Trades", "callback_data": "multitrade_stop_all"}],
+        ])
+    
+    keyboard.extend([
+        [{"text": "📊 Multi-Trade Status", "callback_data": "multitrade_status"}],
+        [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
+    ])
+    
+    return {"inline_keyboard": keyboard}
+
+def get_trading_menu(user_id=None):
     """Get trading menu keyboard"""
+    config = None
+    if user_id and user_id in user_selected_trade:
+        trade_id = user_selected_trade[user_id]
+        config = user_trade_configs.get(user_id, {}).get(trade_id)
+    
+    keyboard = [
+        [{"text": "💱 Select Trading Pair", "callback_data": "select_pair"}],
+        [{"text": "📈 Long Position", "callback_data": "set_side_long"}, 
+         {"text": "📉 Short Position", "callback_data": "set_side_short"}],
+        [{"text": "📊 Set Leverage", "callback_data": "set_leverage"}],
+        [{"text": "💰 Set Amount", "callback_data": "set_amount"}],
+        [{"text": "🎯 Set Entry Price", "callback_data": "set_entry"}],
+        [{"text": "🎯 Set Take Profits", "callback_data": "set_takeprofit"}],
+        [{"text": "🛑 Set Stop Loss", "callback_data": "set_stoploss"}],
+    ]
+    
+    # Add trade execution button if config is complete
+    if config and config.is_complete():
+        keyboard.append([{"text": "🚀 Execute Trade", "callback_data": "execute_trade"}])
+    
+    keyboard.append([{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}])
+    return {"inline_keyboard": keyboard}
+
+def get_config_menu():
+    """Get configuration menu keyboard"""
     return {
         "inline_keyboard": [
-            [{"text": "💱 Select Trading Pair", "callback_data": "select_pair"}],
-            [{"text": "📈 Long Position", "callback_data": "set_side_long"}, 
-             {"text": "📉 Short Position", "callback_data": "set_side_short"}],
-            [{"text": "💰 Quick Buy", "callback_data": "quick_buy"}],
-            [{"text": "💸 Quick Sell", "callback_data": "quick_sell"}],
+            [{"text": "🏷️ Set Trade Name", "callback_data": "set_trade_name"}],
+            [{"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
+            [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
+            [{"text": "⚙️ Default Settings", "callback_data": "default_settings"}],
+            [{"text": "🔄 Reset All Settings", "callback_data": "reset_settings"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
         ]
     }
@@ -403,6 +495,48 @@ def get_pairs_menu():
     keyboard.append([{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}])
     return {"inline_keyboard": keyboard}
 
+def get_trade_selection_menu(user_id):
+    """Get trade selection menu for a specific user"""
+    user_trades = user_trade_configs.get(user_id, {})
+    keyboard = []
+    
+    for trade_id, config in user_trades.items():
+        status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+        button_text = f"{status_emoji} {config.get_display_name()}"
+        keyboard.append([{"text": button_text, "callback_data": f"select_trade_{trade_id}"}])
+    
+    keyboard.append([{"text": "🏠 Back to Multi-Trade", "callback_data": "menu_multitrade"}])
+    return {"inline_keyboard": keyboard}
+
+def get_trade_actions_menu(trade_id):
+    """Get actions menu for a specific trade"""
+    return {
+        "inline_keyboard": [
+            [{"text": "✏️ Edit Trade", "callback_data": f"edit_trade_{trade_id}"}],
+            [{"text": "🚀 Start Trade", "callback_data": f"start_trade_{trade_id}"}],
+            [{"text": "⏹️ Stop Trade", "callback_data": f"stop_trade_{trade_id}"}],
+            [{"text": "📋 Configure Trade", "callback_data": f"config_trade_{trade_id}"}],
+            [{"text": "🗑️ Delete Trade", "callback_data": f"delete_trade_{trade_id}"}],
+            [{"text": "🏠 Back to List", "callback_data": "multitrade_list"}]
+        ]
+    }
+
+def get_leverage_menu():
+    """Get leverage selection menu"""
+    leverages = ["1x", "2x", "5x", "10x", "20x", "50x", "100x"]
+    keyboard = []
+    
+    for i in range(0, len(leverages), 3):
+        row = []
+        for j in range(3):
+            if i + j < len(leverages):
+                lev = leverages[i + j]
+                row.append({"text": lev, "callback_data": f"leverage_{lev[:-1]}"})
+        keyboard.append(row)
+    
+    keyboard.append([{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}])
+    return {"inline_keyboard": keyboard}
+
 def handle_callback_query(callback_data, chat_id, user):
     """Handle callback query from inline keyboard"""
     try:
@@ -410,7 +544,7 @@ def handle_callback_query(callback_data, chat_id, user):
         if callback_data == "main_menu":
             return "🏠 Main Menu:", get_main_menu()
         elif callback_data == "menu_trading":
-            return "📊 Trading Menu:", get_trading_menu()
+            return "📊 Trading Menu:", get_trading_menu(chat_id)
         elif callback_data == "menu_portfolio":
             return "💼 Portfolio & Analytics:", get_portfolio_menu()
         elif callback_data == "select_pair":
@@ -527,11 +661,154 @@ def handle_callback_query(callback_data, chat_id, user):
             }
             return response, keyboard
         
-        # Placeholder handlers for other menu items
+        # Multi-trade management handlers
         elif callback_data == "menu_multitrade":
-            return "🔄 Multi-Trade Manager\n\nAdvanced trading features coming soon!", get_main_menu()
+            user_trades = user_trade_configs.get(chat_id, {})
+            summary = f"🔄 Multi-Trade Manager\n\n"
+            summary += f"Total Trades: {len(user_trades)}\n"
+            if user_trades:
+                active_count = sum(1 for config in user_trades.values() if config.status == "active")
+                summary += f"Active: {active_count}\n"
+                if chat_id in user_selected_trade:
+                    selected_trade = user_trade_configs[chat_id].get(user_selected_trade[chat_id])
+                    if selected_trade:
+                        summary += f"Selected: {selected_trade.get_display_name()}\n"
+            return summary, get_multitrade_menu(chat_id)
+            
         elif callback_data == "menu_config":
-            return "⚙️ Configuration\n\nSettings and preferences coming soon!", get_main_menu()
+            config_summary = "⚙️ Configuration Settings\n\n"
+            user_config = user_configs.get(chat_id, {})
+            config_summary += f"Default Leverage: {user_config.get('default_leverage', '1x')}\n"
+            config_summary += f"Break-even Mode: {user_config.get('breakeven_mode', 'After TP1')}\n"
+            config_summary += f"Trailing Stop: {user_config.get('trailing_stop', 'Disabled')}\n"
+            return config_summary, get_config_menu()
+            
+        # Multi-trade specific handlers
+        elif callback_data == "multitrade_new":
+            global trade_counter
+            trade_counter += 1
+            trade_id = f"trade_{trade_counter}"
+            
+            if chat_id not in user_trade_configs:
+                user_trade_configs[chat_id] = {}
+            
+            new_trade = TradeConfig(trade_id, f"Trade #{trade_counter}")
+            user_trade_configs[chat_id][trade_id] = new_trade
+            user_selected_trade[chat_id] = trade_id
+            
+            return f"✅ Created new trade: {new_trade.get_display_name()}", get_multitrade_menu(chat_id)
+            
+        elif callback_data == "multitrade_list":
+            user_trades = user_trade_configs.get(chat_id, {})
+            if not user_trades:
+                return "📋 No trades configured yet.", get_multitrade_menu(chat_id)
+            
+            response = "📋 Your Trading Configurations:\n\n"
+            for trade_id, config in user_trades.items():
+                status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+                response += f"{status_emoji} {config.get_display_name()}\n"
+                response += f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
+            
+            keyboard = {"inline_keyboard": []}
+            for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 trades
+                status_emoji = "🟢" if config.status == "active" else "🟡"
+                button_text = f"{status_emoji} {config.name}"
+                keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_trade_{trade_id}"}])
+            
+            keyboard["inline_keyboard"].append([{"text": "🏠 Back to Multi-Trade", "callback_data": "menu_multitrade"}])
+            return response, keyboard
+            
+        elif callback_data == "multitrade_select":
+            return "🎯 Select a trade to configure:", get_trade_selection_menu(chat_id)
+            
+        elif callback_data.startswith("select_trade_"):
+            trade_id = callback_data.replace("select_trade_", "")
+            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                user_selected_trade[chat_id] = trade_id
+                config = user_trade_configs[chat_id][trade_id]
+                response = f"✅ Selected: {config.get_display_name()}\n\n{config.get_config_summary()}"
+                return response, get_trade_actions_menu(trade_id)
+            return "❌ Trade not found.", get_multitrade_menu(chat_id)
+            
+        elif callback_data == "multitrade_start":
+            if chat_id not in user_selected_trade:
+                return "❌ No trade selected. Please select a trade first.", get_multitrade_menu(chat_id)
+                
+            trade_id = user_selected_trade[chat_id]
+            config = user_trade_configs[chat_id][trade_id]
+            
+            if not config.is_complete():
+                return "❌ Trade configuration incomplete. Please set symbol, side, and amount.", get_multitrade_menu(chat_id)
+                
+            config.status = "active"
+            return f"🚀 Started trade: {config.get_display_name()}", get_multitrade_menu(chat_id)
+            
+        elif callback_data == "multitrade_stop_all":
+            user_trades = user_trade_configs.get(chat_id, {})
+            stopped_count = 0
+            for config in user_trades.values():
+                if config.status == "active":
+                    config.status = "stopped"
+                    stopped_count += 1
+            return f"⏹️ Stopped {stopped_count} active trades.", get_multitrade_menu(chat_id)
+            
+        elif callback_data == "multitrade_status":
+            user_trades = user_trade_configs.get(chat_id, {})
+            if not user_trades:
+                return "📊 No trades to show status for.", get_multitrade_menu(chat_id)
+                
+            response = "📊 Multi-Trade Status:\n\n"
+            for config in user_trades.values():
+                status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+                response += f"{status_emoji} {config.get_display_name()}\n"
+                response += f"   Status: {config.status.title()}\n"
+                if config.symbol:
+                    response += f"   {config.symbol} {config.side or 'N/A'}\n"
+                response += "\n"
+            
+            return response, get_multitrade_menu(chat_id)
+        
+        # Configuration handlers
+        elif callback_data == "set_breakeven":
+            return "⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
+        elif callback_data == "set_trailstop":
+            return "📈 Trailing Stop Settings\n\nConfigure trailing stop parameters:", get_trailing_stop_menu()
+        elif callback_data == "default_settings":
+            user_config = user_configs.get(chat_id, {})
+            return f"⚙️ Default Settings:\n\nLeverage: {user_config.get('default_leverage', '1x')}\nBreak-even: {user_config.get('breakeven_mode', 'After TP1')}", get_default_settings_menu()
+        elif callback_data == "reset_settings":
+            if chat_id in user_configs:
+                user_configs[chat_id] = {}
+            return "🔄 All settings have been reset to defaults.", get_config_menu()
+            
+        # Trading configuration handlers
+        elif callback_data == "set_side_long":
+            return handle_set_side(chat_id, "long")
+        elif callback_data == "set_side_short":
+            return handle_set_side(chat_id, "short")
+        elif callback_data == "set_leverage":
+            return "📊 Select leverage for this trade:", get_leverage_menu()
+        elif callback_data.startswith("leverage_"):
+            leverage = int(callback_data.replace("leverage_", ""))
+            return handle_set_leverage(chat_id, leverage)
+        elif callback_data == "set_amount":
+            return "💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
+        elif callback_data == "execute_trade":
+            return handle_execute_trade(chat_id, user)
+            
+        # Trade action handlers
+        elif callback_data.startswith("start_trade_"):
+            trade_id = callback_data.replace("start_trade_", "")
+            return handle_start_trade(chat_id, trade_id)
+        elif callback_data.startswith("stop_trade_"):
+            trade_id = callback_data.replace("stop_trade_", "")
+            return handle_stop_trade(chat_id, trade_id)
+        elif callback_data.startswith("delete_trade_"):
+            trade_id = callback_data.replace("delete_trade_", "")
+            return handle_delete_trade(chat_id, trade_id)
+        elif callback_data.startswith("config_trade_"):
+            trade_id = callback_data.replace("config_trade_", "")
+            return handle_config_trade(chat_id, trade_id)
         
         else:
             return "🤔 Unknown action. Please try again.", get_main_menu()
@@ -539,6 +816,139 @@ def handle_callback_query(callback_data, chat_id, user):
     except Exception as e:
         logging.error(f"Error handling callback query: {e}")
         return "❌ An error occurred. Please try again.", get_main_menu()
+
+def get_breakeven_menu():
+    """Get break-even configuration menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "After TP1", "callback_data": "breakeven_tp1"}],
+            [{"text": "After TP2", "callback_data": "breakeven_tp2"}],
+            [{"text": "After TP3", "callback_data": "breakeven_tp3"}],
+            [{"text": "Disable", "callback_data": "breakeven_off"}],
+            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+        ]
+    }
+
+def get_trailing_stop_menu():
+    """Get trailing stop configuration menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "📉 Set Trail Percentage", "callback_data": "set_trail_percent"}],
+            [{"text": "🎯 Set Activation Profit %", "callback_data": "set_trail_activation"}],
+            [{"text": "❌ Disable Trailing Stop", "callback_data": "disable_trailing"}],
+            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+        ]
+    }
+
+def get_default_settings_menu():
+    """Get default settings menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "⚖️ Change Default Leverage", "callback_data": "change_default_leverage"}],
+            [{"text": "🎯 Change Break-even Mode", "callback_data": "change_breakeven_mode"}],
+            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+        ]
+    }
+
+def handle_set_side(chat_id, side):
+    """Handle setting trade side (long/short)"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.side = side
+            return f"✅ Set position to {side.upper()}", get_trading_menu(chat_id)
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def handle_set_leverage(chat_id, leverage):
+    """Handle setting leverage"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.leverage = leverage
+            return f"✅ Set leverage to {leverage}x", get_trading_menu(chat_id)
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def handle_execute_trade(chat_id, user):
+    """Handle trade execution"""
+    if chat_id not in user_selected_trade:
+        return "❌ No trade selected.", get_trading_menu(chat_id)
+        
+    trade_id = user_selected_trade[chat_id]
+    config = user_trade_configs[chat_id][trade_id]
+    
+    if not config.is_complete():
+        return "❌ Trade configuration incomplete. Please set symbol, side, and amount.", get_trading_menu(chat_id)
+    
+    # Execute the trade
+    price = get_mock_price(config.symbol)
+    if price:
+        trade = {
+            'id': len(bot_trades) + 1,
+            'user_id': str(user.get('id', 'unknown')),
+            'symbol': config.symbol,
+            'action': config.side,
+            'quantity': config.amount / price if config.amount else 0.001,
+            'price': price,
+            'leverage': config.leverage,
+            'status': 'executed',
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        bot_trades.append(trade)
+        bot_status['total_trades'] += 1
+        config.status = "active"
+        
+        response = f"🚀 Trade Executed!\n\n"
+        response += f"Symbol: {config.symbol}\n"
+        response += f"Side: {config.side.upper()}\n"
+        response += f"Amount: {config.amount} USDT\n"
+        response += f"Leverage: {config.leverage}x\n"
+        response += f"Entry Price: ${price:.4f}\n"
+        response += f"Quantity: {trade['quantity']:.6f}"
+        
+        return response, get_trading_menu(chat_id)
+    else:
+        return f"❌ Could not execute trade for {config.symbol}", get_trading_menu(chat_id)
+
+def handle_start_trade(chat_id, trade_id):
+    """Handle starting a specific trade"""
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        config = user_trade_configs[chat_id][trade_id]
+        if config.is_complete():
+            config.status = "active"
+            return f"🚀 Started trade: {config.get_display_name()}", get_trade_actions_menu(trade_id)
+        else:
+            return "❌ Trade configuration incomplete.", get_trade_actions_menu(trade_id)
+    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
+def handle_stop_trade(chat_id, trade_id):
+    """Handle stopping a specific trade"""
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        config = user_trade_configs[chat_id][trade_id]
+        config.status = "stopped"
+        return f"⏹️ Stopped trade: {config.get_display_name()}", get_trade_actions_menu(trade_id)
+    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
+def handle_delete_trade(chat_id, trade_id):
+    """Handle deleting a specific trade"""
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        config = user_trade_configs[chat_id][trade_id]
+        trade_name = config.get_display_name()
+        del user_trade_configs[chat_id][trade_id]
+        if user_selected_trade.get(chat_id) == trade_id:
+            del user_selected_trade[chat_id]
+        return f"🗑️ Deleted trade: {trade_name}", get_multitrade_menu(chat_id)
+    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
+def handle_config_trade(chat_id, trade_id):
+    """Handle configuring a specific trade"""
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        user_selected_trade[chat_id] = trade_id
+        config = user_trade_configs[chat_id][trade_id]
+        response = f"⚙️ Configuring: {config.get_display_name()}\n\n{config.get_config_summary()}"
+        return response, get_trading_menu(chat_id)
+    return "❌ Trade not found.", get_multitrade_menu(chat_id)
 
 if __name__ == "__main__":
     # Setup webhook on startup
