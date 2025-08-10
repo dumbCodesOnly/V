@@ -1,454 +1,280 @@
 import os
 import logging
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template_string
-from bot import TelegramBot
-import secrets
-import json
+from flask import Flask, request, jsonify, render_template
+import requests
+from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
-# Initialize Flask app
+# Create the Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(16))
+app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 
-# Store start time for uptime calculation
-app_start_time = datetime.now()
+# Bot token and webhook URL from environment
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-# Initialize Telegram bot
-telegram_bot = TelegramBot()
-
-# HTML template for dashboard
-DASHBOARD_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Toobit Multi-Trade Telegram Bot</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .dashboard-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-        }
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-            transition: transform 0.3s ease;
-        }
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-        .feature-card {
-            background: white;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-            border: none;
-            transition: transform 0.3s ease;
-        }
-        .feature-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        }
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            border-radius: 50px;
-            font-weight: 500;
-            font-size: 0.875rem;
-        }
-        .status-online {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-        .bot-title {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: 700;
-            font-size: 2.5rem;
-        }
-        .refresh-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            font-size: 1.5rem;
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-            transition: transform 0.3s ease;
-        }
-        .refresh-btn:hover {
-            transform: scale(1.1);
-        }
-        .trade-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .trade-item {
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 8px;
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-        }
-        .trade-item.active {
-            border-left-color: #28a745;
-            background: #d4edda;
-        }
-        .trade-item.paused {
-            border-left-color: #ffc107;
-            background: #fff3cd;
-        }
-    </style>
-</head>
-<body>
-    <div class="container py-5">
-        <div class="dashboard-container p-4">
-            <!-- Header -->
-            <div class="text-center mb-5">
-                <h1 class="bot-title">
-                    <i class="fas fa-robot me-3"></i>
-                    Toobit Multi-Trade Bot
-                </h1>
-                <p class="lead text-muted">Advanced Telegram Trading Bot Dashboard</p>
-                <div class="status-badge status-online">
-                    <i class="fas fa-circle me-2"></i>
-                    Bot Online & Ready
-                </div>
-            </div>
-
-            <!-- Stats Row -->
-            <div class="row mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card text-center">
-                        <i class="fas fa-users fa-2x mb-3"></i>
-                        <h4 class="mb-1">{{ total_users }}</h4>
-                        <p class="mb-0">Active Users</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card text-center">
-                        <i class="fas fa-exchange-alt fa-2x mb-3"></i>
-                        <h4 class="mb-1">{{ total_trades }}</h4>
-                        <p class="mb-0">Total Trades</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card text-center">
-                        <i class="fas fa-play-circle fa-2x mb-3"></i>
-                        <h4 class="mb-1">{{ active_trades }}</h4>
-                        <p class="mb-0">Active Trades</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card text-center">
-                        <i class="fas fa-robot fa-2x mb-3"></i>
-                        <h4 class="mb-1">{{ running_bots }}</h4>
-                        <p class="mb-0">Running Bots</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Trades -->
-            {% if recent_trades %}
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="feature-card">
-                        <h5 class="mb-3">
-                            <i class="fas fa-clock text-primary me-2"></i>
-                            Recent Trades
-                        </h5>
-                        <div class="trade-list">
-                            {% for trade in recent_trades %}
-                            <div class="trade-item {{ trade.status }}">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong>{{ trade.display_name }}</strong>
-                                        <br>
-                                        <small class="text-muted">{{ trade.symbol }} | {{ trade.side }} | {{ trade.status }}</small>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="badge bg-{{ 'success' if trade.status == 'active' else 'warning' if trade.status == 'configured' else 'secondary' }}">
-                                            {{ trade.status.title() }}
-                                        </div>
-                                        <br>
-                                        <small class="text-muted">{{ trade.created_at }}</small>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Features Grid -->
-            <div class="row">
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-layer-group fa-2x text-primary me-3"></i>
-                            <h5 class="mb-0">Multi-Trade Management</h5>
-                        </div>
-                        <p class="text-muted mb-0">Create and manage multiple trading configurations simultaneously with independent monitoring.</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-bullseye fa-2x text-success me-3"></i>
-                            <h5 class="mb-0">Advanced Take Profits</h5>
-                        </div>
-                        <p class="text-muted mb-0">Set up to 3 take profit levels with custom position sizing and automated execution.</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-shield-alt fa-2x text-warning me-3"></i>
-                            <h5 class="mb-0">Smart Risk Management</h5>
-                        </div>
-                        <p class="text-muted mb-0">Trailing stops, break-even automation, and intelligent stop loss management.</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-chart-area fa-2x text-info me-3"></i>
-                            <h5 class="mb-0">Portfolio Tracking</h5>
-                        </div>
-                        <p class="text-muted mb-0">Comprehensive P&L tracking, performance analytics, and trade history.</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-bell fa-2x text-danger me-3"></i>
-                            <h5 class="mb-0">Real-time Notifications</h5>
-                        </div>
-                        <p class="text-muted mb-0">Instant Telegram notifications for trade executions, profit targets, and alerts.</p>
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-4">
-                    <div class="feature-card">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="fas fa-flask fa-2x text-secondary me-3"></i>
-                            <h5 class="mb-0">Testing Features</h5>
-                        </div>
-                        <p class="text-muted mb-0">Dry run mode and testnet support for safe strategy testing.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- System Info -->
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="feature-card">
-                        <h5 class="mb-3">
-                            <i class="fas fa-info-circle text-primary me-2"></i>
-                            System Information
-                        </h5>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>Bot Status:</strong> <span class="text-success">Online</span></p>
-                                <p><strong>Version:</strong> 2.0.0</p>
-                                <p><strong>Exchange:</strong> Toobit USDT-M Futures</p>
-                            </div>
-                            <div class="col-md-6">
-                                <p><strong>Uptime:</strong> {{ uptime }}</p>
-                                <p><strong>Last Updated:</strong> {{ last_update }}</p>
-                                <p><strong>Environment:</strong> {{ environment }}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Getting Started -->
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="feature-card text-center">
-                        <h5 class="mb-3">
-                            <i class="fas fa-rocket text-primary me-2"></i>
-                            Getting Started
-                        </h5>
-                        <p class="text-muted mb-3">Start your trading journey with our advanced multi-trade bot</p>
-                        <div class="d-flex justify-content-center gap-3 flex-wrap">
-                            <a href="https://t.me/{{ bot_username }}" class="btn btn-primary" target="_blank">
-                                <i class="fab fa-telegram me-2"></i>Open in Telegram
-                            </a>
-                            <button class="btn btn-outline-primary" onclick="location.reload()">
-                                <i class="fas fa-sync-alt me-2"></i>Refresh Dashboard
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Floating Refresh Button -->
-    <button class="refresh-btn" onclick="location.reload()" title="Refresh Dashboard">
-        <i class="fas fa-sync-alt"></i>
-    </button>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(() => {
-            location.reload();
-        }, 30000);
-    </script>
-</body>
-</html>
-"""
-
+# Simple in-memory storage for the bot (replace with database in production)
+bot_messages = []
+bot_trades = []
+bot_status = {
+    'status': 'inactive',
+    'total_messages': 0,
+    'total_trades': 0,
+    'error_count': 0,
+    'last_heartbeat': None
+}
 
 @app.route('/')
 def dashboard():
-    """Main dashboard"""
-    try:
-        # Calculate statistics
-        total_users = len(telegram_bot.multi_trade_manager.user_trades)
-        total_trades = sum(len(trades) for trades in telegram_bot.multi_trade_manager.user_trades.values())
-        active_trades = sum(len([t for t in trades.values() if t.status == 'active']) 
-                          for trades in telegram_bot.multi_trade_manager.user_trades.values())
-        running_bots = len(telegram_bot.multi_trade_manager.active_bots)
-        
-        # Get recent trades for display
-        recent_trades = []
-        for user_trades in telegram_bot.multi_trade_manager.user_trades.values():
-            for trade in user_trades.values():
-                recent_trades.append({
-                    'display_name': trade.get_display_name(),
-                    'symbol': trade.symbol or 'N/A',
-                    'side': trade.side or 'N/A',
-                    'status': trade.status,
-                    'created_at': trade.created_at.strftime('%m/%d %H:%M')
-                })
-        
-        # Sort by creation time and limit to 10 most recent
-        recent_trades.sort(key=lambda x: x['created_at'], reverse=True)
-        recent_trades = recent_trades[:10]
-        
-        # Calculate uptime
-        uptime_delta = datetime.now() - app_start_time
-        hours = int(uptime_delta.total_seconds() // 3600)
-        minutes = int((uptime_delta.total_seconds() % 3600) // 60)
-        uptime = f"{hours}h {minutes}m"
-        
-        # Get bot username (would normally be retrieved from Telegram API)
-        bot_username = os.getenv('BOT_USERNAME', 'toobit_trading_bot')
-        
-        # Get current time
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Render dashboard
-        return render_template_string(
-            DASHBOARD_TEMPLATE,
-            total_users=total_users,
-            total_trades=total_trades,
-            active_trades=active_trades,
-            running_bots=running_bots,
-            recent_trades=recent_trades,
-            uptime=uptime,
-            last_update=current_time,
-            environment="Production" if not os.getenv('DEBUG') else "Development",
-            bot_username=bot_username
-        )
-        
-    except Exception as e:
-        logger.error(f"Error rendering dashboard: {e}")
-        return jsonify({'error': 'Dashboard error', 'message': str(e)}), 500
+    """Bot dashboard"""
+    return render_template('dashboard.html')
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
+@app.route('/api/status')
+def get_bot_status():
+    """Get bot status"""
+    # Check if bot is active (heartbeat within last 5 minutes)
+    if bot_status['last_heartbeat']:
+        time_diff = datetime.utcnow() - datetime.fromisoformat(bot_status['last_heartbeat'])
+        is_active = time_diff.total_seconds() < 300  # 5 minutes
+        bot_status['status'] = 'active' if is_active else 'inactive'
+    
+    return jsonify(bot_status)
+
+@app.route('/api/recent-messages')
+def recent_messages():
+    """Get recent bot messages"""
+    return jsonify(bot_messages[-10:])  # Last 10 messages
+
+@app.route('/api/recent-trades')
+def recent_trades():
+    """Get recent trades"""
+    return jsonify(bot_trades[-10:])  # Last 10 trades
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle Telegram webhook"""
     try:
-        update = request.get_json()
-        if not update:
-            return jsonify({'status': 'error', 'message': 'No data received'}), 400
+        # Get the JSON data from Telegram
+        json_data = request.get_json()
+        
+        if not json_data:
+            logging.warning("No JSON data received")
+            return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
         
         # Process the update
-        telegram_bot.process_update(update)
+        if 'message' in json_data:
+            message = json_data['message']
+            user = message.get('from', {})
+            chat_id = message.get('chat', {}).get('id')
+            text = message.get('text', '')
+            
+            # Update bot status
+            bot_status['last_heartbeat'] = datetime.utcnow().isoformat()
+            bot_status['total_messages'] += 1
+            
+            # Log the message
+            bot_messages.append({
+                'id': len(bot_messages) + 1,
+                'user_id': str(user.get('id', 'unknown')),
+                'username': user.get('username', 'Unknown'),
+                'message': text,
+                'timestamp': datetime.utcnow().isoformat(),
+                'command_type': text.split()[0] if text.startswith('/') else 'message'
+            })
+            
+            # Process the command
+            response_text = process_command(text, chat_id, user)
+            
+            # Send response back to Telegram
+            if BOT_TOKEN and chat_id:
+                send_telegram_message(chat_id, response_text)
+        
         return jsonify({'status': 'ok'})
         
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logging.error(f"Error processing webhook: {e}")
+        bot_status['error_count'] += 1
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+def process_command(text, chat_id, user):
+    """Process bot commands"""
+    if not text:
+        return "🤔 I didn't receive any text. Type /help to see available commands."
+    
+    if text.startswith('/start'):
+        return f"""🤖 Welcome to Trading Bot, {user.get('first_name', 'User')}!
 
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'uptime': str(datetime.now() - app_start_time),
-        'users': len(telegram_bot.multi_trade_manager.user_trades),
-        'active_bots': len(telegram_bot.multi_trade_manager.active_bots)
-    })
+Available commands:
+/start - Show this welcome message
+/help - Get help with commands
+/price <symbol> - Get current price for a symbol
+/buy <symbol> <quantity> - Place a buy order
+/sell <symbol> <quantity> - Place a sell order
+/portfolio - View your portfolio
+/trades - View your recent trades
 
+Example: /price BTCUSDT
+Example: /buy ETHUSDT 0.1"""
+    
+    elif text.startswith('/help'):
+        return """📚 Trading Bot Help
 
-@app.route('/stats')
-def stats():
-    """Get bot statistics as JSON"""
+Commands:
+• /price <symbol> - Get current market price
+  Example: /price BTCUSDT
+
+• /buy <symbol> <quantity> - Place buy order
+  Example: /buy ETHUSDT 0.1
+
+• /sell <symbol> <quantity> - Place sell order
+  Example: /sell BTCUSDT 0.001
+
+• /portfolio - View your current holdings
+
+• /trades - View your trading history
+
+⚠️ Note: This is a demo trading environment."""
+    
+    elif text.startswith('/price'):
+        parts = text.split()
+        if len(parts) < 2:
+            return "❌ Please provide a symbol. Example: /price BTCUSDT"
+        
+        symbol = parts[1].upper()
+        price = get_mock_price(symbol)
+        if price:
+            return f"💰 {symbol}: ${price:.4f}"
+        else:
+            return f"❌ Could not fetch price for {symbol}"
+    
+    elif text.startswith('/buy') or text.startswith('/sell'):
+        parts = text.split()
+        if len(parts) < 3:
+            action = parts[0][1:]  # Remove '/'
+            return f"❌ Please provide symbol and quantity. Example: /{action} BTCUSDT 0.001"
+        
+        action = parts[0][1:]  # Remove '/'
+        symbol = parts[1].upper()
+        try:
+            quantity = float(parts[2])
+        except ValueError:
+            return "❌ Invalid quantity. Please provide a valid number."
+        
+        # Mock trade execution
+        price = get_mock_price(symbol)
+        if price and quantity > 0:
+            # Record the trade
+            trade = {
+                'id': len(bot_trades) + 1,
+                'user_id': str(user.get('id', 'unknown')),
+                'symbol': symbol,
+                'action': action,
+                'quantity': quantity,
+                'price': price,
+                'status': 'executed',
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            bot_trades.append(trade)
+            bot_status['total_trades'] += 1
+            
+            return f"✅ {action.capitalize()} order executed: {quantity} {symbol} at ${price:.4f}"
+        else:
+            return f"❌ {action.capitalize()} order failed: Invalid symbol or quantity"
+    
+    elif text.startswith('/portfolio'):
+        return "📊 Your portfolio is empty. Start trading to see your holdings!"
+    
+    elif text.startswith('/trades'):
+        user_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
+        if not user_trades:
+            return "📈 No recent trades found."
+        
+        response = "📈 Recent Trades:\n\n"
+        for trade in user_trades[-5:]:  # Show last 5 trades
+            status_emoji = "✅" if trade['status'] == "executed" else "⏳"
+            response += f"{status_emoji} {trade['action'].upper()} {trade['quantity']} {trade['symbol']}"
+            response += f" @ ${trade['price']:.4f}\n"
+            timestamp = datetime.fromisoformat(trade['timestamp'])
+            response += f"   {timestamp.strftime('%Y-%m-%d %H:%M')}\n\n"
+        
+        return response
+    
+    else:
+        return "🤔 I didn't understand that command. Type /help to see available commands."
+
+def get_mock_price(symbol):
+    """Get mock price for a trading symbol"""
+    mock_prices = {
+        'BTCUSDT': 45000.00,
+        'ETHUSDT': 3000.00,
+        'ADAUSDT': 0.45,
+        'DOGEUSDT': 0.08,
+        'BNBUSDT': 350.00,
+        'XRPUSDT': 0.60,
+        'SOLUSDT': 100.00,
+        'MATICUSDT': 0.85,
+        'LTCUSDT': 150.00,
+        'AVAXUSDT': 25.00
+    }
+    
+    import random
+    base_price = mock_prices.get(symbol)
+    if base_price:
+        # Add small random variation (+/- 2%)
+        variation = random.uniform(-0.02, 0.02)
+        return base_price * (1 + variation)
+    return None
+
+def send_telegram_message(chat_id, text):
+    """Send message to Telegram"""
+    if not BOT_TOKEN:
+        logging.warning("BOT_TOKEN not set, cannot send message")
+        return False
+    
     try:
-        total_users = len(telegram_bot.multi_trade_manager.user_trades)
-        total_trades = sum(len(trades) for trades in telegram_bot.multi_trade_manager.user_trades.values())
-        active_trades = sum(len([t for t in trades.values() if t.status == 'active']) 
-                          for trades in telegram_bot.multi_trade_manager.user_trades.values())
-        running_bots = len(telegram_bot.multi_trade_manager.active_bots)
-        
-        return jsonify({
-            'total_users': total_users,
-            'total_trades': total_trades,
-            'active_trades': active_trades,
-            'running_bots': running_bots,
-            'uptime': str(datetime.now() - app_start_time),
-            'timestamp': datetime.now().isoformat()
-        })
-        
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {
+            'chat_id': chat_id,
+            'text': text,
+            'parse_mode': 'HTML'
+        }
+        response = requests.post(url, data=data, timeout=10)
+        return response.status_code == 200
     except Exception as e:
-        logger.error(f"Stats error: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error sending Telegram message: {e}")
+        return False
 
+def setup_webhook():
+    """Setup webhook for the bot"""
+    if WEBHOOK_URL and BOT_TOKEN:
+        try:
+            webhook_url = f"{WEBHOOK_URL}/webhook"
+            response = requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+                data={"url": webhook_url},
+                timeout=10
+            )
+            if response.status_code == 200:
+                logging.info(f"Webhook set successfully to {webhook_url}")
+                bot_status['status'] = 'active'
+            else:
+                logging.error(f"Failed to set webhook: {response.text}")
+        except Exception as e:
+            logging.error(f"Error setting webhook: {e}")
+    else:
+        logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
 
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    host = os.getenv('HOST', '0.0.0.0')
-    debug = os.getenv('DEBUG', 'false').lower() == 'true'
-    
-    logger.info(f"Starting Toobit Multi-Trade Bot on {host}:{port}")
-    logger.info(f"Debug mode: {debug}")
-    
-    app.run(host=host, port=port, debug=debug)
+if __name__ == "__main__":
+    # Setup webhook on startup
+    setup_webhook()
+    app.run(host="0.0.0.0", port=5000, debug=True)
