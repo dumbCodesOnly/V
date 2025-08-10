@@ -1,287 +1,330 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Bot Dashboard</title>
+    <title>Telegram Trading Bot Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/feather-icons@4.28.0/dist/feather.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        .dashboard-container {
+            padding: 2rem 0;
         }
-
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .dashboard {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
         .card {
-            background: rgba(255, 255, 255, 0.95);
+            border: none;
             border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255,255,255,0.95);
+            margin-bottom: 2rem;
         }
-
-        .card h3 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.3rem;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 8px;
+        .card-header {
+            background: linear-gradient(135deg, #ff7b7b 0%, #667eea 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            padding: 1.5rem;
         }
-
-        .status-card {
-            text-align: center;
-        }
-
-        .status-indicator {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
+        .status-badge {
             display: inline-block;
-            margin-right: 10px;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.8rem;
         }
-
         .status-active {
-            background-color: #4CAF50;
-            animation: pulse 2s infinite;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
         }
-
         .status-inactive {
-            background-color: #f44336;
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
         }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
         }
-
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            margin: 10px 0;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .stat-value {
+        .stat-number {
+            font-size: 2.5rem;
             font-weight: bold;
             color: #667eea;
         }
-
-        .message-item, .trade-item {
-            background: #f8f9fa;
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-
-        .timestamp {
+        .stat-label {
             color: #666;
             font-size: 0.9rem;
+            margin-top: 0.5rem;
         }
-
-        .refresh-btn {
-            background: #667eea;
+        .bot-title {
             color: white;
+            text-align: center;
+            margin-bottom: 3rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .feature-icon {
+            color: #667eea;
+            margin-right: 1rem;
+        }
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
-            padding: 10px 20px;
+            padding: 0.8rem 2rem;
             border-radius: 25px;
-            cursor: pointer;
-            font-size: 1rem;
+            color: white;
+            font-weight: bold;
             transition: all 0.3s ease;
         }
-
         .refresh-btn:hover {
-            background: #5a67d8;
             transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
-
-        .loading {
-            display: none;
-            text-align: center;
+        .message-item, .trade-item {
+            padding: 1rem;
+            margin: 0.5rem 0;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .timestamp {
+            font-size: 0.8rem;
             color: #666;
-        }
-
-        .error {
-            color: #f44336;
-            background: #ffebee;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🤖 Trading Bot Dashboard</h1>
-            <p>Monitor your Telegram trading bot activity</p>
+    <div class="container dashboard-container">
+        <h1 class="bot-title">
+            <i data-feather="activity"></i>
+            Telegram Trading Bot Dashboard
+        </h1>
+
+        <!-- Bot Status Card -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="radio"></i> Bot Status</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="bot-status">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>Status:</span>
+                                <span id="status-badge" class="status-badge status-inactive">Loading...</span>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Last Heartbeat: <span id="last-heartbeat">Never</span></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="bar-chart-2"></i> Statistics</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6 stat-card">
+                                <div class="stat-number" id="total-messages">0</div>
+                                <div class="stat-label">Messages</div>
+                            </div>
+                            <div class="col-6 stat-card">
+                                <div class="stat-number" id="total-trades">0</div>
+                                <div class="stat-label">Trades</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 stat-card">
+                                <div class="stat-number" id="error-count">0</div>
+                                <div class="stat-label">Errors</div>
+                            </div>
+                            <div class="col-6 stat-card">
+                                <div class="stat-number" id="active-users">0</div>
+                                <div class="stat-label">Active Users</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="dashboard">
-            <div class="card status-card">
-                <h3>📊 Bot Status</h3>
-                <div id="bot-status">
-                    <div class="loading">Loading...</div>
+        <!-- Features and Recent Activity -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="list"></i> Bot Features</h4>
+                    </div>
+                    <div class="card-body">
+                        <ul class="feature-list">
+                            <li><i data-feather="trending-up" class="feature-icon"></i>Multi-Trade Management</li>
+                            <li><i data-feather="settings" class="feature-icon"></i>Advanced Configuration</li>
+                            <li><i data-feather="pie-chart" class="feature-icon"></i>Portfolio Analytics</li>
+                            <li><i data-feather="zap" class="feature-icon"></i>Real-time Trading</li>
+                            <li><i data-feather="shield" class="feature-icon"></i>Risk Management</li>
+                            <li><i data-feather="bell" class="feature-icon"></i>Trade Notifications</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
-            <div class="card">
-                <h3>📈 Recent Messages</h3>
-                <button class="refresh-btn" onclick="refreshMessages()">🔄 Refresh</button>
-                <div id="recent-messages">
-                    <div class="loading">Loading messages...</div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="message-circle"></i> Recent Messages</h4>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                        <div id="recent-messages">
+                            <p class="text-muted text-center">No recent messages</p>
+                        </div>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <div class="card">
-                <h3>💰 Recent Trades</h3>
-                <button class="refresh-btn" onclick="refreshTrades()">🔄 Refresh</button>
-                <div id="recent-trades">
-                    <div class="loading">Loading trades...</div>
+        <!-- Recent Trades -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="activity"></i> Recent Trades</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="recent-trades">
+                            <p class="text-muted text-center">No recent trades</p>
+                        </div>
+                    </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Refresh Button -->
+        <div class="text-center mt-4">
+            <button class="btn refresh-btn" onclick="refreshData()">
+                <i data-feather="refresh-cw"></i> Refresh Data
+            </button>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.28.0/dist/feather.min.js"></script>
     <script>
-        // Auto-refresh every 30 seconds
-        setInterval(() => {
-            refreshStatus();
-            refreshMessages();
-            refreshTrades();
-        }, 30000);
+        // Initialize Feather icons
+        feather.replace();
+
+        // Auto-refresh data every 30 seconds
+        setInterval(refreshData, 30000);
 
         // Load data on page load
-        window.onload = function() {
-            refreshStatus();
-            refreshMessages();
-            refreshTrades();
-        };
+        document.addEventListener('DOMContentLoaded', refreshData);
 
-        async function refreshStatus() {
+        async function refreshData() {
             try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-                
-                const statusHtml = `
-                    <div>
-                        <span class="status-indicator ${data.status === 'active' ? 'status-active' : 'status-inactive'}"></span>
-                        <strong>${data.status.toUpperCase()}</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span>Total Messages:</span>
-                        <span class="stat-value">${data.total_messages}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Total Trades:</span>
-                        <span class="stat-value">${data.total_trades}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Error Count:</span>
-                        <span class="stat-value">${data.error_count}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Last Heartbeat:</span>
-                        <span class="stat-value">${data.last_heartbeat ? new Date(data.last_heartbeat).toLocaleString() : 'Never'}</span>
-                    </div>
-                `;
-                
-                document.getElementById('bot-status').innerHTML = statusHtml;
+                // Update bot status
+                const statusResponse = await fetch('/api/status');
+                const statusData = await statusResponse.json();
+                updateBotStatus(statusData);
+
+                // Update recent messages
+                const messagesResponse = await fetch('/api/recent-messages');
+                const messagesData = await messagesResponse.json();
+                updateRecentMessages(messagesData);
+
+                // Update recent trades
+                const tradesResponse = await fetch('/api/recent-trades');
+                const tradesData = await tradesResponse.json();
+                updateRecentTrades(tradesData);
+
             } catch (error) {
-                document.getElementById('bot-status').innerHTML = '<div class="error">Failed to load status</div>';
+                console.error('Error refreshing data:', error);
             }
         }
 
-        async function refreshMessages() {
-            try {
-                const response = await fetch('/api/recent-messages');
-                const messages = await response.json();
-                
-                let messagesHtml = '';
-                if (messages.length === 0) {
-                    messagesHtml = '<div>No recent messages</div>';
-                } else {
-                    messages.reverse().forEach(msg => {
-                        const timestamp = new Date(msg.timestamp).toLocaleString();
-                        messagesHtml += `
-                            <div class="message-item">
-                                <strong>@${msg.username}</strong>
-                                <div>${msg.message}</div>
-                                <div class="timestamp">${timestamp}</div>
-                            </div>
-                        `;
-                    });
-                }
-                
-                document.getElementById('recent-messages').innerHTML = messagesHtml;
-            } catch (error) {
-                document.getElementById('recent-messages').innerHTML = '<div class="error">Failed to load messages</div>';
+        function updateBotStatus(status) {
+            const statusBadge = document.getElementById('status-badge');
+            const lastHeartbeat = document.getElementById('last-heartbeat');
+            
+            statusBadge.textContent = status.status;
+            statusBadge.className = `status-badge ${status.status === 'active' ? 'status-active' : 'status-inactive'}`;
+            
+            document.getElementById('total-messages').textContent = status.total_messages || 0;
+            document.getElementById('total-trades').textContent = status.total_trades || 0;
+            document.getElementById('error-count').textContent = status.error_count || 0;
+            
+            if (status.last_heartbeat) {
+                const heartbeatDate = new Date(status.last_heartbeat);
+                lastHeartbeat.textContent = heartbeatDate.toLocaleString();
+            } else {
+                lastHeartbeat.textContent = 'Never';
             }
         }
 
-        async function refreshTrades() {
-            try {
-                const response = await fetch('/api/recent-trades');
-                const trades = await response.json();
-                
-                let tradesHtml = '';
-                if (trades.length === 0) {
-                    tradesHtml = '<div>No recent trades</div>';
-                } else {
-                    trades.reverse().forEach(trade => {
-                        const timestamp = new Date(trade.timestamp).toLocaleString();
-                        const statusEmoji = trade.status === 'executed' ? '✅' : '⏳';
-                        tradesHtml += `
-                            <div class="trade-item">
-                                <div>
-                                    ${statusEmoji} <strong>${trade.action.toUpperCase()}</strong> 
-                                    ${trade.quantity} ${trade.symbol}
-                                    @ $${trade.price.toFixed(4)}
-                                    ${trade.leverage ? `(${trade.leverage}x)` : ''}
-                                </div>
-                                <div class="timestamp">${timestamp}</div>
-                            </div>
-                        `;
-                    });
-                }
-                
-                document.getElementById('recent-trades').innerHTML = tradesHtml;
-            } catch (error) {
-                document.getElementById('recent-trades').innerHTML = '<div class="error">Failed to load trades</div>';
+        function updateRecentMessages(messages) {
+            const container = document.getElementById('recent-messages');
+            
+            if (messages.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No recent messages</p>';
+                return;
             }
+
+            container.innerHTML = messages.map(msg => `
+                <div class="message-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>@${msg.username || 'Unknown'}</strong>
+                        <span class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="mt-1">
+                        <span class="badge bg-secondary">${msg.command_type}</span>
+                        ${msg.message}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateRecentTrades(trades) {
+            const container = document.getElementById('recent-trades');
+            
+            if (trades.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No recent trades</p>';
+                return;
+            }
+
+            container.innerHTML = trades.map(trade => `
+                <div class="trade-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${trade.action.toUpperCase()} ${trade.symbol}</strong>
+                            <div class="mt-1">
+                                <small class="text-muted">
+                                    Qty: ${trade.quantity} | Price: $${trade.price.toFixed(4)}
+                                    ${trade.leverage ? ` | ${trade.leverage}x` : ''}
+                                </small>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge ${trade.status === 'executed' ? 'bg-success' : 'bg-warning'}">${trade.status}</span>
+                            <div class="timestamp">${new Date(trade.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
         }
     </script>
 </body>
