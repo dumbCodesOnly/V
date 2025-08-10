@@ -1,8 +1,10 @@
 import os
 import logging
 from flask import Flask, request, jsonify, render_template
-import requests
 from datetime import datetime
+import urllib.request
+import urllib.parse
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -248,8 +250,10 @@ def send_telegram_message(chat_id, text):
             'text': text,
             'parse_mode': 'HTML'
         }
-        response = requests.post(url, data=data, timeout=10)
-        return response.status_code == 200
+        data_encoded = urllib.parse.urlencode(data).encode('utf-8')
+        req = urllib.request.Request(url, data=data_encoded, method='POST')
+        response = urllib.request.urlopen(req, timeout=10)
+        return response.getcode() == 200
     except Exception as e:
         logging.error(f"Error sending Telegram message: {e}")
         return False
@@ -259,16 +263,18 @@ def setup_webhook():
     if WEBHOOK_URL and BOT_TOKEN:
         try:
             webhook_url = f"{WEBHOOK_URL}/webhook"
-            response = requests.post(
+            data = urllib.parse.urlencode({"url": webhook_url}).encode('utf-8')
+            req = urllib.request.Request(
                 f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
-                data={"url": webhook_url},
-                timeout=10
+                data=data,
+                method='POST'
             )
-            if response.status_code == 200:
+            response = urllib.request.urlopen(req, timeout=10)
+            if response.getcode() == 200:
                 logging.info(f"Webhook set successfully to {webhook_url}")
                 bot_status['status'] = 'active'
             else:
-                logging.error(f"Failed to set webhook: {response.text}")
+                logging.error(f"Failed to set webhook: HTTP {response.getcode()}")
         except Exception as e:
             logging.error(f"Error setting webhook: {e}")
     else:
