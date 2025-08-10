@@ -297,13 +297,18 @@ Use the interactive menu for advanced features like multi-trade management, port
                     # Check if we're expecting take profit values
                     elif not config.tp1_percent:
                         config.tp1_percent = value
-                        return f"✅ Set TP1 to {value}%", get_trading_menu(chat_id)
+                        return f"✅ Set TP1 to {value}%\n\n🎯 Set TP2 (optional):", get_tp_percentage_menu("2")
                     elif not config.tp2_percent:
                         config.tp2_percent = value
-                        return f"✅ Set TP2 to {value}%", get_trading_menu(chat_id)
+                        return f"✅ Set TP2 to {value}%\n\n🎯 Set TP3 (optional):", get_tp_percentage_menu("3")
                     elif not config.tp3_percent:
                         config.tp3_percent = value
-                        return f"✅ Set TP3 to {value}%", get_trading_menu(chat_id)
+                        return f"✅ Set TP3 to {value}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                    
+                    # Check if we're expecting stop loss
+                    elif not config.stop_loss_percent:
+                        config.stop_loss_percent = value
+                        return f"✅ Set stop loss to {value}%\n\n🎯 Trade configuration complete!", get_trading_menu(chat_id)
                     
                 except ValueError:
                     pass
@@ -838,11 +843,30 @@ def handle_callback_query(callback_data, chat_id, user):
         # Configuration handlers
         elif callback_data == "set_breakeven":
             return "⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
+        elif callback_data.startswith("breakeven_"):
+            breakeven_mode = callback_data.replace("breakeven_", "")
+            return handle_set_breakeven(chat_id, breakeven_mode)
         elif callback_data == "set_trailstop":
             return "📈 Trailing Stop Settings\n\nConfigure trailing stop parameters:", get_trailing_stop_menu()
+        elif callback_data == "set_trail_percent":
+            return "📉 Enter trailing stop percentage (e.g., 2 for 2%):", get_config_menu()
+        elif callback_data == "set_trail_activation":
+            return "🎯 Enter activation profit percentage (e.g., 5 for 5%):", get_config_menu()
+        elif callback_data == "disable_trailing":
+            return handle_disable_trailing(chat_id)
         elif callback_data == "default_settings":
             user_config = user_configs.get(chat_id, {})
             return f"⚙️ Default Settings:\n\nLeverage: {user_config.get('default_leverage', '1x')}\nBreak-even: {user_config.get('breakeven_mode', 'After TP1')}", get_default_settings_menu()
+        elif callback_data == "change_default_leverage":
+            return "⚖️ Select new default leverage:", get_default_leverage_menu()
+        elif callback_data.startswith("default_lev_"):
+            leverage = callback_data.replace("default_lev_", "")
+            return handle_set_default_leverage(chat_id, leverage)
+        elif callback_data == "change_breakeven_mode":
+            return "⚖️ Select break-even mode:", get_breakeven_mode_menu()
+        elif callback_data.startswith("breakeven_mode_"):
+            mode = callback_data.replace("breakeven_mode_", "")
+            return handle_set_breakeven_mode(chat_id, mode)
         elif callback_data == "reset_settings":
             if chat_id in user_configs:
                 user_configs[chat_id] = {}
@@ -857,7 +881,7 @@ def handle_callback_query(callback_data, chat_id, user):
             return "📊 Select leverage for this trade:", get_leverage_menu()
         elif callback_data.startswith("leverage_"):
             leverage = int(callback_data.replace("leverage_", ""))
-            return handle_set_leverage(chat_id, leverage)
+            return handle_set_leverage_wizard(chat_id, leverage)
         elif callback_data == "set_amount":
             return "💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
         elif callback_data == "execute_trade":
@@ -887,7 +911,7 @@ def handle_callback_query(callback_data, chat_id, user):
             return "🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
         elif callback_data.startswith("tp_"):
             tp_level = callback_data.replace("tp_", "")
-            return f"🎯 Set Take Profit {tp_level}\n\nEnter percentage (e.g., 10 for 10% profit):", get_trading_menu(chat_id)
+            return handle_tp_wizard(chat_id, tp_level)
         elif callback_data.startswith("sl_"):
             sl_data = callback_data.replace("sl_", "")
             if sl_data == "custom":
@@ -902,6 +926,24 @@ def handle_callback_query(callback_data, chat_id, user):
             return handle_set_entry_price(chat_id, "market")
         elif callback_data == "entry_limit":
             return "🎯 Enter your limit price (e.g., 45000.50):", get_trading_menu(chat_id)
+        
+        # Amount wizard handlers
+        elif callback_data.startswith("amount_"):
+            amount_data = callback_data.replace("amount_", "")
+            if amount_data == "custom":
+                return "💰 Enter custom amount in USDT (e.g., 150):", get_trading_menu(chat_id)
+            else:
+                return handle_set_amount_wizard(chat_id, float(amount_data))
+        
+        # Take profit handlers
+        elif callback_data.startswith("tp_set_"):
+            parts = callback_data.replace("tp_set_", "").split("_")
+            tp_level = parts[0]
+            tp_percent = float(parts[1])
+            return handle_set_tp_percent(chat_id, tp_level, tp_percent)
+        elif callback_data.startswith("tp_custom_"):
+            tp_level = callback_data.replace("tp_custom_", "")
+            return f"🎯 Enter custom TP{tp_level} percentage (e.g., 12.5):", get_trading_menu(chat_id)
         
         else:
             return "🤔 Unknown action. Please try again.", get_main_menu()
@@ -1104,10 +1146,159 @@ def handle_set_entry_price(chat_id, entry_type):
             config = user_trade_configs[chat_id][trade_id]
             if entry_type == "market":
                 config.entry_price = None  # None means market price
-                return f"✅ Set entry to Market Price", get_trading_menu(chat_id)
+                # Continue wizard to take profits
+                return f"✅ Set entry to Market Price\n\n🎯 Now let's set your take profits:", get_takeprofit_menu()
             else:
                 return f"✅ Entry type set to {entry_type}. Please specify price.", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def handle_set_leverage_wizard(chat_id, leverage):
+    """Handle setting leverage with wizard flow"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.leverage = leverage
+            # Continue wizard to amount
+            return f"✅ Set leverage to {leverage}x\n\n💰 Now set your trade amount:", get_amount_wizard_menu()
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def handle_tp_wizard(chat_id, tp_level):
+    """Handle take profit setting with wizard flow"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            return f"🎯 Set Take Profit {tp_level}\n\nEnter percentage (e.g., 10 for 10% profit):", get_tp_percentage_menu(tp_level)
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+def handle_set_breakeven(chat_id, mode):
+    """Handle setting break-even mode"""
+    if chat_id not in user_configs:
+        user_configs[chat_id] = {}
+    
+    mode_map = {
+        "tp1": "After TP1",
+        "tp2": "After TP2", 
+        "tp3": "After TP3",
+        "off": "Disabled"
+    }
+    
+    user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
+    return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_config_menu()
+
+def handle_disable_trailing(chat_id):
+    """Handle disabling trailing stop"""
+    if chat_id not in user_configs:
+        user_configs[chat_id] = {}
+    user_configs[chat_id]['trailing_stop'] = 'Disabled'
+    return "✅ Trailing stop disabled", get_config_menu()
+
+def handle_set_default_leverage(chat_id, leverage):
+    """Handle setting default leverage"""
+    if chat_id not in user_configs:
+        user_configs[chat_id] = {}
+    user_configs[chat_id]['default_leverage'] = f"{leverage}x"
+    return f"✅ Default leverage set to {leverage}x", get_default_settings_menu()
+
+def handle_set_breakeven_mode(chat_id, mode):
+    """Handle setting breakeven mode"""
+    if chat_id not in user_configs:
+        user_configs[chat_id] = {}
+    
+    mode_map = {
+        "tp1": "After TP1",
+        "tp2": "After TP2",
+        "tp3": "After TP3",
+        "off": "Disabled"
+    }
+    
+    user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
+    return f"✅ Break-even mode set to: {mode_map.get(mode, 'After TP1')}", get_default_settings_menu()
+
+def get_amount_wizard_menu():
+    """Get amount setting wizard menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "💰 $10", "callback_data": "amount_10"}],
+            [{"text": "💰 $25", "callback_data": "amount_25"}],
+            [{"text": "💰 $50", "callback_data": "amount_50"}],
+            [{"text": "💰 $100", "callback_data": "amount_100"}],
+            [{"text": "💰 $250", "callback_data": "amount_250"}],
+            [{"text": "💰 Custom Amount", "callback_data": "amount_custom"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def get_tp_percentage_menu(tp_level):
+    """Get take profit percentage menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "🎯 2%", "callback_data": f"tp_set_{tp_level}_2"}],
+            [{"text": "🎯 5%", "callback_data": f"tp_set_{tp_level}_5"}],
+            [{"text": "🎯 10%", "callback_data": f"tp_set_{tp_level}_10"}],
+            [{"text": "🎯 15%", "callback_data": f"tp_set_{tp_level}_15"}],
+            [{"text": "🎯 25%", "callback_data": f"tp_set_{tp_level}_25"}],
+            [{"text": "🎯 Custom", "callback_data": f"tp_custom_{tp_level}"}],
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
+        ]
+    }
+
+def get_default_leverage_menu():
+    """Get default leverage menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "1x", "callback_data": "default_lev_1"}],
+            [{"text": "2x", "callback_data": "default_lev_2"}],
+            [{"text": "5x", "callback_data": "default_lev_5"}],
+            [{"text": "10x", "callback_data": "default_lev_10"}],
+            [{"text": "20x", "callback_data": "default_lev_20"}],
+            [{"text": "50x", "callback_data": "default_lev_50"}],
+            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+        ]
+    }
+
+def get_breakeven_mode_menu():
+    """Get break-even mode selection menu"""
+    return {
+        "inline_keyboard": [
+            [{"text": "After TP1", "callback_data": "breakeven_mode_tp1"}],
+            [{"text": "After TP2", "callback_data": "breakeven_mode_tp2"}],
+            [{"text": "After TP3", "callback_data": "breakeven_mode_tp3"}],
+            [{"text": "Disable", "callback_data": "breakeven_mode_off"}],
+            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+        ]
+    }
+
+def handle_set_amount_wizard(chat_id, amount):
+    """Handle setting amount with wizard flow"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.amount = amount
+            # Continue wizard to entry price
+            return f"✅ Set amount to ${amount} USDT\n\n🎯 Now set your entry price:", get_entry_price_menu()
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+
+def handle_set_tp_percent(chat_id, tp_level, tp_percent):
+    """Handle setting take profit percentage"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            
+            if tp_level == "1":
+                config.tp1_percent = tp_percent
+                return f"✅ Set TP1 to {tp_percent}%\n\n🎯 Set TP2 (optional):", get_tp_percentage_menu("2")
+            elif tp_level == "2":
+                config.tp2_percent = tp_percent
+                return f"✅ Set TP2 to {tp_percent}%\n\n🎯 Set TP3 (optional):", get_tp_percentage_menu("3")
+            elif tp_level == "3":
+                config.tp3_percent = tp_percent
+                return f"✅ Set TP3 to {tp_percent}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                
+    return "❌ No trade selected.", get_trading_menu(chat_id)
 
 if __name__ == "__main__":
     # Setup webhook on startup
