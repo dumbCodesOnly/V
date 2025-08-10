@@ -8,6 +8,15 @@ A sophisticated Telegram-based trading bot for Toobit USDT-M futures trading wit
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+**August 10, 2025**: Fixed inline keyboard functionality in Telegram bot
+- Added comprehensive callback query handling for interactive menus
+- Implemented trading, portfolio, and configuration menus with inline keyboards
+- Fixed webhook processing to handle both text messages and callback queries
+- Added support for quick trading, price checks, and menu navigation
+- All inline keyboard interactions now work correctly with proper state management
+
 ## System Architecture
 
 ### Flask Web Application
