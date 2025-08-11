@@ -1018,7 +1018,12 @@
                 return await response.json();
             } catch (error) {
                 console.error('API call failed:', error);
-                tg.showAlert(`Error: ${error.message}`);
+                // Use fallback alert instead of tg.showAlert for compatibility
+                if (typeof tg !== 'undefined' && tg.showAlert) {
+                    tg.showAlert(`Error: ${error.message}`);
+                } else {
+                    console.error(`Error: ${error.message}`);
+                }
                 return null;
             }
         }
@@ -1818,12 +1823,25 @@
                 const symbol = document.getElementById('symbol-select').value || 'BTCUSDT';
                 const data = await apiCall(`/api/market-data?symbol=${symbol}`);
                 
-                if (data) {
+                if (data && !data.error) {
+                    console.log('Live market data loaded successfully:', data);
                     updateMarketDisplay(data);
                     loadPriceChart(symbol);
+                } else if (data && data.error) {
+                    console.error('Market data API error:', data.message);
+                    // Show error in UI
+                    document.getElementById('current-price').textContent = 'Error';
+                    document.getElementById('price-change').textContent = 'N/A';
+                    document.getElementById('volume').textContent = 'N/A';
+                } else {
+                    console.error('No market data received');
                 }
             } catch (error) {
                 console.error('Error loading market data:', error);
+                // Show error in UI
+                document.getElementById('current-price').textContent = 'Error';
+                document.getElementById('price-change').textContent = 'N/A';
+                document.getElementById('volume').textContent = 'N/A';
             }
         }
 
@@ -1863,12 +1881,35 @@
                 const timeframe = document.querySelector('.chart-timeframe.active')?.dataset?.timeframe || '4h';
                 const data = await apiCall(`/api/kline-data?symbol=${symbol}&interval=${timeframe}&limit=50`);
                 
-                if (data && data.data) {
+                if (data && data.data && !data.error) {
+                    console.log(`Live chart data loaded for ${symbol}:`, data.data.length, 'candles');
                     createPriceChart(data.data);
+                } else if (data && data.error) {
+                    console.error('Chart data API error:', data.message);
+                    // Show error message in chart area
+                    showChartError('Unable to load live chart data');
+                } else {
+                    console.error('No chart data received');
+                    showChartError('No chart data available');
                 }
             } catch (error) {
                 console.error('Error loading price chart:', error);
+                showChartError('Chart loading failed');
             }
+        }
+
+        function showChartError(message) {
+            const ctx = document.getElementById('price-chart').getContext('2d');
+            if (priceChart) {
+                priceChart.destroy();
+            }
+            
+            // Clear canvas and show error message
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.fillStyle = '#dc3545';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(message, ctx.canvas.width / 2, ctx.canvas.height / 2);
         }
 
         function createPriceChart(candlestickData) {
