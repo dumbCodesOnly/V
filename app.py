@@ -441,6 +441,16 @@ def save_trade():
         if 'stop_loss_percent' in trade_data:
             config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else None
         
+        # Update breakeven and trailing stop settings
+        if 'breakeven_after' in trade_data:
+            config.breakeven_after = trade_data['breakeven_after']
+        if 'trailing_stop_enabled' in trade_data:
+            config.trailing_stop_enabled = bool(trade_data['trailing_stop_enabled'])
+        if 'trail_percentage' in trade_data:
+            config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else None
+        if 'trail_activation_price' in trade_data:
+            config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else None
+        
         # Set as selected trade for user
         user_selected_trade[chat_id] = trade_id
         

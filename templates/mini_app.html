@@ -627,6 +627,47 @@
                             <span class="input-group-text">%</span>
                         </div>
                     </div>
+
+                    <!-- Breakeven Settings -->
+                    <div id="breakeven-step" class="config-step hidden">
+                        <label class="form-label">Break-even Settings</label>
+                        <select class="form-control" id="breakeven-select">
+                            <option value="disabled">Disabled</option>
+                            <option value="tp1">After TP1</option>
+                            <option value="tp2">After TP2</option>
+                            <option value="tp3">After TP3</option>
+                        </select>
+                        <small class="text-muted">Move stop loss to break-even after take profit levels</small>
+                    </div>
+
+                    <!-- Trailing Stop Settings -->
+                    <div id="trailing-step" class="config-step hidden">
+                        <label class="form-label">Trailing Stop</label>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="trailing-enabled" onchange="toggleTrailingStop()">
+                            <label class="form-check-label" for="trailing-enabled">
+                                Enable Trailing Stop
+                            </label>
+                        </div>
+                        <div id="trailing-options" class="hidden">
+                            <div class="mb-3">
+                                <label class="form-label">Trail Percentage</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="trail-percentage" placeholder="2" step="0.1" min="0.1">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <small class="text-muted">Percentage to trail behind best price</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Activation Price (Optional)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="trail-activation" placeholder="45500" step="0.01">
+                                </div>
+                                <small class="text-muted">Price at which trailing stop activates</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-primary" onclick="previousStep()">← Back</button>
@@ -645,7 +686,7 @@
         let currentUser = null;
         let currentTrade = null;
         let configStep = 0;
-        const configSteps = ['symbol', 'side', 'amount', 'entry', 'tp', 'sl'];
+        const configSteps = ['symbol', 'side', 'amount', 'entry', 'tp', 'sl', 'breakeven', 'trailing'];
         
         // Initialize Telegram Web App
         if (typeof tg !== 'undefined' && tg.ready) {
@@ -864,7 +905,11 @@
                 entry_type: '',
                 entry_price: '',
                 take_profits: [],
-                stop_loss_percent: ''
+                stop_loss_percent: '',
+                breakeven_after: 'disabled',
+                trailing_stop_enabled: false,
+                trail_percentage: '',
+                trail_activation_price: ''
             };
             configStep = 0;
             showTradeModal();
@@ -968,6 +1013,13 @@
             if (currentTrade.leverage) document.getElementById('leverage-select').value = currentTrade.leverage;
             if (currentTrade.entry_price) document.getElementById('entry-price').value = currentTrade.entry_price;
             if (currentTrade.stop_loss_percent) document.getElementById('stop-loss').value = currentTrade.stop_loss_percent;
+            if (currentTrade.breakeven_after) document.getElementById('breakeven-select').value = currentTrade.breakeven_after;
+            if (currentTrade.trailing_stop_enabled) {
+                document.getElementById('trailing-enabled').checked = currentTrade.trailing_stop_enabled;
+                toggleTrailingStop();
+            }
+            if (currentTrade.trail_percentage) document.getElementById('trail-percentage').value = currentTrade.trail_percentage;
+            if (currentTrade.trail_activation_price) document.getElementById('trail-activation').value = currentTrade.trail_activation_price;
         }
 
         function nextStep() {
@@ -1019,6 +1071,33 @@
                         return false;
                     }
                     currentTrade.stop_loss_percent = stopLoss;
+                    break;
+                    
+                case 'breakeven':
+                    const breakeven = document.getElementById('breakeven-select').value;
+                    currentTrade.breakeven_after = breakeven;
+                    break;
+                    
+                case 'trailing':
+                    const trailingEnabled = document.getElementById('trailing-enabled').checked;
+                    currentTrade.trailing_stop_enabled = trailingEnabled;
+                    
+                    if (trailingEnabled) {
+                        const trailPercent = parseFloat(document.getElementById('trail-percentage').value);
+                        if (!trailPercent || trailPercent <= 0) {
+                            tg.showAlert('Please set a trail percentage');
+                            return false;
+                        }
+                        currentTrade.trail_percentage = trailPercent;
+                        
+                        const activationPrice = parseFloat(document.getElementById('trail-activation').value);
+                        if (activationPrice) {
+                            currentTrade.trail_activation_price = activationPrice;
+                        }
+                    } else {
+                        currentTrade.trail_percentage = '';
+                        currentTrade.trail_activation_price = '';
+                    }
                     break;
             }
             
@@ -1103,7 +1182,27 @@
             const total = Object.keys(steps).length;
             const progress = "█".repeat(completed) + "░".repeat(total - completed);
             
-            return `${completed}/${total} [${progress}] ${Object.entries(steps).map(([k,v]) => `${k}${v}`).join(' ')}`;
+            // Add advanced settings indicators
+            const advancedSettings = [];
+            if (trade.breakeven_after && trade.breakeven_after !== 'disabled') {
+                advancedSettings.push('BE');
+            }
+            if (trade.trailing_stop_enabled) {
+                advancedSettings.push('TS');
+            }
+            const advancedText = advancedSettings.length > 0 ? ` +${advancedSettings.join(',')}` : '';
+            
+            return `${completed}/${total} [${progress}] ${Object.entries(steps).map(([k,v]) => `${k}${v}`).join(' ')}${advancedText}`;
+        }
+
+        function toggleTrailingStop() {
+            const enabled = document.getElementById('trailing-enabled').checked;
+            const options = document.getElementById('trailing-options');
+            if (enabled) {
+                options.classList.remove('hidden');
+            } else {
+                options.classList.add('hidden');
+            }
         }
 
         // Tab switching handlers
