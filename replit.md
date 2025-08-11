@@ -17,6 +17,8 @@ Preferred communication style: Simple, everyday language.
 - ✅ Positions tab: full trade details with entry, current price, and margin data  
 - ✅ Real-time ROE calculation based on margin and unrealized P&L
 - ✅ Color-coded P&L and ROE indicators (green/red for profit/loss)
+- ✅ **Fixed margin information display**: Updated frontend to use correct field name (position_margin)
+- ✅ **Fixed take profits display**: Corrected format to show "TP1: 5% (30%)" instead of accessing non-existent price field
 
 ### Complete Trade Management UI (August 11, 2025)
 - ✅ Added full Edit/Execute/Delete functionality to web app trading tab

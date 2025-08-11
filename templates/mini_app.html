@@ -1188,7 +1188,7 @@
                             <small class="text-muted">Take Profits:</small><br>
                             <strong>
                                 ${trade.take_profits && trade.take_profits.length > 0 ? 
-                                    trade.take_profits.map(tp => `$${tp.price || tp}`).join(', ') : 
+                                    trade.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
                                     'Not set'}
                             </strong>
                         </div>
@@ -1237,7 +1237,7 @@
                             <small class="text-muted">Take Profits:</small><br>
                             <strong>
                                 ${trade.take_profits && trade.take_profits.length > 0 ? 
-                                    trade.take_profits.map(tp => `$${tp.price || tp}`).join(', ') : 
+                                    trade.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
                                     'Not set'}
                             </strong>
                         </div>
