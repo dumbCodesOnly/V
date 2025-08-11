@@ -747,10 +747,9 @@ def get_portfolio_menu():
     """Get portfolio menu keyboard"""
     return {
         "inline_keyboard": [
-            [{"text": "📊 Portfolio Summary", "callback_data": "portfolio_summary"}],
-            [{"text": "💰 Margin Dashboard", "callback_data": "margin_dashboard"}],
+            [{"text": "📊 Portfolio & Margin Overview", "callback_data": "portfolio_overview"}],
             [{"text": "📈 Recent Trades", "callback_data": "recent_trades"}],
-            [{"text": "💹 Performance", "callback_data": "performance"}],
+            [{"text": "💹 Performance Analytics", "callback_data": "performance"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
         ]
     }
@@ -877,70 +876,18 @@ def handle_callback_query(callback_data, chat_id, user):
                     return f"✅ Set symbol to {symbol}", get_trading_menu(chat_id)
             return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
         
-        # Portfolio handlers
-        elif callback_data == "portfolio_summary":
+        # Portfolio handlers - Unified Portfolio & Margin Overview
+        elif callback_data == "portfolio_overview":
             user_trades = user_trade_configs.get(chat_id, {})
             margin_data = get_margin_summary(chat_id)
             
-            response = "📊 **PORTFOLIO SUMMARY**\n"
-            response += "=" * 35 + "\n\n"
+            response = "📊 **PORTFOLIO & MARGIN OVERVIEW**\n"
+            response += "=" * 40 + "\n\n"
             
-            # Account Overview
-            response += "💼 **ACCOUNT OVERVIEW**\n"
+            # Account Summary - Comprehensive View
+            response += "💼 **ACCOUNT SUMMARY**\n"
             response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
-            response += f"Available Margin: ${margin_data['free_margin']:,.2f}\n"
-            response += f"Total P&L: ${margin_data['unrealized_pnl']:+,.2f}\n\n"
-            
-            # Holdings Summary
-            active_positions = [config for config in user_trades.values() if config.status == "active"]
-            configured_positions = [config for config in user_trades.values() if config.status == "configured"]
-            
-            response += "📈 **HOLDINGS**\n"
-            if active_positions:
-                total_value = sum(config.amount or 0 for config in active_positions)
-                response += f"Active Positions: {len(active_positions)}\n"
-                response += f"Total Position Value: ${total_value:,.2f}\n\n"
-                
-                for config in active_positions:
-                    if config.symbol and config.amount:
-                        pnl_emoji = "🟢" if config.unrealized_pnl >= 0 else "🔴"
-                        response += f"{pnl_emoji} {config.symbol}: ${config.amount:,.2f} ({config.side.upper()})\n"
-                        response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n"
-            else:
-                response += "No active positions\n\n"
-            
-            if configured_positions:
-                response += f"📋 **CONFIGURED POSITIONS**\n"
-                response += f"Ready to Execute: {len(configured_positions)}\n"
-                for config in configured_positions:
-                    if config.symbol:
-                        response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
-                response += "\n"
-            
-            # Portfolio Stats
-            all_positions = len(user_trades)
-            if all_positions > 0:
-                response += "📊 **PORTFOLIO STATS**\n"
-                response += f"Total Positions: {all_positions}\n"
-                response += f"Active: {len(active_positions)}\n"
-                response += f"Configured: {len(configured_positions)}\n"
-                
-                # Calculate portfolio diversity
-                symbols = set(config.symbol for config in user_trades.values() if config.symbol)
-                response += f"Unique Symbols: {len(symbols)}\n"
-            
-            return response, get_portfolio_menu()
-        elif callback_data == "margin_dashboard":
-            margin_data = get_margin_summary(chat_id)
-            user_trades = user_trade_configs.get(chat_id, {})
-            
-            response = "💰 **MARGIN DASHBOARD**\n"
-            response += "=" * 35 + "\n\n"
-            
-            # Account Overview
-            response += "📈 **ACCOUNT OVERVIEW**\n"
-            response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
-            response += f"Total Margin: ${margin_data['total_margin']:,.2f}\n"
+            response += f"Total Margin Used: ${margin_data['total_margin']:,.2f}\n"
             response += f"Free Margin: ${margin_data['free_margin']:,.2f}\n"
             response += f"Floating P&L: ${margin_data['unrealized_pnl']:+,.2f}\n"
             
@@ -950,41 +897,75 @@ def handle_callback_query(callback_data, chat_id, user):
                 response += f"Margin Level: ∞ (No positions)\n"
             response += "\n"
             
-            # Position Details
-            active_positions = [config for config in user_trades.values() if config.status == "active"]
+            # Risk Assessment
+            response += "⚠️ **RISK ASSESSMENT**\n"
+            if margin_data['total_margin'] > 0:
+                margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
+                response += f"Margin Utilization: {margin_ratio:.1f}%\n"
+                
+                if margin_ratio > 80:
+                    response += "Risk Level: 🔴 HIGH RISK - Consider reducing positions\n"
+                elif margin_ratio > 50:
+                    response += "Risk Level: 🟡 MEDIUM RISK - Monitor closely\n"
+                else:
+                    response += "Risk Level: 🟢 LOW RISK - Safe margin levels\n"
+            else:
+                response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
+            response += "\n"
             
+            # Holdings & Position Details
+            active_positions = [config for config in user_trades.values() if config.status == "active"]
+            configured_positions = [config for config in user_trades.values() if config.status == "configured"]
+            
+            response += "📊 **ACTIVE POSITIONS**\n"
             if active_positions:
-                response += "📊 **ACTIVE POSITIONS**\n"
-                response += "-" * 30 + "\n"
+                total_value = sum(config.amount or 0 for config in active_positions)
+                response += f"Count: {len(active_positions)} | Total Value: ${total_value:,.2f}\n"
+                response += "-" * 35 + "\n"
                 
                 for config in active_positions:
                     if config.symbol and config.amount:
                         pnl_emoji = "🟢" if config.unrealized_pnl >= 0 else "🔴"
                         response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
-                        response += f"   Amount: ${config.amount:,.2f}\n"
-                        response += f"   Leverage: {config.leverage}x\n"
+                        response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
                         response += f"   Margin Used: ${config.position_margin:,.2f}\n"
-                        response += f"   Entry: ${config.entry_price or 0:.4f}\n"
-                        response += f"   Current: ${config.current_price:.4f}\n"
+                        response += f"   Entry: ${config.entry_price or 0:.4f} | Current: ${config.current_price:.4f}\n"
                         response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n\n"
             else:
-                response += "📊 **ACTIVE POSITIONS**\n"
                 response += "No active positions\n\n"
             
-            # Risk Metrics
-            response += "⚠️ **RISK METRICS**\n"
-            if margin_data['total_margin'] > 0:
-                margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
-                response += f"Margin Ratio: {margin_ratio:.1f}%\n"
+            # Configured Positions Summary
+            if configured_positions:
+                response += "📋 **CONFIGURED POSITIONS**\n"
+                response += f"Ready to Execute: {len(configured_positions)}\n"
+                for config in configured_positions:
+                    if config.symbol:
+                        response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
+                response += "\n"
+            
+            # Portfolio Statistics
+            all_positions = len(user_trades)
+            if all_positions > 0:
+                response += "📈 **PORTFOLIO STATISTICS**\n"
+                response += f"Total Positions: {all_positions} | Active: {len(active_positions)} | Configured: {len(configured_positions)}\n"
                 
-                if margin_ratio > 80:
-                    response += "🔴 HIGH RISK - Consider reducing positions\n"
-                elif margin_ratio > 50:
-                    response += "🟡 MEDIUM RISK - Monitor closely\n"
-                else:
-                    response += "🟢 LOW RISK - Safe margin levels\n"
-            else:
-                response += "No margin risk - No active positions\n"
+                # Calculate portfolio diversity
+                symbols = set(config.symbol for config in user_trades.values() if config.symbol)
+                response += f"Unique Symbols: {len(symbols)}\n"
+                
+                # Symbol breakdown for active positions
+                if active_positions:
+                    symbol_breakdown = {}
+                    for config in active_positions:
+                        if config.symbol:
+                            if config.symbol not in symbol_breakdown:
+                                symbol_breakdown[config.symbol] = 0
+                            symbol_breakdown[config.symbol] += 1
+                    
+                    if len(symbol_breakdown) > 1:
+                        response += "Symbol Distribution: "
+                        response += " | ".join([f"{sym}({count})" for sym, count in sorted(symbol_breakdown.items())])
+                        response += "\n"
             
             return response, get_portfolio_menu()
         elif callback_data == "recent_trades":
