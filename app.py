@@ -54,13 +54,17 @@ user_selected_trade = {}  # {user_id: trade_id}
 trade_counter = 0
 
 # Initialize demo data for testing
-def initialize_demo_data():
-    """Initialize some demo data for testing the mini-app"""
-    demo_user_id = 123456789
+def initialize_demo_data(user_id):
+    """Initialize some demo data for testing the mini-app for a specific user"""
+    user_id = int(user_id)
     
     # Create demo trade configurations
-    if demo_user_id not in user_trade_configs:
-        user_trade_configs[demo_user_id] = {}
+    if user_id not in user_trade_configs:
+        user_trade_configs[user_id] = {}
+    
+    # Only initialize if user has no existing data
+    if len(user_trade_configs[user_id]) > 0:
+        return
     
     # Demo Trade 1 - Active Position
     trade1 = TradeConfig(1, "BTC Long Position")
@@ -97,14 +101,9 @@ def initialize_demo_data():
     trade2.stop_loss_percent = 3.0
     trade2.status = "configured"
     
-    user_trade_configs[demo_user_id][1] = trade1
-    user_trade_configs[demo_user_id][2] = trade2
-    user_selected_trade[demo_user_id] = 1
-    
-    global trade_counter
-    trade_counter = 2
-
-# Demo data will be initialized after TradeConfig class is defined
+    user_trade_configs[user_id][1] = trade1
+    user_trade_configs[user_id][2] = trade2
+    user_selected_trade[user_id] = 1
 
 
 
@@ -291,26 +290,29 @@ def recent_trades():
 
 @app.route('/api/margin-data')
 def margin_data():
-    """Get comprehensive margin data for all users"""
-    # Aggregate margin data across all users
-    total_account_balance = 0.0
-    total_margin_used = 0.0
-    total_free_margin = 0.0
-    total_unrealized_pnl = 0.0
-    all_positions = []
+    """Get comprehensive margin data for a specific user"""
+    user_id = request.args.get('user_id')
+    if not user_id or user_id == 'undefined':
+        # For testing outside Telegram, use a demo user
+        user_id = '123456789'
     
-    for chat_id, user_trades in user_trade_configs.items():
-        margin_summary = get_margin_summary(chat_id)
-        total_account_balance += margin_summary['account_balance']
-        total_margin_used += margin_summary['total_margin']
-        total_free_margin += margin_summary['free_margin']
-        total_unrealized_pnl += margin_summary['unrealized_pnl']
-        
-        # Add position details
-        for trade_id, config in user_trades.items():
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Initialize demo data for this user if needed
+    initialize_demo_data(chat_id)
+    
+    # Get margin data for this specific user only
+    margin_summary = get_margin_summary(chat_id)
+    user_positions = []
+    
+    if chat_id in user_trade_configs:
+        for trade_id, config in user_trade_configs[chat_id].items():
             if config.status == "active" and config.symbol:
-                all_positions.append({
-                    'user_id': str(chat_id),
+                user_positions.append({
+                    'trade_id': trade_id,
                     'symbol': config.symbol,
                     'side': config.side,
                     'amount': config.amount,
@@ -323,15 +325,16 @@ def margin_data():
                 })
     
     return jsonify({
+        'user_id': user_id,
         'summary': {
-            'total_account_balance': total_account_balance,
-            'total_margin_used': total_margin_used,
-            'total_free_margin': total_free_margin,
-            'total_unrealized_pnl': total_unrealized_pnl,
-            'margin_utilization': (total_margin_used / total_account_balance * 100) if total_account_balance > 0 else 0,
-            'total_positions': len(all_positions)
+            'account_balance': margin_summary['account_balance'],
+            'total_margin_used': margin_summary['total_margin'],
+            'free_margin': margin_summary['free_margin'],
+            'unrealized_pnl': margin_summary['unrealized_pnl'],
+            'margin_utilization': (margin_summary['total_margin'] / margin_summary['account_balance'] * 100) if margin_summary['account_balance'] > 0 else 0,
+            'total_positions': len(user_positions)
         },
-        'positions': all_positions,
+        'positions': user_positions,
         'timestamp': datetime.utcnow().isoformat()
     })
 
@@ -347,6 +350,9 @@ def user_trades():
         chat_id = int(user_id)
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Initialize demo data for this user if needed
+    initialize_demo_data(chat_id)
     
     user_trade_list = []
     
@@ -2539,8 +2545,6 @@ def get_simulated_price(symbol):
     return base_price * (1 + variance)
 
 if __name__ == "__main__":
-    # Initialize demo data after classes are defined
-    initialize_demo_data()
-    # Setup webhook on startup
+    # Setup webhook on startup  
     setup_webhook()
     app.run(host="0.0.0.0", port=5000, debug=True)

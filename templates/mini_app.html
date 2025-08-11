@@ -1024,18 +1024,18 @@
         }
 
         async function loadPortfolio() {
-            const data = await apiCall('/api/margin-data');
+            const data = await apiCall(`/api/margin-data?user_id=${currentUser?.id || '123456789'}`);
             if (!data) return;
             
             const summary = data.summary || {};
             
-            document.getElementById('account-balance').textContent = `$${summary.total_account_balance?.toFixed(2) || '0.00'}`;
+            document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
             document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
-            document.getElementById('free-margin').textContent = `$${summary.total_free_margin?.toFixed(2) || '0.00'}`;
+            document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
             document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
             
             const container = document.getElementById('portfolio-details');
-            const positions = data.positions?.filter(p => p.user_id == currentUser?.id) || [];
+            const positions = data.positions || [];
             
             if (positions.length === 0) {
                 container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No positions found</small></div>';

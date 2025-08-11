@@ -8,6 +8,15 @@ This project is a sophisticated Telegram-based trading bot designed for Toobit U
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+### Migration Completed (August 11, 2025)
+- ✅ Fixed portfolio data sharing issue between users
+- ✅ Implemented proper user isolation for demo data
+- ✅ Updated API endpoints to accept user-specific requests
+- ✅ Fixed LSP errors and improved code security
+- ✅ Project successfully migrated to Replit environment
+
 ## System Architecture
 
 ### Flask Web Application
