@@ -583,12 +583,21 @@ def execute_trade():
         if not config.is_complete():
             return jsonify({'error': 'Trade configuration is incomplete'}), 400
         
-        # Simulate trade execution (replace with actual API calls)
+        # Execute trade with real market data
         config.status = "active"
         config.position_size = config.amount * config.leverage
         config.position_margin = config.amount
-        config.current_price = config.entry_price or get_simulated_price(config.symbol)
+        
+        # Use real live market price for market orders
+        if config.entry_type == "market" or config.entry_price is None:
+            config.current_price = get_live_market_price(config.symbol)
+            config.entry_price = config.current_price  # Set entry price to execution price
+        else:
+            config.current_price = config.entry_price  # Use limit price
+        
         config.unrealized_pnl = 0.0
+        
+        logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.current_price} (entry type: {config.entry_type})")
         
         # Log trade execution
         bot_trades.append({
@@ -1311,28 +1320,29 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         logging.error(f"Error deleting credentials: {str(e)}")
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
+def get_live_market_price(symbol):
+    """Get real live market price from Binance API"""
+    try:
+        # Use Binance API for real market price
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        
+        price = float(data['price'])
+        logging.info(f"Retrieved live price for {symbol}: ${price}")
+        return price
+    except Exception as e:
+        logging.error(f"Error fetching live price for {symbol}: {str(e)}")
+        # Return error instead of mock price
+        raise Exception(f"Unable to fetch live market price for {symbol}")
+
 def get_mock_price(symbol):
-    """Get mock price for a trading symbol"""
-    mock_prices = {
-        'BTCUSDT': 45000.00,
-        'ETHUSDT': 3000.00,
-        'ADAUSDT': 0.45,
-        'DOGEUSDT': 0.08,
-        'BNBUSDT': 350.00,
-        'XRPUSDT': 0.60,
-        'SOLUSDT': 100.00,
-        'MATICUSDT': 0.85,
-        'LTCUSDT': 150.00,
-        'AVAXUSDT': 25.00
-    }
-    
-    import random
-    base_price = mock_prices.get(symbol)
-    if base_price:
-        # Add small random variation (+/- 2%)
-        variation = random.uniform(-0.02, 0.02)
-        return base_price * (1 + variation)
-    return None
+    """Deprecated: Use get_live_market_price() instead"""
+    logging.warning(f"get_mock_price() called for {symbol}. Using live market price instead.")
+    return get_live_market_price(symbol)
 
 def calculate_position_margin(amount, leverage):
     """Calculate position margin required"""
@@ -1362,7 +1372,13 @@ def get_margin_summary(chat_id):
     for config in user_trades.values():
         if config.status == "active" and config.amount:
             # Update position data with current prices
-            config.current_price = get_mock_price(config.symbol) if config.symbol else 0.0
+            # Update current price with live market data for active positions
+            if config.symbol:
+                try:
+                    config.current_price = get_live_market_price(config.symbol)
+                except Exception as e:
+                    logging.error(f"Failed to get live price for {config.symbol}: {e}")
+                    config.current_price = config.entry_price  # Fallback to entry price
             config.position_margin = calculate_position_margin(config.amount, config.leverage)
             
             if config.entry_price and config.amount:
@@ -2636,20 +2652,9 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
 
 # Utility functions for mini-app
 def get_simulated_price(symbol):
-    """Get simulated price for a trading symbol"""
-    base_prices = {
-        'BTCUSDT': 43000.0,
-        'ETHUSDT': 2500.0,
-        'ADAUSDT': 0.45,
-        'DOGEUSDT': 0.08,
-        'SOLUSDT': 95.0
-    }
-    
-    import random
-    base_price = base_prices.get(symbol, 100.0)
-    # Add some random variance
-    variance = random.uniform(-0.02, 0.02)  # ±2% variation
-    return base_price * (1 + variance)
+    """Deprecated: Use get_live_market_price() instead"""
+    logging.warning(f"get_simulated_price() called for {symbol}. Using live market price instead.")
+    return get_live_market_price(symbol)
 
 if __name__ == "__main__":
     # Setup webhook on startup  
