@@ -123,9 +123,34 @@ class TradeConfig:
         return progress
     
     def get_trade_header(self, current_step=""):
-        """Get formatted trade header with progress for display"""
+        """Get formatted trade header with progress and settings summary for display"""
         header = f"🎯 {self.get_display_name()}\n"
-        header += f"{self.get_progress_indicator()}\n"
+        header += f"{self.get_progress_indicator()}\n\n"
+        
+        # Add current settings summary
+        header += "📋 Current Settings:\n"
+        header += f"   💱 Pair: {self.symbol or 'Not set'}\n"
+        header += f"   📈 Side: {self.side.upper() if self.side else 'Not set'}\n"
+        header += f"   💰 Amount: ${self.amount or 'Not set'}\n"
+        header += f"   📊 Leverage: {self.leverage}x\n"
+        
+        if self.entry_type == "limit" and self.entry_price:
+            header += f"   🎯 Entry: ${self.entry_price:.4f} (LIMIT)\n"
+        elif self.entry_type == "market":
+            header += f"   🎯 Entry: Market Price\n"
+        else:
+            header += f"   🎯 Entry: Not set\n"
+            
+        if self.take_profits:
+            header += f"   🎯 Take Profits: {len(self.take_profits)} levels\n"
+        else:
+            header += f"   🎯 Take Profits: Not set\n"
+            
+        if self.stop_loss_percent:
+            header += f"   🛑 Stop Loss: {self.stop_loss_percent}%\n"
+        else:
+            header += f"   🛑 Stop Loss: Not set\n"
+        
         if current_step:
             header += f"\n🔧 Current Step: {current_step}\n"
         header += "─" * 40 + "\n"
