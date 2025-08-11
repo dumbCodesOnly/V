@@ -386,7 +386,7 @@ Use the interactive menu for advanced features like multi-trade management, port
                     elif not config.amount:
                         config.amount = value
                         header = config.get_trade_header("Amount Set")
-                        return f"{header}✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
+                        return f"{header}✅ Set trade amount to ${value}", get_trading_menu(chat_id)
                     
                     # Check if we're expecting a limit price
                     elif config.waiting_for_limit_price:
@@ -1165,7 +1165,8 @@ def handle_set_side(chat_id, side):
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
             config.side = side
-            return f"✅ Set position to {side.upper()}", get_trading_menu(chat_id)
+            header = config.get_trade_header("Side Set")
+            return f"{header}✅ Set position to {side.upper()}", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 def handle_set_leverage(chat_id, leverage):
@@ -1289,7 +1290,8 @@ def handle_set_stoploss(chat_id, sl_percent):
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
             config.stop_loss_percent = sl_percent
-            return f"✅ Set stop loss to {sl_percent}%", get_trading_menu(chat_id)
+            header = config.get_trade_header("Stop Loss Set")
+            return f"{header}✅ Set stop loss to {sl_percent}%", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 def get_tp_percentage_input_menu():
