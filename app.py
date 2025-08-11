@@ -150,6 +150,23 @@ class TradeConfig:
             header += f"   🛑 Stop Loss: {self.stop_loss_percent}%\n"
         else:
             header += f"   🛑 Stop Loss: Not set\n"
+            
+        # Break-even settings
+        if self.breakeven_after:
+            header += f"   ⚖️ Break-even: After {self.breakeven_after}% profit\n"
+        else:
+            header += f"   ⚖️ Break-even: Not set\n"
+            
+        # Trailing stop settings
+        if self.trailing_stop_enabled:
+            trail_info = "Enabled"
+            if self.trail_percentage:
+                trail_info += f" ({self.trail_percentage}%)"
+            if self.trail_activation_price:
+                trail_info += f" @ ${self.trail_activation_price:.4f}"
+            header += f"   📉 Trailing Stop: {trail_info}\n"
+        else:
+            header += f"   📉 Trailing Stop: Disabled\n"
         
         if current_step:
             header += f"\n🔧 Current Step: {current_step}\n"
