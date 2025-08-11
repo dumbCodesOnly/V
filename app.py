@@ -228,28 +228,7 @@ def health_check():
         'timestamp': datetime.utcnow().isoformat()
     })
 
-@app.route('/miniapp-url')
-def get_miniapp_url():
-    """Get current Mini-App URL for Telegram setup"""
-    domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0].strip()
-    if not domain:
-        return jsonify({'error': 'Cannot determine domain'}), 500
-    
-    miniapp_url = f"https://{domain}/"
-    
-    return jsonify({
-        'miniapp_url': miniapp_url,
-        'setup_instructions': [
-            'Copy the miniapp_url above',
-            'Go to @BotFather in Telegram',
-            'Send: /myapps',
-            'Select your trading bot',
-            'Choose "Edit Mini App"',
-            'Paste the URL'
-        ],
-        'webhook_url': f"{miniapp_url}webhook",
-        'domain': domain
-    })
+
 
 @app.route('/api/status')
 def get_bot_status():
