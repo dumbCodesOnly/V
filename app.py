@@ -749,7 +749,6 @@ def get_portfolio_menu():
         "inline_keyboard": [
             [{"text": "📊 Portfolio Summary", "callback_data": "portfolio_summary"}],
             [{"text": "💰 Margin Dashboard", "callback_data": "margin_dashboard"}],
-            [{"text": "💰 Margin Dashboard", "callback_data": "margin_dashboard"}],
             [{"text": "📈 Recent Trades", "callback_data": "recent_trades"}],
             [{"text": "💹 Performance", "callback_data": "performance"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
