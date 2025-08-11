@@ -550,6 +550,8 @@ def get_trading_menu(user_id=None):
         [{"text": "🎯 Set Entry Price", "callback_data": "set_entry"}],
         [{"text": "🎯 Set Take Profits", "callback_data": "set_takeprofit"}],
         [{"text": "🛑 Set Stop Loss", "callback_data": "set_stoploss"}],
+        [{"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
+        [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
     ]
     
     # Add trade execution button if config is complete
@@ -564,9 +566,6 @@ def get_config_menu():
     return {
         "inline_keyboard": [
             [{"text": "🏷️ Set Trade Name", "callback_data": "set_trade_name"}],
-            [{"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
-            [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
-            [{"text": "🔄 Reset All Settings", "callback_data": "reset_settings"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
         ]
     }
@@ -887,10 +886,7 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data == "trail_disable":
             return handle_trailing_stop_disable(chat_id)
 
-        elif callback_data == "reset_settings":
-            if chat_id in user_configs:
-                user_configs[chat_id] = {}
-            return "🔄 All settings have been reset to defaults.", get_config_menu()
+
             
         # Trading configuration handlers
         elif callback_data == "set_side_long":
@@ -1066,7 +1062,7 @@ def get_breakeven_menu():
             [{"text": "After TP2", "callback_data": "breakeven_tp2"}],
             [{"text": "After TP3", "callback_data": "breakeven_tp3"}],
             [{"text": "Disable", "callback_data": "breakeven_off"}],
-            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
         ]
     }
 
@@ -1077,7 +1073,7 @@ def get_trailing_stop_menu():
             [{"text": "📉 Set Trail Percentage", "callback_data": "trail_set_percent"}],
             [{"text": "🎯 Set Activation Price", "callback_data": "trail_set_activation"}], 
             [{"text": "❌ Disable Trailing Stop", "callback_data": "trail_disable"}],
-            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
+            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}]
         ]
     }
 
@@ -1334,7 +1330,7 @@ def handle_set_breakeven(chat_id, mode):
     }
     
     user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
-    return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_config_menu()
+    return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
 
 def handle_trailing_stop_disable(chat_id):
     """Handle disabling trailing stop - Clean implementation"""

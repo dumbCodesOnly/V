@@ -29,6 +29,7 @@ Preferred communication style: Simple, everyday language.
 - **ALLOCATION RESET BUG FIX**: Fixed missing callback handlers for "Reset All Allocations" and "Reset Last Allocation" buttons. Added proper handlers for `tp_reset_all_alloc` and `tp_reset_last_alloc` with smart logic to reset all or just the most recent allocation
 - **UI CLEANUP**: Removed useless "Default Settings" button from configuration menu per user request. Cleaned up associated callback handlers and helper functions to streamline the interface
 - **TRAILING STOP REWRITE**: Completely rewrote buggy trailing stop system with clean implementation. New system has exactly three options: Set Trail Percentage button, Set Activation Price button, and Disable Trailing Stop button. Removed all legacy trailing stop code and replaced with focused, bug-free implementation with proper state tracking
+- **MENU REORGANIZATION**: Moved Break-even Settings and Trailing Stop from Configuration tab to Trading tab per user request. Removed "Reset All Settings" button from Configuration menu. Updated all navigation flows to return users to Trading menu after configuring break-even or trailing stop settings
 
 ## System Architecture
 
