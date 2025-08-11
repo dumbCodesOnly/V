@@ -582,7 +582,9 @@ def get_user_credentials():
 def save_credentials():
     """Save user API credentials"""
     try:
-        data = request.json
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
         user_id = data.get('user_id', '123456789')
         exchange = data.get('exchange', 'toobit')
         api_key = data.get('api_key', '').strip()
@@ -629,7 +631,9 @@ def save_credentials():
 def delete_credentials():
     """Delete user API credentials"""
     try:
-        data = request.json
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
         user_id = data.get('user_id', '123456789')
         
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
