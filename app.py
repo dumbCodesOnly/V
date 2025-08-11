@@ -101,6 +101,35 @@ class TradeConfig:
             
         summary += f"Status: {self.status.title()}\n"
         return summary
+    
+    def get_progress_indicator(self):
+        """Get a visual progress indicator showing configuration completion"""
+        steps = {
+            "Symbol": "✅" if self.symbol else "⏳",
+            "Side": "✅" if self.side else "⏳", 
+            "Amount": "✅" if self.amount else "⏳",
+            "Entry": "✅" if (self.entry_type == "market" or (self.entry_type == "limit" and self.entry_price)) else "⏳",
+            "Take Profits": "✅" if self.take_profits else "⏳",
+            "Stop Loss": "✅" if self.stop_loss_percent else "⏳"
+        }
+        
+        completed = sum(1 for status in steps.values() if status == "✅")
+        total = len(steps)
+        progress_bar = "█" * completed + "░" * (total - completed)
+        
+        progress = f"📊 Progress: {completed}/{total} [{progress_bar}]\n"
+        progress += " → ".join([f"{step} {status}" for step, status in steps.items()])
+        
+        return progress
+    
+    def get_trade_header(self, current_step=""):
+        """Get formatted trade header with progress for display"""
+        header = f"🎯 {self.get_display_name()}\n"
+        header += f"{self.get_progress_indicator()}\n"
+        if current_step:
+            header += f"\n🔧 Current Step: {current_step}\n"
+        header += "─" * 40 + "\n"
+        return header
 
 @app.route('/')
 def dashboard():
@@ -331,7 +360,8 @@ Use the interactive menu for advanced features like multi-trade management, port
                     # Check if we're expecting an amount input
                     elif not config.amount:
                         config.amount = value
-                        return f"✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
+                        header = config.get_trade_header("Amount Set")
+                        return f"{header}✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
                     
                     # Check if we're expecting a limit price
                     elif config.waiting_for_limit_price:
@@ -497,6 +527,14 @@ def setup_webhook():
             logging.error(f"Error setting webhook: {e}")
     else:
         logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
+
+def get_current_trade_config(chat_id):
+    """Get the current trade configuration for a user"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            return user_trade_configs[chat_id][trade_id]
+    return None
 
 def get_main_menu():
     """Get main menu keyboard"""
@@ -873,12 +911,16 @@ def handle_callback_query(callback_data, chat_id, user):
         
         # Configuration handlers
         elif callback_data == "set_breakeven":
-            return "⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
+            config = get_current_trade_config(chat_id)
+            header = config.get_trade_header("Break-even Settings") if config else ""
+            return f"{header}⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
         elif callback_data.startswith("breakeven_"):
             breakeven_mode = callback_data.replace("breakeven_", "")
             return handle_set_breakeven(chat_id, breakeven_mode)
         elif callback_data == "set_trailstop":
-            return "📈 Trailing Stop Settings\n\nConfigure your trailing stop:", get_trailing_stop_menu()
+            config = get_current_trade_config(chat_id)
+            header = config.get_trade_header("Trailing Stop") if config else ""
+            return f"{header}📈 Trailing Stop Settings\n\nConfigure your trailing stop:", get_trailing_stop_menu()
         elif callback_data == "trail_set_percent":
             return handle_trail_percent_request(chat_id)
         elif callback_data == "trail_set_activation":
@@ -894,12 +936,16 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data == "set_side_short":
             return handle_set_side(chat_id, "short")
         elif callback_data == "set_leverage":
-            return "📊 Select leverage for this trade:", get_leverage_menu()
+            config = get_current_trade_config(chat_id)
+            header = config.get_trade_header("Set Leverage") if config else ""
+            return f"{header}📊 Select leverage for this trade:", get_leverage_menu()
         elif callback_data.startswith("leverage_"):
             leverage = int(callback_data.replace("leverage_", ""))
             return handle_set_leverage_wizard(chat_id, leverage)
         elif callback_data == "set_amount":
-            return "💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
+            config = get_current_trade_config(chat_id)
+            header = config.get_trade_header("Set Amount") if config else ""
+            return f"{header}💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
         elif callback_data == "execute_trade":
             return handle_execute_trade(chat_id, user)
             
@@ -928,10 +974,13 @@ def handle_callback_query(callback_data, chat_id, user):
                     config = user_trade_configs[chat_id][trade_id]
                     config.take_profits = []  # Reset take profits
                     config.tp_config_step = "percentages"  # Start with percentages
-                    return "🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):", get_tp_percentage_input_menu()
+                    header = config.get_trade_header("Set Take Profits")
+                    return f"{header}🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):", get_tp_percentage_input_menu()
             return "❌ No trade selected.", get_trading_menu(chat_id)
         elif callback_data == "set_stoploss":
-            return "🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
+            config = get_current_trade_config(chat_id)
+            header = config.get_trade_header("Set Stop Loss") if config else ""
+            return f"{header}🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
         # New take profit system handlers
         elif callback_data.startswith("tp_add_percent_"):
             percent = float(callback_data.replace("tp_add_percent_", ""))
@@ -1096,7 +1145,8 @@ def handle_set_leverage(chat_id, leverage):
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
             config.leverage = leverage
-            return f"✅ Set leverage to {leverage}x", get_trading_menu(chat_id)
+            header = config.get_trade_header("Leverage Set")
+            return f"{header}✅ Set leverage to {leverage}x", get_trading_menu(chat_id)
     return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 def handle_execute_trade(chat_id, user):

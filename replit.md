@@ -30,6 +30,7 @@ Preferred communication style: Simple, everyday language.
 - **UI CLEANUP**: Removed useless "Default Settings" button from configuration menu per user request. Cleaned up associated callback handlers and helper functions to streamline the interface
 - **TRAILING STOP REWRITE**: Completely rewrote buggy trailing stop system with clean implementation. New system has exactly three options: Set Trail Percentage button, Set Activation Price button, and Disable Trailing Stop button. Removed all legacy trailing stop code and replaced with focused, bug-free implementation with proper state tracking
 - **MENU REORGANIZATION**: Moved Break-even Settings and Trailing Stop from Configuration tab to Trading tab per user request. Removed "Reset All Settings" button from Configuration menu. Updated all navigation flows to return users to Trading menu after configuring break-even or trailing stop settings
+- **PROGRESS INDICATORS**: Added comprehensive trade information display and progress tracking for every trade configuration step. Each configuration screen now shows trade header with real-time progress bar (█████░), completion status (✅⏳), current step indicator, and visual progress tracking across 6 core steps: Symbol, Side, Amount, Entry, Take Profits, Stop Loss
 
 ## System Architecture
 
