@@ -14,8 +14,8 @@ Preferred communication style: Simple, everyday language.
 - ✅ Added full Edit/Execute/Delete functionality to web app trading tab
 - ✅ Implemented `/api/delete-trade` endpoint for secure trade deletion
 - ✅ Execute button shows only when trade configuration is complete
-- ✅ Three-button layout with proper styling and confirmation dialogs
-- ✅ Consistent trade controls across positions and trading tabs
+- ✅ Removed delete from positions tab (only Edit/Close for active positions)
+- ✅ Smart UI design with appropriate controls for each tab
 
 ### Migration Completed (August 11, 2025)
 - ✅ Fixed portfolio data sharing issue between users

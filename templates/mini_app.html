@@ -976,15 +976,12 @@
                             <strong>${pos.leverage}x</strong>
                         </div>
                     </div>
-                    <div class="trade-controls mt-2">
+                    <div class="trade-controls mt-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                         <button class="btn btn-outline-primary btn-sm" onclick="editTrade('${pos.trade_id}')">
                             ✏️ Edit
                         </button>
                         <button class="btn btn-outline-warning btn-sm" onclick="closeTrade('${pos.trade_id}')">
                             ❌ Close
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTrade('${pos.trade_id}')">
-                            🗑️ Delete
                         </button>
                     </div>
                 </div>
