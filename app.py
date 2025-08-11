@@ -669,6 +669,42 @@ def close_trade():
         logging.error(f"Error closing trade: {str(e)}")
         return jsonify({'error': 'Failed to close trade'}), 500
 
+@app.route('/api/delete-trade', methods=['POST'])
+def delete_trade():
+    """Delete a trade configuration"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        trade_id = data.get('trade_id')
+        
+        if not user_id or not trade_id:
+            return jsonify({'error': 'User ID and trade ID required'}), 400
+        
+        chat_id = int(user_id)
+        
+        if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+            return jsonify({'error': 'Trade not found'}), 404
+        
+        config = user_trade_configs[chat_id][trade_id]
+        trade_name = config.get_display_name() if hasattr(config, 'get_display_name') else config.name
+        
+        # Remove from configurations
+        del user_trade_configs[chat_id][trade_id]
+        
+        # Remove from selected trade if it was selected
+        if user_selected_trade.get(chat_id) == trade_id:
+            if chat_id in user_selected_trade:
+                del user_selected_trade[chat_id]
+        
+        return jsonify({
+            'success': True,
+            'message': f'Trade configuration "{trade_name}" deleted successfully'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error deleting trade: {str(e)}")
+        return jsonify({'error': 'Failed to delete trade'}), 500
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle Telegram webhook"""

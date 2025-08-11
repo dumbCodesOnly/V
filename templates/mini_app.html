@@ -1002,9 +1002,6 @@
                             <strong>${trade.name}</strong>
                             <span class="status-badge status-${trade.status} ms-2">${trade.status}</span>
                         </div>
-                        <button class="btn btn-outline-primary btn-sm" onclick="selectTrade('${trade.trade_id}')">
-                            Select
-                        </button>
                     </div>
                     <div class="progress-indicator">
                         ${getTradeProgress(trade)}
@@ -1018,6 +1015,14 @@
                             <small class="text-muted">Side:</small><br>
                             <strong>${trade.side ? trade.side.toUpperCase() : 'Not set'}</strong>
                         </div>
+                    </div>
+                    <div class="trade-controls mt-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="selectTrade('${trade.trade_id}')">
+                            ✏️ Edit
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTrade('${trade.trade_id}')">
+                            🗑️ Delete
+                        </button>
                     </div>
                 </div>
             `).join('');
@@ -1115,6 +1120,25 @@
             
             if (result && result.success) {
                 tg.showAlert(`Position closed successfully! P&L: $${result.final_pnl?.toFixed(2) || '0.00'}`);
+                loadPositions();
+                loadPortfolio();
+            }
+        }
+
+        async function deleteTrade(tradeId) {
+            if (!confirm('Are you sure you want to permanently delete this trade configuration?')) return;
+            
+            const result = await apiCall('/api/delete-trade', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    trade_id: tradeId
+                })
+            });
+            
+            if (result && result.success) {
+                tg.showAlert('Trade configuration deleted successfully!');
+                loadTradeConfigs();
                 loadPositions();
                 loadPortfolio();
             }

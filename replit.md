@@ -10,6 +10,12 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Delete Functionality Added (August 11, 2025)
+- ✅ Added delete buttons to trade configurations in web app trading tab
+- ✅ Implemented `/api/delete-trade` endpoint for secure trade deletion
+- ✅ Added confirmation dialog to prevent accidental deletions
+- ✅ Improved trade management UI with Edit/Delete controls
+
 ### Migration Completed (August 11, 2025)
 - ✅ Fixed portfolio data sharing issue between users
 - ✅ Implemented proper user isolation for demo data
