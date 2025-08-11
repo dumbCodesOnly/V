@@ -33,8 +33,7 @@ user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
 trade_counter = 0
 
-# User configuration storage
-user_configs = {}  # {user_id: {setting: value}}
+
 
 class TradeConfig:
     def __init__(self, trade_id, name="New Trade"):
@@ -583,7 +582,6 @@ def get_main_menu():
     return {
         "inline_keyboard": [
             [{"text": "🔄 Positions Manager", "callback_data": "menu_positions"}],
-            [{"text": "⚙️ Configuration", "callback_data": "menu_config"}],
             [{"text": "📊 Trading", "callback_data": "menu_trading"}],
             [{"text": "💼 Portfolio & Analytics", "callback_data": "menu_portfolio"}],
             [{"text": "📈 Quick Price Check", "callback_data": "quick_price"}],
@@ -641,14 +639,7 @@ def get_trading_menu(user_id=None):
     keyboard.append([{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}])
     return {"inline_keyboard": keyboard}
 
-def get_config_menu():
-    """Get configuration menu keyboard"""
-    return {
-        "inline_keyboard": [
-            [{"text": "🏷️ Set Trade Name", "callback_data": "set_trade_name"}],
-            [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
-        ]
-    }
+
 
 def get_portfolio_menu():
     """Get portfolio menu keyboard"""
@@ -847,28 +838,7 @@ def handle_callback_query(callback_data, chat_id, user):
                         summary += f"Selected: {selected_trade.get_display_name()}\n"
             return summary, get_positions_menu(chat_id)
             
-        elif callback_data == "menu_config":
-            config_summary = "⚙️ Configuration Settings\n\n"
-            user_config = user_configs.get(chat_id, {})
-            config_summary += f"Default Leverage: {user_config.get('default_leverage', '1x')}\n"
-            config_summary += f"Break-even Mode: {user_config.get('breakeven_mode', 'After TP1')}\n"
-            # Show trailing stop status from current selected trade
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    if config.trailing_stop_enabled:
-                        config_summary += f"Trailing Stop: Enabled"
-                        if config.trail_percentage:
-                            config_summary += f" ({config.trail_percentage}%)"
-                        config_summary += "\n"
-                    else:
-                        config_summary += f"Trailing Stop: Disabled\n"
-                else:
-                    config_summary += f"Trailing Stop: Disabled\n"
-            else:
-                config_summary += f"Trailing Stop: Disabled\n"
-            return config_summary, get_config_menu()
+
             
         # Multi-trade specific handlers
         elif callback_data == "positions_new":
@@ -1408,9 +1378,6 @@ def handle_tp_wizard(chat_id, tp_level):
 
 def handle_set_breakeven(chat_id, mode):
     """Handle setting break-even mode"""
-    if chat_id not in user_configs:
-        user_configs[chat_id] = {}
-    
     mode_map = {
         "tp1": "After TP1",
         "tp2": "After TP2", 
@@ -1418,15 +1385,16 @@ def handle_set_breakeven(chat_id, mode):
         "off": "Disabled"
     }
     
-    user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
+    # Set breakeven on the current trade configuration instead of global user config
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.breakeven_after = mode_map.get(mode, "After TP1")
+            header = config.get_trade_header("Break-even Set")
+            return f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
     
-    # Add progress header if trade is selected
-    config = get_current_trade_config(chat_id)
-    if config:
-        header = config.get_trade_header("Break-even Set")
-        return f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
-    
-    return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
+    return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
 
 def handle_trailing_stop_disable(chat_id):
     """Handle disabling trailing stop - Clean implementation"""
@@ -1442,7 +1410,7 @@ def handle_trailing_stop_disable(chat_id):
             config.waiting_for_trail_activation = False
             header = config.get_trade_header("Trailing Stop Disabled")
             return f"{header}✅ Trailing stop disabled for current trade", get_trading_menu(chat_id)
-    return "❌ No trade selected", get_config_menu()
+    return "❌ No trade selected", get_main_menu()
 
 def handle_trail_percent_request(chat_id):
     """Handle request to set trailing stop percentage"""
@@ -1454,7 +1422,7 @@ def handle_trail_percent_request(chat_id):
             config.waiting_for_trail_activation = False
             config.waiting_for_trail_percent = True
             return "📉 Enter trailing stop percentage (e.g., 2 for 2%):\n\nThis will move your stop loss when price moves favorably.", None
-    return "❌ No trade selected", get_config_menu()
+    return "❌ No trade selected", get_main_menu()
 
 def handle_trail_activation_request(chat_id):
     """Handle request to set trailing stop activation price"""
@@ -1466,7 +1434,7 @@ def handle_trail_activation_request(chat_id):
             config.waiting_for_trail_percent = False
             config.waiting_for_trail_activation = True
             return "🎯 Enter activation price (e.g., 45500):\n\nTrailing stop will activate when price reaches this level.", None
-    return "❌ No trade selected", get_config_menu()
+    return "❌ No trade selected", get_main_menu()
 
 
 
