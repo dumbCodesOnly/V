@@ -314,8 +314,22 @@ Use the interactive menu for advanced features like multi-trade management, port
                 try:
                     value = float(text)
                     
+                    # Check if we're expecting trailing stop percentage
+                    if config.waiting_for_trail_percent:
+                        config.trail_percentage = value
+                        config.waiting_for_trail_percent = False
+                        config.trailing_stop_enabled = True
+                        return f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!", get_trailing_stop_menu()
+                    
+                    # Check if we're expecting trailing stop activation price
+                    elif config.waiting_for_trail_activation:
+                        config.trail_activation_price = value
+                        config.waiting_for_trail_activation = False
+                        config.trailing_stop_enabled = True
+                        return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
+                    
                     # Check if we're expecting an amount input
-                    if not config.amount:
+                    elif not config.amount:
                         config.amount = value
                         return f"✅ Set trade amount to {value} USDT", get_trading_menu(chat_id)
                     
@@ -357,19 +371,7 @@ Use the interactive menu for advanced features like multi-trade management, port
                                         return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
                                 break
                     
-                    # Check if we're expecting trailing stop percentage
-                    elif config.waiting_for_trail_percent:
-                        config.trail_percentage = value
-                        config.waiting_for_trail_percent = False
-                        config.trailing_stop_enabled = True
-                        return f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!", get_trailing_stop_menu()
-                    
-                    # Check if we're expecting trailing stop activation price
-                    elif config.waiting_for_trail_activation:
-                        config.trail_activation_price = value
-                        config.waiting_for_trail_activation = False
-                        config.trailing_stop_enabled = True
-                        return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
+
                     
                     # Check if we're expecting stop loss
                     elif not config.stop_loss_percent:
@@ -1340,9 +1342,12 @@ def handle_trailing_stop_disable(chat_id):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            # Reset all trailing stop settings
             config.trailing_stop_enabled = False
             config.trail_percentage = None
             config.trail_activation_price = None
+            config.waiting_for_trail_percent = False
+            config.waiting_for_trail_activation = False
             return "✅ Trailing stop disabled for current trade", get_trailing_stop_menu()
     return "❌ No trade selected", get_config_menu()
 
@@ -1352,6 +1357,8 @@ def handle_trail_percent_request(chat_id):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            # Reset other waiting states
+            config.waiting_for_trail_activation = False
             config.waiting_for_trail_percent = True
             return "📉 Enter trailing stop percentage (e.g., 2 for 2%):\n\nThis will move your stop loss when price moves favorably.", None
     return "❌ No trade selected", get_config_menu()
@@ -1362,6 +1369,8 @@ def handle_trail_activation_request(chat_id):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            # Reset other waiting states  
+            config.waiting_for_trail_percent = False
             config.waiting_for_trail_activation = True
             return "🎯 Enter activation price (e.g., 45500):\n\nTrailing stop will activate when price reaches this level.", None
     return "❌ No trade selected", get_config_menu()
