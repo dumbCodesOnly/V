@@ -683,7 +683,6 @@ def get_trade_actions_menu(trade_id):
             [{"text": "✏️ Edit Trade", "callback_data": f"edit_trade_{trade_id}"}],
             [{"text": "🚀 Start Trade", "callback_data": f"start_trade_{trade_id}"}],
             [{"text": "⏹️ Stop Trade", "callback_data": f"stop_trade_{trade_id}"}],
-            [{"text": "📋 Configure Trade", "callback_data": f"config_trade_{trade_id}"}],
             [{"text": "🗑️ Delete Trade", "callback_data": f"delete_trade_{trade_id}"}],
             [{"text": "🏠 Back to List", "callback_data": "multitrade_list"}]
         ]
@@ -989,9 +988,7 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data.startswith("delete_trade_"):
             trade_id = callback_data.replace("delete_trade_", "")
             return handle_delete_trade(chat_id, trade_id)
-        elif callback_data.startswith("config_trade_"):
-            trade_id = callback_data.replace("config_trade_", "")
-            return handle_config_trade(chat_id, trade_id)
+
         elif callback_data.startswith("edit_trade_"):
             trade_id = callback_data.replace("edit_trade_", "")
             return handle_edit_trade(chat_id, trade_id)
@@ -1265,14 +1262,7 @@ def handle_delete_trade(chat_id, trade_id):
         return f"🗑️ Deleted trade: {trade_name}", get_multitrade_menu(chat_id)
     return "❌ Trade not found.", get_multitrade_menu(chat_id)
 
-def handle_config_trade(chat_id, trade_id):
-    """Handle configuring a specific trade"""
-    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-        user_selected_trade[chat_id] = trade_id
-        config = user_trade_configs[chat_id][trade_id]
-        response = f"⚙️ Configuring: {config.get_display_name()}\n\n{config.get_config_summary()}"
-        return response, get_trading_menu(chat_id)
-    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+
 
 def handle_edit_trade(chat_id, trade_id):
     """Handle editing a specific trade"""
