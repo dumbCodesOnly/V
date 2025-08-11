@@ -387,9 +387,14 @@
 
         .trade-controls {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.25rem;
             margin-top: 1rem;
+        }
+
+        .trade-controls .btn-sm {
+            font-size: 0.75rem;
+            padding: 0.375rem 0.5rem;
         }
 
         .hidden { display: none; }
@@ -975,8 +980,11 @@
                         <button class="btn btn-outline-primary btn-sm" onclick="editTrade('${pos.trade_id}')">
                             ✏️ Edit
                         </button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="closeTrade('${pos.trade_id}')">
+                        <button class="btn btn-outline-warning btn-sm" onclick="closeTrade('${pos.trade_id}')">
                             ❌ Close
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTrade('${pos.trade_id}')">
+                            🗑️ Delete
                         </button>
                     </div>
                 </div>
@@ -1016,10 +1024,20 @@
                             <strong>${trade.side ? trade.side.toUpperCase() : 'Not set'}</strong>
                         </div>
                     </div>
-                    <div class="trade-controls mt-2">
-                        <button class="btn btn-outline-primary btn-sm" onclick="selectTrade('${trade.trade_id}')">
+                    <div class="trade-controls mt-2" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.25rem;">
+                        <button class="btn btn-outline-primary btn-sm" onclick="editTradeConfig('${trade.trade_id}')">
                             ✏️ Edit
                         </button>
+                        ${trade.symbol && trade.side && trade.amount && 
+                          ((trade.entry_type === 'market') || (trade.entry_type === 'limit' && trade.entry_price)) &&
+                          trade.take_profits && trade.take_profits.length > 0 && trade.stop_loss_percent ?
+                          `<button class="btn btn-success btn-sm" onclick="executeTrade('${trade.trade_id}')">
+                            🚀 Execute
+                          </button>` :
+                          `<button class="btn btn-outline-secondary btn-sm" disabled title="Complete configuration first">
+                            🚀 Execute
+                          </button>`
+                        }
                         <button class="btn btn-outline-danger btn-sm" onclick="deleteTrade('${trade.trade_id}')">
                             🗑️ Delete
                         </button>
@@ -1160,6 +1178,15 @@
                 }
             } else {
                 // Open for editing
+                currentTrade = data;
+                configStep = 0;
+                showTradeModal();
+            }
+        }
+
+        async function editTradeConfig(tradeId) {
+            const data = await apiCall(`/api/trade-config?trade_id=${tradeId}`);
+            if (data) {
                 currentTrade = data;
                 configStep = 0;
                 showTradeModal();
