@@ -5,6 +5,8 @@ from datetime import datetime
 import urllib.request
 import urllib.parse
 import json
+from werkzeug.middleware.proxy_fix import ProxyFix
+from models import db, UserCredentials, UserTradingSession
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -12,6 +14,21 @@ logging.basicConfig(level=logging.DEBUG)
 # Create the Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Configure database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///trading_bot.db")
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Initialize database
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
 
 # Bot token and webhook URL from environment
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -27,6 +44,9 @@ bot_status = {
     'error_count': 0,
     'last_heartbeat': datetime.utcnow().isoformat()
 }
+
+# User state tracking for API setup
+user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase', 'exchange': 'toobit'}}
 
 # Multi-trade management storage
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
@@ -526,6 +546,109 @@ def execute_trade():
         logging.error(f"Error executing trade: {str(e)}")
         return jsonify({'error': 'Failed to execute trade'}), 500
 
+@app.route('/api/user-credentials')
+def get_user_credentials():
+    """Get user API credentials status"""
+    user_id = request.args.get('user_id')
+    if not user_id or user_id == 'undefined':
+        user_id = '123456789'  # Demo user
+    
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        
+        if user_creds:
+            return jsonify({
+                'has_credentials': user_creds.has_credentials(),
+                'exchange': user_creds.exchange_name,
+                'testnet_mode': user_creds.testnet_mode,
+                'is_active': user_creds.is_active,
+                'last_used': user_creds.last_used.isoformat() if user_creds.last_used else None,
+                'created_at': user_creds.created_at.isoformat()
+            })
+        else:
+            return jsonify({
+                'has_credentials': False,
+                'exchange': None,
+                'testnet_mode': True,
+                'is_active': False,
+                'last_used': None,
+                'created_at': None
+            })
+    except Exception as e:
+        logging.error(f"Error getting user credentials: {str(e)}")
+        return jsonify({'error': 'Failed to get credentials status'}), 500
+
+@app.route('/api/save-credentials', methods=['POST'])
+def save_credentials():
+    """Save user API credentials"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', '123456789')
+        exchange = data.get('exchange', 'toobit')
+        api_key = data.get('api_key', '').strip()
+        api_secret = data.get('api_secret', '').strip()
+        passphrase = data.get('passphrase', '').strip()
+        
+        if not api_key or not api_secret:
+            return jsonify({'error': 'API key and secret are required'}), 400
+        
+        if len(api_key) < 10 or len(api_secret) < 10:
+            return jsonify({'error': 'API key and secret seem too short'}), 400
+        
+        # Get or create user credentials
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user_creds:
+            user_creds = UserCredentials()
+            user_creds.telegram_user_id = str(user_id)
+            user_creds.exchange_name = exchange
+            db.session.add(user_creds)
+        
+        # Update credentials
+        user_creds.set_api_key(api_key)
+        user_creds.set_api_secret(api_secret)
+        if passphrase:
+            user_creds.set_passphrase(passphrase)
+        user_creds.exchange_name = exchange
+        user_creds.is_active = True
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Credentials saved successfully',
+            'exchange': exchange,
+            'testnet_mode': user_creds.testnet_mode
+        })
+        
+    except Exception as e:
+        logging.error(f"Error saving credentials: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to save credentials'}), 500
+
+@app.route('/api/delete-credentials', methods=['POST'])
+def delete_credentials():
+    """Delete user API credentials"""
+    try:
+        data = request.json
+        user_id = data.get('user_id', '123456789')
+        
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user_creds:
+            return jsonify({'error': 'No credentials found'}), 404
+        
+        db.session.delete(user_creds)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Credentials deleted successfully'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error deleting credentials: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to delete credentials'}), 500
+
 @app.route('/api/close-trade', methods=['POST'])
 def close_trade():
     """Close an active trade"""
@@ -665,6 +788,9 @@ Use the menu below to navigate:"""
     
     elif text.startswith('/menu'):
         return "📋 Main Menu:", get_main_menu()
+    
+    elif text.startswith('/api') or text.startswith('/credentials'):
+        return handle_api_setup_command(text, chat_id, user)
     
 
     
@@ -811,7 +937,262 @@ Use the menu below to navigate:"""
                 except ValueError:
                     pass
         
+        # Handle API setup text input
+        if chat_id in user_api_setup_state:
+            return handle_api_text_input(text, chat_id, user)
+        
         return "🤔 I didn't understand that command. Use the menu buttons to navigate.", get_main_menu()
+
+def handle_api_setup_command(text, chat_id, user):
+    """Handle API setup commands"""
+    if text.startswith('/api'):
+        return show_api_menu(chat_id, user)
+    elif text.startswith('/credentials'):
+        return show_credentials_status(chat_id, user)
+    
+    return "🔑 Use /api to manage your exchange API credentials.", get_main_menu()
+
+def show_api_menu(chat_id, user):
+    """Show API credentials management menu"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        
+        if user_creds and user_creds.has_credentials():
+            status_text = f"""🔑 API Credentials Status
+
+✅ Exchange: {user_creds.exchange_name.title()}
+✅ API Key: Set (ending in ...{user_creds.get_api_key()[-4:] if user_creds.get_api_key() else 'N/A'})
+✅ API Secret: Set
+{"🧪 Mode: Testnet" if user_creds.testnet_mode else "🚀 Mode: Live Trading"}
+📅 Added: {user_creds.created_at.strftime('%Y-%m-%d %H:%M')}
+
+Choose an option:"""
+        else:
+            status_text = """🔑 API Credentials Setup
+
+❌ No API credentials configured
+⚠️ You need to add your exchange API credentials to enable live trading
+
+Choose an option:"""
+        
+        return status_text, get_api_management_menu(user_creds is not None and user_creds.has_credentials())
+    
+    except Exception as e:
+        logging.error(f"Error showing API menu: {str(e)}")
+        return "❌ Error accessing credentials. Please try again.", get_main_menu()
+
+def show_credentials_status(chat_id, user):
+    """Show detailed credentials status"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return "❌ No API credentials found. Use /api to set up your credentials.", get_main_menu()
+        
+        # Get recent session info
+        recent_session = UserTradingSession.query.filter_by(
+            telegram_user_id=str(chat_id)
+        ).order_by(UserTradingSession.session_start.desc()).first()
+        
+        status_text = f"""📊 Detailed API Status
+
+🏢 Exchange: {user_creds.exchange_name.title()}
+🔑 API Key: ...{user_creds.get_api_key()[-8:]}
+{"🧪 Testnet Mode" if user_creds.testnet_mode else "🚀 Live Trading"}
+📅 Created: {user_creds.created_at.strftime('%Y-%m-%d %H:%M')}
+🕒 Last Used: {user_creds.last_used.strftime('%Y-%m-%d %H:%M') if user_creds.last_used else 'Never'}
+
+"""
+        
+        if recent_session:
+            status_text += f"""📈 Recent Session:
+• Total Trades: {recent_session.total_trades}
+• Successful: {recent_session.successful_trades}
+• Failed: {recent_session.failed_trades}
+• API Calls: {recent_session.api_calls_made}
+• API Errors: {recent_session.api_errors}
+"""
+        
+        return status_text, get_main_menu()
+    
+    except Exception as e:
+        logging.error(f"Error showing credentials status: {str(e)}")
+        return "❌ Error accessing credentials. Please try again.", get_main_menu()
+
+def handle_api_text_input(text, chat_id, user):
+    """Handle text input during API setup process"""
+    if chat_id not in user_api_setup_state:
+        return "❌ No active API setup. Use /api to start.", get_main_menu()
+    
+    state = user_api_setup_state[chat_id]
+    step = state.get('step')
+    exchange = state.get('exchange', 'toobit')
+    
+    try:
+        # Get or create user credentials
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        if not user_creds:
+            user_creds = UserCredentials()
+            user_creds.telegram_user_id = str(chat_id)
+            user_creds.telegram_username = user.get('username')
+            user_creds.exchange_name = exchange
+            db.session.add(user_creds)
+        
+        if step == 'api_key':
+            # Validate API key format (basic check)
+            if len(text.strip()) < 10:
+                return "❌ API key seems too short. Please enter a valid API key:", None
+            
+            user_creds.set_api_key(text.strip())
+            state['step'] = 'api_secret'
+            
+            return "✅ API key saved securely!\n\n🔐 Now enter your API Secret:", None
+        
+        elif step == 'api_secret':
+            # Validate API secret format
+            if len(text.strip()) < 10:
+                return "❌ API secret seems too short. Please enter a valid API secret:", None
+            
+            user_creds.set_api_secret(text.strip())
+            
+            # Check if exchange needs passphrase
+            if exchange.lower() in ['okx', 'okex', 'kucoin']:
+                state['step'] = 'passphrase'
+                return "✅ API secret saved securely!\n\n🔑 Enter your passphrase (if any, or type 'none'):", None
+            else:
+                # Save and complete setup
+                db.session.commit()
+                del user_api_setup_state[chat_id]
+                
+                return f"""✅ API credentials setup complete!
+
+🏢 Exchange: {exchange.title()}
+🔑 API Key: ...{user_creds.get_api_key()[-4:]}
+🧪 Mode: Testnet (Safe for testing)
+
+Your credentials are encrypted and stored securely. You can now use live trading features!""", get_main_menu()
+        
+        elif step == 'passphrase':
+            if text.strip().lower() != 'none':
+                user_creds.set_passphrase(text.strip())
+            
+            # Save and complete setup
+            db.session.commit()
+            del user_api_setup_state[chat_id]
+            
+            return f"""✅ API credentials setup complete!
+
+🏢 Exchange: {exchange.title()}
+🔑 API Key: ...{user_creds.get_api_key()[-4:]}
+🧪 Mode: Testnet (Safe for testing)
+
+Your credentials are encrypted and stored securely. You can now use live trading features!""", get_main_menu()
+    
+    except Exception as e:
+        logging.error(f"Error handling API text input: {str(e)}")
+        if chat_id in user_api_setup_state:
+            del user_api_setup_state[chat_id]
+        return "❌ Error saving credentials. Please try again with /api", get_main_menu()
+    
+    return "❌ Invalid step in API setup. Please restart with /api", get_main_menu()
+
+def start_api_setup(chat_id, user, exchange):
+    """Start API credentials setup process"""
+    try:
+        # Initialize user state for API setup
+        user_api_setup_state[chat_id] = {
+            'step': 'api_key',
+            'exchange': exchange.lower()
+        }
+        
+        exchange_name = exchange.title()
+        return f"""🔑 Setting up {exchange_name} API Credentials
+
+🔐 For security, your API credentials will be encrypted and stored safely.
+
+⚠️ **IMPORTANT SECURITY TIPS:**
+• Use API keys with ONLY trading permissions
+• Never share your API secret with anyone
+• Enable IP whitelist if possible
+• Start with testnet for testing
+
+📝 Please enter your {exchange_name} API Key:""", None
+    
+    except Exception as e:
+        logging.error(f"Error starting API setup: {str(e)}")
+        return "❌ Error starting API setup. Please try again.", get_main_menu()
+
+def start_api_update(chat_id, user):
+    """Start updating existing API credentials"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        if not user_creds or not user_creds.has_credentials():
+            return "❌ No existing credentials found. Use setup instead.", get_api_management_menu(False)
+        
+        # Start update process
+        user_api_setup_state[chat_id] = {
+            'step': 'api_key',
+            'exchange': user_creds.exchange_name,
+            'updating': True
+        }
+        
+        return f"""🔄 Updating {user_creds.exchange_name.title()} API Credentials
+
+Current API Key: ...{user_creds.get_api_key()[-4:] if user_creds.get_api_key() else 'N/A'}
+
+📝 Enter your new API Key:""", None
+    
+    except Exception as e:
+        logging.error(f"Error starting API update: {str(e)}")
+        return "❌ Error starting update. Please try again.", get_main_menu()
+
+def toggle_api_mode(chat_id, user):
+    """Toggle between testnet and live trading mode"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        if not user_creds or not user_creds.has_credentials():
+            return "❌ No API credentials found. Set up credentials first.", get_api_management_menu(False)
+        
+        # Toggle mode
+        user_creds.testnet_mode = not user_creds.testnet_mode
+        db.session.commit()
+        
+        mode = "🧪 Testnet (Safe for testing)" if user_creds.testnet_mode else "🚀 Live Trading (Real money)"
+        
+        return f"""✅ Trading mode updated!
+
+Current Mode: {mode}
+
+{"⚠️ You are now in LIVE TRADING mode. Real money will be used!" if not user_creds.testnet_mode else "✅ Safe testing mode enabled."}""", get_api_management_menu(True)
+    
+    except Exception as e:
+        logging.error(f"Error toggling API mode: {str(e)}")
+        return "❌ Error updating mode. Please try again.", get_main_menu()
+
+def delete_user_credentials(chat_id, user):
+    """Delete user's API credentials"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(chat_id)).first()
+        if not user_creds:
+            return "❌ No credentials found to delete.", get_main_menu()
+        
+        # Delete credentials
+        db.session.delete(user_creds)
+        db.session.commit()
+        
+        # Clean up any active API setup state
+        if chat_id in user_api_setup_state:
+            del user_api_setup_state[chat_id]
+        
+        return """✅ API credentials deleted successfully!
+
+🔐 All your encrypted credentials have been securely removed from our system.
+
+You can add new credentials anytime using the setup option.""", get_api_management_menu(False)
+    
+    except Exception as e:
+        logging.error(f"Error deleting credentials: {str(e)}")
+        return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
 def get_mock_price(symbol):
     """Get mock price for a trading symbol"""
@@ -994,9 +1375,32 @@ def get_main_menu():
             [{"text": "🔄 Positions Manager", "callback_data": "menu_positions"}],
             [{"text": "📊 Trading", "callback_data": "menu_trading"}],
             [{"text": "💼 Portfolio & Analytics", "callback_data": "menu_portfolio"}],
+            [{"text": "🔑 API Credentials", "callback_data": "api_menu"}],
             [{"text": "📈 Quick Price Check", "callback_data": "quick_price"}]
         ]
     }
+
+def get_api_management_menu(has_credentials=False):
+    """Get API credentials management menu"""
+    if has_credentials:
+        return {
+            'inline_keyboard': [
+                [{'text': '🔄 Update Credentials', 'callback_data': 'api_update'}],
+                [{'text': '🧪 Toggle Test/Live Mode', 'callback_data': 'api_toggle_mode'}],
+                [{'text': '📊 View Status', 'callback_data': 'api_status'}],
+                [{'text': '🗑️ Delete Credentials', 'callback_data': 'api_delete'}],
+                [{'text': '⬅️ Back to Main Menu', 'callback_data': 'main_menu'}]
+            ]
+        }
+    else:
+        return {
+            'inline_keyboard': [
+                [{'text': '🔑 Add Toobit Credentials', 'callback_data': 'api_setup_toobit'}],
+                [{'text': '🔑 Add Binance Credentials', 'callback_data': 'api_setup_binance'}],
+                [{'text': '🔑 Add OKX Credentials', 'callback_data': 'api_setup_okx'}],
+                [{'text': '⬅️ Back to Main Menu', 'callback_data': 'main_menu'}]
+            ]
+        }
 
 def get_positions_menu(user_id):
     """Get positions management menu"""
@@ -1138,6 +1542,21 @@ def handle_callback_query(callback_data, chat_id, user):
             return "💼 Portfolio & Analytics:", get_portfolio_menu()
         elif callback_data == "select_pair":
             return "💱 Select a trading pair:", get_pairs_menu()
+        
+        # API credentials management callbacks
+        elif callback_data.startswith("api_setup_"):
+            exchange = callback_data.replace("api_setup_", "")
+            return start_api_setup(chat_id, user, exchange)
+        elif callback_data == "api_update":
+            return start_api_update(chat_id, user)
+        elif callback_data == "api_toggle_mode":
+            return toggle_api_mode(chat_id, user)
+        elif callback_data == "api_status":
+            return show_credentials_status(chat_id, user)
+        elif callback_data == "api_delete":
+            return delete_user_credentials(chat_id, user)
+        elif callback_data == "api_menu":
+            return show_api_menu(chat_id, user)
 
         
         # Trading pair selection
