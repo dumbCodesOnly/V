@@ -16,24 +16,24 @@
     
     <style>
         :root {
-            --tg-theme-bg-color: #0f1419;
+            --tg-theme-bg-color: #000000;
             --tg-theme-text-color: #ffffff;
-            --tg-theme-hint-color: #a0a8b0;
-            --tg-theme-link-color: #64b5f6;
-            --tg-theme-button-color: #1976d2;
+            --tg-theme-hint-color: #cccccc;
+            --tg-theme-link-color: #87ceeb;
+            --tg-theme-button-color: #4a90e2;
             --tg-theme-button-text-color: #ffffff;
-            --tg-theme-secondary-bg-color: #1a1f26;
-            --tg-theme-accent-color: #2196f3;
-            --tg-theme-card-bg: #1e2328;
-            --tg-theme-border-color: #2d3748;
-            --tg-theme-success: #4caf50;
-            --tg-theme-warning: #ff9800;
-            --tg-theme-danger: #f44336;
+            --tg-theme-secondary-bg-color: #1a1a1a;
+            --tg-theme-accent-color: #5dade2;
+            --tg-theme-card-bg: #2a2a2a;
+            --tg-theme-border-color: #4a4a4a;
+            --tg-theme-success: #5cb85c;
+            --tg-theme-warning: #f0ad4e;
+            --tg-theme-danger: #d9534f;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, var(--tg-theme-bg-color) 0%, var(--tg-theme-secondary-bg-color) 100%);
+            background: var(--tg-theme-bg-color);
             color: var(--tg-theme-text-color);
             margin: 0;
             padding: 0;
@@ -52,15 +52,14 @@
         }
 
         .header {
-            background: linear-gradient(135deg, var(--tg-theme-button-color), var(--tg-theme-accent-color));
+            background: var(--tg-theme-button-color);
             color: var(--tg-theme-button-text-color);
             padding: 1.25rem;
             text-align: center;
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            border-bottom: 1px solid var(--tg-theme-border-color);
+            border-bottom: 2px solid var(--tg-theme-border-color);
         }
 
         .header h1 {
@@ -88,14 +87,14 @@
 
         .nav-tabs .nav-link.active {
             color: var(--tg-theme-text-color);
-            background: rgba(25, 118, 210, 0.1);
+            background: var(--tg-theme-card-bg);
             border-bottom: 3px solid var(--tg-theme-button-color);
             font-weight: 700;
         }
 
         .nav-tabs .nav-link:hover:not(.active) {
             color: var(--tg-theme-text-color);
-            background: rgba(255,255,255,0.08);
+            background: var(--tg-theme-card-bg);
         }
 
         .tab-content {
@@ -118,25 +117,21 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--tg-theme-button-color), var(--tg-theme-accent-color));
-            border: none;
+            background: var(--tg-theme-button-color);
+            border: 2px solid var(--tg-theme-button-color);
             border-radius: 12px;
             padding: 1rem 1.5rem;
             font-weight: 700;
             width: 100%;
             margin-bottom: 0.75rem;
             color: var(--tg-theme-button-text-color);
-            box-shadow: 0 4px 15px rgba(25, 118, 210, 0.4);
             transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-size: 0.9rem;
+            font-size: 1rem;
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, var(--tg-theme-accent-color), var(--tg-theme-button-color));
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(25, 118, 210, 0.5);
+            background: var(--tg-theme-accent-color);
+            border-color: var(--tg-theme-accent-color);
             color: var(--tg-theme-button-text-color);
         }
 
@@ -146,9 +141,9 @@
         }
 
         .btn-outline-primary {
-            color: var(--tg-theme-button-color);
+            color: var(--tg-theme-text-color);
             border: 2px solid var(--tg-theme-button-color);
-            background: rgba(25, 118, 210, 0.1);
+            background: var(--tg-theme-card-bg);
             font-weight: 600;
             border-radius: 10px;
             transition: all 0.3s ease;
@@ -157,7 +152,7 @@
         .btn-outline-primary:hover {
             background: var(--tg-theme-button-color);
             color: var(--tg-theme-button-text-color);
-            box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3);
+            border-color: var(--tg-theme-button-color);
         }
 
         .btn-outline-danger {
@@ -208,7 +203,7 @@
             border-radius: 12px;
             padding: 1rem;
             font-size: 1rem;
-            font-weight: 500;
+            font-weight: 600;
             transition: all 0.3s ease;
         }
 
@@ -216,20 +211,20 @@
             background: var(--tg-theme-card-bg);
             border-color: var(--tg-theme-button-color);
             color: var(--tg-theme-text-color);
-            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.2);
+            box-shadow: 0 0 10px rgba(74, 144, 226, 0.6);
             outline: none;
         }
 
         .form-control::placeholder {
             color: var(--tg-theme-hint-color);
-            opacity: 0.8;
+            opacity: 1;
         }
 
         .input-group-text {
             background: var(--tg-theme-card-bg);
             border: 2px solid var(--tg-theme-border-color);
             color: var(--tg-theme-text-color);
-            font-weight: 600;
+            font-weight: 700;
             border-radius: 12px 0 0 12px;
         }
 
@@ -239,23 +234,41 @@
             color: var(--tg-theme-text-color);
             border-radius: 12px;
             padding: 1rem;
-            font-weight: 500;
+            font-weight: 600;
         }
 
         .form-select:focus {
             border-color: var(--tg-theme-button-color);
-            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.2);
+            box-shadow: 0 0 10px rgba(74, 144, 226, 0.6);
+        }
+
+        .form-select option {
+            background: var(--tg-theme-card-bg);
+            color: var(--tg-theme-text-color);
+        }
+
+        .form-label {
+            color: var(--tg-theme-text-color);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .text-muted {
+            color: var(--tg-theme-hint-color) !important;
+            font-weight: 500;
         }
 
         .progress-indicator {
             font-family: monospace;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             margin: 0.5rem 0;
             padding: 0.75rem;
-            background: rgba(33, 150, 243, 0.15);
-            border: 1px solid rgba(33, 150, 243, 0.3);
+            background: var(--tg-theme-card-bg);
+            border: 2px solid var(--tg-theme-button-color);
             border-radius: 8px;
             color: var(--tg-theme-text-color);
+            font-weight: 600;
         }
 
         .status-badge {
@@ -308,12 +321,11 @@
             font-size: 1.5rem;
             font-weight: 800;
             color: var(--tg-theme-text-color);
-            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
 
         .stat-label {
             font-size: 0.9rem;
-            color: var(--tg-theme-hint-color);
+            color: var(--tg-theme-text-color);
             margin-top: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
@@ -707,11 +719,11 @@
             };
         }
         
-        // Set up theme
-        document.body.style.backgroundColor = tg.backgroundColor;
-        document.documentElement.style.setProperty('--tg-theme-bg-color', tg.backgroundColor);
-        document.documentElement.style.setProperty('--tg-theme-text-color', tg.textColor);
-        document.documentElement.style.setProperty('--tg-theme-button-color', tg.buttonColor);
+        // Set up theme - Force high contrast colors for dark mode
+        document.body.style.backgroundColor = '#000000';
+        document.documentElement.style.setProperty('--tg-theme-bg-color', '#000000');
+        document.documentElement.style.setProperty('--tg-theme-text-color', '#ffffff');
+        document.documentElement.style.setProperty('--tg-theme-button-color', '#4a90e2');
         
         // Get user info
         if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
