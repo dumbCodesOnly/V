@@ -587,7 +587,7 @@ def execute_trade():
         # Execute trade with real market data
         config.status = "active"
         config.position_size = config.amount * config.leverage
-        config.position_margin = config.amount
+        config.position_margin = calculate_position_margin(config.amount, config.leverage)
         
         # Use real live market price for market orders
         if config.entry_type == "market" or config.entry_price is None:
