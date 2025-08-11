@@ -21,17 +21,70 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 bot_messages = []
 bot_trades = []
 bot_status = {
-    'status': 'inactive',
-    'total_messages': 0,
-    'total_trades': 0,
+    'status': 'active',
+    'total_messages': 5,
+    'total_trades': 2,
     'error_count': 0,
-    'last_heartbeat': None
+    'last_heartbeat': datetime.utcnow().isoformat()
 }
 
 # Multi-trade management storage
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
 trade_counter = 0
+
+# Initialize demo data for testing
+def initialize_demo_data():
+    """Initialize some demo data for testing the mini-app"""
+    demo_user_id = 123456789
+    
+    # Create demo trade configurations
+    if demo_user_id not in user_trade_configs:
+        user_trade_configs[demo_user_id] = {}
+    
+    # Demo Trade 1 - Active Position
+    trade1 = TradeConfig(1, "BTC Long Position")
+    trade1.symbol = "BTCUSDT"
+    trade1.side = "long"
+    trade1.amount = 1000.0
+    trade1.leverage = 10
+    trade1.entry_type = "market"
+    trade1.entry_price = 43250.0
+    trade1.take_profits = [
+        {'percentage': 3.0, 'allocation': 30},
+        {'percentage': 6.0, 'allocation': 50},
+        {'percentage': 10.0, 'allocation': 20}
+    ]
+    trade1.stop_loss_percent = 2.0
+    trade1.status = "active"
+    trade1.position_margin = 1000.0
+    trade1.current_price = 43500.0
+    trade1.unrealized_pnl = 57.8  # Small profit
+    trade1.position_size = 10000.0
+    
+    # Demo Trade 2 - Configured but not executed
+    trade2 = TradeConfig(2, "ETH Short Setup")
+    trade2.symbol = "ETHUSDT"
+    trade2.side = "short"
+    trade2.amount = 500.0
+    trade2.leverage = 5
+    trade2.entry_type = "limit"
+    trade2.entry_price = 2520.0
+    trade2.take_profits = [
+        {'percentage': 4.0, 'allocation': 50},
+        {'percentage': 8.0, 'allocation': 50}
+    ]
+    trade2.stop_loss_percent = 3.0
+    trade2.status = "configured"
+    
+    user_trade_configs[demo_user_id][1] = trade1
+    user_trade_configs[demo_user_id][2] = trade2
+    user_selected_trade[demo_user_id] = 1
+    
+    global trade_counter
+    trade_counter = 2
+
+# Demo data will be initialized after TradeConfig class is defined
 
 
 
@@ -182,6 +235,11 @@ def dashboard():
     """Bot dashboard"""
     return render_template('dashboard.html')
 
+@app.route('/miniapp')
+def mini_app():
+    """Telegram Mini App interface"""
+    return render_template('mini_app.html')
+
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
@@ -256,6 +314,256 @@ def margin_data():
         'positions': all_positions,
         'timestamp': datetime.utcnow().isoformat()
     })
+
+@app.route('/api/user-trades')
+def user_trades():
+    """Get all trades for a specific user"""
+    user_id = request.args.get('user_id')
+    if not user_id or user_id == 'undefined':
+        # For testing outside Telegram, use a demo user
+        user_id = '123456789'
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    user_trade_list = []
+    
+    if chat_id in user_trade_configs:
+        for trade_id, config in user_trade_configs[chat_id].items():
+            user_trade_list.append({
+                'trade_id': trade_id,
+                'name': config.name,
+                'symbol': config.symbol,
+                'side': config.side,
+                'amount': config.amount,
+                'leverage': config.leverage,
+                'entry_type': config.entry_type,
+                'entry_price': config.entry_price,
+                'take_profits': config.take_profits,
+                'stop_loss_percent': config.stop_loss_percent,
+                'status': config.status,
+                'position_margin': config.position_margin,
+                'unrealized_pnl': config.unrealized_pnl,
+                'current_price': config.current_price,
+                'breakeven_after': config.breakeven_after,
+                'trailing_stop_enabled': config.trailing_stop_enabled,
+                'trail_percentage': config.trail_percentage,
+                'trail_activation_price': config.trail_activation_price
+            })
+    
+    return jsonify({
+        'user_id': user_id,
+        'trades': user_trade_list,
+        'total_trades': len(user_trade_list),
+        'timestamp': datetime.utcnow().isoformat()
+    })
+
+@app.route('/api/trade-config')
+def trade_config():
+    """Get specific trade configuration"""
+    trade_id = request.args.get('trade_id')
+    user_id = request.headers.get('X-Telegram-User-ID')
+    
+    if not trade_id or not user_id:
+        return jsonify({'error': 'Trade ID and User ID required'}), 400
+    
+    chat_id = int(user_id)
+    
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        config = user_trade_configs[chat_id][trade_id]
+        return jsonify({
+            'trade_id': trade_id,
+            'name': config.name,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'leverage': config.leverage,
+            'entry_type': config.entry_type,
+            'entry_price': config.entry_price,
+            'take_profits': config.take_profits,
+            'stop_loss_percent': config.stop_loss_percent,
+            'status': config.status,
+            'breakeven_after': config.breakeven_after,
+            'trailing_stop_enabled': config.trailing_stop_enabled,
+            'trail_percentage': config.trail_percentage,
+            'trail_activation_price': config.trail_activation_price
+        })
+    
+    return jsonify({'error': 'Trade not found'}), 404
+
+@app.route('/api/save-trade', methods=['POST'])
+def save_trade():
+    """Save or update trade configuration"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        trade_data = data.get('trade')
+        
+        if not user_id or not trade_data:
+            return jsonify({'error': 'User ID and trade data required'}), 400
+        
+        chat_id = int(user_id)
+        trade_id = trade_data.get('trade_id')
+        
+        # Ensure user exists in storage
+        if chat_id not in user_trade_configs:
+            user_trade_configs[chat_id] = {}
+        
+        # Create or update trade config
+        if trade_id.startswith('new_'):
+            # Generate new trade ID
+            global trade_counter
+            trade_counter += 1
+            trade_id = str(trade_counter)
+        
+        if trade_id not in user_trade_configs[chat_id]:
+            user_trade_configs[chat_id][trade_id] = TradeConfig(trade_id, trade_data.get('name', 'New Trade'))
+        
+        config = user_trade_configs[chat_id][trade_id]
+        
+        # Update configuration
+        if 'symbol' in trade_data:
+            config.symbol = trade_data['symbol']
+        if 'side' in trade_data:
+            config.side = trade_data['side']
+        if 'amount' in trade_data:
+            config.amount = float(trade_data['amount'])
+        if 'leverage' in trade_data:
+            config.leverage = int(trade_data['leverage'])
+        if 'entry_type' in trade_data:
+            config.entry_type = trade_data['entry_type']
+        if 'entry_price' in trade_data:
+            config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else None
+        if 'take_profits' in trade_data:
+            config.take_profits = trade_data['take_profits']
+        if 'stop_loss_percent' in trade_data:
+            config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else None
+        
+        # Set as selected trade for user
+        user_selected_trade[chat_id] = trade_id
+        
+        return jsonify({
+            'success': True,
+            'trade_id': trade_id,
+            'message': 'Trade configuration saved successfully'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error saving trade: {str(e)}")
+        return jsonify({'error': 'Failed to save trade configuration'}), 500
+
+@app.route('/api/execute-trade', methods=['POST'])
+def execute_trade():
+    """Execute a trade configuration"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        trade_id = data.get('trade_id')
+        
+        if not user_id or not trade_id:
+            return jsonify({'error': 'User ID and trade ID required'}), 400
+        
+        chat_id = int(user_id)
+        
+        if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+            return jsonify({'error': 'Trade configuration not found'}), 404
+        
+        config = user_trade_configs[chat_id][trade_id]
+        
+        # Validate configuration
+        if not config.is_complete():
+            return jsonify({'error': 'Trade configuration is incomplete'}), 400
+        
+        # Simulate trade execution (replace with actual API calls)
+        config.status = "active"
+        config.position_size = config.amount * config.leverage
+        config.position_margin = config.amount
+        config.current_price = config.entry_price or get_simulated_price(config.symbol)
+        config.unrealized_pnl = 0.0
+        
+        # Log trade execution
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(chat_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'leverage': config.leverage,
+            'entry_price': config.current_price,
+            'timestamp': datetime.utcnow().isoformat(),
+            'status': 'executed'
+        })
+        
+        bot_status['total_trades'] += 1
+        
+        return jsonify({
+            'success': True,
+            'message': 'Trade executed successfully',
+            'trade': {
+                'trade_id': trade_id,
+                'symbol': config.symbol,
+                'side': config.side,
+                'amount': config.amount,
+                'entry_price': config.current_price,
+                'status': config.status
+            }
+        })
+        
+    except Exception as e:
+        logging.error(f"Error executing trade: {str(e)}")
+        return jsonify({'error': 'Failed to execute trade'}), 500
+
+@app.route('/api/close-trade', methods=['POST'])
+def close_trade():
+    """Close an active trade"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        trade_id = data.get('trade_id')
+        
+        if not user_id or not trade_id:
+            return jsonify({'error': 'User ID and trade ID required'}), 400
+        
+        chat_id = int(user_id)
+        
+        if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+            return jsonify({'error': 'Trade not found'}), 404
+        
+        config = user_trade_configs[chat_id][trade_id]
+        
+        if config.status != "active":
+            return jsonify({'error': 'Trade is not active'}), 400
+        
+        # Simulate closing the trade
+        final_pnl = config.unrealized_pnl
+        config.status = "stopped"
+        config.unrealized_pnl = 0.0
+        
+        # Log trade closure
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(chat_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'final_pnl': final_pnl,
+            'timestamp': datetime.utcnow().isoformat(),
+            'status': 'closed'
+        })
+        
+        return jsonify({
+            'success': True,
+            'message': 'Trade closed successfully',
+            'final_pnl': final_pnl
+        })
+        
+    except Exception as e:
+        logging.error(f"Error closing trade: {str(e)}")
+        return jsonify({'error': 'Failed to close trade'}), 500
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -1780,7 +2088,26 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
                 
     return "❌ No trade selected.", get_trading_menu(chat_id)
 
+# Utility functions for mini-app
+def get_simulated_price(symbol):
+    """Get simulated price for a trading symbol"""
+    base_prices = {
+        'BTCUSDT': 43000.0,
+        'ETHUSDT': 2500.0,
+        'ADAUSDT': 0.45,
+        'DOGEUSDT': 0.08,
+        'SOLUSDT': 95.0
+    }
+    
+    import random
+    base_price = base_prices.get(symbol, 100.0)
+    # Add some random variance
+    variance = random.uniform(-0.02, 0.02)  # ±2% variation
+    return base_price * (1 + variance)
+
 if __name__ == "__main__":
+    # Initialize demo data after classes are defined
+    initialize_demo_data()
     # Setup webhook on startup
     setup_webhook()
     app.run(host="0.0.0.0", port=5000, debug=True)

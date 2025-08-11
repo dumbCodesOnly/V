@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Toobit Trading Mini-App</title>
+    
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Feather Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --tg-theme-bg-color: var(--tg-theme-bg-color, #ffffff);
+            --tg-theme-text-color: var(--tg-theme-text-color, #222222);
+            --tg-theme-hint-color: var(--tg-theme-hint-color, #999999);
+            --tg-theme-link-color: var(--tg-theme-link-color, #2481cc);
+            --tg-theme-button-color: var(--tg-theme-button-color, #2481cc);
+            --tg-theme-button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --tg-theme-secondary-bg-color: var(--tg-theme-secondary-bg-color, #f1f1f1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .mini-app-container {
+            max-width: 100vw;
+            padding: 0;
+            margin: 0;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--tg-theme-button-color), #667eea);
+            color: var(--tg-theme-button-text-color);
+            padding: 1rem;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .nav-tabs {
+            background: var(--tg-theme-secondary-bg-color);
+            border-bottom: none;
+            padding: 0 0.5rem;
+        }
+
+        .nav-tabs .nav-link {
+            color: var(--tg-theme-hint-color);
+            border: none;
+            padding: 0.75rem 0.5rem;
+            font-size: 0.9rem;
+            border-radius: 0;
+        }
+
+        .nav-tabs .nav-link.active {
+            color: var(--tg-theme-button-color);
+            background: transparent;
+            border-bottom: 2px solid var(--tg-theme-button-color);
+            font-weight: 600;
+        }
+
+        .tab-content {
+            padding: 1rem;
+        }
+
+        .trade-card {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .btn-primary {
+            background: var(--tg-theme-button-color);
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-weight: 500;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-outline-primary {
+            color: var(--tg-theme-button-color);
+            border: 1px solid var(--tg-theme-button-color);
+            background: transparent;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            width: auto;
+            margin: 0.25rem;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-control {
+            background: var(--tg-theme-bg-color);
+            border: 1px solid #ddd;
+            color: var(--tg-theme-text-color);
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+
+        .progress-indicator {
+            font-family: monospace;
+            font-size: 0.8rem;
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            background: rgba(var(--tg-theme-button-color), 0.1);
+            border-radius: 6px;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-active { background: #28a745; color: white; }
+        .status-configured { background: #ffc107; color: #212529; }
+        .status-stopped { background: #dc3545; color: white; }
+
+        .position-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 1rem;
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--tg-theme-button-color);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--tg-theme-hint-color);
+            margin-top: 0.25rem;
+        }
+
+        .trade-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .hidden { display: none; }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--tg-theme-hint-color);
+        }
+
+        .modal {
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            border: none;
+            border-radius: 12px;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--tg-theme-secondary-bg-color);
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--tg-theme-secondary-bg-color);
+        }
+
+        .two-column-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="mini-app-container">
+        <!-- Header -->
+        <div class="header">
+            <h5 class="mb-0">🚀 Toobit Trading Bot</h5>
+            <small id="user-info">Loading...</small>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs justify-content-center" id="main-tabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions" type="button">
+                    📊 Positions
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button">
+                    🎯 Trading
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="portfolio-tab" data-bs-toggle="tab" data-bs-target="#portfolio" type="button">
+                    💼 Portfolio
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="main-tab-content">
+            <!-- Positions Tab -->
+            <div class="tab-pane fade show active" id="positions" role="tabpanel">
+                <div class="position-summary">
+                    <div class="stat-box">
+                        <div class="stat-value" id="total-positions">0</div>
+                        <div class="stat-label">Active Positions</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="total-pnl">$0.00</div>
+                        <div class="stat-label">Total P&L</div>
+                    </div>
+                </div>
+                
+                <div id="positions-list">
+                    <div class="loading">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Loading positions...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trading Tab -->
+            <div class="tab-pane fade" id="trading" role="tabpanel">
+                <div class="mb-3">
+                    <button class="btn btn-primary" onclick="createNewTrade()">
+                        ➕ New Trade
+                    </button>
+                </div>
+                
+                <div id="trade-configs-list">
+                    <div class="loading">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Loading trade configurations...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portfolio Tab -->
+            <div class="tab-pane fade" id="portfolio" role="tabpanel">
+                <div class="position-summary">
+                    <div class="stat-box">
+                        <div class="stat-value" id="account-balance">$0.00</div>
+                        <div class="stat-label">Account Balance</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="margin-used">$0.00</div>
+                        <div class="stat-label">Margin Used</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="free-margin">$0.00</div>
+                        <div class="stat-label">Free Margin</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="margin-ratio">0%</div>
+                        <div class="stat-label">Margin Ratio</div>
+                    </div>
+                </div>
+                
+                <div id="portfolio-details">
+                    <div class="loading">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Loading portfolio data...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trade Configuration Modal -->
+    <div class="modal fade" id="tradeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title" id="tradeModalTitle">Configure Trade</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="trade-progress" class="progress-indicator mb-3"></div>
+                    
+                    <!-- Symbol Selection -->
+                    <div id="symbol-step" class="config-step">
+                        <label class="form-label">Trading Pair</label>
+                        <select class="form-control" id="symbol-select">
+                            <option value="">Select Symbol</option>
+                            <option value="BTCUSDT">BTC/USDT</option>
+                            <option value="ETHUSDT">ETH/USDT</option>
+                            <option value="ADAUSDT">ADA/USDT</option>
+                            <option value="DOGEUSDT">DOGE/USDT</option>
+                            <option value="SOLUSDT">SOL/USDT</option>
+                        </select>
+                    </div>
+
+                    <!-- Side Selection -->
+                    <div id="side-step" class="config-step hidden">
+                        <label class="form-label">Position Side</label>
+                        <div class="two-column-grid">
+                            <button class="btn btn-outline-primary" onclick="setTradeSide('long')">
+                                📈 Long
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="setTradeSide('short')">
+                                📉 Short
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Amount & Leverage -->
+                    <div id="amount-step" class="config-step hidden">
+                        <label class="form-label">Position Size</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="amount-input" placeholder="Enter amount" step="0.01">
+                        </div>
+                        <label class="form-label">Leverage</label>
+                        <select class="form-control" id="leverage-select">
+                            <option value="1">1x</option>
+                            <option value="2">2x</option>
+                            <option value="5">5x</option>
+                            <option value="10" selected>10x</option>
+                            <option value="20">20x</option>
+                            <option value="50">50x</option>
+                            <option value="100">100x</option>
+                        </select>
+                    </div>
+
+                    <!-- Entry Configuration -->
+                    <div id="entry-step" class="config-step hidden">
+                        <label class="form-label">Entry Type</label>
+                        <div class="two-column-grid mb-2">
+                            <button class="btn btn-outline-primary" onclick="setEntryType('market')">
+                                🎯 Market
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="setEntryType('limit')">
+                                📍 Limit
+                            </button>
+                        </div>
+                        <div id="limit-price-input" class="hidden">
+                            <label class="form-label">Limit Price</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="entry-price" placeholder="Entry price" step="0.0001">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Take Profits -->
+                    <div id="tp-step" class="config-step hidden">
+                        <label class="form-label">Take Profit Levels</label>
+                        <div id="tp-levels">
+                            <div class="input-group mb-2">
+                                <span class="input-group-text">TP1 %</span>
+                                <input type="number" class="form-control tp-percent" data-level="1" placeholder="5" step="0.1">
+                                <span class="input-group-text">Size %</span>
+                                <input type="number" class="form-control tp-allocation" data-level="1" placeholder="30" step="1">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" onclick="addTpLevel()">+ Add TP Level</button>
+                    </div>
+
+                    <!-- Stop Loss -->
+                    <div id="sl-step" class="config-step hidden">
+                        <label class="form-label">Stop Loss</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="stop-loss" placeholder="2" step="0.1">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" onclick="previousStep()">← Back</button>
+                    <button type="button" class="btn btn-primary" onclick="nextStep()">Next →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Telegram Web App integration
+        let tg = window.Telegram.WebApp;
+        let currentUser = null;
+        let currentTrade = null;
+        let configStep = 0;
+        const configSteps = ['symbol', 'side', 'amount', 'entry', 'tp', 'sl'];
+        
+        // Initialize Telegram Web App
+        if (typeof tg !== 'undefined' && tg.ready) {
+            tg.ready();
+            tg.expand();
+        } else {
+            // Fallback for testing outside Telegram
+            tg = {
+                backgroundColor: '#ffffff',
+                textColor: '#000000',
+                buttonColor: '#2481cc',
+                showAlert: function(message) { alert(message); },
+                MainButton: {
+                    setText: function() {},
+                    show: function() {},
+                    hide: function() {}
+                }
+            };
+        }
+        
+        // Set up theme
+        document.body.style.backgroundColor = tg.backgroundColor;
+        document.documentElement.style.setProperty('--tg-theme-bg-color', tg.backgroundColor);
+        document.documentElement.style.setProperty('--tg-theme-text-color', tg.textColor);
+        document.documentElement.style.setProperty('--tg-theme-button-color', tg.buttonColor);
+        
+        // Get user info
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            currentUser = tg.initDataUnsafe.user;
+            document.getElementById('user-info').textContent = `Hi, ${currentUser.first_name}!`;
+        } else {
+            // Fallback for testing outside Telegram
+            currentUser = { id: 123456789, first_name: 'Demo User' };
+            document.getElementById('user-info').textContent = `Hi, ${currentUser.first_name}! (Demo Mode)`;
+        }
+
+        // Main button integration
+        tg.MainButton.setText("Execute Trade");
+        tg.MainButton.hide();
+
+        // API Functions
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(endpoint, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Telegram-User-ID': currentUser?.id || 'anonymous'
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                tg.showAlert(`Error: ${error.message}`);
+                return null;
+            }
+        }
+
+        // Load data functions
+        async function loadPositions() {
+            const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
+            if (!data) return;
+            
+            const container = document.getElementById('positions-list');
+            const activePositions = data.trades?.filter(t => t.status === 'active') || [];
+            
+            document.getElementById('total-positions').textContent = activePositions.length;
+            
+            let totalPnl = 0;
+            activePositions.forEach(pos => totalPnl += pos.unrealized_pnl || 0);
+            document.getElementById('total-pnl').textContent = `$${totalPnl.toFixed(2)}`;
+            document.getElementById('total-pnl').style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
+            
+            if (activePositions.length === 0) {
+                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No active positions</small></div>';
+                return;
+            }
+            
+            container.innerHTML = activePositions.map(pos => `
+                <div class="trade-card">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong>${pos.symbol}</strong>
+                            <span class="status-badge status-${pos.status} ms-2">${pos.side.toUpperCase()}</span>
+                        </div>
+                        <div class="text-end">
+                            <div class="stat-value" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                $${(pos.unrealized_pnl || 0).toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Size:</small><br>
+                            <strong>$${pos.amount}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Leverage:</small><br>
+                            <strong>${pos.leverage}x</strong>
+                        </div>
+                    </div>
+                    <div class="trade-controls mt-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="editTrade('${pos.trade_id}')">
+                            ✏️ Edit
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="closeTrade('${pos.trade_id}')">
+                            ❌ Close
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadTradeConfigs() {
+            const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
+            if (!data) return;
+            
+            const container = document.getElementById('trade-configs-list');
+            const trades = data.trades || [];
+            
+            if (trades.length === 0) {
+                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No trade configurations</small></div>';
+                return;
+            }
+            
+            container.innerHTML = trades.map(trade => `
+                <div class="trade-card">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <strong>${trade.name}</strong>
+                            <span class="status-badge status-${trade.status} ms-2">${trade.status}</span>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" onclick="selectTrade('${trade.trade_id}')">
+                            Select
+                        </button>
+                    </div>
+                    <div class="progress-indicator">
+                        ${getTradeProgress(trade)}
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Symbol:</small><br>
+                            <strong>${trade.symbol || 'Not set'}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Side:</small><br>
+                            <strong>${trade.side ? trade.side.toUpperCase() : 'Not set'}</strong>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadPortfolio() {
+            const data = await apiCall('/api/margin-data');
+            if (!data) return;
+            
+            const summary = data.summary || {};
+            
+            document.getElementById('account-balance').textContent = `$${summary.total_account_balance?.toFixed(2) || '0.00'}`;
+            document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
+            document.getElementById('free-margin').textContent = `$${summary.total_free_margin?.toFixed(2) || '0.00'}`;
+            document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+            
+            const container = document.getElementById('portfolio-details');
+            const positions = data.positions?.filter(p => p.user_id == currentUser?.id) || [];
+            
+            if (positions.length === 0) {
+                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No positions found</small></div>';
+                return;
+            }
+            
+            container.innerHTML = `
+                <h6 class="mb-3">Your Positions</h6>
+                ${positions.map(pos => `
+                    <div class="trade-card">
+                        <div class="d-flex justify-content-between mb-2">
+                            <strong>${pos.symbol}</strong>
+                            <span class="status-badge status-${pos.status}">${pos.side.toUpperCase()}</span>
+                        </div>
+                        <div class="row">
+                            <div class="col-4">
+                                <small class="text-muted">Size</small><br>
+                                <strong>$${pos.amount}</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">Margin</small><br>
+                                <strong>$${pos.margin_used?.toFixed(2) || '0'}</strong>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted">P&L</small><br>
+                                <strong style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                    $${pos.unrealized_pnl?.toFixed(2) || '0'}
+                                </strong>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        // Trade configuration functions
+        function createNewTrade() {
+            currentTrade = {
+                trade_id: 'new_' + Date.now(),
+                name: 'New Trade',
+                symbol: '',
+                side: '',
+                amount: '',
+                leverage: 10,
+                entry_type: '',
+                entry_price: '',
+                take_profits: [],
+                stop_loss_percent: ''
+            };
+            configStep = 0;
+            showTradeModal();
+        }
+
+        async function editTrade(tradeId) {
+            const data = await apiCall(`/api/trade-config?trade_id=${tradeId}`);
+            if (data) {
+                currentTrade = data;
+                configStep = 0;
+                showTradeModal();
+            }
+        }
+
+        async function closeTrade(tradeId) {
+            if (!confirm('Are you sure you want to close this position?')) return;
+            
+            const result = await apiCall('/api/close-trade', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    trade_id: tradeId
+                })
+            });
+            
+            if (result && result.success) {
+                tg.showAlert(`Position closed successfully! P&L: $${result.final_pnl?.toFixed(2) || '0.00'}`);
+                loadPositions();
+                loadPortfolio();
+            }
+        }
+
+        async function selectTrade(tradeId) {
+            const data = await apiCall(`/api/trade-config?trade_id=${tradeId}`);
+            if (!data) return;
+            
+            // Check if trade is complete
+            const isComplete = data.symbol && data.side && data.amount && 
+                              (data.entry_type === 'market' || (data.entry_type === 'limit' && data.entry_price)) &&
+                              data.take_profits?.length > 0 && data.stop_loss_percent;
+            
+            if (isComplete && data.status === 'configured') {
+                // Ask user if they want to execute the trade
+                if (confirm(`Execute trade for ${data.symbol} ${data.side.toUpperCase()}?`)) {
+                    await executeTrade(tradeId);
+                }
+            } else {
+                // Open for editing
+                currentTrade = data;
+                configStep = 0;
+                showTradeModal();
+            }
+        }
+
+        async function executeTrade(tradeId) {
+            const result = await apiCall('/api/execute-trade', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    trade_id: tradeId
+                })
+            });
+            
+            if (result && result.success) {
+                tg.showAlert('Trade executed successfully!');
+                tg.MainButton.hide();
+                loadPositions();
+                loadTradeConfigs();
+                loadPortfolio();
+            }
+        }
+
+        function showTradeModal() {
+            updateTradeModal();
+            new bootstrap.Modal(document.getElementById('tradeModal')).show();
+        }
+
+        function updateTradeModal() {
+            if (!currentTrade) return;
+            
+            // Update progress indicator
+            const progress = getTradeProgress(currentTrade);
+            document.getElementById('trade-progress').innerHTML = progress;
+            
+            // Hide all steps
+            document.querySelectorAll('.config-step').forEach(step => step.classList.add('hidden'));
+            
+            // Show current step
+            const currentStepElement = document.getElementById(configSteps[configStep] + '-step');
+            if (currentStepElement) {
+                currentStepElement.classList.remove('hidden');
+            }
+            
+            // Update modal title
+            document.getElementById('tradeModalTitle').textContent = 
+                `${currentTrade.name} - Step ${configStep + 1}/${configSteps.length}`;
+            
+            // Update form values
+            if (currentTrade.symbol) document.getElementById('symbol-select').value = currentTrade.symbol;
+            if (currentTrade.amount) document.getElementById('amount-input').value = currentTrade.amount;
+            if (currentTrade.leverage) document.getElementById('leverage-select').value = currentTrade.leverage;
+            if (currentTrade.entry_price) document.getElementById('entry-price').value = currentTrade.entry_price;
+            if (currentTrade.stop_loss_percent) document.getElementById('stop-loss').value = currentTrade.stop_loss_percent;
+        }
+
+        function nextStep() {
+            if (!validateCurrentStep()) return;
+            
+            if (configStep < configSteps.length - 1) {
+                configStep++;
+                updateTradeModal();
+            } else {
+                saveTrade();
+            }
+        }
+
+        function previousStep() {
+            if (configStep > 0) {
+                configStep--;
+                updateTradeModal();
+            }
+        }
+
+        function validateCurrentStep() {
+            const step = configSteps[configStep];
+            
+            switch (step) {
+                case 'symbol':
+                    const symbol = document.getElementById('symbol-select').value;
+                    if (!symbol) {
+                        tg.showAlert('Please select a trading pair');
+                        return false;
+                    }
+                    currentTrade.symbol = symbol;
+                    break;
+                    
+                case 'amount':
+                    const amount = parseFloat(document.getElementById('amount-input').value);
+                    const leverage = parseInt(document.getElementById('leverage-select').value);
+                    if (!amount || amount <= 0) {
+                        tg.showAlert('Please enter a valid amount');
+                        return false;
+                    }
+                    currentTrade.amount = amount;
+                    currentTrade.leverage = leverage;
+                    break;
+                    
+                case 'sl':
+                    const stopLoss = parseFloat(document.getElementById('stop-loss').value);
+                    if (!stopLoss || stopLoss <= 0) {
+                        tg.showAlert('Please set a stop loss percentage');
+                        return false;
+                    }
+                    currentTrade.stop_loss_percent = stopLoss;
+                    break;
+            }
+            
+            return true;
+        }
+
+        function setTradeSide(side) {
+            currentTrade.side = side;
+            document.querySelectorAll('#side-step .btn').forEach(btn => btn.classList.remove('btn-primary'));
+            event.target.classList.add('btn-primary');
+        }
+
+        function setEntryType(type) {
+            currentTrade.entry_type = type;
+            document.querySelectorAll('#entry-step .btn').forEach(btn => btn.classList.remove('btn-primary'));
+            event.target.classList.add('btn-primary');
+            
+            const limitInput = document.getElementById('limit-price-input');
+            if (type === 'limit') {
+                limitInput.classList.remove('hidden');
+            } else {
+                limitInput.classList.add('hidden');
+                currentTrade.entry_price = '';
+            }
+        }
+
+        function addTpLevel() {
+            const container = document.getElementById('tp-levels');
+            const level = container.children.length + 1;
+            
+            const tpDiv = document.createElement('div');
+            tpDiv.className = 'input-group mb-2';
+            tpDiv.innerHTML = `
+                <span class="input-group-text">TP${level} %</span>
+                <input type="number" class="form-control tp-percent" data-level="${level}" placeholder="5" step="0.1">
+                <span class="input-group-text">Size %</span>
+                <input type="number" class="form-control tp-allocation" data-level="${level}" placeholder="30" step="1">
+                <button class="btn btn-outline-danger" onclick="this.parentElement.remove()">×</button>
+            `;
+            container.appendChild(tpDiv);
+        }
+
+        async function saveTrade() {
+            // Collect take profit data
+            currentTrade.take_profits = [];
+            document.querySelectorAll('#tp-levels .input-group').forEach((group, index) => {
+                const percent = parseFloat(group.querySelector('.tp-percent').value);
+                const allocation = parseFloat(group.querySelector('.tp-allocation').value);
+                if (percent && allocation) {
+                    currentTrade.take_profits.push({ percentage: percent, allocation: allocation });
+                }
+            });
+            
+            // Save trade configuration
+            const result = await apiCall('/api/save-trade', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    trade: currentTrade
+                })
+            });
+            
+            if (result && result.success) {
+                tg.showAlert('Trade configuration saved successfully!');
+                bootstrap.Modal.getInstance(document.getElementById('tradeModal')).hide();
+                loadTradeConfigs();
+                loadPositions();
+            }
+        }
+
+        function getTradeProgress(trade) {
+            const steps = {
+                "Symbol": trade.symbol ? "✅" : "⏳",
+                "Side": trade.side ? "✅" : "⏳", 
+                "Amount": trade.amount ? "✅" : "⏳",
+                "Entry": (trade.entry_type === "market" || (trade.entry_type === "limit" && trade.entry_price)) ? "✅" : "⏳",
+                "TPs": trade.take_profits?.length > 0 ? "✅" : "⏳",
+                "SL": trade.stop_loss_percent ? "✅" : "⏳"
+            };
+            
+            const completed = Object.values(steps).filter(s => s === "✅").length;
+            const total = Object.keys(steps).length;
+            const progress = "█".repeat(completed) + "░".repeat(total - completed);
+            
+            return `${completed}/${total} [${progress}] ${Object.entries(steps).map(([k,v]) => `${k}${v}`).join(' ')}`;
+        }
+
+        // Tab switching handlers
+        document.addEventListener('shown.bs.tab', function (event) {
+            const tabId = event.target.getAttribute('data-bs-target');
+            
+            switch (tabId) {
+                case '#positions':
+                    loadPositions();
+                    break;
+                case '#trading':
+                    loadTradeConfigs();
+                    break;
+                case '#portfolio':
+                    loadPortfolio();
+                    break;
+            }
+        });
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPositions();
+        });
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            const activeTab = document.querySelector('.nav-link.active').getAttribute('data-bs-target');
+            if (activeTab === '#positions') loadPositions();
+            else if (activeTab === '#portfolio') loadPortfolio();
+        }, 30000);
+    </script>
+</body>
+</html>
