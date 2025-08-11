@@ -12,9 +12,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Enhanced Trade Information Display (August 11, 2025)
 - ✅ Added comprehensive trade details in both positions and trading tabs
-- ✅ Shows P&L, entry price, current price, ROE, margin used, and status
-- ✅ Trading tab: detailed info for active trades, basic info for configurations  
-- ✅ Positions tab: full trade details with entry, current price, and margin data
+- ✅ Shows all trade info BEFORE execution: entry, take profits, stop loss, amounts
+- ✅ Trading tab: detailed view for configured trades, not just active ones
+- ✅ Positions tab: full trade details with entry, current price, and margin data  
 - ✅ Real-time ROE calculation based on margin and unrealized P&L
 - ✅ Color-coded P&L and ROE indicators (green/red for profit/loss)
 

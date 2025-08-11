@@ -1122,13 +1122,49 @@
                     ` : `
                     <!-- Configuration Details for Non-Active Trades -->
                     <div class="row mt-2">
-                        <div class="col-6">
+                        <div class="col-4">
                             <small class="text-muted">Amount:</small><br>
                             <strong>${trade.amount ? '$' + trade.amount : 'Not set'}</strong>
                         </div>
-                        <div class="col-6">
+                        <div class="col-4">
                             <small class="text-muted">Leverage:</small><br>
                             <strong>${trade.leverage ? trade.leverage + 'x' : 'Not set'}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Entry:</small><br>
+                            <strong>${trade.entry_price ? '$' + trade.entry_price : trade.entry_type === 'market' ? 'Market' : 'Not set'}</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Take Profit & Stop Loss for Configured Trades -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Take Profits:</small><br>
+                            <strong>
+                                ${trade.take_profits && trade.take_profits.length > 0 ? 
+                                    trade.take_profits.map(tp => `$${tp.price || tp}`).join(', ') : 
+                                    'Not set'}
+                            </strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Stop Loss:</small><br>
+                            <strong>
+                                ${trade.stop_loss_percent ? `${trade.stop_loss_percent}%` : 'Not set'}
+                            </strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Configuration Status -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Entry Type:</small><br>
+                            <strong>${trade.entry_type ? trade.entry_type.toUpperCase() : 'Not set'}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Status:</small><br>
+                            <strong class="text-${trade.status === 'configured' ? 'warning' : trade.status === 'active' ? 'success' : 'secondary'}">
+                                ${trade.status ? trade.status.toUpperCase() : 'DRAFT'}
+                            </strong>
                         </div>
                     </div>
                     `}
