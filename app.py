@@ -687,7 +687,12 @@ def handle_callback_query(callback_data, chat_id, user):
         if callback_data == "main_menu":
             return "🏠 Main Menu:", get_main_menu()
         elif callback_data == "menu_trading":
-            return "📊 Trading Menu:", get_trading_menu(chat_id)
+            config = get_current_trade_config(chat_id)
+            if config:
+                header = config.get_trade_header("Trading Menu")
+                return f"{header}📊 Trading Menu:", get_trading_menu(chat_id)
+            else:
+                return "📊 Trading Menu:\n\nNo trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
         elif callback_data == "menu_portfolio":
             return "💼 Portfolio & Analytics:", get_portfolio_menu()
         elif callback_data == "select_pair":
@@ -1380,6 +1385,13 @@ def handle_set_breakeven(chat_id, mode):
     }
     
     user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
+    
+    # Add progress header if trade is selected
+    config = get_current_trade_config(chat_id)
+    if config:
+        header = config.get_trade_header("Break-even Set")
+        return f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
+    
     return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
 
 def handle_trailing_stop_disable(chat_id):
@@ -1394,7 +1406,8 @@ def handle_trailing_stop_disable(chat_id):
             config.trail_activation_price = None
             config.waiting_for_trail_percent = False
             config.waiting_for_trail_activation = False
-            return "✅ Trailing stop disabled for current trade", get_trailing_stop_menu()
+            header = config.get_trade_header("Trailing Stop Disabled")
+            return f"{header}✅ Trailing stop disabled for current trade", get_trading_menu(chat_id)
     return "❌ No trade selected", get_config_menu()
 
 def handle_trail_percent_request(chat_id):
