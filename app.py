@@ -725,12 +725,12 @@ def get_trading_menu(user_id=None):
         [{"text": "💱 Select Trading Pair", "callback_data": "select_pair"}],
         [{"text": "📈 Long Position", "callback_data": "set_side_long"}, 
          {"text": "📉 Short Position", "callback_data": "set_side_short"}],
-        [{"text": "📊 Set Leverage", "callback_data": "set_leverage"}],
-        [{"text": "💰 Set Amount", "callback_data": "set_amount"}],
-        [{"text": "🎯 Set Entry Price", "callback_data": "set_entry"}],
-        [{"text": "🎯 Set Take Profits", "callback_data": "set_takeprofit"}],
-        [{"text": "🛑 Set Stop Loss", "callback_data": "set_stoploss"}],
-        [{"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
+        [{"text": "📊 Set Leverage", "callback_data": "set_leverage"},
+         {"text": "💰 Set Amount", "callback_data": "set_amount"}],
+        [{"text": "🎯 Set Entry Price", "callback_data": "set_entry"},
+         {"text": "🎯 Set Take Profits", "callback_data": "set_takeprofit"}],
+        [{"text": "🛑 Set Stop Loss", "callback_data": "set_stoploss"},
+         {"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
         [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
     ]
     
