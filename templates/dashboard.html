@@ -199,6 +199,81 @@
             </div>
         </div>
 
+        <!-- Margin Dashboard -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i data-feather="pie-chart"></i> Margin Dashboard</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-number" id="account-balance">$0.00</div>
+                                    <div class="stat-label">Account Balance</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-number" id="margin-used">$0.00</div>
+                                    <div class="stat-label">Margin Used</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-number" id="free-margin">$0.00</div>
+                                    <div class="stat-label">Free Margin</div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card">
+                                    <div class="stat-number" id="floating-pnl">$0.00</div>
+                                    <div class="stat-label">Floating P&L</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6>Margin Utilization</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="progress mb-2">
+                                            <div class="progress-bar" id="margin-progress" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <small class="text-muted" id="margin-utilization-text">0% utilization</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6>Active Positions</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="active-positions-count" class="h4">0</div>
+                                        <small class="text-muted">Total active positions</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <h6>Position Details</h6>
+                                <div id="position-details">
+                                    <p class="text-muted text-center">No active positions</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Recent Trades -->
         <div class="row">
             <div class="col-12">
@@ -262,6 +337,15 @@
                     updateRecentTrades(tradesData);
                 } else {
                     console.error('Failed to fetch trades:', tradesResponse.status);
+                }
+
+                // Update margin data
+                const marginResponse = await fetch('/api/margin-data');
+                if (marginResponse.ok) {
+                    const marginData = await marginResponse.json();
+                    updateMarginDashboard(marginData);
+                } else {
+                    console.error('Failed to fetch margin data:', marginResponse.status);
                 }
 
             } catch (error) {
@@ -356,6 +440,78 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        function updateMarginDashboard(data) {
+            const summary = data.summary || {};
+            
+            // Update main metrics
+            document.getElementById('account-balance').textContent = `$${(summary.total_account_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById('margin-used').textContent = `$${(summary.total_margin_used || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            document.getElementById('free-margin').textContent = `$${(summary.total_free_margin || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            
+            // Update floating P&L with color coding
+            const floatingPnl = summary.total_unrealized_pnl || 0;
+            const pnlElement = document.getElementById('floating-pnl');
+            pnlElement.textContent = `${floatingPnl >= 0 ? '+' : ''}$${floatingPnl.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            pnlElement.style.color = floatingPnl >= 0 ? '#28a745' : '#dc3545';
+            
+            // Update margin utilization progress bar
+            const utilization = summary.margin_utilization || 0;
+            const progressBar = document.getElementById('margin-progress');
+            const utilizationText = document.getElementById('margin-utilization-text');
+            
+            progressBar.style.width = `${Math.min(utilization, 100)}%`;
+            progressBar.setAttribute('aria-valuenow', utilization);
+            
+            // Color code the progress bar based on risk level
+            progressBar.className = 'progress-bar';
+            if (utilization > 80) {
+                progressBar.classList.add('bg-danger');
+            } else if (utilization > 50) {
+                progressBar.classList.add('bg-warning');
+            } else {
+                progressBar.classList.add('bg-success');
+            }
+            
+            utilizationText.textContent = `${utilization.toFixed(1)}% utilization`;
+            
+            // Update active positions count
+            document.getElementById('active-positions-count').textContent = summary.total_positions || 0;
+            
+            // Update position details
+            const positionsContainer = document.getElementById('position-details');
+            const positions = data.positions || [];
+            
+            if (positions.length === 0) {
+                positionsContainer.innerHTML = '<p class="text-muted text-center">No active positions</p>';
+            } else {
+                positionsContainer.innerHTML = positions.map(position => {
+                    const pnlColor = position.unrealized_pnl >= 0 ? 'text-success' : 'text-danger';
+                    const pnlSymbol = position.unrealized_pnl >= 0 ? '+' : '';
+                    
+                    return `
+                        <div class="trade-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>${position.symbol} ${position.side?.toUpperCase()}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        Amount: $${(position.amount || 0).toLocaleString()} | 
+                                        Leverage: ${position.leverage}x | 
+                                        Margin: $${(position.margin_used || 0).toLocaleString()}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <div>Entry: $${(position.entry_price || 0).toFixed(4)}</div>
+                                    <div>Current: $${(position.current_price || 0).toFixed(4)}</div>
+                                    <div class="${pnlColor}">P&L: ${pnlSymbol}$${(position.unrealized_pnl || 0).toFixed(2)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
         }
     </script>
 </body>

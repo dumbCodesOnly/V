@@ -58,6 +58,11 @@ class TradeConfig:
         self.waiting_for_trail_percent = False  # Track if waiting for trail percentage input
         self.waiting_for_trail_activation = False  # Track if waiting for trail activation price
         self.status = "configured"  # configured, active, stopped
+        # Margin tracking
+        self.position_margin = 0.0  # Margin used for this position
+        self.unrealized_pnl = 0.0   # Current floating P&L
+        self.current_price = 0.0    # Current market price
+        self.position_size = 0.0    # Actual position size in contracts
         
     def get_display_name(self):
         if self.symbol and self.side:
@@ -205,6 +210,52 @@ def recent_messages():
 def recent_trades():
     """Get recent trades"""
     return jsonify(bot_trades[-10:])  # Last 10 trades
+
+@app.route('/api/margin-data')
+def margin_data():
+    """Get comprehensive margin data for all users"""
+    # Aggregate margin data across all users
+    total_account_balance = 0.0
+    total_margin_used = 0.0
+    total_free_margin = 0.0
+    total_unrealized_pnl = 0.0
+    all_positions = []
+    
+    for chat_id, user_trades in user_trade_configs.items():
+        margin_summary = get_margin_summary(chat_id)
+        total_account_balance += margin_summary['account_balance']
+        total_margin_used += margin_summary['total_margin']
+        total_free_margin += margin_summary['free_margin']
+        total_unrealized_pnl += margin_summary['unrealized_pnl']
+        
+        # Add position details
+        for trade_id, config in user_trades.items():
+            if config.status == "active" and config.symbol:
+                all_positions.append({
+                    'user_id': str(chat_id),
+                    'symbol': config.symbol,
+                    'side': config.side,
+                    'amount': config.amount,
+                    'leverage': config.leverage,
+                    'margin_used': config.position_margin,
+                    'entry_price': config.entry_price,
+                    'current_price': config.current_price,
+                    'unrealized_pnl': config.unrealized_pnl,
+                    'status': config.status
+                })
+    
+    return jsonify({
+        'summary': {
+            'total_account_balance': total_account_balance,
+            'total_margin_used': total_margin_used,
+            'total_free_margin': total_free_margin,
+            'total_unrealized_pnl': total_unrealized_pnl,
+            'margin_utilization': (total_margin_used / total_account_balance * 100) if total_account_balance > 0 else 0,
+            'total_positions': len(all_positions)
+        },
+        'positions': all_positions,
+        'timestamp': datetime.utcnow().isoformat()
+    })
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -477,6 +528,57 @@ def get_mock_price(symbol):
         return base_price * (1 + variation)
     return None
 
+def calculate_position_margin(amount, leverage):
+    """Calculate position margin required"""
+    return amount / leverage if leverage > 0 else amount
+
+def calculate_unrealized_pnl(entry_price, current_price, position_size, side):
+    """Calculate unrealized P&L for a position"""
+    if not entry_price or not current_price or not position_size:
+        return 0.0
+    
+    price_diff = current_price - entry_price
+    if side == "short":
+        price_diff = -price_diff
+    
+    return price_diff * position_size
+
+def get_margin_summary(chat_id):
+    """Get comprehensive margin summary for a user"""
+    user_trades = user_trade_configs.get(chat_id, {})
+    
+    # Account totals
+    account_balance = 10000.0  # Demo account balance
+    total_position_margin = 0.0
+    total_unrealized_pnl = 0.0
+    
+    # Calculate totals from active positions
+    for config in user_trades.values():
+        if config.status == "active" and config.amount:
+            # Update position data with current prices
+            config.current_price = get_mock_price(config.symbol) if config.symbol else 0.0
+            config.position_margin = calculate_position_margin(config.amount, config.leverage)
+            
+            if config.entry_price and config.amount:
+                config.position_size = config.amount / config.entry_price
+                config.unrealized_pnl = calculate_unrealized_pnl(
+                    config.entry_price, config.current_price, 
+                    config.position_size, config.side
+                )
+            
+            total_position_margin += config.position_margin
+            total_unrealized_pnl += config.unrealized_pnl
+    
+    free_margin = account_balance - total_position_margin + total_unrealized_pnl
+    
+    return {
+        'account_balance': account_balance,
+        'total_margin': total_position_margin,
+        'free_margin': free_margin,
+        'unrealized_pnl': total_unrealized_pnl,
+        'margin_level': (account_balance + total_unrealized_pnl) / total_position_margin * 100 if total_position_margin > 0 else 0
+    }
+
 def send_telegram_message(chat_id, text, keyboard=None):
     """Send message to Telegram"""
     if not BOT_TOKEN:
@@ -646,6 +748,8 @@ def get_portfolio_menu():
     return {
         "inline_keyboard": [
             [{"text": "📊 Portfolio Summary", "callback_data": "portfolio_summary"}],
+            [{"text": "💰 Margin Dashboard", "callback_data": "margin_dashboard"}],
+            [{"text": "💰 Margin Dashboard", "callback_data": "margin_dashboard"}],
             [{"text": "📈 Recent Trades", "callback_data": "recent_trades"}],
             [{"text": "💹 Performance", "callback_data": "performance"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
@@ -777,6 +881,63 @@ def handle_callback_query(callback_data, chat_id, user):
         # Portfolio handlers
         elif callback_data == "portfolio_summary":
             return "📊 Portfolio is currently empty. Start trading to see your holdings!", get_portfolio_menu()
+        elif callback_data == "margin_dashboard":
+            margin_data = get_margin_summary(chat_id)
+            user_trades = user_trade_configs.get(chat_id, {})
+            
+            response = "💰 **MARGIN DASHBOARD**\n"
+            response += "=" * 35 + "\n\n"
+            
+            # Account Overview
+            response += "📈 **ACCOUNT OVERVIEW**\n"
+            response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
+            response += f"Total Margin: ${margin_data['total_margin']:,.2f}\n"
+            response += f"Free Margin: ${margin_data['free_margin']:,.2f}\n"
+            response += f"Floating P&L: ${margin_data['unrealized_pnl']:+,.2f}\n"
+            
+            if margin_data['margin_level'] > 0:
+                response += f"Margin Level: {margin_data['margin_level']:.1f}%\n"
+            else:
+                response += f"Margin Level: ∞ (No positions)\n"
+            response += "\n"
+            
+            # Position Details
+            active_positions = [config for config in user_trades.values() if config.status == "active"]
+            
+            if active_positions:
+                response += "📊 **ACTIVE POSITIONS**\n"
+                response += "-" * 30 + "\n"
+                
+                for config in active_positions:
+                    if config.symbol and config.amount:
+                        pnl_emoji = "🟢" if config.unrealized_pnl >= 0 else "🔴"
+                        response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
+                        response += f"   Amount: ${config.amount:,.2f}\n"
+                        response += f"   Leverage: {config.leverage}x\n"
+                        response += f"   Margin Used: ${config.position_margin:,.2f}\n"
+                        response += f"   Entry: ${config.entry_price or 0:.4f}\n"
+                        response += f"   Current: ${config.current_price:.4f}\n"
+                        response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n\n"
+            else:
+                response += "📊 **ACTIVE POSITIONS**\n"
+                response += "No active positions\n\n"
+            
+            # Risk Metrics
+            response += "⚠️ **RISK METRICS**\n"
+            if margin_data['total_margin'] > 0:
+                margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
+                response += f"Margin Ratio: {margin_ratio:.1f}%\n"
+                
+                if margin_ratio > 80:
+                    response += "🔴 HIGH RISK - Consider reducing positions\n"
+                elif margin_ratio > 50:
+                    response += "🟡 MEDIUM RISK - Monitor closely\n"
+                else:
+                    response += "🟢 LOW RISK - Safe margin levels\n"
+            else:
+                response += "No margin risk - No active positions\n"
+            
+            return response, get_portfolio_menu()
         elif callback_data == "recent_trades":
             user_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
             if not user_trades:
