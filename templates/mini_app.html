@@ -33,8 +33,8 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
+            background: var(--tg-theme-bg-color) !important;
+            color: var(--tg-theme-text-color) !important;
             margin: 0;
             padding: 0;
             overflow-x: hidden;
@@ -43,6 +43,59 @@
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Ensure all text elements use proper colors for dark mode */
+        * {
+            color: inherit;
+        }
+
+        .text-muted {
+            color: var(--tg-theme-hint-color) !important;
+        }
+
+        .text-primary {
+            color: var(--tg-theme-button-color) !important;
+        }
+
+        small {
+            color: var(--tg-theme-hint-color) !important;
+        }
+
+        /* Dark mode card styling */
+        .card {
+            background: var(--tg-theme-secondary-bg-color) !important;
+            border: 2px solid var(--tg-theme-border-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        .card-header {
+            background: var(--tg-theme-secondary-bg-color) !important;
+            border-bottom: 2px solid var(--tg-theme-border-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        .card-body {
+            background: var(--tg-theme-secondary-bg-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        /* Alert styling for dark mode */
+        .alert {
+            background: var(--tg-theme-secondary-bg-color) !important;
+            border: 2px solid var(--tg-theme-border-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        .alert-info {
+            background: rgba(74, 144, 226, 0.1) !important;
+            border-color: var(--tg-theme-button-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        /* Ensure list items are properly styled */
+        ul, li {
+            color: var(--tg-theme-text-color) !important;
         }
 
         .mini-app-container {
@@ -420,22 +473,67 @@
             font-weight: 700;
         }
 
-        .card {
-            background: var(--tg-theme-card-bg);
-            border: 2px solid var(--tg-theme-border-color);
-            border-radius: 16px;
+        /* Form input styling for dark mode */
+        .form-control, .form-select {
+            background: var(--tg-theme-card-bg) !important;
+            border: 2px solid var(--tg-theme-border-color) !important;
+            color: var(--tg-theme-text-color) !important;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: var(--tg-theme-card-bg) !important;
+            border-color: var(--tg-theme-button-color) !important;
+            color: var(--tg-theme-text-color) !important;
+            box-shadow: 0 0 10px rgba(74, 144, 226, 0.3) !important;
+        }
+
+        .form-control::placeholder {
+            color: var(--tg-theme-hint-color) !important;
+        }
+
+        .form-label {
+            color: var(--tg-theme-text-color) !important;
         }
 
         .list-group-item {
-            background: var(--tg-theme-card-bg);
-            border: 1px solid var(--tg-theme-border-color);
-            color: var(--tg-theme-text-color);
+            background: var(--tg-theme-secondary-bg-color, #1a2332);
+            border: 1px solid var(--tg-theme-border-color, #3a4a5c);
+            color: var(--tg-theme-text-color, #e8eaed);
         }
 
         .badge {
             font-weight: 600;
             padding: 0.5rem 0.75rem;
         }
+
+        .bg-success {
+            background: linear-gradient(135deg, #28a745, #20c997) !important;
+            color: white !important;
+        }
+
+        .bg-warning {
+            background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+            color: #212529 !important;
+        }
+
+        .bg-danger {
+            background: linear-gradient(135deg, #dc3545, #e83e8c) !important;
+            color: white !important;
+        }
+
+        .border-success {
+            border-color: #28a745 !important;
+        }
+
+        .border-warning {
+            border-color: #ffc107 !important;
+        }
+
+        .border-danger {
+            border-color: #dc3545 !important;
+        }
+
+
 
         .two-column-grid {
             display: grid;
