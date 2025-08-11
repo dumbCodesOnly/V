@@ -582,7 +582,7 @@ def get_main_menu():
     """Get main menu keyboard"""
     return {
         "inline_keyboard": [
-            [{"text": "🔄 Multi-Trade Manager", "callback_data": "menu_multitrade"}],
+            [{"text": "🔄 Positions Manager", "callback_data": "menu_positions"}],
             [{"text": "⚙️ Configuration", "callback_data": "menu_config"}],
             [{"text": "📊 Trading", "callback_data": "menu_trading"}],
             [{"text": "💼 Portfolio & Analytics", "callback_data": "menu_portfolio"}],
@@ -591,24 +591,24 @@ def get_main_menu():
         ]
     }
 
-def get_multitrade_menu(user_id):
-    """Get multi-trade management menu"""
+def get_positions_menu(user_id):
+    """Get positions management menu"""
     user_trades = user_trade_configs.get(user_id, {})
     
     keyboard = [
-        [{"text": "📋 View All Trades", "callback_data": "multitrade_list"}],
-        [{"text": "➕ Create New Trade", "callback_data": "multitrade_new"}],
+        [{"text": "📋 View All Positions", "callback_data": "positions_list"}],
+        [{"text": "➕ Create New Position", "callback_data": "positions_new"}],
     ]
     
     if user_trades:
         keyboard.extend([
-            [{"text": "🎯 Select Trade", "callback_data": "multitrade_select"}],
-            [{"text": "🚀 Start Selected Trade", "callback_data": "multitrade_start"}],
-            [{"text": "⏹️ Stop All Trades", "callback_data": "multitrade_stop_all"}],
+            [{"text": "🎯 Select Position", "callback_data": "positions_select"}],
+            [{"text": "🚀 Start Selected Position", "callback_data": "positions_start"}],
+            [{"text": "⏹️ Stop All Positions", "callback_data": "positions_stop_all"}],
         ])
     
     keyboard.extend([
-        [{"text": "📊 Multi-Trade Status", "callback_data": "multitrade_status"}],
+        [{"text": "📊 Positions Status", "callback_data": "positions_status"}],
         [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
     ])
     
@@ -688,9 +688,9 @@ def get_trade_selection_menu(user_id):
     for trade_id, config in user_trades.items():
         status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
         button_text = f"{status_emoji} {config.get_display_name()}"
-        keyboard.append([{"text": button_text, "callback_data": f"select_trade_{trade_id}"}])
+        keyboard.append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
     
-    keyboard.append([{"text": "🏠 Back to Multi-Trade", "callback_data": "menu_multitrade"}])
+    keyboard.append([{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}])
     return {"inline_keyboard": keyboard}
 
 def get_trade_actions_menu(trade_id):
@@ -701,7 +701,7 @@ def get_trade_actions_menu(trade_id):
             [{"text": "🚀 Start Trade", "callback_data": f"start_trade_{trade_id}"}],
             [{"text": "⏹️ Stop Trade", "callback_data": f"stop_trade_{trade_id}"}],
             [{"text": "🗑️ Delete Trade", "callback_data": f"delete_trade_{trade_id}"}],
-            [{"text": "🏠 Back to List", "callback_data": "multitrade_list"}]
+            [{"text": "🏠 Back to List", "callback_data": "positions_list"}]
         ]
     }
 
@@ -834,10 +834,10 @@ def handle_callback_query(callback_data, chat_id, user):
             return response, keyboard
         
         # Multi-trade management handlers
-        elif callback_data == "menu_multitrade":
+        elif callback_data == "menu_positions":
             user_trades = user_trade_configs.get(chat_id, {})
-            summary = f"🔄 Multi-Trade Manager\n\n"
-            summary += f"Total Trades: {len(user_trades)}\n"
+            summary = f"🔄 Positions Manager\n\n"
+            summary += f"Total Positions: {len(user_trades)}\n"
             if user_trades:
                 active_count = sum(1 for config in user_trades.values() if config.status == "active")
                 summary += f"Active: {active_count}\n"
@@ -845,7 +845,7 @@ def handle_callback_query(callback_data, chat_id, user):
                     selected_trade = user_trade_configs[chat_id].get(user_selected_trade[chat_id])
                     if selected_trade:
                         summary += f"Selected: {selected_trade.get_display_name()}\n"
-            return summary, get_multitrade_menu(chat_id)
+            return summary, get_positions_menu(chat_id)
             
         elif callback_data == "menu_config":
             config_summary = "⚙️ Configuration Settings\n\n"
@@ -871,7 +871,7 @@ def handle_callback_query(callback_data, chat_id, user):
             return config_summary, get_config_menu()
             
         # Multi-trade specific handlers
-        elif callback_data == "multitrade_new":
+        elif callback_data == "positions_new":
             global trade_counter
             trade_counter += 1
             trade_id = f"trade_{trade_counter}"
@@ -879,72 +879,72 @@ def handle_callback_query(callback_data, chat_id, user):
             if chat_id not in user_trade_configs:
                 user_trade_configs[chat_id] = {}
             
-            new_trade = TradeConfig(trade_id, f"Trade #{trade_counter}")
+            new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
             user_trade_configs[chat_id][trade_id] = new_trade
             user_selected_trade[chat_id] = trade_id
             
-            return f"✅ Created new trade: {new_trade.get_display_name()}", get_multitrade_menu(chat_id)
+            return f"✅ Created new position: {new_trade.get_display_name()}", get_positions_menu(chat_id)
             
-        elif callback_data == "multitrade_list":
+        elif callback_data == "positions_list":
             user_trades = user_trade_configs.get(chat_id, {})
             if not user_trades:
-                return "📋 No trades configured yet.", get_multitrade_menu(chat_id)
+                return "📋 No positions configured yet.", get_positions_menu(chat_id)
             
-            response = "📋 Your Trading Configurations:\n\n"
+            response = "📋 Your Position Configurations:\n\n"
             for trade_id, config in user_trades.items():
                 status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
                 response += f"{status_emoji} {config.get_display_name()}\n"
                 response += f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
             
             keyboard = {"inline_keyboard": []}
-            for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 trades
+            for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 positions
                 status_emoji = "🟢" if config.status == "active" else "🟡"
                 button_text = f"{status_emoji} {config.name}"
-                keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_trade_{trade_id}"}])
+                keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
             
-            keyboard["inline_keyboard"].append([{"text": "🏠 Back to Multi-Trade", "callback_data": "menu_multitrade"}])
+            keyboard["inline_keyboard"].append([{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}])
             return response, keyboard
             
-        elif callback_data == "multitrade_select":
-            return "🎯 Select a trade to configure:", get_trade_selection_menu(chat_id)
+        elif callback_data == "positions_select":
+            return "🎯 Select a position to configure:", get_trade_selection_menu(chat_id)
             
-        elif callback_data.startswith("select_trade_"):
-            trade_id = callback_data.replace("select_trade_", "")
+        elif callback_data.startswith("select_position_"):
+            trade_id = callback_data.replace("select_position_", "")
             if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
                 user_selected_trade[chat_id] = trade_id
                 config = user_trade_configs[chat_id][trade_id]
-                response = f"✅ Selected: {config.get_display_name()}\n\n{config.get_config_summary()}"
+                response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
                 return response, get_trade_actions_menu(trade_id)
-            return "❌ Trade not found.", get_multitrade_menu(chat_id)
+            return "❌ Position not found.", get_positions_menu(chat_id)
             
-        elif callback_data == "multitrade_start":
+        elif callback_data == "positions_start":
             if chat_id not in user_selected_trade:
-                return "❌ No trade selected. Please select a trade first.", get_multitrade_menu(chat_id)
+                return "❌ No position selected. Please select a position first.", get_positions_menu(chat_id)
                 
             trade_id = user_selected_trade[chat_id]
             config = user_trade_configs[chat_id][trade_id]
             
             if not config.is_complete():
-                return "❌ Trade configuration incomplete. Please set symbol, side, and amount.", get_multitrade_menu(chat_id)
+                return "❌ Position configuration incomplete. Please set symbol, side, and amount.", get_positions_menu(chat_id)
                 
             config.status = "active"
-            return f"🚀 Started trade: {config.get_display_name()}", get_multitrade_menu(chat_id)
+            return f"🚀 Started position: {config.get_display_name()}", get_positions_menu(chat_id)
             
-        elif callback_data == "multitrade_stop_all":
+        elif callback_data == "positions_stop_all":
             user_trades = user_trade_configs.get(chat_id, {})
             stopped_count = 0
             for config in user_trades.values():
                 if config.status == "active":
                     config.status = "stopped"
                     stopped_count += 1
-            return f"⏹️ Stopped {stopped_count} active trades.", get_multitrade_menu(chat_id)
+            return f"⏹️ Stopped {stopped_count} active positions.", get_positions_menu(chat_id)
             
-        elif callback_data == "multitrade_status":
+        elif callback_data == "positions_status":
             user_trades = user_trade_configs.get(chat_id, {})
             if not user_trades:
-                return "📊 No trades to show status for.", get_multitrade_menu(chat_id)
+                return "📊 No positions to show status for.", get_positions_menu(chat_id)
                 
-            response = "📊 Multi-Trade Status:\n\n"
+            response = "📊 Positions Status:\n\n"
             for config in user_trades.values():
                 status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
                 response += f"{status_emoji} {config.get_display_name()}\n"
@@ -953,7 +953,7 @@ def handle_callback_query(callback_data, chat_id, user):
                     response += f"   {config.symbol} {config.side or 'N/A'}\n"
                 response += "\n"
             
-            return response, get_multitrade_menu(chat_id)
+            return response, get_positions_menu(chat_id)
         
         # Configuration handlers
         elif callback_data == "set_breakeven":
@@ -1255,18 +1255,18 @@ def handle_start_trade(chat_id, trade_id):
         config = user_trade_configs[chat_id][trade_id]
         if config.is_complete():
             config.status = "active"
-            return f"🚀 Started trade: {config.get_display_name()}", get_trade_actions_menu(trade_id)
+            return f"🚀 Started position: {config.get_display_name()}", get_trade_actions_menu(trade_id)
         else:
-            return "❌ Trade configuration incomplete.", get_trade_actions_menu(trade_id)
-    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+            return "❌ Position configuration incomplete.", get_trade_actions_menu(trade_id)
+    return "❌ Position not found.", get_positions_menu(chat_id)
 
 def handle_stop_trade(chat_id, trade_id):
     """Handle stopping a specific trade"""
     if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
         config = user_trade_configs[chat_id][trade_id]
         config.status = "stopped"
-        return f"⏹️ Stopped trade: {config.get_display_name()}", get_trade_actions_menu(trade_id)
-    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+        return f"⏹️ Stopped position: {config.get_display_name()}", get_trade_actions_menu(trade_id)
+    return "❌ Position not found.", get_positions_menu(chat_id)
 
 def handle_delete_trade(chat_id, trade_id):
     """Handle deleting a specific trade"""
@@ -1276,8 +1276,8 @@ def handle_delete_trade(chat_id, trade_id):
         del user_trade_configs[chat_id][trade_id]
         if user_selected_trade.get(chat_id) == trade_id:
             del user_selected_trade[chat_id]
-        return f"🗑️ Deleted trade: {trade_name}", get_multitrade_menu(chat_id)
-    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+        return f"🗑️ Deleted position: {trade_name}", get_positions_menu(chat_id)
+    return "❌ Position not found.", get_positions_menu(chat_id)
 
 
 
@@ -1288,7 +1288,7 @@ def handle_edit_trade(chat_id, trade_id):
         config = user_trade_configs[chat_id][trade_id]
         response = f"✏️ Editing: {config.get_display_name()}\n\n{config.get_config_summary()}"
         return response, get_trading_menu(chat_id)
-    return "❌ Trade not found.", get_multitrade_menu(chat_id)
+    return "❌ Position not found.", get_positions_menu(chat_id)
 
 def handle_set_stoploss(chat_id, sl_percent):
     """Handle setting stop loss percentage"""

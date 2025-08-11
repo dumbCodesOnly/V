@@ -13,6 +13,7 @@ Preferred communication style: Simple, everyday language.
 **August 11, 2025**: Successfully completed migration from Replit Agent to Replit environment - project fully operational
 - **UI CLEANUP**: Removed redundant "Configure Trade" button since "Edit Trade" provides identical functionality. Cleaned up associated callback handlers and helper functions to streamline the interface
 - **HEADER ENHANCEMENT**: Added break-even and trailing stop information to trade headers. Headers now display complete trade configuration including break-even settings and trailing stop status with parameters
+- **TERMINOLOGY UPDATE**: Changed "Multi-Trade Manager" to "Positions Manager" throughout the entire interface. Updated all callback handlers, menu functions, and user-facing text to consistently use "positions" terminology for better clarity
 **August 10, 2025**: Completed migration from Replit Agent to Replit environment with comprehensive debugging fixes
 - Successfully migrated Telegram trading bot with full functionality
 - Created missing dashboard.html template with beautiful Bootstrap design
