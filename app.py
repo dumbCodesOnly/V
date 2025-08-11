@@ -53,57 +53,18 @@ user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
 trade_counter = 0
 
-# Initialize demo data for testing
-def initialize_demo_data(user_id):
-    """Initialize some demo data for testing the mini-app for a specific user"""
+# Initialize clean user environment
+def initialize_user_environment(user_id):
+    """Initialize a clean trading environment for a new user"""
     user_id = int(user_id)
     
-    # Create demo trade configurations
+    # Create empty trade configurations for user
     if user_id not in user_trade_configs:
         user_trade_configs[user_id] = {}
     
-    # Only initialize if user has no existing data
-    if len(user_trade_configs[user_id]) > 0:
-        return
-    
-    # Demo Trade 1 - Active Position
-    trade1 = TradeConfig(1, "BTC Long Position")
-    trade1.symbol = "BTCUSDT"
-    trade1.side = "long"
-    trade1.amount = 1000.0
-    trade1.leverage = 10
-    trade1.entry_type = "market"
-    trade1.entry_price = 43250.0
-    trade1.take_profits = [
-        {'percentage': 3.0, 'allocation': 30},
-        {'percentage': 6.0, 'allocation': 50},
-        {'percentage': 10.0, 'allocation': 20}
-    ]
-    trade1.stop_loss_percent = 2.0
-    trade1.status = "active"
-    trade1.position_margin = 1000.0
-    trade1.current_price = 43500.0
-    trade1.unrealized_pnl = 57.8  # Small profit
-    trade1.position_size = 10000.0
-    
-    # Demo Trade 2 - Configured but not executed
-    trade2 = TradeConfig(2, "ETH Short Setup")
-    trade2.symbol = "ETHUSDT"
-    trade2.side = "short"
-    trade2.amount = 500.0
-    trade2.leverage = 5
-    trade2.entry_type = "limit"
-    trade2.entry_price = 2520.0
-    trade2.take_profits = [
-        {'percentage': 4.0, 'allocation': 50},
-        {'percentage': 8.0, 'allocation': 50}
-    ]
-    trade2.stop_loss_percent = 3.0
-    trade2.status = "configured"
-    
-    user_trade_configs[user_id][1] = trade1
-    user_trade_configs[user_id][2] = trade2
-    user_selected_trade[user_id] = 1
+    # Initialize user's selected trade if not exists
+    if user_id not in user_selected_trade:
+        user_selected_trade[user_id] = None
 
 
 
@@ -301,8 +262,8 @@ def margin_data():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize demo data for this user if needed
-    initialize_demo_data(chat_id)
+    # Initialize user environment if needed
+    initialize_user_environment(chat_id)
     
     # Get margin data for this specific user only
     margin_summary = get_margin_summary(chat_id)
@@ -351,8 +312,8 @@ def user_trades():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize demo data for this user if needed
-    initialize_demo_data(chat_id)
+    # Initialize user environment if needed
+    initialize_user_environment(chat_id)
     
     user_trade_list = []
     
@@ -1246,8 +1207,8 @@ def get_margin_summary(chat_id):
     """Get comprehensive margin summary for a user"""
     user_trades = user_trade_configs.get(chat_id, {})
     
-    # Account totals
-    account_balance = 10000.0  # Demo account balance
+    # Account totals - each user gets 1000 USDT trial fund
+    account_balance = 1000.0  # Individual trial fund per user
     total_position_margin = 0.0
     total_unrealized_pnl = 0.0
     
