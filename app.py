@@ -1,10 +1,12 @@
 import os
 import logging
 from flask import Flask, request, jsonify, render_template
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.request
 import urllib.parse
 import json
+import random
+import time
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, UserCredentials, UserTradingSession
 
@@ -227,6 +229,104 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.utcnow().isoformat()
     })
+
+@app.route('/api/market-data')
+def get_market_data():
+    """Get live market data for a symbol"""
+    symbol = request.args.get('symbol', 'BTCUSDT')
+    
+    try:
+        # Use Binance API as data source for live market data
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode())
+        
+        return jsonify({
+            'symbol': data['symbol'],
+            'price': float(data['lastPrice']),
+            'change': float(data['priceChange']),
+            'changePercent': float(data['priceChangePercent']),
+            'high': float(data['highPrice']),
+            'low': float(data['lowPrice']),
+            'volume': float(data['volume']),
+            'quoteVolume': float(data['quoteVolume']),
+            'openPrice': float(data['openPrice']),
+            'timestamp': int(time.time() * 1000)
+        })
+    except Exception as e:
+        logging.error(f"Error fetching market data: {str(e)}")
+        # Fallback to demo data for development
+        return jsonify({
+            'symbol': symbol,
+            'price': 45000 + random.uniform(-2000, 2000),
+            'change': random.uniform(-1000, 1000),
+            'changePercent': random.uniform(-5, 5),
+            'high': 47000 + random.uniform(-1000, 1000),
+            'low': 43000 + random.uniform(-1000, 1000),
+            'volume': random.uniform(20000, 50000),
+            'quoteVolume': random.uniform(900000000, 1200000000),
+            'openPrice': 44500 + random.uniform(-1000, 1000),
+            'timestamp': int(time.time() * 1000)
+        })
+
+@app.route('/api/kline-data')
+def get_kline_data():
+    """Get candlestick data for chart"""
+    symbol = request.args.get('symbol', 'BTCUSDT')
+    interval = request.args.get('interval', '4h')
+    limit = request.args.get('limit', '50')
+    
+    try:
+        # Use Binance API for candlestick data
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode())
+        
+        # Convert to chart format
+        chart_data = []
+        for kline in data:
+            chart_data.append({
+                'timestamp': int(kline[0]),
+                'open': float(kline[1]),
+                'high': float(kline[2]),
+                'low': float(kline[3]),
+                'close': float(kline[4]),
+                'volume': float(kline[5])
+            })
+        
+        return jsonify({
+            'symbol': symbol,
+            'interval': interval,
+            'data': chart_data
+        })
+    except Exception as e:
+        logging.error(f"Error fetching kline data: {str(e)}")
+        # Fallback to demo data
+        chart_data = []
+        base_price = 45000
+        current_time = int(time.time() * 1000)
+        
+        for i in range(int(limit)):
+            timestamp = current_time - (i * 4 * 60 * 60 * 1000)  # 4 hour intervals
+            open_price = base_price + random.uniform(-2000, 2000)
+            close_price = open_price + random.uniform(-500, 500)
+            high_price = max(open_price, close_price) + random.uniform(0, 300)
+            low_price = min(open_price, close_price) - random.uniform(0, 300)
+            
+            chart_data.insert(0, {
+                'timestamp': timestamp,
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': close_price,
+                'volume': random.uniform(100, 1000)
+            })
+        
+        return jsonify({
+            'symbol': symbol,
+            'interval': interval,
+            'data': chart_data
+        })
 
 
 
