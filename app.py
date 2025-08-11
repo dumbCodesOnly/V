@@ -92,22 +92,22 @@ class TradeConfig:
     def __init__(self, trade_id, name="New Trade"):
         self.trade_id = trade_id
         self.name = name
-        self.symbol = None
-        self.side = None  # 'long' or 'short'
-        self.amount = None
+        self.symbol = ""
+        self.side = ""  # 'long' or 'short'
+        self.amount = 0.0
         self.leverage = 1
-        self.entry_price = None
-        self.entry_type = None  # 'market' or 'limit'
+        self.entry_price = 0.0
+        self.entry_type = ""  # 'market' or 'limit'
         self.waiting_for_limit_price = False  # Track if waiting for limit price input
         # Take profit system - percentages and allocations
         self.take_profits = []  # List of {percentage: float, allocation: float}
         self.tp_config_step = "percentages"  # "percentages" or "allocations"
-        self.stop_loss_percent = None
-        self.breakeven_after = None
+        self.stop_loss_percent = 0.0
+        self.breakeven_after = 0.0
         # Trailing Stop System - Clean Implementation
         self.trailing_stop_enabled = False
-        self.trail_percentage = None  # Percentage for trailing stop
-        self.trail_activation_price = None  # Price level to activate trailing stop
+        self.trail_percentage = 0.0  # Percentage for trailing stop
+        self.trail_activation_price = 0.0  # Price level to activate trailing stop
         self.waiting_for_trail_percent = False  # Track if waiting for trail percentage input
         self.waiting_for_trail_activation = False  # Track if waiting for trail activation price
         self.status = "configured"  # configured, active, stopped
@@ -123,15 +123,15 @@ class TradeConfig:
         return self.name
         
     def is_complete(self):
-        return all([self.symbol, self.side, self.amount])
+        return all([self.symbol, self.side, self.amount > 0])
         
     def get_config_summary(self):
         summary = f"📋 {self.get_display_name()}\n\n"
-        summary += f"Symbol: {self.symbol or 'Not set'}\n"
-        summary += f"Side: {self.side or 'Not set'}\n"
-        summary += f"Amount: {self.amount or 'Not set'}\n"
+        summary += f"Symbol: {self.symbol if self.symbol else 'Not set'}\n"
+        summary += f"Side: {self.side if self.side else 'Not set'}\n"
+        summary += f"Amount: {self.amount if self.amount > 0 else 'Not set'}\n"
         summary += f"Leverage: {self.leverage}x\n"
-        if self.entry_type == "limit" and self.entry_price:
+        if self.entry_type == "limit" and self.entry_price > 0:
             summary += f"Entry: ${self.entry_price:.4f} (LIMIT)\n"
         else:
             summary += f"Entry: Market Price\n"
@@ -144,14 +144,14 @@ class TradeConfig:
         else:
             summary += f"Take Profits: Not set\n"
             
-        summary += f"Stop Loss: {self.stop_loss_percent}%" if self.stop_loss_percent else "Stop Loss: Not set\n"
+        summary += f"Stop Loss: {self.stop_loss_percent}%" if self.stop_loss_percent > 0 else "Stop Loss: Not set\n"
         
         # Show trailing stop status
         if self.trailing_stop_enabled:
             summary += f"Trailing Stop: Enabled\n"
-            if self.trail_percentage:
+            if self.trail_percentage > 0:
                 summary += f"  Trail %: {self.trail_percentage}%\n"
-            if self.trail_activation_price:
+            if self.trail_activation_price > 0:
                 summary += f"  Activation: ${self.trail_activation_price:.4f}\n"
         else:
             summary += f"Trailing Stop: Disabled\n"
@@ -164,10 +164,10 @@ class TradeConfig:
         steps = {
             "Symbol": "✅" if self.symbol else "⏳",
             "Side": "✅" if self.side else "⏳", 
-            "Amount": "✅" if self.amount else "⏳",
-            "Entry": "✅" if (self.entry_type == "market" or (self.entry_type == "limit" and self.entry_price)) else "⏳",
+            "Amount": "✅" if self.amount > 0 else "⏳",
+            "Entry": "✅" if (self.entry_type == "market" or (self.entry_type == "limit" and self.entry_price > 0)) else "⏳",
             "Take Profits": "✅" if self.take_profits else "⏳",
-            "Stop Loss": "✅" if self.stop_loss_percent else "⏳"
+            "Stop Loss": "✅" if self.stop_loss_percent > 0 else "⏳"
         }
         
         completed = sum(1 for status in steps.values() if status == "✅")
@@ -186,12 +186,12 @@ class TradeConfig:
         
         # Add current settings summary
         header += "📋 Current Settings:\n"
-        header += f"   💱 Pair: {self.symbol or 'Not set'}\n"
+        header += f"   💱 Pair: {self.symbol if self.symbol else 'Not set'}\n"
         header += f"   📈 Side: {self.side.upper() if self.side else 'Not set'}\n"
-        header += f"   💰 Amount: ${self.amount or 'Not set'}\n"
+        header += f"   💰 Amount: ${self.amount if self.amount > 0 else 'Not set'}\n"
         header += f"   📊 Leverage: {self.leverage}x\n"
         
-        if self.entry_type == "limit" and self.entry_price:
+        if self.entry_type == "limit" and self.entry_price > 0:
             header += f"   🎯 Entry: ${self.entry_price:.4f} (LIMIT)\n"
         elif self.entry_type == "market":
             header += f"   🎯 Entry: Market Price\n"
@@ -203,13 +203,13 @@ class TradeConfig:
         else:
             header += f"   🎯 Take Profits: Not set\n"
             
-        if self.stop_loss_percent:
+        if self.stop_loss_percent > 0:
             header += f"   🛑 Stop Loss: {self.stop_loss_percent}%\n"
         else:
             header += f"   🛑 Stop Loss: Not set\n"
             
         # Break-even settings
-        if self.breakeven_after:
+        if self.breakeven_after > 0:
             header += f"   ⚖️ Break-even: After {self.breakeven_after}% profit\n"
         else:
             header += f"   ⚖️ Break-even: Not set\n"
@@ -217,9 +217,9 @@ class TradeConfig:
         # Trailing stop settings
         if self.trailing_stop_enabled:
             trail_info = "Enabled"
-            if self.trail_percentage:
+            if self.trail_percentage > 0:
                 trail_info += f" ({self.trail_percentage}%)"
-            if self.trail_activation_price:
+            if self.trail_activation_price > 0:
                 trail_info += f" @ ${self.trail_activation_price:.4f}"
             header += f"   📉 Trailing Stop: {trail_info}\n"
         else:
@@ -435,11 +435,11 @@ def save_trade():
         if 'entry_type' in trade_data:
             config.entry_type = trade_data['entry_type']
         if 'entry_price' in trade_data:
-            config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else None
+            config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
         if 'take_profits' in trade_data:
             config.take_profits = trade_data['take_profits']
         if 'stop_loss_percent' in trade_data:
-            config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else None
+            config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else 0.0
         
         # Update breakeven and trailing stop settings
         if 'breakeven_after' in trade_data:
@@ -447,9 +447,9 @@ def save_trade():
         if 'trailing_stop_enabled' in trade_data:
             config.trailing_stop_enabled = bool(trade_data['trailing_stop_enabled'])
         if 'trail_percentage' in trade_data:
-            config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else None
+            config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else 0.0
         if 'trail_activation_price' in trade_data:
-            config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else None
+            config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else 0.0
         
         # Set as selected trade for user
         user_selected_trade[chat_id] = trade_id
@@ -758,7 +758,7 @@ Use the menu below to navigate:"""
                         return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
                     
                     # Check if we're expecting an amount input
-                    elif not config.amount:
+                    elif config.amount <= 0:
                         config.amount = value
                         header = config.get_trade_header("Amount Set")
                         return f"{header}✅ Set trade amount to ${value}", get_trading_menu(chat_id)
@@ -804,7 +804,7 @@ Use the menu below to navigate:"""
 
                     
                     # Check if we're expecting stop loss
-                    elif not config.stop_loss_percent:
+                    elif config.stop_loss_percent <= 0:
                         config.stop_loss_percent = value
                         return f"✅ Set stop loss to {value}%\n\n🎯 Trade configuration complete!", get_trading_menu(chat_id)
                     
