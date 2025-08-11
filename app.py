@@ -231,13 +231,13 @@ class TradeConfig:
         return header
 
 @app.route('/')
-def dashboard():
-    """Bot dashboard"""
-    return render_template('dashboard.html')
+def mini_app():
+    """Telegram Mini App interface - Main route"""
+    return render_template('mini_app.html')
 
 @app.route('/miniapp')
-def mini_app():
-    """Telegram Mini App interface"""
+def mini_app_alias():
+    """Telegram Mini App interface - Alias route"""
     return render_template('mini_app.html')
 
 @app.route('/health')
