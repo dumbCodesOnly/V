@@ -52,8 +52,12 @@ class TradeConfig:
         self.tp_config_step = "percentages"  # "percentages" or "allocations"
         self.stop_loss_percent = None
         self.breakeven_after = None
-        self.trailing_stop = False
-        self.trail_percent = None
+        # Trailing Stop System - Clean Implementation
+        self.trailing_stop_enabled = False
+        self.trail_percentage = None  # Percentage for trailing stop
+        self.trail_activation_price = None  # Price level to activate trailing stop
+        self.waiting_for_trail_percent = False  # Track if waiting for trail percentage input
+        self.waiting_for_trail_activation = False  # Track if waiting for trail activation price
         self.status = "configured"  # configured, active, stopped
         
     def get_display_name(self):
@@ -84,6 +88,17 @@ class TradeConfig:
             summary += f"Take Profits: Not set\n"
             
         summary += f"Stop Loss: {self.stop_loss_percent}%" if self.stop_loss_percent else "Stop Loss: Not set\n"
+        
+        # Show trailing stop status
+        if self.trailing_stop_enabled:
+            summary += f"Trailing Stop: Enabled\n"
+            if self.trail_percentage:
+                summary += f"  Trail %: {self.trail_percentage}%\n"
+            if self.trail_activation_price:
+                summary += f"  Activation: ${self.trail_activation_price:.4f}\n"
+        else:
+            summary += f"Trailing Stop: Disabled\n"
+            
         summary += f"Status: {self.status.title()}\n"
         return summary
 
@@ -341,6 +356,20 @@ Use the interactive menu for advanced features like multi-trade management, port
                                     else:
                                         return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
                                 break
+                    
+                    # Check if we're expecting trailing stop percentage
+                    elif config.waiting_for_trail_percent:
+                        config.trail_percentage = value
+                        config.waiting_for_trail_percent = False
+                        config.trailing_stop_enabled = True
+                        return f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!", get_trailing_stop_menu()
+                    
+                    # Check if we're expecting trailing stop activation price
+                    elif config.waiting_for_trail_activation:
+                        config.trail_activation_price = value
+                        config.waiting_for_trail_activation = False
+                        config.trailing_stop_enabled = True
+                        return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
                     
                     # Check if we're expecting stop loss
                     elif not config.stop_loss_percent:
@@ -738,7 +767,22 @@ def handle_callback_query(callback_data, chat_id, user):
             user_config = user_configs.get(chat_id, {})
             config_summary += f"Default Leverage: {user_config.get('default_leverage', '1x')}\n"
             config_summary += f"Break-even Mode: {user_config.get('breakeven_mode', 'After TP1')}\n"
-            config_summary += f"Trailing Stop: {user_config.get('trailing_stop', 'Disabled')}\n"
+            # Show trailing stop status from current selected trade
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    if config.trailing_stop_enabled:
+                        config_summary += f"Trailing Stop: Enabled"
+                        if config.trail_percentage:
+                            config_summary += f" ({config.trail_percentage}%)"
+                        config_summary += "\n"
+                    else:
+                        config_summary += f"Trailing Stop: Disabled\n"
+                else:
+                    config_summary += f"Trailing Stop: Disabled\n"
+            else:
+                config_summary += f"Trailing Stop: Disabled\n"
             return config_summary, get_config_menu()
             
         # Multi-trade specific handlers
@@ -833,13 +877,13 @@ def handle_callback_query(callback_data, chat_id, user):
             breakeven_mode = callback_data.replace("breakeven_", "")
             return handle_set_breakeven(chat_id, breakeven_mode)
         elif callback_data == "set_trailstop":
-            return "📈 Trailing Stop Settings\n\nConfigure trailing stop parameters:", get_trailing_stop_menu()
-        elif callback_data == "set_trail_percent":
-            return "📉 Enter trailing stop percentage (e.g., 2 for 2%):", get_config_menu()
-        elif callback_data == "set_trail_activation":
-            return "🎯 Enter activation profit percentage (e.g., 5 for 5%):", get_config_menu()
-        elif callback_data == "disable_trailing":
-            return handle_disable_trailing(chat_id)
+            return "📈 Trailing Stop Settings\n\nConfigure your trailing stop:", get_trailing_stop_menu()
+        elif callback_data == "trail_set_percent":
+            return handle_trail_percent_request(chat_id)
+        elif callback_data == "trail_set_activation":
+            return handle_trail_activation_request(chat_id)
+        elif callback_data == "trail_disable":
+            return handle_trailing_stop_disable(chat_id)
 
         elif callback_data == "reset_settings":
             if chat_id in user_configs:
@@ -1025,12 +1069,12 @@ def get_breakeven_menu():
     }
 
 def get_trailing_stop_menu():
-    """Get trailing stop configuration menu"""
+    """Get trailing stop configuration menu - Clean implementation"""
     return {
         "inline_keyboard": [
-            [{"text": "📉 Set Trail Percentage", "callback_data": "set_trail_percent"}],
-            [{"text": "🎯 Set Activation Profit %", "callback_data": "set_trail_activation"}],
-            [{"text": "❌ Disable Trailing Stop", "callback_data": "disable_trailing"}],
+            [{"text": "📉 Set Trail Percentage", "callback_data": "trail_set_percent"}],
+            [{"text": "🎯 Set Activation Price", "callback_data": "trail_set_activation"}], 
+            [{"text": "❌ Disable Trailing Stop", "callback_data": "trail_disable"}],
             [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
         ]
     }
@@ -1290,12 +1334,37 @@ def handle_set_breakeven(chat_id, mode):
     user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
     return f"✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_config_menu()
 
-def handle_disable_trailing(chat_id):
-    """Handle disabling trailing stop"""
-    if chat_id not in user_configs:
-        user_configs[chat_id] = {}
-    user_configs[chat_id]['trailing_stop'] = 'Disabled'
-    return "✅ Trailing stop disabled", get_config_menu()
+def handle_trailing_stop_disable(chat_id):
+    """Handle disabling trailing stop - Clean implementation"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.trailing_stop_enabled = False
+            config.trail_percentage = None
+            config.trail_activation_price = None
+            return "✅ Trailing stop disabled for current trade", get_trailing_stop_menu()
+    return "❌ No trade selected", get_config_menu()
+
+def handle_trail_percent_request(chat_id):
+    """Handle request to set trailing stop percentage"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.waiting_for_trail_percent = True
+            return "📉 Enter trailing stop percentage (e.g., 2 for 2%):\n\nThis will move your stop loss when price moves favorably.", None
+    return "❌ No trade selected", get_config_menu()
+
+def handle_trail_activation_request(chat_id):
+    """Handle request to set trailing stop activation price"""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.waiting_for_trail_activation = True
+            return "🎯 Enter activation price (e.g., 45500):\n\nTrailing stop will activate when price reaches this level.", None
+    return "❌ No trade selected", get_config_menu()
 
 
 

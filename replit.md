@@ -28,6 +28,7 @@ Preferred communication style: Simple, everyday language.
 - **LIMIT ORDER BUG FIX**: Fixed critical bug where limit orders were always executing as market orders. Added proper state tracking with `waiting_for_limit_price` flag and `entry_type` field. System now correctly executes LIMIT orders at user-specified prices vs MARKET orders at current market price
 - **ALLOCATION RESET BUG FIX**: Fixed missing callback handlers for "Reset All Allocations" and "Reset Last Allocation" buttons. Added proper handlers for `tp_reset_all_alloc` and `tp_reset_last_alloc` with smart logic to reset all or just the most recent allocation
 - **UI CLEANUP**: Removed useless "Default Settings" button from configuration menu per user request. Cleaned up associated callback handlers and helper functions to streamline the interface
+- **TRAILING STOP REWRITE**: Completely rewrote buggy trailing stop system with clean implementation. New system has exactly three options: Set Trail Percentage button, Set Activation Price button, and Disable Trailing Stop button. Removed all legacy trailing stop code and replaced with focused, bug-free implementation with proper state tracking
 
 ## System Architecture
 
