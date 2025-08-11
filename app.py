@@ -235,9 +235,10 @@ def get_market_data():
     """Get live market data for a symbol"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     
+    # Define URL outside try block for proper scope
+    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+    
     try:
-        # Use Binance API as data source for live market data
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         
