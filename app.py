@@ -535,7 +535,6 @@ def get_config_menu():
             [{"text": "🏷️ Set Trade Name", "callback_data": "set_trade_name"}],
             [{"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"}],
             [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
-            [{"text": "⚙️ Default Settings", "callback_data": "default_settings"}],
             [{"text": "🔄 Reset All Settings", "callback_data": "reset_settings"}],
             [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
         ]
@@ -841,19 +840,7 @@ def handle_callback_query(callback_data, chat_id, user):
             return "🎯 Enter activation profit percentage (e.g., 5 for 5%):", get_config_menu()
         elif callback_data == "disable_trailing":
             return handle_disable_trailing(chat_id)
-        elif callback_data == "default_settings":
-            user_config = user_configs.get(chat_id, {})
-            return f"⚙️ Default Settings:\n\nLeverage: {user_config.get('default_leverage', '1x')}\nBreak-even: {user_config.get('breakeven_mode', 'After TP1')}", get_default_settings_menu()
-        elif callback_data == "change_default_leverage":
-            return "⚖️ Select new default leverage:", get_default_leverage_menu()
-        elif callback_data.startswith("default_lev_"):
-            leverage = callback_data.replace("default_lev_", "")
-            return handle_set_default_leverage(chat_id, leverage)
-        elif callback_data == "change_breakeven_mode":
-            return "⚖️ Select break-even mode:", get_breakeven_mode_menu()
-        elif callback_data.startswith("breakeven_mode_"):
-            mode = callback_data.replace("breakeven_mode_", "")
-            return handle_set_breakeven_mode(chat_id, mode)
+
         elif callback_data == "reset_settings":
             if chat_id in user_configs:
                 user_configs[chat_id] = {}
@@ -1048,15 +1035,7 @@ def get_trailing_stop_menu():
         ]
     }
 
-def get_default_settings_menu():
-    """Get default settings menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "⚖️ Change Default Leverage", "callback_data": "change_default_leverage"}],
-            [{"text": "🎯 Change Break-even Mode", "callback_data": "change_breakeven_mode"}],
-            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
-        ]
-    }
+
 
 def handle_set_side(chat_id, side):
     """Handle setting trade side (long/short)"""
@@ -1318,27 +1297,9 @@ def handle_disable_trailing(chat_id):
     user_configs[chat_id]['trailing_stop'] = 'Disabled'
     return "✅ Trailing stop disabled", get_config_menu()
 
-def handle_set_default_leverage(chat_id, leverage):
-    """Handle setting default leverage"""
-    if chat_id not in user_configs:
-        user_configs[chat_id] = {}
-    user_configs[chat_id]['default_leverage'] = f"{leverage}x"
-    return f"✅ Default leverage set to {leverage}x", get_default_settings_menu()
 
-def handle_set_breakeven_mode(chat_id, mode):
-    """Handle setting breakeven mode"""
-    if chat_id not in user_configs:
-        user_configs[chat_id] = {}
-    
-    mode_map = {
-        "tp1": "After TP1",
-        "tp2": "After TP2",
-        "tp3": "After TP3",
-        "off": "Disabled"
-    }
-    
-    user_configs[chat_id]['breakeven_mode'] = mode_map.get(mode, "After TP1")
-    return f"✅ Break-even mode set to: {mode_map.get(mode, 'After TP1')}", get_default_settings_menu()
+
+
 
 def get_amount_wizard_menu():
     """Get amount setting wizard menu"""
@@ -1368,31 +1329,7 @@ def get_tp_percentage_menu(tp_level):
         ]
     }
 
-def get_default_leverage_menu():
-    """Get default leverage menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "1x", "callback_data": "default_lev_1"}],
-            [{"text": "2x", "callback_data": "default_lev_2"}],
-            [{"text": "5x", "callback_data": "default_lev_5"}],
-            [{"text": "10x", "callback_data": "default_lev_10"}],
-            [{"text": "20x", "callback_data": "default_lev_20"}],
-            [{"text": "50x", "callback_data": "default_lev_50"}],
-            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
-        ]
-    }
 
-def get_breakeven_mode_menu():
-    """Get break-even mode selection menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "After TP1", "callback_data": "breakeven_mode_tp1"}],
-            [{"text": "After TP2", "callback_data": "breakeven_mode_tp2"}],
-            [{"text": "After TP3", "callback_data": "breakeven_mode_tp3"}],
-            [{"text": "Disable", "callback_data": "breakeven_mode_off"}],
-            [{"text": "🏠 Back to Config", "callback_data": "menu_config"}]
-        ]
-    }
 
 def handle_set_amount_wizard(chat_id, amount):
     """Handle setting amount with wizard flow"""

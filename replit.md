@@ -27,6 +27,7 @@ Preferred communication style: Simple, everyday language.
 - **TAKE PROFIT SYSTEM REWRITE**: Completely rewrote buggy take profit system with new two-phase approach: set percentages first (TP1, TP2, TP3), then set position allocation for each TP level with validation to ensure total allocation doesn't exceed 100%
 - **LIMIT ORDER BUG FIX**: Fixed critical bug where limit orders were always executing as market orders. Added proper state tracking with `waiting_for_limit_price` flag and `entry_type` field. System now correctly executes LIMIT orders at user-specified prices vs MARKET orders at current market price
 - **ALLOCATION RESET BUG FIX**: Fixed missing callback handlers for "Reset All Allocations" and "Reset Last Allocation" buttons. Added proper handlers for `tp_reset_all_alloc` and `tp_reset_last_alloc` with smart logic to reset all or just the most recent allocation
+- **UI CLEANUP**: Removed useless "Default Settings" button from configuration menu per user request. Cleaned up associated callback handlers and helper functions to streamline the interface
 
 ## System Architecture
 
