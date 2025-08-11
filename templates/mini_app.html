@@ -964,18 +964,56 @@
                             <div class="stat-value" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
                                 $${(pos.unrealized_pnl || 0).toFixed(2)}
                             </div>
+                            <small class="text-muted">P&L</small>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-6">
-                            <small class="text-muted">Size:</small><br>
+                    
+                    <!-- Position Details -->
+                    <div class="row mt-2">
+                        <div class="col-4">
+                            <small class="text-muted">Amount:</small><br>
                             <strong>$${pos.amount}</strong>
                         </div>
-                        <div class="col-6">
+                        <div class="col-4">
                             <small class="text-muted">Leverage:</small><br>
                             <strong>${pos.leverage}x</strong>
                         </div>
+                        <div class="col-4">
+                            <small class="text-muted">Entry:</small><br>
+                            <strong>$${pos.entry_price || 'Market'}</strong>
+                        </div>
                     </div>
+                    
+                    <!-- Current Price & ROE -->
+                    ${pos.current_price ? `
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Current Price:</small><br>
+                            <strong>$${pos.current_price}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">ROE:</small><br>
+                            <strong style="color: ${calculateROE(pos) >= 0 ? '#28a745' : '#dc3545'}">
+                                ${calculateROE(pos).toFixed(2)}%
+                            </strong>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <!-- Margin Info -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Margin Used:</small><br>
+                            <strong>$${(pos.margin_used || 0).toFixed(2)}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Status:</small><br>
+                            <strong class="text-${pos.status === 'active' ? 'success' : pos.status === 'pending' ? 'warning' : 'danger'}">
+                                ${pos.status.toUpperCase()}
+                            </strong>
+                        </div>
+                    </div>
+                    
                     <div class="trade-controls mt-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                         <button class="btn btn-outline-primary btn-sm" onclick="editTrade('${pos.trade_id}')">
                             ✏️ Edit
