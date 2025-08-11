@@ -10,6 +10,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### Enhanced Trade Information Display (August 11, 2025)
+- ✅ Added comprehensive trade details for active positions in trading tab
+- ✅ Shows P&L, entry price, take profit levels, stop loss, current price, and ROE
+- ✅ Smart display - detailed info for active trades, basic info for configurations
+- ✅ Real-time ROE calculation based on margin and unrealized P&L
+- ✅ Color-coded P&L and ROE indicators (green/red for profit/loss)
+
 ### Complete Trade Management UI (August 11, 2025)
 - ✅ Added full Edit/Execute/Delete functionality to web app trading tab
 - ✅ Implemented `/api/delete-trade` endpoint for secure trade deletion

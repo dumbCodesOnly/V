@@ -1007,10 +1007,20 @@
                             <strong>${trade.name}</strong>
                             <span class="status-badge status-${trade.status} ms-2">${trade.status}</span>
                         </div>
+                        ${trade.status === 'active' && trade.unrealized_pnl !== undefined ? 
+                            `<div class="text-end">
+                                <div class="stat-value" style="color: ${trade.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                    $${trade.unrealized_pnl.toFixed(2)}
+                                </div>
+                                <small class="text-muted">P&L</small>
+                            </div>` : ''
+                        }
                     </div>
                     <div class="progress-indicator">
                         ${getTradeProgress(trade)}
                     </div>
+                    
+                    <!-- Basic Trade Info -->
                     <div class="row mt-2">
                         <div class="col-6">
                             <small class="text-muted">Symbol:</small><br>
@@ -1021,6 +1031,70 @@
                             <strong>${trade.side ? trade.side.toUpperCase() : 'Not set'}</strong>
                         </div>
                     </div>
+                    
+                    ${trade.status === 'active' ? `
+                    <!-- Active Trade Details -->
+                    <div class="row mt-2">
+                        <div class="col-4">
+                            <small class="text-muted">Amount:</small><br>
+                            <strong>$${trade.amount || '0'}</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Leverage:</small><br>
+                            <strong>${trade.leverage || '1'}x</strong>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Entry:</small><br>
+                            <strong>$${trade.entry_price || 'Market'}</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- Take Profit & Stop Loss -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Take Profits:</small><br>
+                            <strong>
+                                ${trade.take_profits && trade.take_profits.length > 0 ? 
+                                    trade.take_profits.map(tp => `$${tp.price || tp}`).join(', ') : 
+                                    'Not set'}
+                            </strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Stop Loss:</small><br>
+                            <strong>
+                                ${trade.stop_loss_percent ? `${trade.stop_loss_percent}%` : 'Not set'}
+                            </strong>
+                        </div>
+                    </div>
+                    
+                    ${trade.current_price ? `
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Current Price:</small><br>
+                            <strong>$${trade.current_price}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">ROE:</small><br>
+                            <strong style="color: ${calculateROE(trade) >= 0 ? '#28a745' : '#dc3545'}">
+                                ${calculateROE(trade).toFixed(2)}%
+                            </strong>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ` : `
+                    <!-- Configuration Details for Non-Active Trades -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Amount:</small><br>
+                            <strong>${trade.amount ? '$' + trade.amount : 'Not set'}</strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Leverage:</small><br>
+                            <strong>${trade.leverage ? trade.leverage + 'x' : 'Not set'}</strong>
+                        </div>
+                    </div>
+                    `}
+                    
                     <div class="trade-controls mt-2" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.25rem;">
                         <button class="btn btn-outline-primary btn-sm" onclick="editTradeConfig('${trade.trade_id}')">
                             ✏️ Edit
@@ -1392,6 +1466,13 @@
                 loadTradeConfigs();
                 loadPositions();
             }
+        }
+
+        function calculateROE(trade) {
+            if (!trade.unrealized_pnl || !trade.amount || !trade.leverage) return 0;
+            const positionSize = trade.amount;
+            const margin = positionSize / (trade.leverage || 1);
+            return margin > 0 ? (trade.unrealized_pnl / margin) * 100 : 0;
         }
 
         function getTradeProgress(trade) {
