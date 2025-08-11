@@ -348,17 +348,7 @@ Use the menu below to navigate:"""
     elif text.startswith('/menu'):
         return "📋 Main Menu:", get_main_menu()
     
-    elif text.startswith('/help'):
-        help_text = """📚 Trading Bot Help
 
-🔹 /start - Show main menu
-🔹 /menu - Access main menu
-🔹 /price <symbol> - Get current price (e.g., /price BTCUSDT)
-🔹 /buy <symbol> <quantity> - Place buy order
-🔹 /sell <symbol> <quantity> - Place sell order
-
-Use the interactive menu for advanced features like multi-trade management, portfolio analytics, and configuration."""
-        return help_text, get_main_menu()
     
     elif text.startswith('/price'):
         parts = text.split()
@@ -503,7 +493,7 @@ Use the interactive menu for advanced features like multi-trade management, port
                 except ValueError:
                     pass
         
-        return "🤔 I didn't understand that command. Type /help to see available commands.", None
+        return "🤔 I didn't understand that command. Use the menu buttons to navigate.", get_main_menu()
 
 def get_mock_price(symbol):
     """Get mock price for a trading symbol"""
@@ -686,8 +676,7 @@ def get_main_menu():
             [{"text": "🔄 Positions Manager", "callback_data": "menu_positions"}],
             [{"text": "📊 Trading", "callback_data": "menu_trading"}],
             [{"text": "💼 Portfolio & Analytics", "callback_data": "menu_portfolio"}],
-            [{"text": "📈 Quick Price Check", "callback_data": "quick_price"}],
-            [{"text": "📋 Help", "callback_data": "help"}]
+            [{"text": "📈 Quick Price Check", "callback_data": "quick_price"}]
         ]
     }
 
@@ -831,16 +820,7 @@ def handle_callback_query(callback_data, chat_id, user):
             return "💼 Portfolio & Analytics:", get_portfolio_menu()
         elif callback_data == "select_pair":
             return "💱 Select a trading pair:", get_pairs_menu()
-        elif callback_data == "help":
-            help_text = """📚 Trading Bot Help
 
-🔹 Use the menu buttons to navigate
-🔹 Quick commands: /price <symbol>, /buy, /sell
-🔹 Multi-trade features for advanced trading
-🔹 Portfolio analytics and performance tracking
-
-⚠️ This is a demo environment with mock data."""
-            return help_text, get_main_menu()
         
         # Trading pair selection
         elif callback_data.startswith("pair_"):
