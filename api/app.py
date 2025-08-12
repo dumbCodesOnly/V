@@ -62,7 +62,25 @@ def index():
                         </div>
                     `;
                 } catch (error) {
-                    console.error('Error:', error);
+                    console.error('Error loading market data:', error);
+                    document.getElementById('stats').innerHTML = `
+                        <div class="stat">
+                            <div>BTC Price</div>
+                            <div style="color: #f44336;">Loading Failed</div>
+                        </div>
+                        <div class="stat">
+                            <div>Status</div>
+                            <div style="color: #f44336;">API Error</div>
+                        </div>
+                        <div class="stat">
+                            <div>Last Try</div>
+                            <div>${new Date().toLocaleTimeString()}</div>
+                        </div>
+                        <div class="stat">
+                            <div>Action</div>
+                            <div>Retrying...</div>
+                        </div>
+                    `;
                 }
             }
             loadData();
@@ -74,22 +92,58 @@ def index():
 
 @app.route('/api/market')
 def market():
-    # Use realistic demo data for Vercel deployment
-    # External API calls are restricted in serverless environment
-    import random
-    
-    # Generate realistic BTC price movements
-    base_price = 120000 + random.uniform(-2000, 2000)
-    change = random.uniform(-1000, 2000)
-    change_percent = (change / base_price) * 100
-    
-    return jsonify({
-        'price': round(base_price, 2),
-        'change': round(change, 2),
-        'changePercent': round(change_percent, 2),
-        'timestamp': int(time.time() * 1000),
-        'demo': True
-    })
+    try:
+        # Try alternative crypto API that works with Vercel
+        import urllib.request
+        
+        # Try CoinGecko API (no API key required)
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"
+        
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (compatible; TradingBot/1.0)')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+            
+        btc_data = data['bitcoin']
+        price = btc_data['usd']
+        change_percent = btc_data.get('usd_24h_change', 0)
+        change = (change_percent / 100) * price
+        
+        return jsonify({
+            'price': round(price, 2),
+            'change': round(change, 2),
+            'changePercent': round(change_percent, 2),
+            'timestamp': int(time.time() * 1000),
+            'source': 'coingecko'
+        })
+        
+    except Exception as e:
+        # If that fails, try another approach
+        try:
+            # Try Binance public API with different approach
+            url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            req.add_header('Accept', 'application/json')
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+            
+            return jsonify({
+                'price': float(data['lastPrice']),
+                'change': float(data['priceChange']),
+                'changePercent': float(data['priceChangePercent']),
+                'timestamp': int(time.time() * 1000),
+                'source': 'binance'
+            })
+            
+        except Exception as e2:
+            # Return error message instead of fallback data
+            return jsonify({
+                'error': f'Unable to fetch live data: {str(e)}, {str(e2)}',
+                'timestamp': int(time.time() * 1000)
+            }), 503
 
 @app.route('/health')
 def health():
