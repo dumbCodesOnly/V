@@ -151,6 +151,5 @@ def kline_data():
         logging.error(f"Error fetching kline data: {e}")
         return jsonify({'error': str(e)}), 500
 
-# Vercel serverless function handler
-def handler(request):
-    return app
+# Vercel serverless function handler - export the Flask app directly
+application = app
