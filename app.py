@@ -10,8 +10,9 @@ import time
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, UserCredentials, UserTradingSession
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging - reduce verbosity for serverless
+log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
+logging.basicConfig(level=log_level)
 
 # Create the Flask app
 app = Flask(__name__)
@@ -35,8 +36,29 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Initialize database
 db.init_app(app)
 
-with app.app_context():
-    db.create_all()
+# Create tables only if not in serverless environment or if explicitly needed
+def init_database():
+    """Initialize database tables safely"""
+    try:
+        with app.app_context():
+            db.create_all()
+            logging.info("Database tables created successfully")
+    except Exception as e:
+        logging.error(f"Database initialization error: {e}")
+
+# Initialize database conditionally
+if not os.environ.get("VERCEL"):
+    init_database()
+else:
+    # For Vercel, initialize on first request using newer Flask syntax
+    initialized = False
+    
+    @app.before_request
+    def create_tables():
+        global initialized
+        if not initialized:
+            init_database()
+            initialized = True
 
 # Bot token and webhook URL from environment
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")

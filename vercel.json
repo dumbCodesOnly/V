@@ -2,20 +2,17 @@
   "version": 2,
   "builds": [
     {
-      "src": "main.py",
+      "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": "templates/**"
+        "includeFiles": ["templates/**", "static/**", "models.py", "app.py", "main.py"]
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "main.py"
+      "dest": "api/index.py"
     }
-  ],
-  "env": {
-    "FLASK_APP": "main.py"
-  }
+  ]
 }

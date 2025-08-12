@@ -12,7 +12,10 @@ fi
 # Create requirements.txt from vercel_requirements.txt for Vercel
 if [ -f "vercel_requirements.txt" ]; then
     echo "📦 Copying dependencies..."
-    cp vercel_requirements.txt requirements.txt
+    # Copy without gunicorn for Vercel (Vercel handles WSGI itself)
+    grep -v "gunicorn" vercel_requirements.txt > temp_requirements.txt
+    mv temp_requirements.txt requirements_vercel.txt
+    echo "✅ Created requirements_vercel.txt (without gunicorn)"
 fi
 
 echo "🔧 Starting deployment..."

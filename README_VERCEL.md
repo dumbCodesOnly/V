@@ -32,10 +32,20 @@
 ### Essential
 - `SESSION_SECRET`: Flask session secret (generate a secure random string)
 - `DATABASE_URL`: PostgreSQL connection string (recommend using Supabase, Neon, or Railway)
+- `VERCEL`: Set to "1" (automatically set by Vercel)
 
 ### Optional (for Telegram Bot)
 - `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather
 - `WEBHOOK_URL`: Full webhook URL (https://your-vercel-domain.vercel.app/webhook)
+
+## Fixed Issues in This Version
+
+- ✅ Fixed serverless function crashes
+- ✅ Proper database initialization for serverless environments
+- ✅ Corrected Vercel configuration (removed conflicting builds/functions)
+- ✅ Added proper WSGI entry point
+- ✅ Reduced logging verbosity for production
+- ✅ Optimized for cold starts
 
 ## Database Setup
 
