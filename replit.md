@@ -42,6 +42,7 @@ Preferred communication style: Simple, everyday language.
 - ✅ **Vercel Deployment Configuration (August 12, 2025)** - Added complete Vercel deployment setup with proper configuration files, database optimization for serverless, and comprehensive deployment documentation
 - ✅ **Serverless Function Fixes (August 12, 2025)** - Resolved FUNCTION_INVOCATION_FAILED errors by implementing proper WSGI entry point, fixing Flask version compatibility, optimizing database initialization for cold starts, and creating proper api/index.py structure
 - ✅ **Vercel Runtime Configuration Fix (August 12, 2025)** - Fixed "Function Runtimes must have a valid version" error by updating vercel.json to use proper @vercel/python runtime and setting Python 3.9 compatibility
+- ⚠️ **Vercel API Restriction Issue (August 12, 2025)** - Discovered that Vercel serverless functions block external API calls to Binance (HTTP 451 error), requiring alternative solution for live market data access
 
 ### Automation Removal (August 11, 2025)
 - ✅ Removed automated Mini-App URL setup scripts per user request

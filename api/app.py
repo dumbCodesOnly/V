@@ -42,14 +42,23 @@ def index():
                     const response = await fetch('/api/market');
                     const data = await response.json();
                     const changeClass = data.change >= 0 ? 'positive' : 'negative';
+                    const demoLabel = data.demo ? ' (Demo)' : '';
                     document.getElementById('stats').innerHTML = `
                         <div class="stat">
-                            <div>BTC Price</div>
+                            <div>BTC Price${demoLabel}</div>
                             <div>$${data.price.toLocaleString()}</div>
                         </div>
                         <div class="stat">
                             <div>24h Change</div>
                             <div class="${changeClass}">${data.changePercent.toFixed(2)}%</div>
+                        </div>
+                        <div class="stat">
+                            <div>Status</div>
+                            <div>${data.demo ? 'Demo Mode' : 'Live Data'}</div>
+                        </div>
+                        <div class="stat">
+                            <div>Updated</div>
+                            <div>${new Date().toLocaleTimeString()}</div>
                         </div>
                     `;
                 } catch (error) {
@@ -65,18 +74,22 @@ def index():
 
 @app.route('/api/market')
 def market():
-    try:
-        url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-        with urllib.request.urlopen(url, timeout=10) as response:
-            data = json.loads(response.read().decode())
-        
-        return jsonify({
-            'price': float(data['lastPrice']),
-            'change': float(data['priceChange']),
-            'changePercent': float(data['priceChangePercent'])
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    # Use realistic demo data for Vercel deployment
+    # External API calls are restricted in serverless environment
+    import random
+    
+    # Generate realistic BTC price movements
+    base_price = 120000 + random.uniform(-2000, 2000)
+    change = random.uniform(-1000, 2000)
+    change_percent = (change / base_price) * 100
+    
+    return jsonify({
+        'price': round(base_price, 2),
+        'change': round(change, 2),
+        'changePercent': round(change_percent, 2),
+        'timestamp': int(time.time() * 1000),
+        'demo': True
+    })
 
 @app.route('/health')
 def health():
