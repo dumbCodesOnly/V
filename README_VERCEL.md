@@ -1,0 +1,52 @@
+# Vercel Deployment Guide
+
+## Deployment Steps
+
+1. **Install Vercel CLI** (if not already installed):
+   ```bash
+   npm i -g vercel
+   ```
+
+2. **Deploy to Vercel**:
+   ```bash
+   vercel --prod
+   ```
+
+3. **Set Environment Variables in Vercel Dashboard**:
+   - `SESSION_SECRET`: Your Flask secret key
+   - `DATABASE_URL`: Your PostgreSQL database connection string
+   - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
+   - `WEBHOOK_URL`: Your Vercel domain webhook URL (https://your-app.vercel.app/webhook)
+
+## Required Environment Variables
+
+### Essential
+- `SESSION_SECRET`: Flask session secret (generate a secure random string)
+- `DATABASE_URL`: PostgreSQL connection string (recommend using Supabase, Neon, or Railway)
+
+### Optional (for Telegram Bot)
+- `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather
+- `WEBHOOK_URL`: Full webhook URL (https://your-vercel-domain.vercel.app/webhook)
+
+## Database Setup
+
+For production deployment, use a managed PostgreSQL service:
+- **Supabase**: Free tier available
+- **Neon**: Serverless PostgreSQL
+- **Railway**: PostgreSQL hosting
+- **PlanetScale**: MySQL alternative
+
+## Post-Deployment
+
+1. Set up your database and run migrations
+2. Configure your Telegram bot webhook (if using)
+3. Test all API endpoints
+4. Monitor logs in Vercel dashboard
+
+## Files Created for Vercel
+
+- `vercel.json`: Vercel configuration
+- `runtime.txt`: Python version specification
+- `Procfile`: Process configuration
+- `vercel_requirements.txt`: Python dependencies
+- `.gitignore`: Git ignore rules
