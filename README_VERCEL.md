@@ -2,7 +2,16 @@
 
 ## Deployment Steps
 
-1. **Install Vercel CLI** (if not already installed):
+### Option 1: GitHub Integration (Recommended)
+1. **Push your code to GitHub**
+2. **Connect GitHub repo to Vercel**:
+   - Go to [vercel.com](https://vercel.com)
+   - Click "New Project"
+   - Import your GitHub repository
+   - Vercel will automatically detect the Flask app
+
+### Option 2: Vercel CLI
+1. **Install Vercel CLI**:
    ```bash
    npm i -g vercel
    ```
