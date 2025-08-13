@@ -1440,57 +1440,75 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
 def get_live_market_price(symbol):
-    """Get current market price for a symbol"""
+    """Get current market price for a symbol with multi-source fallback"""
+    # First try Binance API
     try:
-        # Use the same multi-source approach as the API endpoint
-        api_sources = [
-            {
-                'name': 'CoinGecko',
-                'url': 'https://api.coingecko.com/api/v3/simple/price',
-                'parser': 'coingecko'
-            },
-            {
-                'name': 'Binance',
-                'url': f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}",
-                'parser': 'binance'
-            }
-        ]
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         
-        for source in api_sources:
-            try:
-                if source['name'] == 'CoinGecko':
-                    req = urllib.request.Request(
-                        f"{source['url']}?ids=bitcoin&vs_currencies=usd"
-                    )
-                    req.add_header('User-Agent', 'TradingBot/1.0')
-                    
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        data = json.loads(response.read().decode())
-                        
-                    btc_data = data.get('bitcoin', {})
-                    if 'usd' in btc_data:
-                        return float(btc_data['usd'])
-                        
-                elif source['name'] == 'Binance':
-                    req = urllib.request.Request(source['url'])
-                    req.add_header('User-Agent', 'TradingBot/1.0')
-                    
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        data = json.loads(response.read().decode())
-                        
-                    return float(data['price'])
-                    
-            except Exception as e:
-                logging.error(f"Failed to get price from {source['name']}: {str(e)}")
-                continue
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
         
-        # Fallback if all sources fail
-        logging.error("All price sources failed, using fallback price")
-        return 119500.0  # Current approximate BTC price
-        
+        price = float(data['price'])
+        logging.info(f"Retrieved live price for {symbol}: ${price}")
+        return price
     except Exception as e:
-        logging.error(f"Error getting live market price: {str(e)}")
-        return 119500.0
+        logging.warning(f"Binance API failed for {symbol}: {str(e)}")
+    
+    # Try CoinGecko API as fallback (for non-Binance pairs)
+    try:
+        # Map symbol to CoinGecko ID
+        symbol_map = {
+            'BTCUSDT': 'bitcoin',
+            'ETHUSDT': 'ethereum', 
+            'BNBUSDT': 'binancecoin',
+            'ADAUSDT': 'cardano',
+            'DOGEUSDT': 'dogecoin',
+            'SOLUSDT': 'solana',
+            'DOTUSDT': 'polkadot',
+            'LINKUSDT': 'chainlink',
+            'LTCUSDT': 'litecoin',
+            'MATICUSDT': 'matic-network',
+            'AVAXUSDT': 'avalanche-2',
+            'UNIUSDT': 'uniswap',
+            'XRPUSDT': 'ripple'
+        }
+        
+        coin_id = symbol_map.get(symbol)
+        if coin_id:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+            
+            price = float(data[coin_id]['usd'])
+            logging.info(f"Retrieved live price from CoinGecko for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CoinGecko API failed for {symbol}: {str(e)}")
+    
+    # Try CryptoCompare API as final fallback
+    try:
+        base_symbol = symbol.replace('USDT', '')
+        url = f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebObj/537.36')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        
+        if 'USD' in data:
+            price = float(data['USD'])
+            logging.info(f"Retrieved live price from CryptoCompare for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CryptoCompare API failed for {symbol}: {str(e)}")
+    
+    # If all APIs fail, raise error
+    raise Exception(f"Unable to fetch live market price for {symbol} from any source")
 
 def get_mock_price(symbol):
     """Deprecated: Use get_live_market_price() instead"""

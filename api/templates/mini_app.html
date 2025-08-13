@@ -652,8 +652,15 @@
                             <option value="ETHUSDT">ETH/USDT</option>
                             <option value="BNBUSDT">BNB/USDT</option>
                             <option value="ADAUSDT">ADA/USDT</option>
-                            <option value="DOTUSDT">DOT/USDT</option>
                             <option value="SOLUSDT">SOL/USDT</option>
+                            <option value="XRPUSDT">XRP/USDT</option>
+                            <option value="DOTUSDT">DOT/USDT</option>
+                            <option value="DOGEUSDT">DOGE/USDT</option>
+                            <option value="LINKUSDT">LINK/USDT</option>
+                            <option value="LTCUSDT">LTC/USDT</option>
+                            <option value="MATICUSDT">MATIC/USDT</option>
+                            <option value="AVAXUSDT">AVAX/USDT</option>
+                            <option value="UNIUSDT">UNI/USDT</option>
                         </select>
                         <button class="btn btn-sm btn-outline-primary" onclick="refreshMarketData()">
                             🔄 Refresh
@@ -869,13 +876,21 @@
                     <!-- Symbol Selection -->
                     <div id="symbol-step" class="config-step">
                         <label class="form-label">Trading Pair</label>
-                        <select class="form-control" id="symbol-select">
+                        <select class="form-control" id="trade-symbol-select">
                             <option value="">Select Symbol</option>
                             <option value="BTCUSDT">BTC/USDT</option>
                             <option value="ETHUSDT">ETH/USDT</option>
+                            <option value="BNBUSDT">BNB/USDT</option>
                             <option value="ADAUSDT">ADA/USDT</option>
-                            <option value="DOGEUSDT">DOGE/USDT</option>
                             <option value="SOLUSDT">SOL/USDT</option>
+                            <option value="XRPUSDT">XRP/USDT</option>
+                            <option value="DOTUSDT">DOT/USDT</option>
+                            <option value="DOGEUSDT">DOGE/USDT</option>
+                            <option value="LINKUSDT">LINK/USDT</option>
+                            <option value="LTCUSDT">LTC/USDT</option>
+                            <option value="MATICUSDT">MATIC/USDT</option>
+                            <option value="AVAXUSDT">AVAX/USDT</option>
+                            <option value="UNIUSDT">UNI/USDT</option>
                         </select>
                     </div>
 
@@ -1602,7 +1617,7 @@
                 `${currentTrade.name} - Step ${configStep + 1}/${configSteps.length}`;
             
             // Update form values
-            if (currentTrade.symbol) document.getElementById('symbol-select').value = currentTrade.symbol;
+            if (currentTrade.symbol) document.getElementById('trade-symbol-select').value = currentTrade.symbol;
             if (currentTrade.amount) document.getElementById('amount-input').value = currentTrade.amount;
             if (currentTrade.leverage) document.getElementById('leverage-select').value = currentTrade.leverage;
             if (currentTrade.entry_price) document.getElementById('entry-price').value = currentTrade.entry_price;
@@ -1639,7 +1654,7 @@
             
             switch (step) {
                 case 'symbol':
-                    const symbol = document.getElementById('symbol-select').value;
+                    const symbol = document.getElementById('trade-symbol-select').value;
                     if (!symbol) {
                         tg.showAlert('Please select a trading pair');
                         return false;
