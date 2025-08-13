@@ -1095,6 +1095,24 @@
                     </div>
                     ` : ''}
                     
+                    <!-- Take Profit & Stop Loss -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Take Profits:</small><br>
+                            <strong>
+                                ${pos.take_profits && pos.take_profits.length > 0 ? 
+                                    pos.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
+                                    'Not set'}
+                            </strong>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Stop Loss:</small><br>
+                            <strong>
+                                ${pos.stop_loss_percent ? `${pos.stop_loss_percent}%` : 'Not set'}
+                            </strong>
+                        </div>
+                    </div>
+                    
                     <!-- Margin Info -->
                     <div class="row mt-2">
                         <div class="col-6">

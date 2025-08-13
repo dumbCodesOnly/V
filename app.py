@@ -421,7 +421,9 @@ def margin_data():
                     'entry_price': config.entry_price,
                     'current_price': config.current_price,
                     'unrealized_pnl': config.unrealized_pnl,
-                    'status': config.status
+                    'status': config.status,
+                    'take_profits': config.take_profits,
+                    'stop_loss_percent': config.stop_loss_percent
                 })
     
     return jsonify({
