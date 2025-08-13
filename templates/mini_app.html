@@ -1098,6 +1098,23 @@
             }
         }
 
+        // Toggle trade configuration collapse/expand
+        function toggleTrade(index) {
+            const content = document.getElementById(`trade-content-${index}`);
+            const icon = document.getElementById(`trade-icon-${index}`);
+            const header = content.previousElementSibling;
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+                icon.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+                icon.classList.add('expanded');
+            }
+        }
+
         // Load data functions
         async function loadPositions() {
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
@@ -1228,22 +1245,34 @@
                 return;
             }
             
-            container.innerHTML = trades.map(trade => `
-                <div class="trade-card">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <strong>${trade.name}</strong>
-                            <span class="status-badge status-${trade.status} ms-2">${trade.status}</span>
+            container.innerHTML = trades.map((trade, index) => `
+                <div class="position-item">
+                    <div class="collapsible-header" onclick="toggleTrade(${index})">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div>
+                                <strong>${trade.name}</strong>
+                                <span class="status-badge status-${trade.status} ms-2">${trade.status}</span>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                ${trade.status === 'active' && trade.unrealized_pnl !== undefined ? 
+                                    `<div class="text-end me-3">
+                                        <div class="stat-value" style="color: ${trade.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                            $${trade.unrealized_pnl.toFixed(2)}
+                                        </div>
+                                        <small class="text-muted">P&L</small>
+                                    </div>` : 
+                                    `<div class="text-end me-3">
+                                        <div class="stat-value" style="color: var(--tg-theme-text-color)">
+                                            ${trade.symbol || 'No Symbol'}
+                                        </div>
+                                        <small class="text-muted">Symbol</small>
+                                    </div>`
+                                }
+                                <span class="expand-icon" id="trade-icon-${index}">▼</span>
+                            </div>
                         </div>
-                        ${trade.status === 'active' && trade.unrealized_pnl !== undefined ? 
-                            `<div class="text-end">
-                                <div class="stat-value" style="color: ${trade.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
-                                    $${trade.unrealized_pnl.toFixed(2)}
-                                </div>
-                                <small class="text-muted">P&L</small>
-                            </div>` : ''
-                        }
                     </div>
+                    <div class="collapsible-content" id="trade-content-${index}">
                     <div class="progress-indicator">
                         ${getTradeProgress(trade)}
                     </div>
@@ -1376,6 +1405,7 @@
                         <button class="btn btn-outline-danger btn-sm" onclick="deleteTrade('${trade.trade_id}')">
                             🗑️ Delete
                         </button>
+                    </div>
                     </div>
                 </div>
             `).join('');
