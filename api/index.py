@@ -1,5 +1,6 @@
 """
-Vercel serverless function entry point - Import complete app without VERCEL flag
+Vercel serverless function entry point - Standalone deployment
+This deployment is completely independent from Replit and fetches live data from external APIs
 """
-# Import the complete application from app.py (without setting VERCEL environment)
+# Import the complete standalone application
 from .app import app
