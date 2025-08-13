@@ -1009,28 +1009,47 @@ def delete_trade():
 def verify_telegram_webhook(data):
     """Verify that the webhook request is from Telegram"""
     try:
+        # Get client IP for logging
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        logging.info(f"Webhook request from IP: {client_ip}")
+        
+        # Telegram IP ranges for validation (optional strict checking)
+        telegram_ip_ranges = [
+            "149.154.160.0/20",
+            "91.108.4.0/22",
+            "149.154.164.0/22", 
+            "149.154.168.0/22",
+            "149.154.172.0/22"
+        ]
+        
         # Check for secret token if configured
         secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
         if secret_token:
             provided_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
             if provided_token != secret_token:
-                logging.warning("Invalid secret token in webhook request")
+                logging.warning(f"Invalid secret token in webhook request from {client_ip}")
                 return False
+            logging.info("Secret token verified successfully")
         
         # Verify the request structure looks like a valid Telegram update
         if not isinstance(data, dict):
+            logging.warning(f"Invalid data structure from {client_ip}")
             return False
             
         # Should have either message or callback_query
-        if not (data.get('message') or data.get('callback_query') or data.get('inline_query')):
+        if not (data.get('message') or data.get('callback_query') or data.get('inline_query') or data.get('edited_message')):
+            logging.warning(f"Invalid Telegram update structure from {client_ip}")
             return False
             
         # Basic structure validation for messages
         if data.get('message'):
             msg = data['message']
             if not msg.get('chat') or not msg['chat'].get('id'):
+                logging.warning(f"Invalid message structure from {client_ip}")
                 return False
-                
+        
+        # Log successful verification
+        logging.info(f"Webhook verification successful from {client_ip}")
         return True
         
     except Exception as e:
