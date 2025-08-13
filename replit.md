@@ -11,7 +11,7 @@ The application utilizes Flask as its web framework, serving as the primary inte
 
 **Recent Migration Update (Aug 2025)**: Successfully migrated from Replit Agent to standard Replit environment with automatic webhook configuration for Vercel deployments. The system now includes intelligent deployment detection and automatic Telegram webhook setup for seamless deployment across platforms.
 
-**Security Enhancement (Aug 2025)**: Implemented comprehensive webhook security system with secret token authentication, request structure validation, and automatic secure webhook setup. This eliminates the need to disable Vercel deployment protection while maintaining full bot functionality.
+**Security Enhancement (Aug 2025)**: Implemented comprehensive webhook security system with secret token authentication, request structure validation, and manual webhook setup. The automatic webhook configuration has been disabled to allow manual configuration through Vercel dashboard and Telegram API.
 
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 

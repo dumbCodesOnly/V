@@ -8,6 +8,13 @@
   ],
   "routes": [
     {
+      "src": "/webhook",
+      "dest": "api/app.py",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
       "src": "/(.*)",
       "dest": "api/app.py"
     }

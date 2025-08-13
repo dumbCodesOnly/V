@@ -116,9 +116,9 @@ def setup_webhook_on_deployment():
     except Exception as e:
         logging.error(f"Error setting up webhook: {e}")
 
-# Set up webhook on Vercel deployments
-if os.environ.get("VERCEL"):
-    setup_webhook_on_deployment()
+# Automatic webhook setup disabled - use manual configuration
+# if os.environ.get("VERCEL"):
+#     setup_webhook_on_deployment()
 
 # Simple in-memory storage for the bot (replace with database in production)
 bot_messages = []
