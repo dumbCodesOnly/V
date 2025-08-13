@@ -2,21 +2,27 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/app_streamlined.py",
+      "src": "api/webhook.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/app.py", 
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/webhook",
-      "dest": "api/app_streamlined.py",
+      "dest": "api/webhook.py",
       "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Cache-Control": "no-cache"
       }
     },
     {
       "src": "/(.*)",
-      "dest": "api/app_streamlined.py"
+      "dest": "api/app.py"
     }
   ],
   "env": {
