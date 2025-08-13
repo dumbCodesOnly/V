@@ -1,6 +1,6 @@
 """
-Streamlined Telegram Trading Bot - Vercel Deployment
-Clean, single-purpose webhook handler with integrated bot functionality
+Complete Telegram Trading Bot - Vercel Deployment
+Consolidated web application with full trading bot functionality
 """
 
 import os
@@ -8,25 +8,70 @@ import logging
 import json
 import urllib.request
 import urllib.parse
-from datetime import datetime
+import time
+import random
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from werkzeug.middleware.proxy_fix import ProxyFix
+from models import db, UserCredentials, UserTradingSession
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging - reduce verbosity for serverless
+log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
+logging.basicConfig(level=log_level)
 
-# Flask app setup
+# Create the Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Bot configuration
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = "https://v0-033-pi.vercel.app/webhook"
+# Configure database - optimized for serverless deployment
+database_url = os.environ.get("DATABASE_URL", "sqlite:///trading_bot.db")
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-# Bot state
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+    "pool_size": 5,
+    "max_overflow": 10
+}
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Initialize database
+db.init_app(app)
+
+# Create tables only if not in serverless environment or if explicitly needed
+def init_database():
+    """Initialize database tables safely"""
+    try:
+        with app.app_context():
+            db.create_all()
+            logging.info("Database tables created successfully")
+    except Exception as e:
+        logging.error(f"Database initialization error: {e}")
+
+# Initialize database conditionally
+if not os.environ.get("VERCEL"):
+    init_database()
+else:
+    # For Vercel, initialize on first request using newer Flask syntax
+    initialized = False
+    
+    @app.before_request
+    def create_tables():
+        global initialized
+        if not initialized:
+            init_database()
+            initialized = True
+
+# Bot token and webhook URL from environment
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://v0-033-pi.vercel.app/webhook")
+
+# Bot state and storage
 bot_messages = []
+bot_trades = []
 bot_status = {
     'status': 'active',
     'total_messages': 0,
@@ -34,10 +79,14 @@ bot_status = {
     'last_heartbeat': datetime.utcnow().isoformat()
 }
 
+# Trading configuration storage
+user_sessions = {}
+user_credentials = {}
+
 def send_telegram_message(chat_id, text, reply_markup=None):
     """Send message to Telegram"""
     if not BOT_TOKEN:
-        logger.error("No bot token configured")
+        logging.error("No bot token configured")
         return False
         
     try:
@@ -58,7 +107,7 @@ def send_telegram_message(chat_id, text, reply_markup=None):
         return response.getcode() == 200
         
     except Exception as e:
-        logger.error(f"Error sending message: {e}")
+        logging.error(f"Error sending message: {e}")
         return False
 
 def get_main_menu():
@@ -72,150 +121,379 @@ def get_main_menu():
         ]
     }
 
+def get_live_market_price(symbol="BTCUSDT"):
+    """Get live market price with fallback sources"""
+    sources = [
+        f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}",
+        f"https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+        f"https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD"
+    ]
+    
+    for source in sources:
+        try:
+            response = urllib.request.urlopen(source, timeout=5)
+            data = json.loads(response.read().decode('utf-8'))
+            
+            if 'binance.com' in source:
+                return float(data['lastPrice'])
+            elif 'coingecko.com' in source:
+                return float(data['bitcoin']['usd'])
+            elif 'cryptocompare.com' in source:
+                return float(data['USD'])
+                
+        except Exception as e:
+            logging.warning(f"Failed to fetch from {source}: {e}")
+            continue
+    
+    return 119000.0  # Fallback price
+
 def process_message(message_data):
     """Process incoming Telegram message"""
-    chat_id = message_data.get('chat', {}).get('id')
-    text = message_data.get('text', '')
-    user = message_data.get('from', {})
-    
-    logger.info(f"Processing message from user {user.get('id')}: {text}")
-    
-    # Update bot status
-    bot_status['last_heartbeat'] = datetime.utcnow().isoformat()
-    bot_status['total_messages'] += 1
-    
-    # Log message
-    bot_messages.append({
-        'user_id': str(user.get('id', 'unknown')),
-        'username': user.get('username', 'Unknown'),
-        'message': text,
-        'timestamp': datetime.utcnow().isoformat()
-    })
-    
-    # Process commands
-    if text.startswith('/start'):
-        response_text = f"🤖 Welcome to the Trading Bot, {user.get('first_name', 'User')}!\n\nUse the menu below to access trading features:"
-        keyboard = get_main_menu()
-        send_telegram_message(chat_id, response_text, keyboard)
+    try:
+        chat_id = message_data['chat']['id']
+        text = message_data.get('text', '').lower()
+        user_id = message_data['from']['id']
         
-    elif text.startswith('/menu'):
-        response_text = "📋 Main Menu - Select an option:"
-        keyboard = get_main_menu()
-        send_telegram_message(chat_id, response_text, keyboard)
-        
-    elif text.startswith('/help'):
-        response_text = """🆘 Help & Commands:
-        
-/start - Welcome message
+        if text.startswith('/start'):
+            welcome_text = """
+🚀 <b>Welcome to Toobit Trading Bot!</b>
+
+Your advanced crypto trading companion for USDT-M futures trading.
+
+<b>🌟 Key Features:</b>
+• Multi-trade management
+• Real-time price monitoring
+• Portfolio tracking
+• Risk management tools
+
+Use the menu below to get started:
+            """
+            send_telegram_message(chat_id, welcome_text, get_main_menu())
+            
+        elif text.startswith('/menu'):
+            send_telegram_message(chat_id, "🎯 <b>Trading Bot Menu</b>\n\nChoose an option:", get_main_menu())
+            
+        elif text.startswith('/price'):
+            price = get_live_market_price()
+            price_text = f"💰 <b>BTC/USDT Price</b>\n\n${price:,.2f}"
+            send_telegram_message(chat_id, price_text)
+            
+        elif text.startswith('/help'):
+            help_text = """
+📋 <b>Bot Commands</b>
+
+/start - Start the bot
 /menu - Show main menu
-/help - This help message
+/price - Get current BTC price
+/portfolio - View your portfolio
+/help - Show this help
 
-Use the Trading App button to access full features!"""
-        send_telegram_message(chat_id, response_text)
+Use the "📱 Open Trading App" button for full trading functionality!
+            """
+            send_telegram_message(chat_id, help_text)
+            
+        else:
+            send_telegram_message(chat_id, "Unknown command. Use /menu to see available options.", get_main_menu())
+            
+        return True
         
-    else:
-        response_text = "✅ Message received! Use /menu to see available options or tap the Trading App button."
-        keyboard = get_main_menu()
-        send_telegram_message(chat_id, response_text, keyboard)
+    except Exception as e:
+        logging.error(f"Error processing message: {e}")
+        return False
 
-def process_callback(callback_data, chat_id):
-    """Process callback query"""
-    logger.info(f"Processing callback: {callback_data}")
-    
-    if callback_data == 'price_check':
-        response_text = "💰 BTC: $119,336\n💰 ETH: $2,847\n💰 BNB: $548\n\n(Live prices in Trading App)"
+def process_callback_query(callback_data):
+    """Process callback query from inline keyboard"""
+    try:
+        query_id = callback_data['id']
+        chat_id = callback_data['message']['chat']['id']
+        data = callback_data['data']
         
-    elif callback_data == 'portfolio':
-        response_text = "📊 Your Portfolio:\n\nNo active positions.\nOpen the Trading App to start trading!"
+        if data == 'price_check':
+            price = get_live_market_price()
+            price_text = f"💰 <b>Current BTC/USDT</b>\n\n${price:,.2f}\n\n📊 Updated: {datetime.utcnow().strftime('%H:%M UTC')}"
+            send_telegram_message(chat_id, price_text)
+            
+        elif data == 'portfolio':
+            portfolio_text = "📊 <b>Portfolio Overview</b>\n\n💼 No active positions\n💰 Available Balance: $0.00\n\nUse the Trading App to start trading!"
+            send_telegram_message(chat_id, portfolio_text, get_main_menu())
+            
+        elif data == 'settings':
+            settings_text = "⚙️ <b>Settings</b>\n\n🔧 Use the Trading App for advanced settings and configuration."
+            send_telegram_message(chat_id, settings_text, get_main_menu())
+            
+        # Answer callback query
+        answer_url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
+        answer_data = urllib.parse.urlencode({'callback_query_id': query_id}).encode('utf-8')
+        answer_req = urllib.request.Request(answer_url, data=answer_data, method='POST')
+        urllib.request.urlopen(answer_req, timeout=5)
         
-    elif callback_data == 'settings':
-        response_text = "⚙️ Settings:\n\nManage your API keys and preferences in the Trading App."
+        return True
         
-    else:
-        response_text = "✅ Feature available in Trading App!"
-    
-    keyboard = get_main_menu()
-    send_telegram_message(chat_id, response_text, keyboard)
+    except Exception as e:
+        logging.error(f"Error processing callback: {e}")
+        return False
+
+# Web Routes
+@app.route('/')
+def home():
+    """Main trading interface"""
+    return render_template('mini_app.html')
+
+@app.route('/api/status')
+def api_status():
+    """API status endpoint"""
+    return jsonify({
+        'status': 'active',
+        'timestamp': datetime.utcnow().isoformat(),
+        'bot_configured': BOT_TOKEN is not None,
+        'webhook_url': WEBHOOK_URL
+    })
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Streamlined webhook handler"""
+    """Handle Telegram webhook"""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No JSON data'}), 400
         
-        # Basic validation
-        if 'update_id' not in data:
-            return jsonify({'error': 'Invalid update'}), 400
+        if not data:
+            return jsonify({'error': 'No data received'}), 400
+        
+        # Update bot status
+        bot_status['total_messages'] += 1
+        bot_status['last_heartbeat'] = datetime.utcnow().isoformat()
         
         # Process message
         if 'message' in data:
-            process_message(data['message'])
-            
+            success = process_message(data['message'])
+            if success:
+                logging.info(f"Processed message: {data['message'].get('text', 'N/A')}")
+            else:
+                bot_status['error_count'] += 1
+                
         # Process callback query
         elif 'callback_query' in data:
-            callback = data['callback_query']
-            chat_id = callback.get('message', {}).get('chat', {}).get('id')
-            callback_data = callback.get('data', '')
-            
-            if chat_id and callback_data:
-                process_callback(callback_data, chat_id)
+            success = process_callback_query(data['callback_query'])
+            if success:
+                logging.info(f"Processed callback: {data['callback_query'].get('data', 'N/A')}")
+            else:
+                bot_status['error_count'] += 1
         
         return jsonify({'status': 'ok'})
         
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logging.error(f"Webhook error: {e}")
         bot_status['error_count'] += 1
-        return jsonify({'error': 'Internal error'}), 500
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/')
-def index():
-    """Main trading interface"""
+# Market Data API
+@app.route('/api/market-data')
+def market_data():
+    """Get live market data"""
     try:
-        return render_template('mini_app.html')
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        
+        # Get data from Binance API
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode('utf-8'))
+        
+        market_info = {
+            'symbol': data['symbol'],
+            'price': float(data['lastPrice']),
+            'change': float(data['priceChange']),
+            'changePercent': float(data['priceChangePercent']),
+            'high': float(data['highPrice']),
+            'low': float(data['lowPrice']),
+            'volume': float(data['volume']),
+            'quoteVolume': float(data['quoteVolume']),
+            'openPrice': float(data['openPrice']),
+            'timestamp': int(time.time() * 1000)
+        }
+        
+        logging.info(f"Successfully fetched market data for {symbol}")
+        return jsonify(market_info)
+        
     except Exception as e:
-        logger.error(f"Error loading template: {e}")
-        return jsonify({'error': 'Template not found'}), 404
+        logging.error(f"Error fetching market data: {e}")
+        return jsonify({'error': 'Failed to fetch market data'}), 500
 
-@app.route('/api/status')
-def status():
-    """Bot status endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'bot_configured': bool(BOT_TOKEN),
-        'webhook_url': WEBHOOK_URL,
-        'messages_processed': bot_status['total_messages'],
-        'last_activity': bot_status['last_heartbeat']
-    })
+@app.route('/api/kline-data')
+def kline_data():
+    """Get candlestick chart data"""
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        interval = request.args.get('interval', '1h')
+        limit = request.args.get('limit', '50')
+        
+        # Get data from Binance API
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode('utf-8'))
+        
+        # Format candlestick data
+        candlesticks = []
+        for candle in data:
+            candlesticks.append({
+                'timestamp': int(candle[0]),
+                'open': float(candle[1]),
+                'high': float(candle[2]),
+                'low': float(candle[3]),
+                'close': float(candle[4]),
+                'volume': float(candle[5])
+            })
+        
+        logging.info(f"Successfully fetched {len(candlesticks)} candlesticks for {symbol}")
+        return jsonify(candlesticks)
+        
+    except Exception as e:
+        logging.error(f"Error fetching kline data: {e}")
+        return jsonify({'error': 'Failed to fetch chart data'}), 500
 
-# Automatic webhook setup for Vercel
-def setup_webhook():
-    """Set up webhook on deployment"""
+# Trading API endpoints
+@app.route('/api/user-credentials', methods=['POST'])
+def save_credentials():
+    """Save user trading credentials"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID required'}), 400
+        
+        # Check if credentials exist
+        existing = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        
+        if existing:
+            # Update existing credentials
+            existing.set_api_key(data.get('api_key', ''))
+            existing.set_api_secret(data.get('api_secret', ''))
+            existing.updated_at = datetime.utcnow()
+        else:
+            # Create new credentials
+            credentials = UserCredentials()
+            credentials.telegram_user_id = str(user_id)
+            credentials.set_api_key(data.get('api_key', ''))
+            credentials.set_api_secret(data.get('api_secret', ''))
+            db.session.add(credentials)
+        
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logging.error(f"Error saving credentials: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/user-credentials/<user_id>')
+def get_credentials(user_id):
+    """Get user credentials"""
+    try:
+        credentials = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if credentials:
+            api_key = credentials.get_api_key()
+            return jsonify({
+                'api_key': api_key[:8] + '...' if api_key else '',
+                'has_credentials': bool(api_key and credentials.get_api_secret())
+            })
+        return jsonify({'has_credentials': False})
+        
+    except Exception as e:
+        logging.error(f"Error getting credentials: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trading-session', methods=['POST'])
+def create_trading_session():
+    """Create or update trading session"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID required'}), 400
+        
+        # Create or update session  
+        session = UserTradingSession.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not session:
+            session = UserTradingSession()
+            session.telegram_user_id = str(user_id)
+            db.session.add(session)
+        
+        session.is_active = True
+        
+        db.session.commit()
+        return jsonify({'success': True, 'session_id': session.id})
+        
+    except Exception as e:
+        logging.error(f"Error creating session: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Portfolio and Analytics endpoints
+@app.route('/api/portfolio/<user_id>')
+def get_portfolio(user_id):
+    """Get user portfolio"""
+    try:
+        # Placeholder portfolio data
+        portfolio = {
+            'total_balance': 0.0,
+            'available_balance': 0.0,
+            'unrealized_pnl': 0.0,
+            'positions': [],
+            'trades_today': 0,
+            'win_rate': 0.0
+        }
+        
+        return jsonify(portfolio)
+        
+    except Exception as e:
+        logging.error(f"Error getting portfolio: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/bot-status')
+def get_bot_status():
+    """Get bot status and statistics"""
+    return jsonify(bot_status)
+
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+
+# Auto-setup webhook for Vercel deployment
+def setup_webhook_on_deployment():
+    """Automatically set up webhook for deployment environments"""
     if not BOT_TOKEN:
-        logger.warning("No bot token - webhook not set")
+        logging.warning("TELEGRAM_BOT_TOKEN not set, skipping webhook setup")
         return
     
     try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-        data = urllib.parse.urlencode({'url': WEBHOOK_URL}).encode('utf-8')
+        webhook_url = WEBHOOK_URL
+        if not webhook_url.endswith('/webhook'):
+            webhook_url = f"{webhook_url}/webhook"
         
-        req = urllib.request.Request(url, data=data, method='POST')
+        # Set the webhook
+        api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        data = urllib.parse.urlencode({'url': webhook_url}).encode('utf-8')
+        req = urllib.request.Request(api_url, data=data, method='POST')
         response = urllib.request.urlopen(req, timeout=10)
         
         if response.getcode() == 200:
             result = json.loads(response.read().decode('utf-8'))
             if result.get('ok'):
-                logger.info(f"Webhook set to {WEBHOOK_URL}")
+                logging.info(f"Webhook set successfully to {webhook_url}")
             else:
-                logger.error(f"Webhook failed: {result.get('description')}")
+                logging.error(f"Webhook setup failed: {result.get('description')}")
         
     except Exception as e:
-        logger.error(f"Webhook setup error: {e}")
+        logging.error(f"Error setting up webhook: {e}")
 
-# Set webhook on Vercel deployment
+# Initialize webhook on Vercel deployment
 if os.environ.get("VERCEL") and BOT_TOKEN:
-    setup_webhook()
+    setup_webhook_on_deployment()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
