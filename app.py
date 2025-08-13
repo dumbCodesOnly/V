@@ -615,18 +615,22 @@ def execute_trade():
             return jsonify({'error': 'Trade configuration is incomplete'}), 400
         
         # Execute trade with real market data
-        config.status = "active"
-        config.position_size = config.amount * config.leverage
-        config.position_margin = calculate_position_margin(config.amount, config.leverage)
-        
-        # Use real live market price for market orders
-        if config.entry_type == "market" or config.entry_price is None:
-            config.current_price = get_live_market_price(config.symbol)
-            config.entry_price = config.current_price  # Set entry price to execution price
-        else:
-            config.current_price = config.entry_price  # Use limit price
-        
-        config.unrealized_pnl = 0.0
+        try:
+            config.status = "active"
+            config.position_size = config.amount * config.leverage
+            config.position_margin = calculate_position_margin(config.amount, config.leverage)
+            
+            # Use real live market price for market orders
+            if config.entry_type == "market" or config.entry_price is None:
+                config.current_price = get_live_market_price(config.symbol)
+                config.entry_price = config.current_price  # Set entry price to execution price
+            else:
+                config.current_price = config.entry_price  # Use limit price
+            
+            config.unrealized_pnl = 0.0
+        except Exception as price_error:
+            logging.error(f"Failed to get market price for {config.symbol}: {str(price_error)}")
+            return jsonify({'error': f'Unable to get live market price for {config.symbol}. Please try again or check if the symbol is supported.'}), 400
         
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.current_price} (entry type: {config.entry_type})")
         
@@ -1352,9 +1356,10 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
 def get_live_market_price(symbol):
-    """Get real live market price from Binance API"""
+    """Get real live market price from multiple sources"""
+    
+    # First try Binance API
     try:
-        # Use Binance API for real market price
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
@@ -1366,9 +1371,60 @@ def get_live_market_price(symbol):
         logging.info(f"Retrieved live price for {symbol}: ${price}")
         return price
     except Exception as e:
-        logging.error(f"Error fetching live price for {symbol}: {str(e)}")
-        # Return error instead of mock price
-        raise Exception(f"Unable to fetch live market price for {symbol}")
+        logging.warning(f"Binance API failed for {symbol}: {str(e)}")
+    
+    # Try CoinGecko API as fallback (for non-Binance pairs)
+    try:
+        # Map symbol to CoinGecko ID
+        symbol_map = {
+            'BTCUSDT': 'bitcoin',
+            'ETHUSDT': 'ethereum', 
+            'BNBUSDT': 'binancecoin',
+            'ADAUSDT': 'cardano',
+            'DOGEUSDT': 'dogecoin',
+            'SOLUSDT': 'solana',
+            'DOTUSDT': 'polkadot',
+            'LINKUSDT': 'chainlink',
+            'LTCUSDT': 'litecoin',
+            'MATICUSDT': 'matic-network',
+            'AVAXUSDT': 'avalanche-2',
+            'UNIUSDT': 'uniswap'
+        }
+        
+        coin_id = symbol_map.get(symbol)
+        if coin_id:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+            
+            price = float(data[coin_id]['usd'])
+            logging.info(f"Retrieved live price from CoinGecko for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CoinGecko API failed for {symbol}: {str(e)}")
+    
+    # Try CryptoCompare API as final fallback
+    try:
+        base_symbol = symbol.replace('USDT', '')
+        url = f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebObj/537.36')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        
+        if 'USD' in data:
+            price = float(data['USD'])
+            logging.info(f"Retrieved live price from CryptoCompare for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CryptoCompare API failed for {symbol}: {str(e)}")
+    
+    # If all APIs fail, raise error
+    raise Exception(f"Unable to fetch live market price for {symbol} from any source")
 
 def get_mock_price(symbol):
     """Deprecated: Use get_live_market_price() instead"""
