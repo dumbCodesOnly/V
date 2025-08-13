@@ -172,6 +172,59 @@
             box-shadow: 0 12px 35px rgba(0,0,0,0.5);
         }
 
+        .collapsible-header {
+            cursor: pointer;
+            background: var(--tg-theme-card-bg);
+            border: 2px solid var(--tg-theme-border-color);
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 0;
+            transition: all 0.3s ease;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .collapsible-header:hover {
+            border-color: var(--tg-theme-button-color);
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.2);
+        }
+
+        .collapsible-content {
+            background: var(--tg-theme-card-bg);
+            border: 2px solid var(--tg-theme-border-color);
+            border-top: none;
+            border-radius: 0 0 16px 16px;
+            padding: 0 1.5rem;
+            margin-bottom: 1.5rem;
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .collapsible-content.expanded {
+            max-height: 600px;
+            padding: 1.5rem;
+            border-top: 1px solid var(--tg-theme-border-color);
+        }
+
+        .collapsible-header.expanded {
+            border-radius: 16px 16px 0 0;
+            border-bottom: none;
+        }
+
+        .expand-icon {
+            transition: transform 0.3s ease;
+            font-size: 1.2rem;
+            color: var(--tg-theme-button-color);
+            font-weight: bold;
+        }
+
+        .expand-icon.expanded {
+            transform: rotate(180deg);
+        }
+
         .btn-primary {
             background: var(--tg-theme-button-color);
             border: 2px solid var(--tg-theme-button-color);
@@ -1028,6 +1081,23 @@
             }
         }
 
+        // Toggle position collapse/expand
+        function togglePosition(index) {
+            const content = document.getElementById(`content-${index}`);
+            const icon = document.getElementById(`icon-${index}`);
+            const header = content.previousElementSibling;
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+                icon.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+                icon.classList.add('expanded');
+            }
+        }
+
         // Load data functions
         async function loadPositions() {
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
@@ -1048,20 +1118,26 @@
                 return;
             }
             
-            container.innerHTML = activePositions.map(pos => `
-                <div class="trade-card">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <strong>${pos.symbol}</strong>
-                            <span class="status-badge status-${pos.status} ms-2">${pos.side.toUpperCase()}</span>
-                        </div>
-                        <div class="text-end">
-                            <div class="stat-value" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
-                                $${(pos.unrealized_pnl || 0).toFixed(2)}
+            container.innerHTML = activePositions.map((pos, index) => `
+                <div class="position-item">
+                    <div class="collapsible-header" onclick="togglePosition(${index})">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div>
+                                <strong>${pos.symbol}</strong>
+                                <span class="status-badge status-${pos.status} ms-2">${pos.side.toUpperCase()}</span>
                             </div>
-                            <small class="text-muted">P&L</small>
+                            <div class="d-flex align-items-center">
+                                <div class="text-end me-3">
+                                    <div class="stat-value" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                        $${(pos.unrealized_pnl || 0).toFixed(2)}
+                                    </div>
+                                    <small class="text-muted">P&L</small>
+                                </div>
+                                <span class="expand-icon" id="icon-${index}">▼</span>
+                            </div>
                         </div>
                     </div>
+                    <div class="collapsible-content" id="content-${index}">
                     
                     <!-- Position Details -->
                     <div class="row mt-2">
@@ -1134,6 +1210,7 @@
                         <button class="btn btn-outline-warning btn-sm" onclick="closeTrade('${pos.trade_id}')">
                             ❌ Close
                         </button>
+                    </div>
                     </div>
                 </div>
             `).join('');
