@@ -1,51 +1,68 @@
-# Telegram Bot Webhook Setup for Vercel
+# Secure Telegram Bot Webhook Setup
 
-## Automatic Webhook Setup
+## 🔐 SECURE SETUP (RECOMMENDED)
 
-Your Telegram bot now includes automatic webhook configuration that works on deployment. Here's what happens:
+Instead of disabling Vercel deployment protection, use our secure webhook system:
 
-### On Vercel Deployment:
-1. The app automatically detects it's running on Vercel (`VERCEL` environment variable)
-2. It reads the `VERCEL_URL` environment variable to get the deployment URL
-3. It automatically sets the Telegram webhook to `https://YOUR_VERCEL_URL/webhook`
-
-### Required Environment Variables:
-- `TELEGRAM_BOT_TOKEN` - Your bot token from BotFather
-- `VERCEL_URL` - Automatically provided by Vercel
-- `WEBHOOK_URL` - Optional override (if you want to use a custom URL)
-
-### Manual Webhook Setup (if needed):
-
-If you need to manually set up the webhook, you can use the provided scripts:
-
+### Step 1: Generate Secret Token
 ```bash
-# Make the script executable
-chmod +x setup_webhook.sh
-
-# Run the webhook setup
-./setup_webhook.sh
+python setup_secure_webhook.py
 ```
 
-Or use the Python script:
+This will:
+- Generate a secure 64-character secret token
+- Set your webhook with the secret token
+- Give you the token to add to Vercel
+
+### Step 2: Add Secret to Vercel
+1. Go to Vercel Dashboard → Your Project → Settings → Environment Variables
+2. Add: `WEBHOOK_SECRET_TOKEN=your_generated_token`
+3. Redeploy your project
+
+### Step 3: Re-enable Protection
+1. Go to Vercel Dashboard → Settings → Deployment Protection
+2. Enable "Vercel Authentication"
+3. Your webhook will still work securely!
+
+## How It Works
+
+✅ **Secret Token Verification**: Every webhook request must include the correct secret token
+✅ **Request Structure Validation**: Verifies the data looks like a real Telegram update  
+✅ **Automatic Setup**: Detects Vercel deployment and configures webhook automatically
+✅ **Error Logging**: Tracks and blocks invalid requests
+
+## Alternative Methods
+
+### Manual Secret Token Setup:
 ```bash
-python webhook_setup.py
+# Generate token
+openssl rand -hex 32
+
+# Set webhook with token
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://your-app.vercel.app/webhook", "secret_token": "your_token"}'
 ```
 
-### Testing the Webhook:
+### IP Whitelist (Advanced):
+Configure Vercel to only allow Telegram IPs:
+- 149.154.160.0/20
+- 91.108.4.0/22
 
-1. Deploy your app to Vercel
-2. Check the deployment logs to see if webhook was set successfully
-3. Send `/start` to your bot on Telegram
-4. The bot should respond with the main menu
+## Emergency Fallback
 
-### Troubleshooting:
+If you need the bot working immediately:
+1. Temporarily disable deployment protection
+2. Set up the secure method above
+3. Re-enable protection
 
-If the bot doesn't respond:
-1. Check the Vercel function logs
-2. Verify environment variables are set correctly
-3. Use this command to check webhook status:
+## Testing Your Setup
+
 ```bash
+# Check webhook status
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+
+# Should show your URL and "has_custom_certificate": false
 ```
 
-The webhook should point to your Vercel deployment URL + `/webhook`.
+Send `/start` to your bot - it should respond with the main menu.

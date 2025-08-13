@@ -95,11 +95,18 @@ def setup_webhook_on_deployment():
         if deployment_url:
             webhook_url = f"{deployment_url}/webhook"
             
+            # Prepare webhook data with optional secret token
+            webhook_data = {'url': webhook_url}
+            secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
+            if secret_token:
+                webhook_data['secret_token'] = secret_token
+                logging.info("Setting webhook with secret token for enhanced security")
+            
             # Set the webhook
             webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-            webhook_data = urllib.parse.urlencode({'url': webhook_url}).encode('utf-8')
+            webhook_data_encoded = urllib.parse.urlencode(webhook_data).encode('utf-8')
             
-            webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data, method='POST')
+            webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data_encoded, method='POST')
             webhook_response = urllib.request.urlopen(webhook_req, timeout=10)
             
             if webhook_response.getcode() == 200:
@@ -116,7 +123,7 @@ def setup_webhook_on_deployment():
     except Exception as e:
         logging.error(f"Error setting up webhook: {e}")
 
-# Set up webhook on Vercel deployments
+# Set up webhook on Vercel deployments with secret token
 if os.environ.get("VERCEL"):
     setup_webhook_on_deployment()
 
@@ -999,9 +1006,40 @@ def delete_trade():
         logging.error(f"Error deleting trade: {str(e)}")
         return jsonify({'error': 'Failed to delete trade'}), 500
 
+def verify_telegram_webhook(data):
+    """Verify that the webhook request is from Telegram"""
+    try:
+        # Check for secret token if configured
+        secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
+        if secret_token:
+            provided_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+            if provided_token != secret_token:
+                logging.warning("Invalid secret token in webhook request")
+                return False
+        
+        # Verify the request structure looks like a valid Telegram update
+        if not isinstance(data, dict):
+            return False
+            
+        # Should have either message or callback_query
+        if not (data.get('message') or data.get('callback_query') or data.get('inline_query')):
+            return False
+            
+        # Basic structure validation for messages
+        if data.get('message'):
+            msg = data['message']
+            if not msg.get('chat') or not msg['chat'].get('id'):
+                return False
+                
+        return True
+        
+    except Exception as e:
+        logging.error(f"Webhook verification error: {e}")
+        return False
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle Telegram webhook"""
+    """Handle Telegram webhook with security verification"""
     try:
         # Get the JSON data from Telegram
         json_data = request.get_json()
@@ -1009,6 +1047,11 @@ def webhook():
         if not json_data:
             logging.warning("No JSON data received")
             return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
+        
+        # Verify this is a legitimate Telegram webhook
+        if not verify_telegram_webhook(json_data):
+            logging.warning("Invalid webhook request rejected")
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
         
         # Process the update
         if 'message' in json_data:
