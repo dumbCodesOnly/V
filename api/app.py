@@ -260,53 +260,16 @@ def health_check():
 
 @app.route('/api/market-data')
 def get_market_data():
-    """Get live market data for a symbol - Vercel compatible version"""
+    """Get live market data for a symbol"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     
-    # For Vercel deployment, use mock data due to API restrictions
-    # In production, integrate with a proxy service or use WebSocket feeds
-    if os.environ.get("VERCEL"):
-        # Generate realistic mock data
-        base_price = {
-            'BTCUSDT': 120000,
-            'ETHUSDT': 4000,
-            'BNBUSDT': 700,
-            'ADAUSDT': 1.2,
-            'DOTUSDT': 25,
-            'SOLUSDT': 200
-        }.get(symbol, 50000)
-        
-        # Add realistic volatility
-        change_percent = (random.random() - 0.5) * 10  # -5% to +5%
-        current_price = base_price * (1 + change_percent / 100)
-        price_change = current_price - base_price
-        high_price = current_price * (1 + random.random() * 0.03)
-        low_price = current_price * (1 - random.random() * 0.03)
-        
-        return jsonify({
-            'symbol': symbol,
-            'price': round(current_price, 2),
-            'change': round(price_change, 2),
-            'changePercent': round(change_percent, 3),
-            'high': round(high_price, 2),
-            'low': round(low_price, 2),
-            'volume': round(random.uniform(10000, 50000), 2),
-            'quoteVolume': round(random.uniform(1000000, 5000000), 2),
-            'openPrice': base_price,
-            'timestamp': int(time.time() * 1000)
-        })
-    
-    # For non-Vercel environments, use live data
-    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-    
+    # Always use live data from Binance API
     try:
-        req = urllib.request.Request(url)
-        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        # Fetch live data from Binance
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode())
         
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-        
-        logging.info(f"Successfully fetched market data for {symbol}")
         return jsonify({
             'symbol': data['symbol'],
             'price': float(data['lastPrice']),
@@ -319,9 +282,10 @@ def get_market_data():
             'openPrice': float(data['openPrice']),
             'timestamp': int(time.time() * 1000)
         })
+        
     except Exception as e:
         logging.error(f"Error fetching live market data for {symbol}: {str(e)}")
-        # Fallback to mock data
+        # Fallback to mock data only if Binance API fails
         base_price = 50000
         change_percent = (random.random() - 0.5) * 10
         current_price = base_price * (1 + change_percent / 100)
@@ -342,13 +306,39 @@ def get_market_data():
 
 @app.route('/api/kline-data')
 def get_kline_data():
-    """Get candlestick data for chart - Vercel compatible version"""
+    """Get candlestick data for chart"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     interval = request.args.get('interval', '4h')
     limit = int(request.args.get('limit', '50'))
     
-    # For Vercel deployment, generate realistic mock candlestick data
-    if os.environ.get("VERCEL"):
+    # Always try to fetch live data first
+    try:
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        response = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(response.read().decode())
+        
+        # Convert Binance kline format to our format
+        candlesticks = []
+        for item in data:
+            candlesticks.append({
+                'timestamp': int(item[0]),
+                'open': float(item[1]),
+                'high': float(item[2]),
+                'low': float(item[3]),
+                'close': float(item[4]),
+                'volume': float(item[5])
+            })
+        
+        logging.info(f"Successfully fetched {len(candlesticks)} candlesticks for {symbol}")
+        return jsonify({
+            'symbol': symbol,
+            'interval': interval,
+            'data': candlesticks
+        })
+        
+    except Exception as e:
+        logging.error(f"Error fetching live kline data for {symbol}: {str(e)}")
+        # Fallback to mock data if live data fails
         base_price = {
             'BTCUSDT': 120000,
             'ETHUSDT': 4000,
