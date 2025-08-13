@@ -875,7 +875,7 @@
                     <!-- Symbol Selection -->
                     <div id="symbol-step" class="config-step">
                         <label class="form-label">Trading Pair</label>
-                        <select class="form-control" id="symbol-select">
+                        <select class="form-control" id="trade-symbol-select">
                             <option value="">Select Symbol</option>
                             <option value="BTCUSDT">BTC/USDT</option>
                             <option value="ETHUSDT">ETH/USDT</option>
@@ -1615,7 +1615,7 @@
                 `${currentTrade.name} - Step ${configStep + 1}/${configSteps.length}`;
             
             // Update form values
-            if (currentTrade.symbol) document.getElementById('symbol-select').value = currentTrade.symbol;
+            if (currentTrade.symbol) document.getElementById('trade-symbol-select').value = currentTrade.symbol;
             if (currentTrade.amount) document.getElementById('amount-input').value = currentTrade.amount;
             if (currentTrade.leverage) document.getElementById('leverage-select').value = currentTrade.leverage;
             if (currentTrade.entry_price) document.getElementById('entry-price').value = currentTrade.entry_price;
@@ -1652,7 +1652,7 @@
             
             switch (step) {
                 case 'symbol':
-                    const symbol = document.getElementById('symbol-select').value;
+                    const symbol = document.getElementById('trade-symbol-select').value;
                     if (!symbol) {
                         tg.showAlert('Please select a trading pair');
                         return false;
