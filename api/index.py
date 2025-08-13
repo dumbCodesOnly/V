@@ -1,6 +1,6 @@
 """
-Vercel serverless function entry point - Standalone deployment
-This deployment is completely independent from Replit and fetches live data from external APIs
+Vercel serverless function entry point - Main deployment
+This imports the full Flask application with all trading bot functionality
 """
-# Import the complete standalone application
+# Import the complete Flask application
 from .app import app

@@ -2,21 +2,21 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/app_streamlined.py",
+      "src": "api/app.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/webhook",
-      "dest": "api/app_streamlined.py",
+      "dest": "api/app.py",
       "headers": {
         "Cache-Control": "no-cache"
       }
     },
     {
       "src": "/(.*)",
-      "dest": "api/app_streamlined.py"
+      "dest": "api/app.py"
     }
   ],
   "env": {
