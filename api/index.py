@@ -1,10 +1,5 @@
 """
-Vercel serverless function entry point - Import complete app
+Vercel serverless function entry point - Import complete app without VERCEL flag
 """
-import os
-
-# Set Vercel environment variable
-os.environ["VERCEL"] = "1"
-
-# Import the complete application from app.py
+# Import the complete application from app.py (without setting VERCEL environment)
 from .app import app
