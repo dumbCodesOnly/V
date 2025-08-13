@@ -317,34 +317,11 @@ def get_market_data():
             })
         except Exception as e2:
             logging.error(f"Alternative fetch also failed: {str(e2)}")
-            # For Vercel deployment, fall back to live-like data with disclaimer
-            if os.environ.get("VERCEL"):
-                logging.warning("Vercel environment detected, using live-equivalent fallback data")
-                # Use current working price from Replit (~119,945) as base
-                base_price = 119945
-                variation = random.uniform(-0.02, 0.02)  # ±2% variation
-                current_price = base_price * (1 + variation)
-                change_percent = variation * 100
-                price_change = current_price - base_price
-                
-                return jsonify({
-                    'symbol': symbol,
-                    'price': round(current_price, 2),
-                    'change': round(price_change, 2),
-                    'changePercent': round(change_percent, 3),
-                    'high': round(current_price * 1.015, 2),
-                    'low': round(current_price * 0.985, 2),
-                    'volume': round(random.uniform(15000, 18000), 2),
-                    'quoteVolume': round(random.uniform(1950000000, 2000000000), 2),
-                    'openPrice': round(base_price, 2),
-                    'timestamp': int(time.time() * 1000)
-                })
-            else:
-                # Return error response for non-Vercel environments
-                return jsonify({
-                    'error': 'Unable to fetch live market data',
-                    'message': 'Please check your internet connection and try again'
-                }), 503
+            # Return error response - no fallback data
+            return jsonify({
+                'error': 'Unable to fetch live market data',
+                'message': 'Please check your internet connection and try again'
+            }), 503
 
 @app.route('/api/kline-data')
 def get_kline_data():
@@ -382,45 +359,11 @@ def get_kline_data():
         })
     except Exception as e:
         logging.error(f"Error fetching live kline data for {symbol}: {str(e)}")
-        # For Vercel deployment, fall back to realistic chart data
-        if os.environ.get("VERCEL"):
-            logging.warning("Vercel environment detected, generating live-equivalent chart data")
-            # Generate realistic candlestick data based on current price (~119,945)
-            base_price = 119945
-            chart_data = []
-            current_time = int(time.time() * 1000)
-            interval_ms = 4 * 60 * 60 * 1000  # 4 hours in milliseconds
-            
-            for i in range(int(limit)):
-                timestamp = current_time - (int(limit) - i - 1) * interval_ms
-                # Create realistic OHLC data with small variations
-                open_price = base_price * (1 + random.uniform(-0.03, 0.03))
-                close_price = open_price * (1 + random.uniform(-0.02, 0.02))
-                high_price = max(open_price, close_price) * (1 + random.uniform(0, 0.01))
-                low_price = min(open_price, close_price) * (1 - random.uniform(0, 0.01))
-                volume = random.uniform(100, 1000)
-                
-                chart_data.append({
-                    'timestamp': timestamp,
-                    'open': round(open_price, 2),
-                    'high': round(high_price, 2),
-                    'low': round(low_price, 2),
-                    'close': round(close_price, 2),
-                    'volume': round(volume, 2)
-                })
-            
-            logging.info(f"Generated {len(chart_data)} candlesticks for {symbol}")
-            return jsonify({
-                'symbol': symbol,
-                'interval': interval,
-                'data': chart_data
-            })
-        else:
-            # Return error response for non-Vercel environments
-            return jsonify({
-                'error': 'Unable to fetch live chart data',
-                'message': 'Please check your internet connection and try again'
-            }), 503
+        # Return error response - no fallback data
+        return jsonify({
+            'error': 'Unable to fetch live chart data',
+            'message': 'Please check your internet connection and try again'
+        }), 503
 
 
 
