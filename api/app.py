@@ -263,13 +263,17 @@ def get_market_data():
     """Get live market data for a symbol"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     
-    # Always use live data from Binance API
+    # Define URL outside try block for proper scope
+    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+    
     try:
-        # Fetch live data from Binance
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-        response = urllib.request.urlopen(url, timeout=10)
-        data = json.loads(response.read().decode())
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        
+        logging.info(f"Successfully fetched market data for {symbol}")
         return jsonify({
             'symbol': data['symbol'],
             'price': float(data['lastPrice']),
@@ -282,102 +286,84 @@ def get_market_data():
             'openPrice': float(data['openPrice']),
             'timestamp': int(time.time() * 1000)
         })
-        
     except Exception as e:
         logging.error(f"Error fetching live market data for {symbol}: {str(e)}")
-        # Fallback to mock data only if Binance API fails
-        base_price = 50000
-        change_percent = (random.random() - 0.5) * 10
-        current_price = base_price * (1 + change_percent / 100)
-        price_change = current_price - base_price
+        logging.error("Switching to live data from alternative source...")
         
-        return jsonify({
-            'symbol': symbol,
-            'price': round(current_price, 2),
-            'change': round(price_change, 2),
-            'changePercent': round(change_percent, 3),
-            'high': round(current_price * 1.02, 2),
-            'low': round(current_price * 0.98, 2),
-            'volume': round(random.uniform(10000, 50000), 2),
-            'quoteVolume': round(random.uniform(1000000, 5000000), 2),
-            'openPrice': base_price,
-            'timestamp': int(time.time() * 1000)
-        })
+        # Try alternative approach with requests-like functionality
+        try:
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'TradingBot/1.0')
+            
+            with urllib.request.urlopen(req, timeout=15, context=ssl_context) as response:
+                data = json.loads(response.read().decode())
+            
+            return jsonify({
+                'symbol': data['symbol'],
+                'price': float(data['lastPrice']),
+                'change': float(data['priceChange']),
+                'changePercent': float(data['priceChangePercent']),
+                'high': float(data['highPrice']),
+                'low': float(data['lowPrice']),
+                'volume': float(data['volume']),
+                'quoteVolume': float(data['quoteVolume']),
+                'openPrice': float(data['openPrice']),
+                'timestamp': int(time.time() * 1000)
+            })
+        except Exception as e2:
+            logging.error(f"Alternative fetch also failed: {str(e2)}")
+            # Return error response instead of demo data
+            return jsonify({
+                'error': 'Unable to fetch live market data',
+                'message': 'Please check your internet connection and try again'
+            }), 503
 
 @app.route('/api/kline-data')
 def get_kline_data():
     """Get candlestick data for chart"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     interval = request.args.get('interval', '4h')
-    limit = int(request.args.get('limit', '50'))
+    limit = request.args.get('limit', '50')
     
-    # Always try to fetch live data first
     try:
+        # Use Binance API for candlestick data
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-        response = urllib.request.urlopen(url, timeout=10)
-        data = json.loads(response.read().decode())
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         
-        # Convert Binance kline format to our format
-        candlesticks = []
-        for item in data:
-            candlesticks.append({
-                'timestamp': int(item[0]),
-                'open': float(item[1]),
-                'high': float(item[2]),
-                'low': float(item[3]),
-                'close': float(item[4]),
-                'volume': float(item[5])
-            })
+        with urllib.request.urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode())
         
-        logging.info(f"Successfully fetched {len(candlesticks)} candlesticks for {symbol}")
-        return jsonify({
-            'symbol': symbol,
-            'interval': interval,
-            'data': candlesticks
-        })
-        
-    except Exception as e:
-        logging.error(f"Error fetching live kline data for {symbol}: {str(e)}")
-        # Fallback to mock data if live data fails
-        base_price = {
-            'BTCUSDT': 120000,
-            'ETHUSDT': 4000,
-            'BNBUSDT': 700,
-            'ADAUSDT': 1.2,
-            'DOTUSDT': 25,
-            'SOLUSDT': 200
-        }.get(symbol, 50000)
-        
+        # Convert to chart format
         chart_data = []
-        current_time = int(time.time() * 1000)
-        interval_ms = 4 * 60 * 60 * 1000  # 4 hours in milliseconds
-        
-        for i in range(limit):
-            timestamp = current_time - (limit - i) * interval_ms
-            # Generate realistic OHLCV data
-            open_price = base_price * (1 + (random.random() - 0.5) * 0.1)
-            variation = open_price * 0.05  # 5% max variation
-            high = open_price + random.random() * variation
-            low = open_price - random.random() * variation
-            close = low + random.random() * (high - low)
-            volume = random.uniform(1000, 10000)
-            
+        for kline in data:
             chart_data.append({
-                'timestamp': timestamp,
-                'open': round(open_price, 2),
-                'high': round(high, 2),
-                'low': round(low, 2),
-                'close': round(close, 2),
-                'volume': round(volume, 2)
+                'timestamp': int(kline[0]),
+                'open': float(kline[1]),
+                'high': float(kline[2]),
+                'low': float(kline[3]),
+                'close': float(kline[4]),
+                'volume': float(kline[5])
             })
         
+        logging.info(f"Successfully fetched {len(chart_data)} candlesticks for {symbol}")
         return jsonify({
             'symbol': symbol,
             'interval': interval,
             'data': chart_data
         })
-    
-
+    except Exception as e:
+        logging.error(f"Error fetching live kline data for {symbol}: {str(e)}")
+        # Return error response instead of demo data
+        return jsonify({
+            'error': 'Unable to fetch live chart data',
+            'message': 'Please check your internet connection and try again'
+        }), 503
 
 
 
@@ -1385,12 +1371,7 @@ def get_live_market_price(symbol):
 def get_mock_price(symbol):
     """Deprecated: Use get_live_market_price() instead"""
     logging.warning(f"get_mock_price() called for {symbol}. Using live market price instead.")
-    try:
-        return get_live_market_price(symbol)
-    except Exception as e:
-        logging.error(f"Failed to get live price for {symbol}: {e}")
-        # Return None to avoid returning mock data
-        return None
+    return get_live_market_price(symbol)
 
 def calculate_position_margin(amount, leverage):
     """Calculate position margin required"""
