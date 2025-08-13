@@ -9,6 +9,8 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application utilizes Flask as its web framework, serving as the primary interface for the Telegram Mini-App and handling webhook integration for real-time message processing. The core innovation is the `MultiTradeManager` class, enabling concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
+**Recent Migration Update (Aug 2025)**: Successfully migrated from Replit Agent to standard Replit environment with automatic webhook configuration for Vercel deployments. The system now includes intelligent deployment detection and automatic Telegram webhook setup for seamless deployment across platforms.
+
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 
 The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics (win/loss ratios, P&L), and daily summaries.
