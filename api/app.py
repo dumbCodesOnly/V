@@ -8,7 +8,7 @@ import json
 import random
 import time
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, UserCredentials, UserTradingSession
+from .models import db, UserCredentials, UserTradingSession
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG

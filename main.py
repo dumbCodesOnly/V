@@ -1,4 +1,4 @@
-from app import app
+from api.app import app
 
 # For Vercel deployment - expose the Flask app
 application = app
