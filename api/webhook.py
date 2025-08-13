@@ -122,7 +122,7 @@ def webhook():
                 response_text = f"🤖 Hello {user.get('first_name', 'User')}! Your bot is working securely."
                 keyboard = {
                     'inline_keyboard': [
-                        [{'text': '📱 Open Mini App', 'web_app': {'url': 'https://your-vercel-url.vercel.app'}}],
+                        [{'text': '📱 Open Mini App', 'web_app': {'url': 'https://v0-033-pi.vercel.app'}}],
                         [{'text': '💹 Check Price', 'callback_data': 'price_btc'}]
                     ]
                 }
@@ -132,7 +132,7 @@ def webhook():
                 response_text = "📋 Main Menu - Your secure bot is active!"
                 keyboard = {
                     'inline_keyboard': [
-                        [{'text': '📱 Trading Interface', 'web_app': {'url': 'https://your-vercel-url.vercel.app'}}]
+                        [{'text': '📱 Trading Interface', 'web_app': {'url': 'https://v0-033-pi.vercel.app'}}]
                     ]
                 }
                 send_telegram_response(chat_id, response_text, keyboard)

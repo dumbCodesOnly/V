@@ -64,61 +64,39 @@ else:
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-# Automatic webhook setup for deployments
+# Automatic webhook setup for Vercel deployments
 def setup_webhook_on_deployment():
-    """Automatically set up webhook for Vercel/deployment environments"""
+    """Set up webhook automatically for Vercel deployment"""
     if not BOT_TOKEN:
         logging.warning("TELEGRAM_BOT_TOKEN not set, skipping webhook setup")
         return
     
     try:
-        # Detect deployment URL
-        deployment_url = None
+        # For Vercel deployment, use the provided URL
+        webhook_url = "https://v0-033-pi.vercel.app/webhook"
         
-        # Check for Vercel deployment
-        if os.environ.get("VERCEL"):
-            vercel_url = os.environ.get("VERCEL_URL")
-            if vercel_url:
-                deployment_url = f"https://{vercel_url}"
+        # Set the webhook
+        webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        webhook_data = urllib.parse.urlencode({'url': webhook_url}).encode('utf-8')
         
-        # Check for Replit deployment  
-        elif os.environ.get("REPLIT_DOMAIN"):
-            deployment_url = f"https://{os.environ.get('REPLIT_DOMAIN')}"
+        webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data, method='POST')
+        webhook_response = urllib.request.urlopen(webhook_req, timeout=10)
         
-        # Use custom webhook URL if provided
-        elif WEBHOOK_URL and WEBHOOK_URL.strip():
-            if WEBHOOK_URL.endswith("/webhook"):
-                deployment_url = WEBHOOK_URL[:-8]
+        if webhook_response.getcode() == 200:
+            result = json.loads(webhook_response.read().decode('utf-8'))
+            if result.get('ok'):
+                logging.info(f"Webhook set successfully to {webhook_url}")
             else:
-                deployment_url = WEBHOOK_URL
-        
-        if deployment_url:
-            webhook_url = f"{deployment_url}/webhook"
-            
-            # Set the webhook
-            webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-            webhook_data = urllib.parse.urlencode({'url': webhook_url}).encode('utf-8')
-            
-            webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data, method='POST')
-            webhook_response = urllib.request.urlopen(webhook_req, timeout=10)
-            
-            if webhook_response.getcode() == 200:
-                result = json.loads(webhook_response.read().decode('utf-8'))
-                if result.get('ok'):
-                    logging.info(f"Webhook set successfully to {webhook_url}")
-                else:
-                    logging.error(f"Webhook setup failed: {result.get('description')}")
-            else:
-                logging.error(f"Webhook request failed with status {webhook_response.getcode()}")
+                logging.error(f"Webhook setup failed: {result.get('description')}")
         else:
-            logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
+            logging.error(f"Webhook request failed with status {webhook_response.getcode()}")
             
     except Exception as e:
         logging.error(f"Error setting up webhook: {e}")
 
-# Automatic webhook setup disabled - use manual configuration
-# if os.environ.get("VERCEL"):
-#     setup_webhook_on_deployment()
+# Enable automatic webhook setup for Vercel (only if token is present)
+if (os.environ.get("VERCEL") or os.environ.get("WEBHOOK_URL")) and BOT_TOKEN:
+    setup_webhook_on_deployment()
 
 # Simple in-memory storage for the bot (replace with database in production)
 bot_messages = []
