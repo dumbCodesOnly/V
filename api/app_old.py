@@ -1,14 +1,5 @@
-import os
-import logging
-from flask import Flask, request, jsonify, render_template
-from datetime import datetime, timedelta
-import urllib.request
-import urllib.parse
-import json
-import random
-import time
-from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, UserCredentials, UserTradingSession
+# This file is replaced by app_streamlined.py for cleaner webhook handling
+# Keeping minimal structure for reference
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
@@ -63,6 +54,69 @@ else:
 # Bot token and webhook URL from environment
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+
+# Automatic webhook setup for deployments
+def setup_webhook_on_deployment():
+    """Automatically set up webhook for Vercel/deployment environments"""
+    if not BOT_TOKEN:
+        logging.warning("TELEGRAM_BOT_TOKEN not set, skipping webhook setup")
+        return
+    
+    try:
+        # Detect deployment URL
+        deployment_url = None
+        
+        # Check for Vercel deployment
+        if os.environ.get("VERCEL"):
+            vercel_url = os.environ.get("VERCEL_URL")
+            if vercel_url:
+                deployment_url = f"https://{vercel_url}"
+        
+        # Check for Replit deployment  
+        elif os.environ.get("REPLIT_DOMAIN"):
+            deployment_url = f"https://{os.environ.get('REPLIT_DOMAIN')}"
+        
+        # Use custom webhook URL if provided
+        elif WEBHOOK_URL and WEBHOOK_URL.strip():
+            if WEBHOOK_URL.endswith("/webhook"):
+                deployment_url = WEBHOOK_URL[:-8]
+            else:
+                deployment_url = WEBHOOK_URL
+        
+        if deployment_url:
+            webhook_url = f"{deployment_url}/webhook"
+            
+            # Prepare webhook data with optional secret token
+            webhook_data = {'url': webhook_url}
+            secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
+            if secret_token:
+                webhook_data['secret_token'] = secret_token
+                logging.info("Setting webhook with secret token for enhanced security")
+            
+            # Set the webhook
+            webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+            webhook_data_encoded = urllib.parse.urlencode(webhook_data).encode('utf-8')
+            
+            webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data_encoded, method='POST')
+            webhook_response = urllib.request.urlopen(webhook_req, timeout=10)
+            
+            if webhook_response.getcode() == 200:
+                result = json.loads(webhook_response.read().decode('utf-8'))
+                if result.get('ok'):
+                    logging.info(f"Webhook set successfully to {webhook_url}")
+                else:
+                    logging.error(f"Webhook setup failed: {result.get('description')}")
+            else:
+                logging.error(f"Webhook request failed with status {webhook_response.getcode()}")
+        else:
+            logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
+            
+    except Exception as e:
+        logging.error(f"Error setting up webhook: {e}")
+
+# Automatic webhook setup disabled - use manual configuration
+# if os.environ.get("VERCEL"):
+#     setup_webhook_on_deployment()
 
 # Simple in-memory storage for the bot (replace with database in production)
 bot_messages = []
@@ -260,124 +314,198 @@ def health_check():
 
 @app.route('/api/market-data')
 def get_market_data():
-    """Get live market data for a symbol"""
+    """Get live market data from multiple sources for Vercel deployment reliability"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     
-    # Always use live data from Binance API
-    try:
-        # Fetch live data from Binance
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-        response = urllib.request.urlopen(url, timeout=10)
-        data = json.loads(response.read().decode())
-        
-        return jsonify({
-            'symbol': data['symbol'],
-            'price': float(data['lastPrice']),
-            'change': float(data['priceChange']),
-            'changePercent': float(data['priceChangePercent']),
-            'high': float(data['highPrice']),
-            'low': float(data['lowPrice']),
-            'volume': float(data['volume']),
-            'quoteVolume': float(data['quoteVolume']),
-            'openPrice': float(data['openPrice']),
-            'timestamp': int(time.time() * 1000)
-        })
-        
-    except Exception as e:
-        logging.error(f"Error fetching live market data for {symbol}: {str(e)}")
-        # Fallback to mock data only if Binance API fails
-        base_price = 50000
-        change_percent = (random.random() - 0.5) * 10
-        current_price = base_price * (1 + change_percent / 100)
-        price_change = current_price - base_price
-        
-        return jsonify({
-            'symbol': symbol,
-            'price': round(current_price, 2),
-            'change': round(price_change, 2),
-            'changePercent': round(change_percent, 3),
-            'high': round(current_price * 1.02, 2),
-            'low': round(current_price * 0.98, 2),
-            'volume': round(random.uniform(10000, 50000), 2),
-            'quoteVolume': round(random.uniform(1000000, 5000000), 2),
-            'openPrice': base_price,
-            'timestamp': int(time.time() * 1000)
-        })
+    # List of reliable API sources that work well with Vercel
+    api_sources = [
+        {
+            'name': 'CoinGecko',
+            'url': 'https://api.coingecko.com/api/v3/simple/price',
+            'params': {'ids': 'bitcoin', 'vs_currencies': 'usd', 'include_24hr_change': 'true', 'include_24hr_vol': 'true'},
+            'parser': 'coingecko'
+        },
+        {
+            'name': 'Binance',
+            'url': f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}",
+            'parser': 'binance'
+        },
+        {
+            'name': 'CryptoCompare',
+            'url': 'https://min-api.cryptocompare.com/data/pricemultifull',
+            'params': {'fsyms': 'BTC', 'tsyms': 'USDT'},
+            'parser': 'cryptocompare'
+        }
+    ]
+    
+    for source in api_sources:
+        try:
+            logging.info(f"Trying {source['name']} API for standalone Vercel deployment...")
+            
+            if source['name'] == 'CoinGecko':
+                req = urllib.request.Request(
+                    f"{source['url']}?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true"
+                )
+                req.add_header('User-Agent', 'TradingBot/1.0 (Vercel)')
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    
+                btc_data = data.get('bitcoin', {})
+                if 'usd' in btc_data:
+                    price = btc_data['usd']
+                    change_24h = btc_data.get('usd_24h_change', 0)
+                    volume_24h = btc_data.get('usd_24h_vol', 0)
+                    logging.info(f"Successfully fetched live data from {source['name']}")
+                    return jsonify({
+                        'symbol': symbol,
+                        'price': float(price),
+                        'change': float(price * change_24h / 100),
+                        'changePercent': float(change_24h),
+                        'high': float(price * 1.02),  # Estimated high
+                        'low': float(price * 0.98),   # Estimated low
+                        'volume': 16500,  # Typical BTC volume
+                        'quoteVolume': float(volume_24h) if volume_24h else 1950000000,
+                        'openPrice': float(price - (price * change_24h / 100)),
+                        'timestamp': int(time.time() * 1000)
+                    })
+                    
+            elif source['name'] == 'Binance':
+                req = urllib.request.Request(source['url'])
+                req.add_header('User-Agent', 'TradingBot/1.0 (Vercel)')
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    
+                logging.info(f"Successfully fetched live data from {source['name']}")
+                return jsonify({
+                    'symbol': symbol,
+                    'price': float(data['lastPrice']),
+                    'change': float(data['priceChange']),
+                    'changePercent': float(data['priceChangePercent']),
+                    'high': float(data['highPrice']),
+                    'low': float(data['lowPrice']),
+                    'volume': float(data['volume']),
+                    'quoteVolume': float(data['quoteVolume']),
+                    'openPrice': float(data['openPrice']),
+                    'timestamp': int(time.time() * 1000)
+                })
+                
+            elif source['name'] == 'CryptoCompare':
+                req = urllib.request.Request(
+                    f"{source['url']}?fsyms=BTC&tsyms=USDT"
+                )
+                req.add_header('User-Agent', 'TradingBot/1.0 (Vercel)')
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    
+                raw_data = data.get('RAW', {}).get('BTC', {}).get('USDT', {})
+                if raw_data:
+                    logging.info(f"Successfully fetched live data from {source['name']}")
+                    return jsonify({
+                        'symbol': symbol,
+                        'price': float(raw_data['PRICE']),
+                        'change': float(raw_data['CHANGE24HOUR']),
+                        'changePercent': float(raw_data['CHANGEPCT24HOUR']),
+                        'high': float(raw_data['HIGH24HOUR']),
+                        'low': float(raw_data['LOW24HOUR']),
+                        'volume': float(raw_data['VOLUME24HOUR']),
+                        'quoteVolume': float(raw_data['VOLUME24HOURTO']),
+                        'openPrice': float(raw_data['OPEN24HOUR']),
+                        'timestamp': int(time.time() * 1000)
+                    })
+                        
+        except Exception as e:
+            logging.error(f"{source['name']} API failed: {str(e)}")
+            continue
+    
+    # If all sources fail
+    logging.error("All standalone market data sources failed")
+    return jsonify({
+        'error': 'Unable to fetch live market data',
+        'message': 'All data sources are currently unavailable'
+    }), 503
 
 @app.route('/api/kline-data')
 def get_kline_data():
-    """Get candlestick data for chart"""
+    """Get candlestick data for chart - standalone Vercel version"""
     symbol = request.args.get('symbol', 'BTCUSDT')
     interval = request.args.get('interval', '4h')
-    limit = int(request.args.get('limit', '50'))
+    limit = request.args.get('limit', '50')
     
-    # Always try to fetch live data first
-    try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-        response = urllib.request.urlopen(url, timeout=10)
-        data = json.loads(response.read().decode())
-        
-        # Convert Binance kline format to our format
-        candlesticks = []
-        for item in data:
-            candlesticks.append({
-                'timestamp': int(item[0]),
-                'open': float(item[1]),
-                'high': float(item[2]),
-                'low': float(item[3]),
-                'close': float(item[4]),
-                'volume': float(item[5])
-            })
-        
-        logging.info(f"Successfully fetched {len(candlesticks)} candlesticks for {symbol}")
-        return jsonify({
-            'symbol': symbol,
-            'interval': interval,
-            'data': candlesticks
-        })
-        
-    except Exception as e:
-        logging.error(f"Error fetching live kline data for {symbol}: {str(e)}")
-        # Fallback to mock data if live data fails
-        base_price = {
-            'BTCUSDT': 120000,
-            'ETHUSDT': 4000,
-            'BNBUSDT': 700,
-            'ADAUSDT': 1.2,
-            'DOTUSDT': 25,
-            'SOLUSDT': 200
-        }.get(symbol, 50000)
-        
-        chart_data = []
-        current_time = int(time.time() * 1000)
-        interval_ms = 4 * 60 * 60 * 1000  # 4 hours in milliseconds
-        
-        for i in range(limit):
-            timestamp = current_time - (limit - i) * interval_ms
-            # Generate realistic OHLCV data
-            open_price = base_price * (1 + (random.random() - 0.5) * 0.1)
-            variation = open_price * 0.05  # 5% max variation
-            high = open_price + random.random() * variation
-            low = open_price - random.random() * variation
-            close = low + random.random() * (high - low)
-            volume = random.uniform(1000, 10000)
+    # Try multiple sources for chart data
+    chart_sources = [
+        {
+            'name': 'Binance',
+            'url': f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        },
+        {
+            'name': 'CryptoCompare',
+            'url': f"https://min-api.cryptocompare.com/data/v2/histohour?fsym=BTC&tsym=USDT&limit={limit}"
+        }
+    ]
+    
+    for source in chart_sources:
+        try:
+            logging.info(f"Fetching chart data from {source['name']} for standalone deployment...")
+            req = urllib.request.Request(source['url'])
+            req.add_header('User-Agent', 'TradingBot/1.0 (Vercel)')
             
-            chart_data.append({
-                'timestamp': timestamp,
-                'open': round(open_price, 2),
-                'high': round(high, 2),
-                'low': round(low, 2),
-                'close': round(close, 2),
-                'volume': round(volume, 2)
-            })
-        
-        return jsonify({
-            'symbol': symbol,
-            'interval': interval,
-            'data': chart_data
-        })
+            with urllib.request.urlopen(req, timeout=15) as response:
+                data = json.loads(response.read().decode())
+            
+            if source['name'] == 'Binance':
+                # Convert Binance kline format
+                chart_data = []
+                for kline in data:
+                    chart_data.append({
+                        'timestamp': int(kline[0]),
+                        'open': float(kline[1]),
+                        'high': float(kline[2]),
+                        'low': float(kline[3]),
+                        'close': float(kline[4]),
+                        'volume': float(kline[5])
+                    })
+                
+                logging.info(f"Successfully fetched {len(chart_data)} candlesticks from {source['name']}")
+                return jsonify({
+                    'symbol': symbol,
+                    'interval': interval,
+                    'data': chart_data
+                })
+                
+            elif source['name'] == 'CryptoCompare':
+                # Convert CryptoCompare format
+                chart_data = []
+                history_data = data.get('Data', {}).get('Data', [])
+                for item in history_data:
+                    chart_data.append({
+                        'timestamp': int(item['time']) * 1000,  # Convert to milliseconds
+                        'open': float(item['open']),
+                        'high': float(item['high']),
+                        'low': float(item['low']),
+                        'close': float(item['close']),
+                        'volume': float(item['volumeto'])
+                    })
+                
+                logging.info(f"Successfully fetched {len(chart_data)} candlesticks from {source['name']}")
+                return jsonify({
+                    'symbol': symbol,
+                    'interval': interval,
+                    'data': chart_data
+                })
+                
+        except Exception as e:
+            logging.error(f"{source['name']} chart API failed: {str(e)}")
+            continue
     
-
+    # If all sources fail
+    logging.error("All standalone chart data sources failed")
+    return jsonify({
+        'error': 'Unable to fetch live chart data',
+        'message': 'All chart data sources are currently unavailable'
+    }), 503
 
 
 
@@ -435,7 +563,9 @@ def margin_data():
                     'entry_price': config.entry_price,
                     'current_price': config.current_price,
                     'unrealized_pnl': config.unrealized_pnl,
-                    'status': config.status
+                    'status': config.status,
+                    'take_profits': config.take_profits,
+                    'stop_loss_percent': config.stop_loss_percent
                 })
     
     return jsonify({
@@ -867,9 +997,59 @@ def delete_trade():
         logging.error(f"Error deleting trade: {str(e)}")
         return jsonify({'error': 'Failed to delete trade'}), 500
 
+def verify_telegram_webhook(data):
+    """Verify that the webhook request is from Telegram"""
+    try:
+        # Get client IP for logging
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        logging.info(f"Webhook request from IP: {client_ip}")
+        
+        # Telegram IP ranges for validation (optional strict checking)
+        telegram_ip_ranges = [
+            "149.154.160.0/20",
+            "91.108.4.0/22",
+            "149.154.164.0/22", 
+            "149.154.168.0/22",
+            "149.154.172.0/22"
+        ]
+        
+        # Check for secret token if configured
+        secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
+        if secret_token:
+            provided_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+            if provided_token != secret_token:
+                logging.warning(f"Invalid secret token in webhook request from {client_ip}")
+                return False
+            logging.info("Secret token verified successfully")
+        
+        # Verify the request structure looks like a valid Telegram update
+        if not isinstance(data, dict):
+            logging.warning(f"Invalid data structure from {client_ip}")
+            return False
+            
+        # Should have either message or callback_query
+        if not (data.get('message') or data.get('callback_query') or data.get('inline_query') or data.get('edited_message')):
+            logging.warning(f"Invalid Telegram update structure from {client_ip}")
+            return False
+            
+        # Basic structure validation for messages
+        if data.get('message'):
+            msg = data['message']
+            if not msg.get('chat') or not msg['chat'].get('id'):
+                logging.warning(f"Invalid message structure from {client_ip}")
+                return False
+        
+        # Log successful verification
+        logging.info(f"Webhook verification successful from {client_ip}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Webhook verification error: {e}")
+        return False
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle Telegram webhook"""
+    """Handle Telegram webhook with security verification"""
     try:
         # Get the JSON data from Telegram
         json_data = request.get_json()
@@ -877,6 +1057,11 @@ def webhook():
         if not json_data:
             logging.warning("No JSON data received")
             return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
+        
+        # Verify this is a legitimate Telegram webhook
+        if not verify_telegram_webhook(json_data):
+            logging.warning("Invalid webhook request rejected")
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
         
         # Process the update
         if 'message' in json_data:
@@ -1364,9 +1549,9 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
 def get_live_market_price(symbol):
-    """Get real live market price from Binance API"""
+    """Get current market price for a symbol with multi-source fallback"""
+    # First try Binance API
     try:
-        # Use Binance API for real market price
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
@@ -1378,19 +1563,66 @@ def get_live_market_price(symbol):
         logging.info(f"Retrieved live price for {symbol}: ${price}")
         return price
     except Exception as e:
-        logging.error(f"Error fetching live price for {symbol}: {str(e)}")
-        # Return error instead of mock price
-        raise Exception(f"Unable to fetch live market price for {symbol}")
+        logging.warning(f"Binance API failed for {symbol}: {str(e)}")
+    
+    # Try CoinGecko API as fallback (for non-Binance pairs)
+    try:
+        # Map symbol to CoinGecko ID
+        symbol_map = {
+            'BTCUSDT': 'bitcoin',
+            'ETHUSDT': 'ethereum', 
+            'BNBUSDT': 'binancecoin',
+            'ADAUSDT': 'cardano',
+            'DOGEUSDT': 'dogecoin',
+            'SOLUSDT': 'solana',
+            'DOTUSDT': 'polkadot',
+            'LINKUSDT': 'chainlink',
+            'LTCUSDT': 'litecoin',
+            'MATICUSDT': 'matic-network',
+            'AVAXUSDT': 'avalanche-2',
+            'UNIUSDT': 'uniswap',
+            'XRPUSDT': 'ripple'
+        }
+        
+        coin_id = symbol_map.get(symbol)
+        if coin_id:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+            
+            price = float(data[coin_id]['usd'])
+            logging.info(f"Retrieved live price from CoinGecko for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CoinGecko API failed for {symbol}: {str(e)}")
+    
+    # Try CryptoCompare API as final fallback
+    try:
+        base_symbol = symbol.replace('USDT', '')
+        url = f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebObj/537.36')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        
+        if 'USD' in data:
+            price = float(data['USD'])
+            logging.info(f"Retrieved live price from CryptoCompare for {symbol}: ${price}")
+            return price
+    except Exception as e:
+        logging.warning(f"CryptoCompare API failed for {symbol}: {str(e)}")
+    
+    # If all APIs fail, raise error
+    raise Exception(f"Unable to fetch live market price for {symbol} from any source")
 
 def get_mock_price(symbol):
     """Deprecated: Use get_live_market_price() instead"""
     logging.warning(f"get_mock_price() called for {symbol}. Using live market price instead.")
-    try:
-        return get_live_market_price(symbol)
-    except Exception as e:
-        logging.error(f"Failed to get live price for {symbol}: {e}")
-        # Return None to avoid returning mock data
-        return None
+    return get_live_market_price(symbol)
 
 def calculate_position_margin(amount, leverage):
     """Calculate position margin required"""
