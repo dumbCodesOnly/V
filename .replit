@@ -1,11 +1,11 @@
-modules = ["python-3.11", "web", "bash"]
+modules = ["python-3.11", "web", "bash", "nodejs-20"]
 [agent]
 expertMode = true
 integrations = ["python_database==1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
+packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc", "jq"]
 
 [workflows]
 runButton = "Project"
