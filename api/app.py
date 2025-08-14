@@ -2165,6 +2165,7 @@ def handle_callback_query(callback_data, chat_id, user):
             # Holdings & Position Details
             active_positions = [config for config in user_trades.values() if config.status == "active"]
             configured_positions = [config for config in user_trades.values() if config.status == "configured"]
+            closed_positions = [config for config in user_trades.values() if config.status == "stopped"]
             
             response += "📊 **ACTIVE POSITIONS**\n"
             if active_positions:
@@ -2191,6 +2192,36 @@ def handle_callback_query(callback_data, chat_id, user):
                     if config.symbol:
                         response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
                 response += "\n"
+            
+            # Closed Positions History
+            if closed_positions:
+                response += "📚 **CLOSED POSITIONS HISTORY**\n"
+                response += f"Total Closed: {len(closed_positions)}\n"
+                response += "-" * 35 + "\n"
+                
+                for config in closed_positions[-5:]:  # Show last 5 closed positions
+                    if config.symbol and config.amount:
+                        # Get final PnL from bot_trades
+                        closed_trade = next((trade for trade in bot_trades if trade.get('trade_id') == config.trade_id and trade.get('user_id') == str(chat_id)), None)
+                        final_pnl = closed_trade.get('final_pnl', 0) if closed_trade else 0
+                        pnl_emoji = "🟢" if final_pnl >= 0 else "🔴"
+                        
+                        response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
+                        response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
+                        response += f"   Entry: ${config.entry_price or 0:.4f}\n"
+                        response += f"   Final P&L: ${final_pnl:+,.2f}\n"
+                        
+                        # Add timestamp if available
+                        if closed_trade and 'timestamp' in closed_trade:
+                            timestamp = datetime.fromisoformat(closed_trade['timestamp'])
+                            response += f"   Closed: {timestamp.strftime('%Y-%m-%d %H:%M')}\n"
+                        response += "\n"
+                
+                if len(closed_positions) > 5:
+                    response += f"... and {len(closed_positions) - 5} more closed positions\n\n"
+            else:
+                response += "📚 **CLOSED POSITIONS HISTORY**\n"
+                response += "No closed positions yet\n\n"
             
             # Portfolio Statistics
             all_positions = len(user_trades)

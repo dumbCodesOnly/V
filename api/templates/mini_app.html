@@ -1332,6 +1332,7 @@
             
             const container = document.getElementById('positions-list');
             const activePositions = data.trades?.filter(t => t.status === 'active' || t.status === 'pending') || [];
+            const closedPositions = data.trades?.filter(t => t.status === 'stopped') || [];
             
             document.getElementById('total-positions').textContent = activePositions.length;
             
@@ -1340,12 +1341,14 @@
             document.getElementById('total-pnl').textContent = `$${totalPnl.toFixed(2)}`;
             document.getElementById('total-pnl').style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
             
-            if (activePositions.length === 0) {
-                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No active or pending positions</small></div>';
-                return;
-            }
+            let content = '';
             
-            container.innerHTML = activePositions.map((pos, index) => `
+            // Active Positions Section
+            if (activePositions.length === 0) {
+                content += '<div class="text-center py-4"><small class="text-muted">No active or pending positions</small></div>';
+            } else {
+            
+            content += activePositions.map((pos, index) => `
                 <div class="position-item">
                     <div class="collapsible-header" onclick="togglePosition(${index})">
                         <div class="d-flex justify-content-between align-items-center w-100">
@@ -1449,6 +1452,74 @@
                     </div>
                 </div>
             `).join('');
+            }
+            
+            // Closed Positions Section
+            if (closedPositions.length > 0) {
+                content += '<div class="mt-4"><h5 class="text-muted">📚 Closed Positions History</h5></div>';
+                content += closedPositions.slice(-5).map((pos, index) => `
+                    <div class="position-item" style="opacity: 0.7; border-left: 3px solid #6c757d;">
+                        <div class="collapsible-header" onclick="togglePosition(${activePositions.length + index})">
+                            <div class="d-flex justify-content-between align-items-center w-100">
+                                <div>
+                                    <strong>${pos.symbol}</strong>
+                                    <span class="status-badge status-stopped ms-2">${pos.side.toUpperCase()}</span>
+                                    <small class="text-muted ms-2">CLOSED</small>
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="text-end me-3">
+                                        <div class="stat-value" style="color: ${(pos.final_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                            $${(pos.final_pnl || 0).toFixed(2)}
+                                        </div>
+                                        <small class="text-muted">Final P&L</small>
+                                    </div>
+                                    <span class="expand-icon" id="icon-${activePositions.length + index}">▼</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="collapsible-content" id="content-${activePositions.length + index}">
+                            <div class="row mt-2">
+                                <div class="col-4">
+                                    <small class="text-muted">Position Size:</small><br>
+                                    <strong>$${pos.position_size || (pos.amount * pos.leverage) || '0'}</strong>
+                                    <br><small class="text-muted">Margin: $${pos.amount || '0'}</small>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Leverage:</small><br>
+                                    <strong>${pos.leverage || '1'}x</strong>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Entry:</small><br>
+                                    <strong>$${pos.entry_price || 'Market'}</strong>
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-6">
+                                    <small class="text-muted">Final P&L:</small><br>
+                                    <strong style="color: ${(pos.final_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                        $${(pos.final_pnl || 0).toFixed(2)}
+                                    </strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Status:</small><br>
+                                    <strong class="text-secondary">CLOSED</strong>
+                                </div>
+                            </div>
+                            ${pos.closed_at ? `
+                            <div class="mt-2">
+                                <small class="text-muted">Closed at: ${new Date(pos.closed_at).toLocaleString()}</small>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                
+                if (closedPositions.length > 5) {
+                    content += `<div class="text-center py-2"><small class="text-muted">... and ${closedPositions.length - 5} more closed positions</small></div>`;
+                }
+            }
+            
+            container.innerHTML = content;
         }
 
         async function loadTradeConfigs() {
