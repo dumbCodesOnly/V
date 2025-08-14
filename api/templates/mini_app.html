@@ -1370,8 +1370,9 @@
                     <!-- Position Details -->
                     <div class="row mt-2">
                         <div class="col-4">
-                            <small class="text-muted">Amount:</small><br>
-                            <strong>$${pos.amount}</strong>
+                            <small class="text-muted">Position Size:</small><br>
+                            <strong>$${pos.position_size || (pos.amount * pos.leverage) || '0'}</strong>
+                            <br><small class="text-muted">Margin: $${pos.amount || '0'}</small>
                         </div>
                         <div class="col-4">
                             <small class="text-muted">Leverage:</small><br>

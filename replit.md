@@ -33,6 +33,8 @@ The application utilizes Flask as its web framework, serving as the primary inte
 
 **Dependency Cleanup (Aug 2025)**: Removed all deprecated functions and patterns after the trading logic corrections. Eliminated `get_mock_price()` and `get_simulated_price()` deprecated functions, replacing all calls with `get_live_market_price()`. Cleaned up commented-out legacy webhook setup code and updated portfolio command responses to reference the web interface. This cleanup ensures the codebase only uses current, authentic market data functions and maintains clean, efficient code without deprecated patterns.
 
+**Position Size Display Fix (Aug 2025)**: Fixed critical UI display issue where position amounts showed only margin instead of position size (margin × leverage). Updated both trading and positions tabs to correctly display "Position Size: $1000" with "Margin: $100" underneath for $100 margin with 10x leverage. The backend API endpoints already provided position_size field, but frontend JavaScript was displaying the wrong value. This fix ensures users see the actual position size they're controlling while still showing their margin commitment.
+
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 
 The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics (win/loss ratios, P&L), and daily summaries.
