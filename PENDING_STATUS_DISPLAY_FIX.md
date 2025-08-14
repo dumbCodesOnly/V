@@ -52,5 +52,11 @@ Now when users place limit orders:
 - **Telegram Bot**: Shows "🔵 Position #1 (BTCUSDT long)" in position lists  
 - **Position Manager**: Shows "Active: 2, Pending: 1" in summary
 
+## Deployment Status
+✅ **Replit Environment**: All fixes applied and tested  
+✅ **Vercel Environment**: All fixes applied to `api/` directory (same codebase)  
+
+Both deployments now have identical pending limit order functionality.
+
 Date: August 14, 2025  
 Status: Fixed ✅
