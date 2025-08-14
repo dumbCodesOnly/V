@@ -214,15 +214,34 @@ class TradeConfig:
         else:
             summary += f"Entry: Market Price\n"
         
-        # Show take profits
+        # Show take profits with prices if entry price is available
         if self.take_profits:
             summary += f"Take Profits:\n"
+            tp_sl_data = calculate_tp_sl_prices_and_amounts(self) if self.entry_price > 0 else {}
+            
             for i, tp in enumerate(self.take_profits, 1):
-                summary += f"  TP{i}: {tp.get('percentage', 0)}% ({tp.get('allocation', 0)}%)\n"
+                tp_percentage = tp.get('percentage', 0)
+                tp_allocation = tp.get('allocation', 0)
+                
+                if tp_sl_data.get('take_profits') and len(tp_sl_data['take_profits']) >= i:
+                    tp_calc = tp_sl_data['take_profits'][i-1]
+                    summary += f"  TP{i}: ${tp_calc['price']:.4f} (+${tp_calc['profit_amount']:.2f}) [{tp_percentage}% - {tp_allocation}%]\n"
+                else:
+                    summary += f"  TP{i}: {tp_percentage}% ({tp_allocation}%)\n"
         else:
             summary += f"Take Profits: Not set\n"
             
-        summary += f"Stop Loss: {self.stop_loss_percent}%" if self.stop_loss_percent > 0 else "Stop Loss: Not set\n"
+        # Show stop loss with price if entry price is available
+        if self.stop_loss_percent > 0:
+            tp_sl_data = calculate_tp_sl_prices_and_amounts(self) if self.entry_price > 0 else {}
+            
+            if tp_sl_data.get('stop_loss'):
+                sl_calc = tp_sl_data['stop_loss']
+                summary += f"Stop Loss: ${sl_calc['price']:.4f} (-${sl_calc['loss_amount']:.2f}) [{self.stop_loss_percent}%]\n"
+            else:
+                summary += f"Stop Loss: {self.stop_loss_percent}%\n"
+        else:
+            summary += "Stop Loss: Not set\n"
         
         # Show trailing stop status
         if self.trailing_stop_enabled:
@@ -386,6 +405,9 @@ def margin_data():
     if chat_id in user_trade_configs:
         for trade_id, config in user_trade_configs[chat_id].items():
             if config.status in ["active", "pending"] and config.symbol:
+                # Calculate TP/SL prices and amounts
+                tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+                
                 user_positions.append({
                     'trade_id': trade_id,
                     'symbol': config.symbol,
@@ -398,7 +420,8 @@ def margin_data():
                     'unrealized_pnl': config.unrealized_pnl,
                     'status': config.status,
                     'take_profits': config.take_profits,
-                    'stop_loss_percent': config.stop_loss_percent
+                    'stop_loss_percent': config.stop_loss_percent,
+                    'tp_sl_calculations': tp_sl_data
                 })
     
     return jsonify({
@@ -473,6 +496,9 @@ def user_trades():
     
     if chat_id in user_trade_configs:
         for trade_id, config in user_trade_configs[chat_id].items():
+            # Calculate TP/SL prices and amounts
+            tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+            
             user_trade_list.append({
                 'trade_id': trade_id,
                 'name': config.name,
@@ -491,7 +517,8 @@ def user_trades():
                 'breakeven_after': config.breakeven_after,
                 'trailing_stop_enabled': config.trailing_stop_enabled,
                 'trail_percentage': config.trail_percentage,
-                'trail_activation_price': config.trail_activation_price
+                'trail_activation_price': config.trail_activation_price,
+                'tp_sl_calculations': tp_sl_data
             })
     
     return jsonify({
@@ -1631,6 +1658,64 @@ def calculate_unrealized_pnl(entry_price, current_price, position_size, side):
         price_diff = -price_diff
     
     return price_diff * position_size
+
+def calculate_tp_sl_prices_and_amounts(config):
+    """Calculate actual TP/SL prices and profit/loss amounts"""
+    if not config.entry_price or config.entry_price <= 0:
+        return {}
+    
+    result = {
+        'take_profits': [],
+        'stop_loss': {}
+    }
+    
+    # Calculate Take Profit levels
+    for i, tp in enumerate(config.take_profits or []):
+        tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
+        allocation = tp.get('allocation', 100) if isinstance(tp, dict) else 100
+        
+        if tp_percentage > 0:
+            if config.side == "long":
+                tp_price = config.entry_price * (1 + tp_percentage / 100)
+            else:  # short
+                tp_price = config.entry_price * (1 - tp_percentage / 100)
+            
+            # Calculate profit amount for this TP level
+            position_portion = (config.position_size or config.amount * config.leverage) * (allocation / 100)
+            if config.side == "long":
+                profit_amount = (tp_price - config.entry_price) * position_portion
+            else:  # short
+                profit_amount = (config.entry_price - tp_price) * position_portion
+            
+            result['take_profits'].append({
+                'level': i + 1,
+                'percentage': tp_percentage,
+                'allocation': allocation,
+                'price': tp_price,
+                'profit_amount': profit_amount
+            })
+    
+    # Calculate Stop Loss
+    if config.stop_loss_percent > 0:
+        if config.side == "long":
+            sl_price = config.entry_price * (1 - config.stop_loss_percent / 100)
+        else:  # short
+            sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
+        
+        # Calculate loss amount
+        full_position = config.position_size or config.amount * config.leverage
+        if config.side == "long":
+            loss_amount = (config.entry_price - sl_price) * full_position
+        else:  # short
+            loss_amount = (sl_price - config.entry_price) * full_position
+        
+        result['stop_loss'] = {
+            'percentage': config.stop_loss_percent,
+            'price': sl_price,
+            'loss_amount': loss_amount
+        }
+    
+    return result
 
 def get_margin_summary(chat_id):
     """Get comprehensive margin summary for a user"""

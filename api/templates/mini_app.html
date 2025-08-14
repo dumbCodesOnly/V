@@ -1399,21 +1399,27 @@
                     </div>
                     ` : ''}
                     
-                    <!-- Take Profit & Stop Loss -->
-                    <div class="row mt-2">
-                        <div class="col-6">
-                            <small class="text-muted">Take Profits:</small><br>
-                            <strong>
-                                ${pos.take_profits && pos.take_profits.length > 0 ? 
-                                    pos.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
-                                    'Not set'}
-                            </strong>
-                        </div>
-                        <div class="col-6">
-                            <small class="text-muted">Stop Loss:</small><br>
-                            <strong>
-                                ${pos.stop_loss_percent ? `${pos.stop_loss_percent}%` : 'Not set'}
-                            </strong>
+                    <!-- Take Profit & Stop Loss with Prices and P&L -->
+                    <div class="mt-2">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Take Profits:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${pos.tp_sl_calculations && pos.tp_sl_calculations.take_profits && pos.tp_sl_calculations.take_profits.length > 0 ? 
+                                        pos.tp_sl_calculations.take_profits.map(tp => 
+                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
+                                        ).join('') : 
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Stop Loss:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${pos.tp_sl_calculations && pos.tp_sl_calculations.stop_loss && pos.tp_sl_calculations.stop_loss.price ? 
+                                        `<div><strong>SL:</strong> $${pos.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${pos.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
@@ -1517,21 +1523,27 @@
                         </div>
                     </div>
                     
-                    <!-- Take Profit & Stop Loss -->
-                    <div class="row mt-2">
-                        <div class="col-6">
-                            <small class="text-muted">Take Profits:</small><br>
-                            <strong>
-                                ${trade.take_profits && trade.take_profits.length > 0 ? 
-                                    trade.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
-                                    'Not set'}
-                            </strong>
-                        </div>
-                        <div class="col-6">
-                            <small class="text-muted">Stop Loss:</small><br>
-                            <strong>
-                                ${trade.stop_loss_percent ? `${trade.stop_loss_percent}%` : 'Not set'}
-                            </strong>
+                    <!-- Take Profit & Stop Loss with Prices and P&L -->
+                    <div class="mt-2">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Take Profits:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${trade.tp_sl_calculations && trade.tp_sl_calculations.take_profits && trade.tp_sl_calculations.take_profits.length > 0 ? 
+                                        trade.tp_sl_calculations.take_profits.map(tp => 
+                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
+                                        ).join('') : 
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Stop Loss:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${trade.tp_sl_calculations && trade.tp_sl_calculations.stop_loss && trade.tp_sl_calculations.stop_loss.price ? 
+                                        `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
@@ -1566,21 +1578,31 @@
                         </div>
                     </div>
                     
-                    <!-- Take Profit & Stop Loss for Configured Trades -->
-                    <div class="row mt-2">
-                        <div class="col-6">
-                            <small class="text-muted">Take Profits:</small><br>
-                            <strong>
-                                ${trade.take_profits && trade.take_profits.length > 0 ? 
-                                    trade.take_profits.map((tp, idx) => `TP${idx+1}: ${tp.percentage || tp}% (${tp.allocation || 100}%)`).join(', ') : 
-                                    'Not set'}
-                            </strong>
-                        </div>
-                        <div class="col-6">
-                            <small class="text-muted">Stop Loss:</small><br>
-                            <strong>
-                                ${trade.stop_loss_percent ? `${trade.stop_loss_percent}%` : 'Not set'}
-                            </strong>
+                    <!-- Take Profit & Stop Loss for Configured Trades with Prices and P&L -->
+                    <div class="mt-2">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Take Profits:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${trade.tp_sl_calculations && trade.tp_sl_calculations.take_profits && trade.tp_sl_calculations.take_profits.length > 0 ? 
+                                        trade.tp_sl_calculations.take_profits.map(tp => 
+                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
+                                        ).join('') : 
+                                        trade.take_profits && trade.take_profits.length > 0 ? 
+                                            trade.take_profits.map((tp, idx) => `<div><strong>TP${idx+1}:</strong> ${tp.percentage || tp}%</div>`).join('') :
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Stop Loss:</small><br>
+                                <div style="font-size: 0.85rem;">
+                                    ${trade.tp_sl_calculations && trade.tp_sl_calculations.stop_loss && trade.tp_sl_calculations.stop_loss.price ? 
+                                        `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        trade.stop_loss_percent ? 
+                                            `<div><strong>SL:</strong> ${trade.stop_loss_percent}%</div>` :
+                                        '<strong>Not set</strong>'}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
