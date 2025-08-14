@@ -1681,11 +1681,14 @@ def calculate_tp_sl_prices_and_amounts(config):
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
             # Calculate profit amount for this TP level
-            position_portion = (config.position_size or config.amount * config.leverage) * (allocation / 100)
+            # Position size in contracts (amount * leverage / entry_price)
+            total_contracts = (config.amount * config.leverage) / config.entry_price
+            contracts_for_tp = total_contracts * (allocation / 100)
+            
             if config.side == "long":
-                profit_amount = (tp_price - config.entry_price) * position_portion
+                profit_amount = (tp_price - config.entry_price) * contracts_for_tp
             else:  # short
-                profit_amount = (config.entry_price - tp_price) * position_portion
+                profit_amount = (config.entry_price - tp_price) * contracts_for_tp
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1703,11 +1706,13 @@ def calculate_tp_sl_prices_and_amounts(config):
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
         # Calculate loss amount
-        full_position = config.position_size or config.amount * config.leverage
+        # Position size in contracts (amount * leverage / entry_price)
+        total_contracts = (config.amount * config.leverage) / config.entry_price
+        
         if config.side == "long":
-            loss_amount = (config.entry_price - sl_price) * full_position
+            loss_amount = (config.entry_price - sl_price) * total_contracts
         else:  # short
-            loss_amount = (sl_price - config.entry_price) * full_position
+            loss_amount = (sl_price - config.entry_price) * total_contracts
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
