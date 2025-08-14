@@ -1336,6 +1336,20 @@
                 icon.classList.add('expanded');
             }
         }
+        
+        // Toggle history section collapse/expand
+        function toggleHistorySection() {
+            const content = document.getElementById('history-content');
+            const icon = document.getElementById('history-icon');
+            
+            if (content.style.display === 'none' || content.style.display === '') {
+                content.style.display = 'block';
+                icon.textContent = '▲';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▼';
+            }
+        }
 
         // Load data functions
         async function loadPositions() {
@@ -1739,11 +1753,21 @@
                 content += '<div class="text-center py-4"><small class="text-muted">No active positions</small></div>';
             }
             
-            // Closed Positions History Section
+            // Closed Positions History Section - Collapsible
+            content += `<div class="mt-4">
+                <div class="collapsible-header" onclick="toggleHistorySection()" style="cursor: pointer; padding: 0.75rem; background: rgba(108, 117, 125, 0.1); border-radius: 8px; margin-bottom: 1rem;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0 text-muted">📚 Closed Positions History</h6>
+                            <small class="text-muted">${closedPositions.length} closed position${closedPositions.length !== 1 ? 's' : ''}</small>
+                        </div>
+                        <span class="expand-icon" id="history-icon">▼</span>
+                    </div>
+                </div>
+                <div class="collapsible-content" id="history-content" style="display: none;">
+            `;
+            
             if (closedPositions.length > 0) {
-                content += `<div class="mt-4">
-                    <h6 class="mb-3 text-muted">📚 Closed Positions History</h6>
-                </div>`;
                 content += closedPositions.slice(-10).reverse().map(pos => `
                     <div class="trade-card" style="opacity: 0.8; border-left: 3px solid #6c757d;">
                         <div class="d-flex justify-content-between mb-2">
@@ -1788,11 +1812,10 @@
                     </div>`;
                 }
             } else {
-                content += `<div class="mt-4">
-                    <h6 class="mb-3 text-muted">📚 Closed Positions History</h6>
-                    <div class="text-center py-4"><small class="text-muted">No closed positions yet</small></div>
-                </div>`;
+                content += `<div class="text-center py-4"><small class="text-muted">No closed positions yet</small></div>`;
             }
+            
+            content += `</div></div>`; // Close collapsible content and container
             
             container.innerHTML = content;
         }
