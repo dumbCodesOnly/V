@@ -192,6 +192,8 @@ class TradeConfig:
         self.unrealized_pnl = 0.0   # Current floating P&L
         self.current_price = 0.0    # Current market price
         self.position_size = 0.0    # Actual position size in contracts
+        self.final_pnl = None       # Final P&L when position is closed
+        self.closed_at = None       # Timestamp when position was closed
         
     def get_display_name(self):
         if self.symbol and self.side:
@@ -425,6 +427,13 @@ def margin_data():
                     'tp_sl_calculations': tp_sl_data
                 })
     
+    # Calculate total realized P&L from closed positions
+    total_realized_pnl = 0.0
+    if chat_id in user_trade_configs:
+        for config in user_trade_configs[chat_id].values():
+            if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
+                total_realized_pnl += config.final_pnl
+    
     return jsonify({
         'user_id': user_id,
         'summary': {
@@ -432,6 +441,8 @@ def margin_data():
             'total_margin_used': margin_summary['total_margin'],
             'free_margin': margin_summary['free_margin'],
             'unrealized_pnl': margin_summary['unrealized_pnl'],
+            'realized_pnl': total_realized_pnl,
+            'total_pnl': margin_summary['unrealized_pnl'] + total_realized_pnl,
             'margin_utilization': (margin_summary['total_margin'] / margin_summary['account_balance'] * 100) if margin_summary['account_balance'] > 0 else 0,
             'total_positions': len(user_positions)
         },
@@ -500,6 +511,21 @@ def user_trades():
             # Calculate TP/SL prices and amounts
             tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
             
+            # For closed positions, get final P&L from bot_trades if not stored in config
+            final_pnl = None
+            closed_at = None
+            if config.status == "stopped":
+                if hasattr(config, 'final_pnl') and config.final_pnl is not None:
+                    final_pnl = config.final_pnl
+                    closed_at = getattr(config, 'closed_at', None)
+                else:
+                    # Fallback to bot_trades list
+                    closed_trade = next((trade for trade in bot_trades 
+                                       if trade.get('trade_id') == trade_id and trade.get('user_id') == str(chat_id)), None)
+                    if closed_trade:
+                        final_pnl = closed_trade.get('final_pnl', 0)
+                        closed_at = closed_trade.get('timestamp')
+            
             user_trade_list.append({
                 'trade_id': trade_id,
                 'name': config.name,
@@ -520,7 +546,9 @@ def user_trades():
                 'trailing_stop_enabled': config.trailing_stop_enabled,
                 'trail_percentage': config.trail_percentage,
                 'trail_activation_price': config.trail_activation_price,
-                'tp_sl_calculations': tp_sl_data
+                'tp_sl_calculations': tp_sl_data,
+                'final_pnl': final_pnl,  # Include final P&L for closed positions
+                'closed_at': closed_at   # Include closure timestamp
             })
     
     return jsonify({
@@ -892,6 +920,8 @@ def close_trade():
         # Simulate closing the trade
         final_pnl = config.unrealized_pnl
         config.status = "stopped"
+        config.final_pnl = final_pnl  # Store final P&L in the config object too
+        config.closed_at = datetime.utcnow().isoformat()  # Store closure timestamp
         config.unrealized_pnl = 0.0
         
         # Log trade closure

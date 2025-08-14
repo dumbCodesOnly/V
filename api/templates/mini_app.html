@@ -965,6 +965,18 @@
                     </div>
                 </div>
                 
+                <!-- P&L Summary Row -->
+                <div class="position-summary">
+                    <div class="stat-box">
+                        <div class="stat-value" id="realized-pnl">$0.00</div>
+                        <div class="stat-label">Realized P&L</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="total-pnl-portfolio">$0.00</div>
+                        <div class="stat-label">Total P&L</div>
+                    </div>
+                </div>
+                
                 <div id="portfolio-details">
                     <div class="loading">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
@@ -1666,6 +1678,25 @@
             document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
             document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
             document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+            
+            // Update total P&L if elements exist
+            const realizedPnlElement = document.getElementById('realized-pnl');
+            const totalPnlElement = document.getElementById('total-pnl');
+            if (realizedPnlElement) {
+                realizedPnlElement.textContent = `$${(summary.realized_pnl || 0).toFixed(2)}`;
+                realizedPnlElement.style.color = (summary.realized_pnl || 0) >= 0 ? '#28a745' : '#dc3545';
+            }
+            if (totalPnlElement) {
+                totalPnlElement.textContent = `$${(summary.total_pnl || 0).toFixed(2)}`;
+                totalPnlElement.style.color = (summary.total_pnl || 0) >= 0 ? '#28a745' : '#dc3545';
+            }
+            
+            // Also update portfolio-specific total P&L element
+            const portfolioTotalPnlElement = document.getElementById('total-pnl-portfolio');
+            if (portfolioTotalPnlElement) {
+                portfolioTotalPnlElement.textContent = `$${(summary.total_pnl || 0).toFixed(2)}`;
+                portfolioTotalPnlElement.style.color = (summary.total_pnl || 0) >= 0 ? '#28a745' : '#dc3545';
+            }
             
             const container = document.getElementById('portfolio-details');
             const positions = data.positions || [];
