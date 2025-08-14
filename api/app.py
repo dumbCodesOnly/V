@@ -362,6 +362,9 @@ def margin_data():
     # Initialize user environment if needed
     initialize_user_environment(chat_id)
     
+    # Update all positions with live market data before returning margin data
+    update_all_positions_with_live_data()
+    
     # Get margin data for this specific user only
     margin_summary = get_margin_summary(chat_id)
     user_positions = []
@@ -970,11 +973,12 @@ Use the menu below to navigate:"""
             return "❌ Please provide a symbol. Example: /price BTCUSDT", None
         
         symbol = parts[1].upper()
-        price = get_mock_price(symbol)
-        if price:
-            return f"💰 {symbol}: ${price:.4f}", None
-        else:
-            return f"❌ Could not fetch price for {symbol}", None
+        try:
+            price = get_live_market_price(symbol)
+            return f"💰 {symbol}: ${price:.4f} (Live Price)", None
+        except Exception as e:
+            logging.error(f"Error fetching live price for {symbol}: {e}")
+            return f"❌ Could not fetch live price for {symbol}", None
     
     elif text.startswith('/buy') or text.startswith('/sell'):
         parts = text.split()
@@ -989,8 +993,13 @@ Use the menu below to navigate:"""
         except ValueError:
             return "❌ Invalid quantity. Please provide a valid number.", None
         
-        # Mock trade execution
-        price = get_mock_price(symbol)
+        # Execute trade with live market price
+        try:
+            price = get_live_market_price(symbol)
+        except Exception as e:
+            logging.error(f"Error fetching live price for trade: {e}")
+            return f"❌ Could not fetch live market price for {symbol}", None
+        
         if price and quantity > 0:
             # Record the trade
             trade = {
@@ -1435,6 +1444,27 @@ def get_live_market_price(symbol):
     # If all APIs fail, raise error
     raise Exception(f"Unable to fetch live market price for {symbol} from any source")
 
+def update_all_positions_with_live_data():
+    """Update all active positions with live market data for P&L calculation"""
+    for user_id, trades in user_trade_configs.items():
+        for trade_id, config in trades.items():
+            if config.status == "active" and config.symbol:
+                try:
+                    # Update current price with live data
+                    config.current_price = get_live_market_price(config.symbol)
+                    
+                    # Recalculate P&L based on live price
+                    if config.entry_price and config.current_price:
+                        price_diff = config.current_price - config.entry_price
+                        if config.side == "short":
+                            price_diff = -price_diff
+                        
+                        config.unrealized_pnl = (price_diff / config.entry_price) * config.position_size
+                        
+                except Exception as e:
+                    logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
+                    # Keep existing current_price as fallback
+
 def get_mock_price(symbol):
     """Deprecated: Use get_live_market_price() instead"""
     logging.warning(f"get_mock_price() called for {symbol}. Using live market price instead.")
@@ -1792,7 +1822,12 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data.startswith("pair_"):
             pair = callback_data.replace("pair_", "").replace("_", "/")
             symbol = pair.replace("/", "")
-            price = get_mock_price(symbol)
+            try:
+                price = get_live_market_price(symbol)
+            except Exception as e:
+                logging.error(f"Error fetching live price for {symbol}: {e}")
+                return f"❌ Could not fetch live price for {pair}. Please try again.", get_pairs_menu()
+            
             if price:
                 # Set the symbol in the current trade if one is selected
                 if chat_id in user_selected_trade:
@@ -1824,6 +1859,9 @@ def handle_callback_query(callback_data, chat_id, user):
         
         # Portfolio handlers - Unified Portfolio & Margin Overview
         elif callback_data == "portfolio_overview":
+            # Update all positions with live market data before displaying
+            update_all_positions_with_live_data()
+            
             user_trades = user_trade_configs.get(chat_id, {})
             margin_data = get_margin_summary(chat_id)
             
@@ -2054,12 +2092,15 @@ def handle_callback_query(callback_data, chat_id, user):
         
         # Quick price check
         elif callback_data == "quick_price":
-            response = "💰 Quick Price Check:\n\n"
+            response = "💰 Live Price Check:\n\n"
             symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT"]
             for symbol in symbols:
-                price = get_mock_price(symbol)
-                if price:
+                try:
+                    price = get_live_market_price(symbol)
                     response += f"{symbol}: ${price:.4f}\n"
+                except Exception as e:
+                    logging.error(f"Error fetching live price for {symbol}: {e}")
+                    response += f"{symbol}: ❌ Price unavailable\n"
             
             keyboard = {
                 "inline_keyboard": [
