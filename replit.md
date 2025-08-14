@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application utilizes Flask as its web framework, serving as the primary interface for the Telegram Mini-App and handling webhook integration for real-time message processing. The core innovation is the `MultiTradeManager` class, enabling concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
-**Codebase Consolidation (Aug 2025)**: Successfully consolidated redundant files and documentation. Removed 20+ duplicate markdown files, backup Python files, and redundant configuration files. Streamlined project structure with `api/` directory containing main Flask application, unified deployment guide, and clean separation between Replit development and Vercel production environments.
+**Codebase Consolidation (Aug 2025)**: Successfully consolidated redundant files and documentation. Removed 20+ duplicate markdown files, backup Python files, and redundant configuration files. Streamlined project structure with `api/` directory containing main Flask application, unified deployment guide, and clean separation between Replit development and Vercel production environments. Final cleanup in August 2025 removed additional non-essential documentation files while preserving critical project information.
 
 **Vercel Deployment Fix (Aug 2025)**: Resolved 404 error in Vercel deployment by updating vercel.json to point to api/app.py instead of api/app_streamlined.py. Updated api/index.py import path and verified Flask app export. The deployment should now work correctly at https://v0-03-one.vercel.app/ after redeployment.
 
