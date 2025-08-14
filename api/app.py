@@ -1669,6 +1669,9 @@ def calculate_tp_sl_prices_and_amounts(config):
         'stop_loss': {}
     }
     
+    # Calculate actual margin used for this position
+    actual_margin = calculate_position_margin(config.amount, config.leverage)
+    
     # Calculate Take Profit levels
     for i, tp in enumerate(config.take_profits or []):
         tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
@@ -1680,9 +1683,9 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
-            # Calculate profit amount based on margin and leverage
-            # Profit = (price_change_percentage * leverage * margin * allocation/100)
-            profit_amount = (tp_percentage / 100) * config.leverage * config.amount * (allocation / 100)
+            # Calculate profit amount based on actual margin
+            # Profit = (price_change_percentage * leverage * actual_margin * allocation/100)
+            profit_amount = (tp_percentage / 100) * config.leverage * actual_margin * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1699,10 +1702,10 @@ def calculate_tp_sl_prices_and_amounts(config):
         else:  # short
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
-        # Calculate loss amount based on margin and leverage
-        # Loss = (price_change_percentage * leverage * margin)
-        # Maximum loss is capped at the margin amount
-        loss_amount = min((config.stop_loss_percent / 100) * config.leverage * config.amount, config.amount)
+        # Calculate loss amount based on actual margin
+        # Loss = (price_change_percentage * leverage * actual_margin)
+        # Maximum loss is capped at the actual margin amount
+        loss_amount = min((config.stop_loss_percent / 100) * config.leverage * actual_margin, actual_margin)
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
