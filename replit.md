@@ -31,6 +31,8 @@ The application utilizes Flask as its web framework, serving as the primary inte
 
 **Template Structure Consolidation (Aug 2025)**: Eliminated dual template structure by removing redundant root-level templates directory and consolidating all templates into the api/templates/ directory. This ensures consistent template resolution for both Replit and Vercel deployments while maintaining proper Flask application structure. The Flask app automatically resolves templates from its local templates directory, eliminating any deployment inconsistencies.
 
+**Dependency Cleanup (Aug 2025)**: Removed all deprecated functions and patterns after the trading logic corrections. Eliminated `get_mock_price()` and `get_simulated_price()` deprecated functions, replacing all calls with `get_live_market_price()`. Cleaned up commented-out legacy webhook setup code and updated portfolio command responses to reference the web interface. This cleanup ensures the codebase only uses current, authentic market data functions and maintains clean, efficient code without deprecated patterns.
+
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 
 The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics (win/loss ratios, P&L), and daily summaries.

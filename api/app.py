@@ -129,8 +129,6 @@ def setup_webhook_on_deployment():
         logging.error(f"Error setting up webhook: {e}")
 
 # Automatic webhook setup disabled - use manual configuration
-# if os.environ.get("VERCEL"):
-#     setup_webhook_on_deployment()
 
 # Simple in-memory storage for the bot (replace with database in production)
 bot_messages = []
@@ -1154,7 +1152,8 @@ Use the menu below to navigate:"""
             return f"❌ {action.capitalize()} order failed: Invalid symbol or quantity", None
     
     elif text.startswith('/portfolio'):
-        return "📊 Your portfolio is empty. Start trading to see your holdings!", None
+        # Portfolio functionality is now handled via the positions tab in web interface
+        return "📊 Check your portfolio in the positions tab of the web interface.", None
     
     elif text.startswith('/trades'):
         user_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
@@ -1642,10 +1641,7 @@ def update_all_positions_with_live_data():
                     logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
                     # Keep existing current_price as fallback
 
-def get_mock_price(symbol):
-    """Deprecated: Use get_live_market_price() instead"""
-    logging.warning(f"get_mock_price() called for {symbol}. Using live market price instead.")
-    return get_live_market_price(symbol)
+
 
 def calculate_position_margin(amount, leverage):
     """
@@ -2749,7 +2745,7 @@ def handle_execute_trade(chat_id, user):
         logging.info(f"Using LIMIT order with price: ${price}")
     else:
         # For market orders, use current market price
-        price = get_mock_price(config.symbol)
+        price = get_live_market_price(config.symbol)
         order_type = "MARKET"
         logging.info(f"Using MARKET order with price: ${price}")
         
@@ -3065,10 +3061,6 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
     return "❌ No trade selected.", get_trading_menu(chat_id)
 
 # Utility functions for mini-app
-def get_simulated_price(symbol):
-    """Deprecated: Use get_live_market_price() instead"""
-    logging.warning(f"get_simulated_price() called for {symbol}. Using live market price instead.")
-    return get_live_market_price(symbol)
 
 if __name__ == "__main__":
     # Setup webhook on startup  
