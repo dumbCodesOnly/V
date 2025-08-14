@@ -1683,9 +1683,9 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
-            # Calculate profit amount based on actual margin
-            # Profit = (price_change_percentage * leverage * actual_margin * allocation/100)
-            profit_amount = (tp_percentage / 100) * config.leverage * actual_margin * (allocation / 100)
+            # Calculate profit amount: percentage of margin * allocation
+            # Profit = (price_change_percentage * actual_margin * allocation/100)
+            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1702,10 +1702,9 @@ def calculate_tp_sl_prices_and_amounts(config):
         else:  # short
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
-        # Calculate loss amount based on actual margin
-        # Loss = (price_change_percentage * leverage * actual_margin)
-        # Maximum loss is capped at the actual margin amount
-        loss_amount = min((config.stop_loss_percent / 100) * config.leverage * actual_margin, actual_margin)
+        # Calculate loss amount: percentage of margin
+        # Loss = (price_change_percentage * actual_margin)
+        loss_amount = (config.stop_loss_percent / 100) * actual_margin
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
