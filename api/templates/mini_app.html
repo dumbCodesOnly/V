@@ -1046,7 +1046,7 @@
             if (!data) return;
             
             const container = document.getElementById('positions-list');
-            const activePositions = data.trades?.filter(t => t.status === 'active') || [];
+            const activePositions = data.trades?.filter(t => t.status === 'active' || t.status === 'pending') || [];
             
             document.getElementById('total-positions').textContent = activePositions.length;
             
@@ -1056,7 +1056,7 @@
             document.getElementById('total-pnl').style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
             
             if (activePositions.length === 0) {
-                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No active positions</small></div>';
+                container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No active or pending positions</small></div>';
                 return;
             }
             
@@ -1067,6 +1067,7 @@
                             <div>
                                 <strong>${pos.symbol}</strong>
                                 <span class="status-badge status-${pos.status} ms-2">${pos.side.toUpperCase()}</span>
+                                ${pos.status === 'pending' ? '<small class="text-info ms-1">(PENDING)</small>' : ''}
                             </div>
                             <div class="d-flex align-items-center">
                                 <div class="text-end me-3">

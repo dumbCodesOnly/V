@@ -371,7 +371,7 @@ def margin_data():
     
     if chat_id in user_trade_configs:
         for trade_id, config in user_trade_configs[chat_id].items():
-            if config.status == "active" and config.symbol:
+            if config.status in ["active", "pending"] and config.symbol:
                 user_positions.append({
                     'trade_id': trade_id,
                     'symbol': config.symbol,
@@ -2208,7 +2208,10 @@ def handle_callback_query(callback_data, chat_id, user):
             summary += f"Total Positions: {len(user_trades)}\n"
             if user_trades:
                 active_count = sum(1 for config in user_trades.values() if config.status == "active")
+                pending_count = sum(1 for config in user_trades.values() if config.status == "pending")
                 summary += f"Active: {active_count}\n"
+                if pending_count > 0:
+                    summary += f"Pending: {pending_count}\n"
                 if chat_id in user_selected_trade:
                     selected_trade = user_trade_configs[chat_id].get(user_selected_trade[chat_id])
                     if selected_trade:
@@ -2239,13 +2242,23 @@ def handle_callback_query(callback_data, chat_id, user):
             
             response = "📋 Your Position Configurations:\n\n"
             for trade_id, config in user_trades.items():
-                status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+                status_emoji = {
+                    "active": "🟢",
+                    "pending": "🔵", 
+                    "configured": "🟡",
+                    "stopped": "🔴"
+                }.get(config.status, "⚪")
                 response += f"{status_emoji} {config.get_display_name()}\n"
                 response += f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
             
             keyboard = {"inline_keyboard": []}
             for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 positions
-                status_emoji = "🟢" if config.status == "active" else "🟡"
+                status_emoji = {
+                    "active": "🟢",
+                    "pending": "🔵",
+                    "configured": "🟡", 
+                    "stopped": "🔴"
+                }.get(config.status, "⚪")
                 button_text = f"{status_emoji} {config.name}"
                 keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
             
