@@ -580,26 +580,28 @@ def execute_trade():
         
         # Handle limit orders - check if price condition is met
         if config.entry_type == "limit" and config.entry_price > 0:
-            # Validate limit order makes sense first
-            if config.side == "long" and config.entry_price > current_market_price:
-                # Long limit order above market price doesn't make sense - user should use market order
-                return jsonify({
-                    'error': f'Invalid long limit order: ${config.entry_price:.2f} is above current market price ${current_market_price:.2f}. Use market order or set limit below current price.'
-                }), 400
-            elif config.side == "short" and config.entry_price < current_market_price:
-                # Short limit order below market price doesn't make sense
-                return jsonify({
-                    'error': f'Invalid short limit order: ${config.entry_price:.2f} is below current market price ${current_market_price:.2f}. Use market order or set limit above current price.'
-                }), 400
+            # No validation restrictions - allow all limit order types:
+            # - Long below market (traditional buy limit)
+            # - Long above market (buy stop for breakouts)
+            # - Short above market (traditional sell limit)  
+            # - Short below market (sell stop for breakdowns)
             
             # Check if limit order should execute
             should_execute = False
             if config.side == "long":
-                # Long limit order executes when market price drops to or below limit price
-                should_execute = current_market_price <= config.entry_price
+                if config.entry_price <= current_market_price:
+                    # Long limit (buy limit): executes when market drops to or below limit price
+                    should_execute = current_market_price <= config.entry_price
+                else:
+                    # Long stop (buy stop): executes when market rises to or above stop price  
+                    should_execute = current_market_price >= config.entry_price
             elif config.side == "short":
-                # Short limit order executes when market price rises to or above limit price
-                should_execute = current_market_price >= config.entry_price
+                if config.entry_price >= current_market_price:
+                    # Short limit (sell limit): executes when market rises to or above limit price
+                    should_execute = current_market_price >= config.entry_price
+                else:
+                    # Short stop (sell stop): executes when market drops to or below stop price
+                    should_execute = current_market_price <= config.entry_price
             
             if not should_execute:
                 # Set as pending order, waiting for price to reach limit
