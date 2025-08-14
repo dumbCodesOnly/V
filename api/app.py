@@ -1680,15 +1680,9 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
-            # Calculate profit amount for this TP level
-            # Position size in contracts (amount * leverage / entry_price)
-            total_contracts = (config.amount * config.leverage) / config.entry_price
-            contracts_for_tp = total_contracts * (allocation / 100)
-            
-            if config.side == "long":
-                profit_amount = (tp_price - config.entry_price) * contracts_for_tp
-            else:  # short
-                profit_amount = (config.entry_price - tp_price) * contracts_for_tp
+            # Calculate profit amount based on margin and leverage
+            # Profit = (price_change_percentage * leverage * margin * allocation/100)
+            profit_amount = (tp_percentage / 100) * config.leverage * config.amount * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1705,14 +1699,10 @@ def calculate_tp_sl_prices_and_amounts(config):
         else:  # short
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
-        # Calculate loss amount
-        # Position size in contracts (amount * leverage / entry_price)
-        total_contracts = (config.amount * config.leverage) / config.entry_price
-        
-        if config.side == "long":
-            loss_amount = (config.entry_price - sl_price) * total_contracts
-        else:  # short
-            loss_amount = (sl_price - config.entry_price) * total_contracts
+        # Calculate loss amount based on margin and leverage
+        # Loss = (price_change_percentage * leverage * margin)
+        # Maximum loss is capped at the margin amount
+        loss_amount = min((config.stop_loss_percent / 100) * config.leverage * config.amount, config.amount)
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
