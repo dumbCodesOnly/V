@@ -1,4 +1,4 @@
-modules = ["python-3.11", "web", "bash"]
+modules = ["web", "python-3.11"]
 [agent]
 expertMode = true
 integrations = ["python_database==1.0.0"]
