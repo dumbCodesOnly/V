@@ -580,6 +580,18 @@ def execute_trade():
         
         # Handle limit orders - check if price condition is met
         if config.entry_type == "limit" and config.entry_price > 0:
+            # Validate limit order makes sense first
+            if config.side == "long" and config.entry_price > current_market_price:
+                # Long limit order above market price doesn't make sense - user should use market order
+                return jsonify({
+                    'error': f'Invalid long limit order: ${config.entry_price:.2f} is above current market price ${current_market_price:.2f}. Use market order or set limit below current price.'
+                }), 400
+            elif config.side == "short" and config.entry_price < current_market_price:
+                # Short limit order below market price doesn't make sense
+                return jsonify({
+                    'error': f'Invalid short limit order: ${config.entry_price:.2f} is below current market price ${current_market_price:.2f}. Use market order or set limit above current price.'
+                }), 400
+            
             # Check if limit order should execute
             should_execute = False
             if config.side == "long":
