@@ -15,6 +15,8 @@ The application utilizes Flask as its web framework, serving as the primary inte
 
 **Security Enhancement (Aug 2025)**: Implemented comprehensive webhook security system with secret token authentication, request structure validation, and manual webhook setup. The automatic webhook configuration has been disabled to allow manual configuration through Vercel dashboard and Telegram API.
 
+**Replit Migration & Market Data Removal (Aug 2025)**: Successfully migrated project from Replit Agent to standard Replit environment. Removed market data tab, live charting functionality, Chart.js dependencies, and all associated API endpoints (/api/market-data, /api/kline-data) to streamline the application and focus on core trading bot capabilities. All packages properly installed and working. The Positions tab is now the default landing page.
+
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 
 The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics (win/loss ratios, P&L), and daily summaries.
@@ -26,7 +28,7 @@ Data management uses in-memory, dictionary-based structures for user data isolat
 The system features:
 - **Comprehensive Trade Information Display**: Shows full trade details (entry, take profits, stop loss, amounts) before execution and for active positions, with real-time ROE calculation and color-coded P&L indicators.
 - **Complete Trade Management UI**: Full Edit/Execute/Delete functionality in the web app trading tab, with smart UI controls tailored for each tab.
-- **Live Market Data Implementation**: Market tab as primary interface with live price data, Chart.js integration for professional price chart visualization, and `/api/market-data` and `/api/kline-data` endpoints using Binance API for real-time data. Supports multiple timeframes, symbol selection (BTC, ETH, BNB, ADA, DOT, SOL), and auto-refresh for updates. Trade execution uses live market prices.
+- **Streamlined Core Trading Focus**: Removed market data tab and live charting functionality to focus on core trading bot capabilities. Trade execution continues to use live market prices through the existing `get_live_market_price` function.
 - **Collapsible UI Enhancement**: Implemented collapsible/expandable functionality for both positions and trading tabs, improving user experience with dynamic display of trade details.
 - **Multi-Symbol Trading Support**: Enhanced `get_live_market_price` function with a multi-source API fallback system, supporting 12+ cryptocurrency pairs and ensuring reliable live price data for trade execution.
 
