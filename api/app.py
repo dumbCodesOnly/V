@@ -585,7 +585,12 @@ def execute_trade():
             config.current_price = get_live_market_price(config.symbol)
             config.entry_price = config.current_price  # Set entry price to execution price
         else:
-            config.current_price = config.entry_price  # Use limit price
+            # For limit orders: keep the limit price as entry_price, but update current_price with live data
+            try:
+                config.current_price = get_live_market_price(config.symbol)
+            except Exception as e:
+                logging.error(f"Failed to get live price for limit order: {e}")
+                config.current_price = config.entry_price  # Fallback to limit price
         
         config.unrealized_pnl = 0.0
         
@@ -1450,10 +1455,10 @@ def update_all_positions_with_live_data():
         for trade_id, config in trades.items():
             if config.status == "active" and config.symbol:
                 try:
-                    # Update current price with live data
+                    # Always update current price with live data (regardless of limit/market)
                     config.current_price = get_live_market_price(config.symbol)
                     
-                    # Recalculate P&L based on live price
+                    # Recalculate P&L based on live price vs entry price
                     if config.entry_price and config.current_price:
                         price_diff = config.current_price - config.entry_price
                         if config.side == "short":
