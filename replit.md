@@ -17,6 +17,8 @@ The application utilizes Flask as its web framework, serving as the primary inte
 
 **Replit Migration & Market Data Removal (Aug 2025)**: Successfully migrated project from Replit Agent to standard Replit environment. Removed market data tab, live charting functionality, Chart.js dependencies, and all associated API endpoints (/api/market-data, /api/kline-data) to streamline the application and focus on core trading bot capabilities. All packages properly installed and working. The Positions tab is now the default landing page.
 
+**Limit Order Functionality Fix (Aug 2025)**: Fixed critical issue where limit price positions couldn't be created and executed. Added missing validation logic for 'entry' and 'side' steps in the trade configuration wizard. The frontend now properly captures and validates limit prices, enabling users to create both market and limit orders successfully.
+
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation.
 
 The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics (win/loss ratios, P&L), and daily summaries.

@@ -1566,6 +1566,13 @@
                     currentTrade.symbol = symbol;
                     break;
                     
+                case 'side':
+                    if (!currentTrade.side) {
+                        tg.showAlert('Please select a position side (Long or Short)');
+                        return false;
+                    }
+                    break;
+                    
                 case 'amount':
                     const amount = parseFloat(document.getElementById('amount-input').value);
                     const leverage = parseInt(document.getElementById('leverage-select').value);
@@ -1575,6 +1582,39 @@
                     }
                     currentTrade.amount = amount;
                     currentTrade.leverage = leverage;
+                    break;
+                    
+                case 'entry':
+                    if (!currentTrade.entry_type) {
+                        tg.showAlert('Please select an entry type (Market or Limit)');
+                        return false;
+                    }
+                    if (currentTrade.entry_type === 'limit') {
+                        const entryPrice = parseFloat(document.getElementById('entry-price').value);
+                        if (!entryPrice || entryPrice <= 0) {
+                            tg.showAlert('Please enter a valid limit price');
+                            return false;
+                        }
+                        currentTrade.entry_price = entryPrice;
+                    } else {
+                        currentTrade.entry_price = ''; // Clear for market orders
+                    }
+                    break;
+                    
+                case 'tp':
+                    // Collect take profit data
+                    currentTrade.take_profits = [];
+                    document.querySelectorAll('#tp-levels .input-group').forEach((group, index) => {
+                        const percent = parseFloat(group.querySelector('.tp-percent').value);
+                        const allocation = parseFloat(group.querySelector('.tp-allocation').value);
+                        if (percent && allocation) {
+                            currentTrade.take_profits.push({ percentage: percent, allocation: allocation });
+                        }
+                    });
+                    if (currentTrade.take_profits.length === 0) {
+                        tg.showAlert('Please add at least one take profit level');
+                        return false;
+                    }
                     break;
                     
                 case 'sl':
