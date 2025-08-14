@@ -1510,8 +1510,9 @@
                     <!-- Active Trade Details -->
                     <div class="row mt-2">
                         <div class="col-4">
-                            <small class="text-muted">Amount:</small><br>
-                            <strong>$${trade.amount || '0'}</strong>
+                            <small class="text-muted">Position Size:</small><br>
+                            <strong>$${trade.position_size || (trade.amount * trade.leverage) || '0'}</strong>
+                            <br><small class="text-muted">Margin: $${trade.amount || '0'}</small>
                         </div>
                         <div class="col-4">
                             <small class="text-muted">Leverage:</small><br>
@@ -1565,8 +1566,9 @@
                     <!-- Configuration Details for Non-Active Trades -->
                     <div class="row mt-2">
                         <div class="col-4">
-                            <small class="text-muted">Amount:</small><br>
-                            <strong>${trade.amount ? '$' + trade.amount : 'Not set'}</strong>
+                            <small class="text-muted">Position Size:</small><br>
+                            <strong>${trade.position_size ? '$' + trade.position_size : trade.amount && trade.leverage ? '$' + (trade.amount * trade.leverage) : 'Not set'}</strong>
+                            ${trade.amount ? '<br><small class="text-muted">Margin: $' + trade.amount + '</small>' : ''}
                         </div>
                         <div class="col-4">
                             <small class="text-muted">Leverage:</small><br>

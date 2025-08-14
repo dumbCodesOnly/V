@@ -283,7 +283,9 @@ class TradeConfig:
         header += "📋 Current Settings:\n"
         header += f"   💱 Pair: {self.symbol if self.symbol else 'Not set'}\n"
         header += f"   📈 Side: {self.side.upper() if self.side else 'Not set'}\n"
-        header += f"   💰 Amount: ${self.amount if self.amount > 0 else 'Not set'}\n"
+        # Show position size (margin × leverage) not just margin
+        position_size = self.amount * self.leverage if self.amount > 0 else 0
+        header += f"   💰 Position Size: ${position_size if position_size > 0 else 'Not set'} (Margin: ${self.amount if self.amount > 0 else 'Not set'})\n"
         header += f"   📊 Leverage: {self.leverage}x\n"
         
         if self.entry_type == "limit" and self.entry_price > 0:
@@ -410,7 +412,8 @@ def margin_data():
                     'trade_id': trade_id,
                     'symbol': config.symbol,
                     'side': config.side,
-                    'amount': config.amount,
+                    'amount': config.amount,  # This is the margin
+                    'position_size': config.amount * config.leverage,  # This is the actual position size
                     'leverage': config.leverage,
                     'margin_used': config.position_margin,
                     'entry_price': config.entry_price,
@@ -502,7 +505,8 @@ def user_trades():
                 'name': config.name,
                 'symbol': config.symbol,
                 'side': config.side,
-                'amount': config.amount,
+                'amount': config.amount,  # This is the margin
+                'position_size': config.amount * config.leverage,  # This is the actual position size
                 'leverage': config.leverage,
                 'entry_type': config.entry_type,
                 'entry_price': config.entry_price,
@@ -544,7 +548,8 @@ def trade_config():
             'name': config.name,
             'symbol': config.symbol,
             'side': config.side,
-            'amount': config.amount,
+            'amount': config.amount,  # This is the margin
+            'position_size': config.amount * config.leverage,  # This is the actual position size
             'leverage': config.leverage,
             'entry_type': config.entry_type,
             'entry_price': config.entry_price,
