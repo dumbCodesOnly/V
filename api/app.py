@@ -183,7 +183,7 @@ class TradeConfig:
         self.trail_activation_price = 0.0  # Price level to activate trailing stop
         self.waiting_for_trail_percent = False  # Track if waiting for trail percentage input
         self.waiting_for_trail_activation = False  # Track if waiting for trail activation price
-        self.status = "configured"  # configured, active, stopped
+        self.status = "configured"  # configured, pending, active, stopped
         # Margin tracking
         self.position_margin = 0.0  # Margin used for this position
         self.unrealized_pnl = 0.0   # Current floating P&L
@@ -575,26 +575,59 @@ def execute_trade():
         if not config.is_complete():
             return jsonify({'error': 'Trade configuration is incomplete'}), 400
         
-        # Execute trade with real market data
+        # Get current market price
+        current_market_price = get_live_market_price(config.symbol)
+        
+        # Handle limit orders - check if price condition is met
+        if config.entry_type == "limit" and config.entry_price > 0:
+            # Check if limit order should execute
+            should_execute = False
+            if config.side == "long":
+                # Long limit order executes when market price drops to or below limit price
+                should_execute = current_market_price <= config.entry_price
+            elif config.side == "short":
+                # Short limit order executes when market price rises to or above limit price
+                should_execute = current_market_price >= config.entry_price
+            
+            if not should_execute:
+                # Set as pending order, waiting for price to reach limit
+                config.status = "pending"
+                config.current_price = current_market_price
+                config.unrealized_pnl = 0.0
+                
+                logging.info(f"Limit order placed: {config.symbol} {config.side} at ${config.entry_price} (current market: ${current_market_price})")
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Limit order placed successfully. Waiting for market price to reach ${config.entry_price:.4f}',
+                    'trade': {
+                        'trade_id': trade_id,
+                        'symbol': config.symbol,
+                        'side': config.side,
+                        'amount': config.amount,
+                        'entry_price': config.entry_price,
+                        'current_price': current_market_price,
+                        'status': config.status
+                    }
+                })
+        
+        # Execute trade (market order or limit order conditions met)
         config.status = "active"
         config.position_size = config.amount * config.leverage
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
         
-        # Use real live market price for market orders
         if config.entry_type == "market" or config.entry_price is None:
-            config.current_price = get_live_market_price(config.symbol)
-            config.entry_price = config.current_price  # Set entry price to execution price
+            # Market order: use current price as entry and execution price
+            config.current_price = current_market_price
+            config.entry_price = current_market_price
         else:
-            # For limit orders: keep the limit price as entry_price, but update current_price with live data
-            try:
-                config.current_price = get_live_market_price(config.symbol)
-            except Exception as e:
-                logging.error(f"Failed to get live price for limit order: {e}")
-                config.current_price = config.entry_price  # Fallback to limit price
+            # Limit order that met conditions: use limit price as entry, current price for display
+            config.current_price = current_market_price
+            # entry_price already set to limit price
         
         config.unrealized_pnl = 0.0
         
-        logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.current_price} (entry type: {config.entry_type})")
+        logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
         # Log trade execution
         bot_trades.append({
@@ -605,7 +638,7 @@ def execute_trade():
             'side': config.side,
             'amount': config.amount,
             'leverage': config.leverage,
-            'entry_price': config.current_price,
+            'entry_price': config.entry_price,
             'timestamp': datetime.utcnow().isoformat(),
             'status': 'executed'
         })
@@ -620,7 +653,7 @@ def execute_trade():
                 'symbol': config.symbol,
                 'side': config.side,
                 'amount': config.amount,
-                'entry_price': config.current_price,
+                'entry_price': config.entry_price,
                 'status': config.status
             }
         })
@@ -1450,16 +1483,51 @@ def get_live_market_price(symbol):
     raise Exception(f"Unable to fetch live market price for {symbol} from any source")
 
 def update_all_positions_with_live_data():
-    """Update all active positions with live market data for P&L calculation"""
+    """Update all active positions with live market data for P&L calculation and check pending limit orders"""
     for user_id, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
-            if config.status == "active" and config.symbol:
+            if config.symbol:
                 try:
-                    # Always update current price with live data (regardless of limit/market)
+                    # Always update current price with live data
                     config.current_price = get_live_market_price(config.symbol)
                     
-                    # Recalculate P&L based on live price vs entry price
-                    if config.entry_price and config.current_price:
+                    # Check pending limit orders for execution
+                    if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
+                        should_execute = False
+                        if config.side == "long":
+                            # Long limit order executes when market price drops to or below limit price
+                            should_execute = config.current_price <= config.entry_price
+                        elif config.side == "short":
+                            # Short limit order executes when market price rises to or above limit price
+                            should_execute = config.current_price >= config.entry_price
+                        
+                        if should_execute:
+                            # Execute the pending limit order
+                            config.status = "active"
+                            config.position_size = config.amount * config.leverage
+                            config.position_margin = calculate_position_margin(config.amount, config.leverage)
+                            config.unrealized_pnl = 0.0
+                            
+                            logging.info(f"Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
+                            
+                            # Log trade execution
+                            bot_trades.append({
+                                'id': len(bot_trades) + 1,
+                                'user_id': str(user_id),
+                                'trade_id': trade_id,
+                                'symbol': config.symbol,
+                                'side': config.side,
+                                'amount': config.amount,
+                                'leverage': config.leverage,
+                                'entry_price': config.entry_price,
+                                'timestamp': datetime.utcnow().isoformat(),
+                                'status': 'executed'
+                            })
+                            
+                            bot_status['total_trades'] += 1
+                    
+                    # Recalculate P&L for active positions
+                    if config.status == "active" and config.entry_price and config.current_price:
                         price_diff = config.current_price - config.entry_price
                         if config.side == "short":
                             price_diff = -price_diff
@@ -1754,7 +1822,12 @@ def get_trade_selection_menu(user_id):
     keyboard = []
     
     for trade_id, config in user_trades.items():
-        status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+        status_emoji = {
+            "active": "🟢",
+            "pending": "🔵",
+            "configured": "🟡", 
+            "stopped": "🔴"
+        }.get(config.status, "⚪")
         button_text = f"{status_emoji} {config.get_display_name()}"
         keyboard.append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
     
