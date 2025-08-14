@@ -706,8 +706,11 @@ def execute_trade():
         
         # Execute trade (market order or limit order conditions met)
         config.status = "active"
-        config.position_size = config.amount * config.leverage
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
+        # Position value = margin * leverage (total value of position)
+        config.position_value = config.amount * config.leverage
+        # Position size = position value / entry price (number of coins)
+        config.position_size = config.position_value / current_market_price
         
         if config.entry_type == "market" or config.entry_price is None:
             # Market order: use current price as entry and execution price
@@ -1605,8 +1608,9 @@ def update_all_positions_with_live_data():
                         if should_execute:
                             # Execute the pending limit order
                             config.status = "active"
-                            config.position_size = config.amount * config.leverage
                             config.position_margin = calculate_position_margin(config.amount, config.leverage)
+                            config.position_value = config.amount * config.leverage
+                            config.position_size = config.position_value / config.entry_price
                             config.unrealized_pnl = 0.0
                             
                             logging.info(f"Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
@@ -1629,11 +1633,10 @@ def update_all_positions_with_live_data():
                     
                     # Recalculate P&L for active positions
                     if config.status == "active" and config.entry_price and config.current_price:
-                        price_diff = config.current_price - config.entry_price
-                        if config.side == "short":
-                            price_diff = -price_diff
-                        
-                        config.unrealized_pnl = (price_diff / config.entry_price) * config.position_size
+                        config.unrealized_pnl = calculate_unrealized_pnl(
+                            config.entry_price, config.current_price,
+                            config.amount, config.leverage, config.side
+                        )
                         
                 except Exception as e:
                     logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
@@ -1645,19 +1648,34 @@ def get_mock_price(symbol):
     return get_live_market_price(symbol)
 
 def calculate_position_margin(amount, leverage):
-    """Calculate position margin required"""
-    return amount / leverage if leverage > 0 else amount
+    """
+    Calculate margin required for a position
+    In futures trading: margin = position_value / leverage
+    Where position_value = amount (the USDT amount to use for the position)
+    """
+    if leverage <= 0:
+        leverage = 1
+    # Amount IS the margin - this is what user puts up
+    # Position value = margin * leverage
+    return amount  # The amount user specifies IS the margin they want to use
 
-def calculate_unrealized_pnl(entry_price, current_price, position_size, side):
-    """Calculate unrealized P&L for a position"""
-    if not entry_price or not current_price or not position_size:
+def calculate_unrealized_pnl(entry_price, current_price, margin, leverage, side):
+    """
+    Calculate unrealized P&L for a leveraged position
+    P&L = (price_change_percentage * margin * leverage)
+    """
+    if not entry_price or not current_price or not margin or entry_price <= 0:
         return 0.0
     
-    price_diff = current_price - entry_price
-    if side == "short":
-        price_diff = -price_diff
+    # Calculate percentage price change
+    price_change_percentage = (current_price - entry_price) / entry_price
     
-    return price_diff * position_size
+    # For short positions, profit when price goes down
+    if side == "short":
+        price_change_percentage = -price_change_percentage
+    
+    # P&L = price change % * margin * leverage
+    return price_change_percentage * margin * leverage
 
 def calculate_tp_sl_prices_and_amounts(config):
     """Calculate actual TP/SL prices and profit/loss amounts"""
@@ -1683,9 +1701,9 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
-            # Calculate profit amount: percentage of margin * allocation
-            # Profit = (price_change_percentage * actual_margin * allocation/100)
-            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
+            # Calculate profit amount: percentage * margin * leverage * allocation
+            # For leveraged trading: profit = price_change_percentage * margin * leverage
+            profit_amount = (tp_percentage / 100) * actual_margin * config.leverage * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1702,9 +1720,9 @@ def calculate_tp_sl_prices_and_amounts(config):
         else:  # short
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
-        # Calculate loss amount: percentage of margin
-        # Loss = (price_change_percentage * actual_margin)
-        loss_amount = (config.stop_loss_percent / 100) * actual_margin
+        # Calculate loss amount: percentage * margin * leverage
+        # For leveraged trading: loss = price_change_percentage * margin * leverage
+        loss_amount = (config.stop_loss_percent / 100) * actual_margin * config.leverage
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
@@ -1737,10 +1755,12 @@ def get_margin_summary(chat_id):
             config.position_margin = calculate_position_margin(config.amount, config.leverage)
             
             if config.entry_price and config.amount:
-                config.position_size = config.amount / config.entry_price
+                # Calculate position details properly
+                config.position_value = config.amount * config.leverage
+                config.position_size = config.position_value / config.entry_price
                 config.unrealized_pnl = calculate_unrealized_pnl(
                     config.entry_price, config.current_price, 
-                    config.position_size, config.side
+                    config.amount, config.leverage, config.side
                 )
             
             total_position_margin += config.position_margin
