@@ -1662,7 +1662,8 @@ def calculate_position_margin(amount, leverage):
 def calculate_unrealized_pnl(entry_price, current_price, margin, leverage, side):
     """
     Calculate unrealized P&L for a leveraged position
-    P&L = (price_change_percentage * margin * leverage)
+    Leverage amplifies the percentage change, not the margin amount
+    P&L = (price_change_percentage * leverage * margin)
     """
     if not entry_price or not current_price or not margin or entry_price <= 0:
         return 0.0
@@ -1674,8 +1675,9 @@ def calculate_unrealized_pnl(entry_price, current_price, margin, leverage, side)
     if side == "short":
         price_change_percentage = -price_change_percentage
     
-    # P&L = price change % * margin * leverage
-    return price_change_percentage * margin * leverage
+    # P&L = price change % * leverage * margin
+    # Leverage amplifies the percentage move, applied to the margin put up
+    return price_change_percentage * leverage * margin
 
 def calculate_tp_sl_prices_and_amounts(config):
     """Calculate actual TP/SL prices and profit/loss amounts"""
@@ -1701,9 +1703,9 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - tp_percentage / 100)
             
-            # Calculate profit amount: percentage * margin * leverage * allocation
-            # For leveraged trading: profit = price_change_percentage * margin * leverage
-            profit_amount = (tp_percentage / 100) * actual_margin * config.leverage * (allocation / 100)
+            # Calculate profit amount: percentage * margin * allocation
+            # The leverage is already applied in the position sizing, not in profit calculation
+            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1720,9 +1722,9 @@ def calculate_tp_sl_prices_and_amounts(config):
         else:  # short
             sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
         
-        # Calculate loss amount: percentage * margin * leverage
-        # For leveraged trading: loss = price_change_percentage * margin * leverage
-        loss_amount = (config.stop_loss_percent / 100) * actual_margin * config.leverage
+        # Calculate loss amount: percentage * margin
+        # The leverage is already applied in the position sizing, not in loss calculation
+        loss_amount = (config.stop_loss_percent / 100) * actual_margin
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
