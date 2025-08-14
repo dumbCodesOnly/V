@@ -8,7 +8,12 @@ import json
 import random
 import time
 from werkzeug.middleware.proxy_fix import ProxyFix
-from .models import db, UserCredentials, UserTradingSession
+try:
+    # Try relative import first (for module import - Vercel/main.py)
+    from .models import db, UserCredentials, UserTradingSession
+except ImportError:
+    # Fall back to absolute import (for direct execution - Telegram workflow)
+    from models import db, UserCredentials, UserTradingSession
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
