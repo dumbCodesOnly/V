@@ -14,8 +14,7 @@
     <!-- Feather Icons -->
     <link href="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.css" rel="stylesheet">
     
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
     
     <style>
         :root {
@@ -614,12 +613,7 @@
         <!-- Navigation Tabs -->
         <ul class="nav nav-tabs justify-content-center" id="main-tabs" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" id="market-tab" data-bs-toggle="tab" data-bs-target="#market" type="button">
-                    📈 Market
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions" type="button">
+                <button class="nav-link active" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions" type="button">
                     📊 Positions
                 </button>
             </li>
@@ -642,97 +636,8 @@
 
         <!-- Tab Content -->
         <div class="tab-content" id="main-tab-content">
-            <!-- Market Data Tab -->
-            <div class="tab-pane fade show active" id="market" role="tabpanel">
-                <!-- Symbol Selection -->
-                <div class="mb-3">
-                    <div class="d-flex align-items-center gap-2 mb-3">
-                        <select class="form-select" id="symbol-select" style="width: auto;">
-                            <option value="BTCUSDT">BTC/USDT</option>
-                            <option value="ETHUSDT">ETH/USDT</option>
-                            <option value="BNBUSDT">BNB/USDT</option>
-                            <option value="ADAUSDT">ADA/USDT</option>
-                            <option value="SOLUSDT">SOL/USDT</option>
-                            <option value="XRPUSDT">XRP/USDT</option>
-                            <option value="DOTUSDT">DOT/USDT</option>
-                            <option value="DOGEUSDT">DOGE/USDT</option>
-                            <option value="LINKUSDT">LINK/USDT</option>
-                            <option value="LTCUSDT">LTC/USDT</option>
-                            <option value="MATICUSDT">MATIC/USDT</option>
-                            <option value="AVAXUSDT">AVAX/USDT</option>
-                            <option value="UNIUSDT">UNI/USDT</option>
-                        </select>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshMarketData()">
-                            🔄 Refresh
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Price Ticker -->
-                <div class="position-summary mb-3">
-                    <div class="stat-box">
-                        <div class="stat-value" id="current-price">$0.00</div>
-                        <div class="stat-label">Current Price</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="price-change">0.00%</div>
-                        <div class="stat-label">24h Change</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="volume">0.00</div>
-                        <div class="stat-label">24h Volume</div>
-                    </div>
-                </div>
-
-                <!-- Price Chart -->
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0">📈 Price Chart</h6>
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-primary chart-timeframe" data-timeframe="1h">1H</button>
-                                <button type="button" class="btn btn-outline-primary chart-timeframe active" data-timeframe="4h">4H</button>
-                                <button type="button" class="btn btn-outline-primary chart-timeframe" data-timeframe="1d">1D</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div style="position: relative; height: 300px;">
-                            <canvas id="price-chart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Market Statistics -->
-                <div class="card">
-                    <div class="card-header">
-                        <h6 class="mb-0">📊 Market Statistics</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-6 mb-2">
-                                <small class="text-muted">High (24h):</small><br>
-                                <strong id="high-24h">$0.00</strong>
-                            </div>
-                            <div class="col-6 mb-2">
-                                <small class="text-muted">Low (24h):</small><br>
-                                <strong id="low-24h">$0.00</strong>
-                            </div>
-                            <div class="col-6 mb-2">
-                                <small class="text-muted">Open Price:</small><br>
-                                <strong id="open-price">$0.00</strong>
-                            </div>
-                            <div class="col-6 mb-2">
-                                <small class="text-muted">Volume (USDT):</small><br>
-                                <strong id="volume-usdt">$0.00</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Positions Tab -->
-            <div class="tab-pane fade" id="positions" role="tabpanel">
+            <div class="tab-pane fade show active" id="positions" role="tabpanel">
                 <div class="position-summary">
                     <div class="stat-box">
                         <div class="stat-value" id="total-positions">0</div>
@@ -1952,200 +1857,15 @@
             }
         }
 
-        // Market Data Variables
-        let priceChart = null;
-        let currentSymbol = 'BTCUSDT';
-        let currentTimeframe = '4h';
 
-        // Market Data Functions
-        async function loadMarketData() {
-            try {
-                const symbol = document.getElementById('symbol-select').value || 'BTCUSDT';
-                const data = await apiCall(`/api/market-data?symbol=${symbol}`);
-                
-                if (data && !data.error) {
-                    console.log('Live market data loaded successfully:', data);
-                    updateMarketDisplay(data);
-                    loadPriceChart(symbol);
-                } else if (data && data.error) {
-                    console.error('Market data API error:', data.message);
-                    // Show error in UI
-                    document.getElementById('current-price').textContent = 'Error';
-                    document.getElementById('price-change').textContent = 'N/A';
-                    document.getElementById('volume').textContent = 'N/A';
-                } else {
-                    console.error('No market data received');
-                }
-            } catch (error) {
-                console.error('Error loading market data:', error);
-                // Show error in UI
-                document.getElementById('current-price').textContent = 'Error';
-                document.getElementById('price-change').textContent = 'N/A';
-                document.getElementById('volume').textContent = 'N/A';
-            }
-        }
 
-        function updateMarketDisplay(data) {
-            const priceElement = document.getElementById('current-price');
-            const changeElement = document.getElementById('price-change');
-            const volumeElement = document.getElementById('volume');
-            
-            if (priceElement) priceElement.textContent = `$${data.price?.toFixed(2) || '0.00'}`;
-            
-            if (changeElement) {
-                const changePercent = data.changePercent || 0;
-                changeElement.textContent = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
-                changeElement.style.color = changePercent >= 0 ? '#28a745' : '#dc3545';
-            }
-            
-            if (volumeElement) {
-                const volume = data.volume || 0;
-                volumeElement.textContent = volume > 1000000 ? 
-                    `${(volume / 1000000).toFixed(1)}M` : 
-                    `${(volume / 1000).toFixed(1)}K`;
-            }
 
-            // Update market statistics
-            document.getElementById('high-24h').textContent = `$${data.high?.toFixed(2) || '0.00'}`;
-            document.getElementById('low-24h').textContent = `$${data.low?.toFixed(2) || '0.00'}`;
-            document.getElementById('open-price').textContent = `$${data.openPrice?.toFixed(2) || '0.00'}`;
-            
-            const quoteVolume = data.quoteVolume || 0;
-            document.getElementById('volume-usdt').textContent = quoteVolume > 1000000000 ? 
-                `$${(quoteVolume / 1000000000).toFixed(2)}B` : 
-                `$${(quoteVolume / 1000000).toFixed(1)}M`;
-        }
-
-        async function loadPriceChart(symbol = currentSymbol) {
-            try {
-                const timeframe = document.querySelector('.chart-timeframe.active')?.dataset?.timeframe || '4h';
-                const data = await apiCall(`/api/kline-data?symbol=${symbol}&interval=${timeframe}&limit=50`);
-                
-                if (data && data.data && !data.error) {
-                    console.log(`Live chart data loaded for ${symbol}:`, data.data.length, 'candles');
-                    createPriceChart(data.data);
-                } else if (data && data.error) {
-                    console.error('Chart data API error:', data.message);
-                    // Show error message in chart area
-                    showChartError('Unable to load live chart data');
-                } else {
-                    console.error('No chart data received');
-                    showChartError('No chart data available');
-                }
-            } catch (error) {
-                console.error('Error loading price chart:', error);
-                showChartError('Chart loading failed');
-            }
-        }
-
-        function showChartError(message) {
-            const ctx = document.getElementById('price-chart').getContext('2d');
-            if (priceChart) {
-                priceChart.destroy();
-            }
-            
-            // Clear canvas and show error message
-            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-            ctx.fillStyle = '#dc3545';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(message, ctx.canvas.width / 2, ctx.canvas.height / 2);
-        }
-
-        function createPriceChart(candlestickData) {
-            const ctx = document.getElementById('price-chart').getContext('2d');
-            
-            // Destroy existing chart
-            if (priceChart) {
-                priceChart.destroy();
-            }
-
-            const labels = candlestickData.map(item => {
-                const date = new Date(item.timestamp);
-                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            });
-
-            const prices = candlestickData.map(item => item.close);
-            const volumes = candlestickData.map(item => item.volume);
-
-            priceChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Price',
-                        data: prices,
-                        borderColor: '#4a90e2',
-                        backgroundColor: 'rgba(74, 144, 226, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        x: {
-                            display: false, // Hide x-axis labels for cleaner look
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        },
-                        y: {
-                            ticks: {
-                                color: '#ffffff',
-                                callback: function(value) {
-                                    return '$' + value.toFixed(2);
-                                }
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        }
-                    },
-                    elements: {
-                        point: {
-                            radius: 0 // Hide points for cleaner line
-                        }
-                    }
-                }
-            });
-        }
-
-        function refreshMarketData() {
-            loadMarketData();
-        }
-
-        // Symbol change handler
-        document.getElementById('symbol-select')?.addEventListener('change', function() {
-            currentSymbol = this.value;
-            loadMarketData();
-        });
-
-        // Timeframe change handlers
-        document.querySelectorAll('.chart-timeframe').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.chart-timeframe').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentTimeframe = this.dataset.timeframe;
-                loadPriceChart(currentSymbol);
-            });
-        });
 
         // Tab switching handlers
         document.addEventListener('shown.bs.tab', function (event) {
             const tabId = event.target.getAttribute('data-bs-target');
             
             switch (tabId) {
-                case '#market':
-                    loadMarketData();
-                    break;
                 case '#positions':
                     loadPositions();
                     break;
@@ -2163,14 +1883,13 @@
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
-            loadMarketData(); // Start with market tab
+            loadPositions(); // Start with positions tab
         });
 
         // Auto-refresh every 30 seconds
         setInterval(() => {
             const activeTab = document.querySelector('.nav-link.active').getAttribute('data-bs-target');
-            if (activeTab === '#market') loadMarketData();
-            else if (activeTab === '#positions') loadPositions();
+            if (activeTab === '#positions') loadPositions();
             else if (activeTab === '#portfolio') loadPortfolio();
         }, 30000);
     </script>
