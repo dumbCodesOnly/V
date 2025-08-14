@@ -1698,14 +1698,18 @@ def calculate_tp_sl_prices_and_amounts(config):
         allocation = tp.get('allocation', 100) if isinstance(tp, dict) else 100
         
         if tp_percentage > 0:
-            if config.side == "long":
-                tp_price = config.entry_price * (1 + tp_percentage / 100)
-            else:  # short
-                tp_price = config.entry_price * (1 - tp_percentage / 100)
+            # TP percentage is the desired profit on position value, not price movement
+            # For leveraged trading: required price movement = tp_percentage / leverage
+            required_price_movement = tp_percentage / config.leverage / 100
             
-            # Calculate profit amount: percentage * margin * allocation
-            # The leverage is already applied in the position sizing, not in profit calculation
-            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
+            if config.side == "long":
+                tp_price = config.entry_price * (1 + required_price_movement)
+            else:  # short
+                tp_price = config.entry_price * (1 - required_price_movement)
+            
+            # Profit amount = tp_percentage of position value * allocation
+            position_value = actual_margin * config.leverage
+            profit_amount = (tp_percentage / 100) * position_value * (allocation / 100)
             
             result['take_profits'].append({
                 'level': i + 1,
@@ -1717,14 +1721,18 @@ def calculate_tp_sl_prices_and_amounts(config):
     
     # Calculate Stop Loss
     if config.stop_loss_percent > 0:
-        if config.side == "long":
-            sl_price = config.entry_price * (1 - config.stop_loss_percent / 100)
-        else:  # short
-            sl_price = config.entry_price * (1 + config.stop_loss_percent / 100)
+        # SL percentage is the desired loss on position value, not price movement
+        # For leveraged trading: required price movement = sl_percentage / leverage
+        required_price_movement = config.stop_loss_percent / config.leverage / 100
         
-        # Calculate loss amount: percentage * margin
-        # The leverage is already applied in the position sizing, not in loss calculation
-        loss_amount = (config.stop_loss_percent / 100) * actual_margin
+        if config.side == "long":
+            sl_price = config.entry_price * (1 - required_price_movement)
+        else:  # short
+            sl_price = config.entry_price * (1 + required_price_movement)
+        
+        # Loss amount = sl_percentage of position value
+        position_value = actual_margin * config.leverage
+        loss_amount = (config.stop_loss_percent / 100) * position_value
         
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
