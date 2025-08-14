@@ -326,6 +326,15 @@ def health_check():
         'timestamp': datetime.utcnow().isoformat()
     })
 
+@app.route('/api/health')
+def api_health_check():
+    """API Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'api_version': '1.0'
+    })
+
 
 
 
@@ -404,6 +413,44 @@ def margin_data():
         },
         'positions': user_positions,
         'timestamp': datetime.utcnow().isoformat()
+    })
+
+@app.route('/api/positions')
+def api_positions():
+    """Get positions for the web app - alias for margin-data"""
+    return margin_data()
+
+@app.route('/api/trading/new')
+def api_trading_new():
+    """Create new trading configuration"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Initialize user environment if needed
+    initialize_user_environment(chat_id)
+    
+    # Generate new trade ID
+    global trade_counter
+    trade_counter += 1
+    trade_id = f"trade_{trade_counter}"
+    
+    # Create new trade config
+    if chat_id not in user_trade_configs:
+        user_trade_configs[chat_id] = {}
+    
+    new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
+    user_trade_configs[chat_id][trade_id] = new_trade
+    user_selected_trade[chat_id] = trade_id
+    
+    return jsonify({
+        'success': True,
+        'trade_id': trade_id,
+        'trade_name': new_trade.name,
+        'message': f'Created new position: {new_trade.get_display_name()}'
     })
 
 @app.route('/api/user-trades')

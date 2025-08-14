@@ -939,17 +939,36 @@
         let configStep = 0;
         const configSteps = ['symbol', 'side', 'amount', 'entry', 'tp', 'sl', 'breakeven', 'trailing'];
         
-        // Initialize Telegram Web App
+        // Initialize Telegram Web App with enhanced compatibility
         if (typeof tg !== 'undefined' && tg.ready) {
             tg.ready();
             tg.expand();
+            
+            // Check if showPopup is available (Telegram WebApp v6.1+)
+            if (!tg.showPopup) {
+                tg.showPopup = function(params) {
+                    // Fallback to showAlert for older versions
+                    if (tg.showAlert) {
+                        tg.showAlert(params.message || 'Notification');
+                    } else {
+                        alert(params.message || 'Notification');
+                    }
+                };
+            }
         } else {
             // Fallback for testing outside Telegram with dark theme
             tg = {
                 backgroundColor: '#1a2332',
                 textColor: '#e8eaed',
                 buttonColor: '#2196f3',
-                showAlert: function(message) { alert(message); },
+                showAlert: function(message) { 
+                    console.log('TG Alert:', message);
+                    alert(message); 
+                },
+                showPopup: function(params) {
+                    console.log('TG Popup:', params);
+                    alert(params.message || 'Notification');
+                },
                 MainButton: {
                     setText: function() {},
                     show: function() {},
