@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-Simple entry point for Telegram Trading Bot workflow
-This script allows the workflow to run api/app.py directly
+Entry point for integrated Telegram Trading Bot
+This script is part of the main web application and doesn't need separate execution
 """
 
+# Note: This file is kept for compatibility but the actual bot functionality
+# is integrated into the main web application via api/app.py and webhooks.
+# No separate process is needed for the telegram bot.
+
+print("✅ Telegram Trading Bot is integrated into the main web application.")
+print("🌐 Bot functionality available via webhooks at the main application URL.")
+print("📱 Mini-app interface available at the root URL.")
+print("🔗 No separate bot process needed - everything runs through the main app.")
+
 if __name__ == "__main__":
-    # Import and run the Flask app from api directory
-    import sys
-    import os
-    
-    # Add the current directory to path for imports
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    
-    # Import the Flask app
-    from api.app import app
-    
-    # Run the Flask app
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    print("Note: The Telegram bot is integrated into the main web application.")
+    print("Start the main application instead to enable all functionality.")

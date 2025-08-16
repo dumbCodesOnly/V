@@ -3298,6 +3298,7 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
 # Utility functions for mini-app
 
 if __name__ == "__main__":
-    # Setup webhook on startup  
-    setup_webhook()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # This file is part of the main web application
+    # Bot functionality is available via webhooks, no separate execution needed
+    print("Note: This API module is part of the main web application.")
+    print("Use 'python main.py' or the main workflow to start the application.")
