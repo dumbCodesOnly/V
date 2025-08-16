@@ -161,6 +161,50 @@ def initialize_user_environment(user_id):
     # Initialize user's selected trade if not exists
     if user_id not in user_selected_trade:
         user_selected_trade[user_id] = None
+    
+    # Add demo closed positions for testing if user has no trades yet
+    if len(user_trade_configs[user_id]) == 0 and user_id == 123456789:  # Demo user only
+        # Create demo closed positions
+        global trade_counter
+        
+        # Demo closed position 1 - Profitable BTC long
+        trade_counter += 1
+        closed_trade_1 = TradeConfig(f"demo_closed_{trade_counter}", f"Demo Position #{trade_counter}")
+        closed_trade_1.symbol = "BTCUSDT"
+        closed_trade_1.side = "long"
+        closed_trade_1.amount = 100.0
+        closed_trade_1.leverage = 10
+        closed_trade_1.entry_price = 60000.0
+        closed_trade_1.status = "stopped"
+        closed_trade_1.final_pnl = 25.50
+        closed_trade_1.closed_at = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+        user_trade_configs[user_id][closed_trade_1.trade_id] = closed_trade_1
+        
+        # Demo closed position 2 - Loss ETH short  
+        trade_counter += 1
+        closed_trade_2 = TradeConfig(f"demo_closed_{trade_counter}", f"Demo Position #{trade_counter}")
+        closed_trade_2.symbol = "ETHUSDT"
+        closed_trade_2.side = "short"
+        closed_trade_2.amount = 200.0
+        closed_trade_2.leverage = 5
+        closed_trade_2.entry_price = 3500.0
+        closed_trade_2.status = "stopped"
+        closed_trade_2.final_pnl = -15.75
+        closed_trade_2.closed_at = (datetime.utcnow() - timedelta(hours=6)).isoformat()
+        user_trade_configs[user_id][closed_trade_2.trade_id] = closed_trade_2
+        
+        # Demo closed position 3 - Recent SOL long
+        trade_counter += 1
+        closed_trade_3 = TradeConfig(f"demo_closed_{trade_counter}", f"Demo Position #{trade_counter}")
+        closed_trade_3.symbol = "SOLUSDT"
+        closed_trade_3.side = "long"
+        closed_trade_3.amount = 50.0
+        closed_trade_3.leverage = 20
+        closed_trade_3.entry_price = 180.0
+        closed_trade_3.status = "stopped"
+        closed_trade_3.final_pnl = 8.20
+        closed_trade_3.closed_at = (datetime.utcnow() - timedelta(minutes=30)).isoformat()
+        user_trade_configs[user_id][closed_trade_3.trade_id] = closed_trade_3
 
 
 
