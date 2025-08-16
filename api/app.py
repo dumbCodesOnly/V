@@ -246,6 +246,22 @@ def initialize_user_environment(user_id):
         ]
         pending_trade.stop_loss_percent = 5.0
         user_trade_configs[user_id][pending_trade.trade_id] = pending_trade
+        
+        # Add a configured trade (not yet executed) for trading tab demonstration
+        trade_counter += 1
+        config_trade = TradeConfig(f"demo_config_{trade_counter}", f"Demo Config #{trade_counter}")
+        config_trade.symbol = "ADAUSDT"
+        config_trade.side = "long"
+        config_trade.amount = 80.0
+        config_trade.leverage = 15
+        config_trade.entry_type = "market"
+        config_trade.take_profits = [
+            {"level": 1, "percentage": 6.0, "close_percentage": 50.0},
+            {"level": 2, "percentage": 12.0, "close_percentage": 50.0}
+        ]
+        config_trade.stop_loss_percent = 4.0
+        # Keep default status = "configured" 
+        user_trade_configs[user_id][config_trade.trade_id] = config_trade
 
 
 

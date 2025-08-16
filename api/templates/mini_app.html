@@ -1518,7 +1518,8 @@
             if (!data) return;
             
             const container = document.getElementById('trade-configs-list');
-            const trades = data.trades || [];
+            // Only show trades that are still in configuration phase (not executed)
+            const trades = data.trades?.filter(t => t.status === 'configured' || !t.status) || [];
             
             if (trades.length === 0) {
                 container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No trade configurations</small></div>';
