@@ -747,14 +747,24 @@
 
             /* Mobile-friendly position summary grid */
             .position-summary {
-                grid-template-columns: 1fr;
-                gap: 0.75rem;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.5rem;
                 margin-bottom: 1rem;
+                padding: 0 0.25rem;
             }
 
-            .stat-box {
-                padding: 0.875rem;
+            .position-summary .stat-box {
+                padding: 0.75rem 0.5rem;
                 border-radius: 10px;
+            }
+
+            .position-summary .stat-value {
+                font-size: 1.3rem;
+            }
+
+            .position-summary .stat-label {
+                font-size: 0.75rem;
+                margin-top: 0.5rem;
             }
 
             .portfolio-grid {
