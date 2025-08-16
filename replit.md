@@ -27,6 +27,7 @@ The UI/UX utilizes HTML formatting for rich text and interactive menus, with a s
 - **Multi-Symbol Trading Support:** `get_live_market_price` function supports multiple cryptocurrency pairs via a multi-source API fallback system.
 - **Position Size Display:** Correctly displays "Position Size" (margin × leverage) alongside "Margin" in the UI.
 - **Closed Positions History:** Implemented comprehensive tracking and display of the last 5 closed positions in the Portfolio tab, including final P&L and detailed information.
+- **Enhanced Typography System:** Professional typography using Google Fonts (Inter for text, JetBrains Mono for numerical data) with optimized weights, letter spacing, and font hierarchy for improved readability and modern trading platform appearance.
 
 **System Design Choices:**
 The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation. The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics, and daily summaries. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are securely encrypted using Fernet encryption.
