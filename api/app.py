@@ -724,41 +724,76 @@ def save_trade():
         
         config = user_trade_configs[chat_id][trade_id]
         
-        # Update configuration
-        if 'symbol' in trade_data:
-            config.symbol = trade_data['symbol']
-        if 'side' in trade_data:
-            config.side = trade_data['side']
-        if 'amount' in trade_data:
-            config.amount = float(trade_data['amount'])
-        if 'leverage' in trade_data:
-            config.leverage = int(trade_data['leverage'])
-        if 'entry_type' in trade_data:
-            config.entry_type = trade_data['entry_type']
-        if 'entry_price' in trade_data:
-            config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
+        # SAFETY CHECK: Prevent re-execution of active trades by restricting core parameter modifications
+        is_active_trade = config.status in ['active', 'pending']
+        
+        if is_active_trade:
+            # For active/pending trades, only allow risk management parameter modifications
+            core_params = ['symbol', 'side', 'amount', 'leverage', 'entry_type', 'entry_price']
+            core_param_changes = [param for param in core_params if param in trade_data]
+            
+            if core_param_changes:
+                logging.warning(f"Attempted to modify core parameters {core_param_changes} for active trade {trade_id}. Changes rejected for safety.")
+                return jsonify({
+                    'error': f'Cannot modify core trade parameters (symbol, side, amount, leverage, entry) for active trades. Only risk management parameters (take profits, stop loss, break-even, trailing stop) can be modified.',
+                    'active_trade': True
+                }), 400
+            
+            logging.info(f"Modifying risk management parameters for active trade {trade_id}")
+        else:
+            # For non-active trades, allow all parameter updates
+            if 'symbol' in trade_data:
+                config.symbol = trade_data['symbol']
+            if 'side' in trade_data:
+                config.side = trade_data['side']
+            if 'amount' in trade_data:
+                config.amount = float(trade_data['amount'])
+            if 'leverage' in trade_data:
+                config.leverage = int(trade_data['leverage'])
+            if 'entry_type' in trade_data:
+                config.entry_type = trade_data['entry_type']
+            if 'entry_price' in trade_data:
+                config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
+        # Risk management parameters - always allowed for all trade statuses
+        risk_params_updated = []
         if 'take_profits' in trade_data:
             config.take_profits = trade_data['take_profits']
+            risk_params_updated.append('take_profits')
         if 'stop_loss_percent' in trade_data:
             config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else 0.0
+            risk_params_updated.append('stop_loss')
         
         # Update breakeven and trailing stop settings
         if 'breakeven_after' in trade_data:
             config.breakeven_after = trade_data['breakeven_after']
+            risk_params_updated.append('breakeven')
         if 'trailing_stop_enabled' in trade_data:
             config.trailing_stop_enabled = bool(trade_data['trailing_stop_enabled'])
+            risk_params_updated.append('trailing_stop')
         if 'trail_percentage' in trade_data:
             config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else 0.0
+            risk_params_updated.append('trailing_percentage')
         if 'trail_activation_price' in trade_data:
             config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else 0.0
+            risk_params_updated.append('trailing_activation')
+        
+        # Log risk management updates for active trades
+        if is_active_trade and risk_params_updated:
+            logging.info(f"Updated risk management parameters for active trade {trade_id}: {', '.join(risk_params_updated)}")
         
         # Set as selected trade for user
         user_selected_trade[chat_id] = trade_id
         
+        success_message = 'Trade configuration saved successfully'
+        if is_active_trade and risk_params_updated:
+            success_message = f"Risk management parameters updated for active trade: {', '.join(risk_params_updated)}"
+        
         return jsonify({
             'success': True,
             'trade_id': trade_id,
-            'message': 'Trade configuration saved successfully'
+            'message': success_message,
+            'active_trade': is_active_trade,
+            'risk_params_updated': risk_params_updated if is_active_trade else []
         })
         
     except Exception as e:
@@ -2994,6 +3029,11 @@ def handle_set_stoploss(chat_id, sl_percent):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            
+            # Log modification for active trades
+            if config.status in ['active', 'pending']:
+                logging.info(f"Updated stop loss for active trade {trade_id}: {sl_percent}%")
+            
             config.stop_loss_percent = sl_percent
             header = config.get_trade_header("Stop Loss Set")
             return f"{header}✅ Set stop loss to {sl_percent}%", get_trading_menu(chat_id)
@@ -3118,6 +3158,11 @@ def handle_set_breakeven(chat_id, mode):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            
+            # Log modification for active trades
+            if config.status in ['active', 'pending']:
+                logging.info(f"Updated break-even setting for active trade {trade_id}: {mode_map.get(mode, 'After TP1')}")
+            
             config.breakeven_after = mode_map.get(mode, "After TP1")
             header = config.get_trade_header("Break-even Set")
             return f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
@@ -3215,6 +3260,10 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
         trade_id = user_selected_trade[chat_id]
         if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
             config = user_trade_configs[chat_id][trade_id]
+            
+            # Log modification for active trades
+            if config.status in ['active', 'pending']:
+                logging.info(f"Updated TP{tp_level} for active trade {trade_id}: {tp_percent}%")
             
             if tp_level == "1":
                 config.tp1_percent = tp_percent
