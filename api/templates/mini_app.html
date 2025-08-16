@@ -1539,6 +1539,23 @@
             }
         }
 
+        // Toggle active positions section collapse/expand
+        function toggleActivePositionsSection() {
+            const content = document.getElementById('active-positions-content');
+            const icon = document.getElementById('active-positions-icon');
+            const header = content.previousElementSibling;
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+                icon.classList.remove('expanded');
+            } else {
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+                icon.classList.add('expanded');
+            }
+        }
+
         // Load data functions
         async function loadPositions() {
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
@@ -1923,9 +1940,21 @@
             
             let content = '';
             
-            // Active Positions Section
+            // Active Positions Section - Collapsible
+            content += `<div class="mb-4">
+                <div class="collapsible-header" onclick="toggleActivePositionsSection()" style="cursor: pointer; padding: 0.75rem; background: rgba(107, 139, 179, 0.1); border-radius: 8px; margin-bottom: 1rem;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">📊 Active Positions</h6>
+                            <small class="text-muted">${activePositions.length} active position${activePositions.length !== 1 ? 's' : ''}</small>
+                        </div>
+                        <span class="expand-icon" id="active-positions-icon">▼</span>
+                    </div>
+                </div>
+                <div class="collapsible-content expanded" id="active-positions-content">
+            `;
+            
             if (activePositions.length > 0) {
-                content += `<h6 class="mb-3">Active Positions</h6>`;
                 content += activePositions.map(pos => `
                     <div class="trade-card">
                         <div class="d-flex justify-content-between mb-2">
@@ -1955,6 +1984,8 @@
             } else {
                 content += '<div class="text-center py-4"><small class="text-muted">No active positions</small></div>';
             }
+            
+            content += `</div></div>`; // Close active positions collapsible content and container
             
             // Closed Positions History Section - Collapsible
             content += `<div class="mt-4">
