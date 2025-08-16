@@ -293,8 +293,9 @@ class TradeConfig:
         self.unrealized_pnl = 0.0   # Current floating P&L
         self.current_price = 0.0    # Current market price
         self.position_size = 0.0    # Actual position size in contracts
-        self.final_pnl = None       # Final P&L when position is closed
-        self.closed_at = None       # Timestamp when position was closed
+        self.position_value = 0.0   # Total position value
+        self.final_pnl = 0.0        # Final P&L when position is closed
+        self.closed_at = ""         # Timestamp when position was closed
         
     def get_display_name(self):
         if self.symbol and self.side:
