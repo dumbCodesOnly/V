@@ -2339,12 +2339,29 @@
                 }
             });
             
+            // Prepare trade data for saving
+            let tradeDataToSave = { ...currentTrade };
+            
+            // For active/pending trades, only send risk management parameters
+            // to avoid triggering core parameter change safety checks
+            if (currentTrade.status === 'active' || currentTrade.status === 'pending') {
+                tradeDataToSave = {
+                    trade_id: currentTrade.trade_id,
+                    take_profits: currentTrade.take_profits,
+                    stop_loss_percent: currentTrade.stop_loss_percent,
+                    breakeven_after: currentTrade.breakeven_after,
+                    trailing_stop_enabled: currentTrade.trailing_stop_enabled,
+                    trail_percentage: currentTrade.trail_percentage,
+                    trail_activation_price: currentTrade.trail_activation_price
+                };
+            }
+            
             // Save trade configuration
             const result = await apiCall('/api/save-trade', {
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: currentUser?.id,
-                    trade: currentTrade
+                    trade: tradeDataToSave
                 })
             });
             
