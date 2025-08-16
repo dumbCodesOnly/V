@@ -1369,13 +1369,16 @@
         function toggleHistorySection() {
             const content = document.getElementById('history-content');
             const icon = document.getElementById('history-icon');
+            const header = content.previousElementSibling;
             
-            if (content.style.display === 'none' || content.style.display === '') {
-                content.style.display = 'block';
-                icon.textContent = '▲';
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                header.classList.remove('expanded');
+                icon.classList.remove('expanded');
             } else {
-                content.style.display = 'none';
-                icon.textContent = '▼';
+                content.classList.add('expanded');
+                header.classList.add('expanded');
+                icon.classList.add('expanded');
             }
         }
 
@@ -1807,7 +1810,7 @@
                         <span class="expand-icon" id="history-icon">▼</span>
                     </div>
                 </div>
-                <div class="collapsible-content" id="history-content" style="display: none;">
+                <div class="collapsible-content" id="history-content">
             `;
             
             if (closedPositions.length > 0) {
