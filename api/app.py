@@ -1960,7 +1960,9 @@ def get_margin_summary(chat_id):
             total_position_margin += config.position_margin
             total_unrealized_pnl += config.unrealized_pnl
     
-    free_margin = account_balance - total_position_margin + total_unrealized_pnl
+    # Include unrealized P&L in account balance to reflect current account value
+    account_balance = 1000.0 + total_unrealized_pnl
+    free_margin = account_balance - total_position_margin
     
     return {
         'account_balance': account_balance,
