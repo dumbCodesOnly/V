@@ -1514,17 +1514,30 @@
         }
 
         async function loadTradeConfigs() {
+            console.log('Loading trade configs...');
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
-            if (!data) return;
+            if (!data) {
+                console.log('No data received from API');
+                return;
+            }
             
             const container = document.getElementById('trade-configs-list');
+            if (!container) {
+                console.log('Trade configs container not found');
+                return;
+            }
+            
             // Only show trades that are still in configuration phase (not executed)
             const trades = data.trades?.filter(t => t.status === 'configured' || !t.status) || [];
+            console.log(`Found ${trades.length} configured trades:`, trades);
             
             if (trades.length === 0) {
+                console.log('No configured trades found, showing empty state');
                 container.innerHTML = '<div class="text-center py-4"><small class="text-muted">No trade configurations</small></div>';
                 return;
             }
+            
+            console.log('Rendering trades...');
             
             container.innerHTML = trades.map((trade, index) => `
                 <div class="position-item">
@@ -1708,6 +1721,7 @@
                     </div>
                 </div>
             `).join('');
+            console.log('Trades rendered successfully. Container innerHTML set.');
         }
 
         async function loadPortfolio() {
