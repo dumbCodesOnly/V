@@ -205,6 +205,47 @@ def initialize_user_environment(user_id):
         closed_trade_3.final_pnl = 8.20
         closed_trade_3.closed_at = (datetime.utcnow() - timedelta(minutes=30)).isoformat()
         user_trade_configs[user_id][closed_trade_3.trade_id] = closed_trade_3
+        
+        # Add an active position for demonstration
+        trade_counter += 1
+        active_trade = TradeConfig(f"demo_active_{trade_counter}", f"Demo Active Position #{trade_counter}")
+        active_trade.symbol = "BTCUSDT"
+        active_trade.side = "long"
+        active_trade.amount = 150.0
+        active_trade.leverage = 10
+        active_trade.entry_price = 60000.0
+        active_trade.current_price = 61000.0  # Set current price for P&L calculation
+        active_trade.status = "active"
+        active_trade.take_profits = [
+            {"level": 1, "percentage": 5.0, "close_percentage": 50.0},
+            {"level": 2, "percentage": 10.0, "close_percentage": 50.0}
+        ]
+        active_trade.stop_loss_percent = 3.0
+        active_trade.position_margin = calculate_position_margin(active_trade.amount, active_trade.leverage)
+        active_trade.position_value = active_trade.amount * active_trade.leverage
+        active_trade.position_size = active_trade.position_value / active_trade.entry_price
+        active_trade.unrealized_pnl = calculate_unrealized_pnl(
+            active_trade.entry_price, active_trade.current_price,
+            active_trade.amount, active_trade.leverage, active_trade.side
+        )
+        user_trade_configs[user_id][active_trade.trade_id] = active_trade
+        
+        # Add a pending limit order for demonstration
+        trade_counter += 1
+        pending_trade = TradeConfig(f"demo_pending_{trade_counter}", f"Demo Pending Position #{trade_counter}")
+        pending_trade.symbol = "ETHUSDT"
+        pending_trade.side = "long"
+        pending_trade.amount = 100.0
+        pending_trade.leverage = 5
+        pending_trade.entry_type = "limit"
+        pending_trade.entry_price = 3400.0  # Below current market price for long limit
+        pending_trade.current_price = 3500.0
+        pending_trade.status = "pending"
+        pending_trade.take_profits = [
+            {"level": 1, "percentage": 8.0, "close_percentage": 100.0}
+        ]
+        pending_trade.stop_loss_percent = 5.0
+        user_trade_configs[user_id][pending_trade.trade_id] = pending_trade
 
 
 
