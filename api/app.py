@@ -736,26 +736,30 @@ def save_trade():
                 core_param_changes.append('symbol')
             if 'side' in trade_data and trade_data['side'] != config.side:
                 core_param_changes.append('side')
-            if 'amount' in trade_data and float(trade_data['amount']) != config.amount:
+            if 'amount' in trade_data and abs(float(trade_data['amount']) - float(config.amount)) > 0.0001:
                 core_param_changes.append('amount')
-            if 'leverage' in trade_data and int(trade_data['leverage']) != config.leverage:
+            if 'leverage' in trade_data and int(trade_data['leverage']) != int(config.leverage):
                 core_param_changes.append('leverage')
             if 'entry_type' in trade_data and trade_data['entry_type'] != config.entry_type:
                 core_param_changes.append('entry_type')
             if 'entry_price' in trade_data:
                 new_entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
-                if new_entry_price != config.entry_price:
+                current_entry_price = float(config.entry_price) if config.entry_price else 0.0
+                # Use a small tolerance for float comparison to avoid precision issues
+                if abs(new_entry_price - current_entry_price) > 0.0001:
+                    logging.debug(f"Entry price change detected for trade {trade_id}: {current_entry_price} -> {new_entry_price}")
                     core_param_changes.append('entry_price')
             
             if core_param_changes:
                 logging.warning(f"Attempted to modify core parameters {core_param_changes} for active trade {trade_id}. Changes rejected for safety.")
                 return jsonify({
-                    'error': f"Cannot modify core trade parameters ({', '.join(core_param_changes)}) for active trades. Only risk management parameters (take profits, stop loss, break-even, trailing stop) can be modified.",
+                    'error': f"Cannot modify core trade parameters ({', '.join(core_param_changes)}) for active trades. Only take profits, stop loss, break-even, and trailing stop can be modified.",
                     'active_trade': True,
-                    'rejected_changes': core_param_changes
+                    'rejected_changes': core_param_changes,
+                    'message': 'For active positions, you can only edit risk management settings (TP/SL levels, breakeven, trailing stop).'
                 }), 400
             
-            logging.info(f"Modifying risk management parameters for active trade {trade_id} (core parameters unchanged)")
+            logging.info(f"Allowing risk management parameter modifications for active trade {trade_id} (core parameters unchanged)")
         else:
                 # For non-active trades, allow all parameter updates
             if 'symbol' in trade_data:
