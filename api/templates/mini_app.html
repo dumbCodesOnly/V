@@ -2367,9 +2367,15 @@
             });
             
             if (result && result.success) {
-                tg.showAlert(`Position closed successfully! P&L: $${result.final_pnl?.toFixed(2) || '0.00'}`);
-                loadPositions();
-                loadPortfolio();
+                alert(`Position closed successfully! P&L: $${result.final_pnl?.toFixed(2) || '0.00'}`);
+                // Only reload the current tab to avoid conflicts  
+                if (currentActiveTab === 'positions') {
+                    loadPositions();
+                } else if (currentActiveTab === 'portfolio') {
+                    loadPortfolio();
+                }
+            } else {
+                alert('Failed to close position. Please try again.');
             }
         }
 
@@ -2385,10 +2391,18 @@
             });
             
             if (result && result.success) {
-                tg.showAlert('Trade configuration deleted successfully!');
-                loadTradeConfigs();
-                loadPositions();
-                loadPortfolio();
+                // Use native alert instead of Telegram-specific showAlert
+                alert('Trade configuration deleted successfully!');
+                // Only reload the current tab to avoid conflicts
+                if (currentActiveTab === 'trading') {
+                    loadTradeConfigs();
+                } else if (currentActiveTab === 'positions') {
+                    loadPositions();
+                } else if (currentActiveTab === 'portfolio') {
+                    loadPortfolio();
+                }
+            } else {
+                alert('Failed to delete trade configuration. Please try again.');
             }
         }
 
@@ -2433,11 +2447,20 @@
             });
             
             if (result && result.success) {
-                tg.showAlert('Trade executed successfully!');
-                tg.MainButton.hide();
-                loadPositions();
-                loadTradeConfigs();
-                loadPortfolio();
+                alert('Trade executed successfully!');
+                if (typeof tg !== 'undefined' && tg.MainButton) {
+                    tg.MainButton.hide();
+                }
+                // Only reload the current tab to avoid conflicts
+                if (currentActiveTab === 'trading') {
+                    loadTradeConfigs();
+                } else if (currentActiveTab === 'positions') {
+                    loadPositions();
+                } else if (currentActiveTab === 'portfolio') {
+                    loadPortfolio();
+                }
+            } else {
+                alert('Failed to execute trade. Please try again.');
             }
         }
 
@@ -2677,10 +2700,16 @@
             });
             
             if (result && result.success) {
-                tg.showAlert('Trade configuration saved successfully!');
+                alert('Trade configuration saved successfully!');
                 bootstrap.Modal.getInstance(document.getElementById('tradeModal')).hide();
-                loadTradeConfigs();
-                loadPositions();
+                // Only reload the current tab to avoid conflicts
+                if (currentActiveTab === 'trading') {
+                    loadTradeConfigs();
+                } else if (currentActiveTab === 'positions') {
+                    loadPositions();
+                }
+            } else {
+                alert('Failed to save trade configuration. Please try again.');
             }
         }
 
