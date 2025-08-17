@@ -1559,6 +1559,19 @@
             }
         }
 
+        // State management for expanded positions
+        function saveExpandedState(type, id, isExpanded) {
+            const expandedStates = JSON.parse(localStorage.getItem('expandedStates') || '{}');
+            if (!expandedStates[type]) expandedStates[type] = {};
+            expandedStates[type][id] = isExpanded;
+            localStorage.setItem('expandedStates', JSON.stringify(expandedStates));
+        }
+
+        function getExpandedState(type, id) {
+            const expandedStates = JSON.parse(localStorage.getItem('expandedStates') || '{}');
+            return expandedStates[type] && expandedStates[type][id];
+        }
+
         // Toggle position collapse/expand
         function togglePosition(index) {
             const content = document.getElementById(`content-${index}`);
@@ -1569,10 +1582,12 @@
                 content.classList.remove('expanded');
                 header.classList.remove('expanded');
                 icon.classList.remove('expanded');
+                saveExpandedState('positions', index, false);
             } else {
                 content.classList.add('expanded');
                 header.classList.add('expanded');
                 icon.classList.add('expanded');
+                saveExpandedState('positions', index, true);
             }
         }
 
@@ -1586,10 +1601,12 @@
                 content.classList.remove('expanded');
                 header.classList.remove('expanded');
                 icon.classList.remove('expanded');
+                saveExpandedState('trades', index, false);
             } else {
                 content.classList.add('expanded');
                 header.classList.add('expanded');
                 icon.classList.add('expanded');
+                saveExpandedState('trades', index, true);
             }
         }
         
@@ -1603,10 +1620,12 @@
                 content.classList.remove('expanded');
                 header.classList.remove('expanded');
                 icon.classList.remove('expanded');
+                saveExpandedState('sections', 'history', false);
             } else {
                 content.classList.add('expanded');
                 header.classList.add('expanded');
                 icon.classList.add('expanded');
+                saveExpandedState('sections', 'history', true);
             }
         }
 
@@ -1620,10 +1639,12 @@
                 content.classList.remove('expanded');
                 header.classList.remove('expanded');
                 icon.classList.remove('expanded');
+                saveExpandedState('sections', 'active-positions', false);
             } else {
                 content.classList.add('expanded');
                 header.classList.add('expanded');
                 icon.classList.add('expanded');
+                saveExpandedState('sections', 'active-positions', true);
             }
         }
 
@@ -1852,6 +1873,23 @@
             
             container.innerHTML = content;
             
+            // Restore expanded states after content update
+            setTimeout(() => {
+                activePositions.forEach((pos, index) => {
+                    if (getExpandedState('positions', index)) {
+                        const content = document.getElementById(`content-${index}`);
+                        const icon = document.getElementById(`icon-${index}`);
+                        const header = content?.previousElementSibling;
+                        
+                        if (content && icon && header) {
+                            content.classList.add('expanded');
+                            header.classList.add('expanded');
+                            icon.classList.add('expanded');
+                        }
+                    }
+                });
+            }, 50);
+            
             // Start live price updates for active positions
             if (activePositions.length > 0) {
                 startLivePriceUpdates();
@@ -1886,7 +1924,7 @@
             
             console.log('Rendering trades...');
             
-            container.innerHTML = trades.map((trade, index) => `
+            const tradesHtml = trades.map((trade, index) => `
                 <div class="position-item">
                     <div class="collapsible-header" onclick="toggleTrade(${index})">
                         <div class="d-flex justify-content-between align-items-center w-100">
@@ -2068,6 +2106,26 @@
                     </div>
                 </div>
             `).join('');
+            
+            container.innerHTML = tradesHtml;
+            
+            // Restore expanded states for trades after content update
+            setTimeout(() => {
+                trades.forEach((trade, index) => {
+                    if (getExpandedState('trades', index)) {
+                        const content = document.getElementById(`trade-content-${index}`);
+                        const icon = document.getElementById(`trade-icon-${index}`);
+                        const header = content?.previousElementSibling;
+                        
+                        if (content && icon && header) {
+                            content.classList.add('expanded');
+                            header.classList.add('expanded');
+                            icon.classList.add('expanded');
+                        }
+                    }
+                });
+            }, 50);
+            
             console.log('Trades rendered successfully. Container innerHTML set.');
         }
 
@@ -2225,6 +2283,35 @@
             content += `</div></div>`; // Close collapsible content and container
             
             container.innerHTML = content;
+            
+            // Restore expanded states for portfolio sections after content update
+            setTimeout(() => {
+                // Restore active positions section state
+                if (getExpandedState('sections', 'active-positions')) {
+                    const content = document.getElementById('active-positions-content');
+                    const icon = document.getElementById('active-positions-icon');
+                    const header = content?.previousElementSibling;
+                    
+                    if (content && icon && header) {
+                        content.classList.add('expanded');
+                        header.classList.add('expanded');
+                        icon.classList.add('expanded');
+                    }
+                }
+                
+                // Restore history section state
+                if (getExpandedState('sections', 'history')) {
+                    const content = document.getElementById('history-content');
+                    const icon = document.getElementById('history-icon');
+                    const header = content?.previousElementSibling;
+                    
+                    if (content && icon && header) {
+                        content.classList.add('expanded');
+                        header.classList.add('expanded');
+                        icon.classList.add('expanded');
+                    }
+                }
+            }, 50);
         }
 
         // Trade configuration functions
