@@ -7,6 +7,8 @@ import urllib.parse
 import json
 import random
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.middleware.proxy_fix import ProxyFix
 try:
     # Try relative import first (for module import - Vercel/main.py)
@@ -464,14 +466,118 @@ def api_health_check():
 
 @app.route('/api/status')
 def get_bot_status():
-    """Get bot status"""
+    """Get bot status with API performance metrics"""
     # Check if bot is active (heartbeat within last 5 minutes)
     if bot_status['last_heartbeat']:
         time_diff = datetime.utcnow() - datetime.fromisoformat(bot_status['last_heartbeat'])
         is_active = time_diff.total_seconds() < 300  # 5 minutes
         bot_status['status'] = 'active' if is_active else 'inactive'
     
+    # Add API performance metrics
+    bot_status['api_performance'] = {}
+    for api_name, metrics in api_performance_metrics.items():
+        if metrics['requests'] > 0:
+            success_rate = (metrics['successes'] / metrics['requests']) * 100
+            bot_status['api_performance'][api_name] = {
+                'success_rate': round(success_rate, 2),
+                'avg_response_time': round(metrics['avg_response_time'], 3),
+                'total_requests': metrics['requests'],
+                'last_success': metrics['last_success'].isoformat() if metrics['last_success'] else None
+            }
+        else:
+            bot_status['api_performance'][api_name] = {
+                'success_rate': 0,
+                'avg_response_time': 0,
+                'total_requests': 0,
+                'last_success': None
+            }
+    
+    # Add cache statistics
+    with cache_lock:
+        bot_status['cache_stats'] = {
+            'cached_symbols': len(price_cache),
+            'cache_ttl_seconds': cache_ttl
+        }
+    
     return jsonify(bot_status)
+
+@app.route('/api/price/<symbol>')
+def get_symbol_price(symbol):
+    """Get live price for a specific symbol with caching info"""
+    try:
+        symbol = symbol.upper()
+        
+        # Check if price is cached
+        cache_info = {}
+        with cache_lock:
+            if symbol in price_cache:
+                cached_data = price_cache[symbol]
+                age_seconds = (datetime.utcnow() - cached_data['timestamp']).total_seconds()
+                cache_info = {
+                    'cached': True,
+                    'age_seconds': round(age_seconds, 2),
+                    'source': cached_data.get('source', 'unknown')
+                }
+            else:
+                cache_info = {'cached': False}
+        
+        price = get_live_market_price(symbol)
+        
+        return jsonify({
+            'symbol': symbol,
+            'price': price,
+            'timestamp': datetime.utcnow().isoformat(),
+            'cache_info': cache_info
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/prices', methods=['POST'])
+def get_multiple_prices():
+    """Get live prices for multiple symbols efficiently"""
+    try:
+        data = request.get_json()
+        symbols = data.get('symbols', [])
+        
+        if not symbols or not isinstance(symbols, list):
+            return jsonify({'error': 'Symbols array required'}), 400
+        
+        # Limit to prevent abuse
+        if len(symbols) > 20:
+            return jsonify({'error': 'Maximum 20 symbols allowed'}), 400
+        
+        symbols = [s.upper() for s in symbols]
+        
+        # Batch fetch prices
+        futures = {}
+        for symbol in symbols:
+            future = price_executor.submit(get_live_market_price, symbol, True)
+            futures[future] = symbol
+        
+        results = {}
+        for future in as_completed(futures, timeout=20):
+            symbol = futures[future]
+            try:
+                price = future.result()
+                results[symbol] = {
+                    'price': price,
+                    'status': 'success'
+                }
+            except Exception as e:
+                results[symbol] = {
+                    'price': None,
+                    'status': 'error',
+                    'error': str(e)
+                }
+        
+        return jsonify({
+            'results': results,
+            'timestamp': datetime.utcnow().isoformat(),
+            'total_symbols': len(symbols),
+            'successful': len([r for r in results.values() if r['status'] == 'success'])
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recent-messages')
 def recent_messages():
@@ -1298,11 +1404,28 @@ Use the menu below to navigate:"""
         
         symbol = parts[1].upper()
         try:
+            start_time = time.time()
             price = get_live_market_price(symbol)
-            return f"💰 {symbol}: ${price:.4f} (Live Price)", None
+            fetch_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+            # Get cache info
+            cache_info = ""
+            with cache_lock:
+                if symbol in price_cache:
+                    cached_data = price_cache[symbol]
+                    age_seconds = (datetime.utcnow() - cached_data['timestamp']).total_seconds()
+                    source = cached_data.get('source', 'unknown')
+                    if age_seconds < cache_ttl:
+                        cache_info = f" (cached, {source})"
+                    else:
+                        cache_info = f" ({source})"
+                else:
+                    cache_info = " (live)"
+            
+            return f"💰 {symbol}: ${price:.4f}{cache_info}\n⚡ Fetched in {fetch_time:.0f}ms", None
         except Exception as e:
             logging.error(f"Error fetching live price for {symbol}: {e}")
-            return f"❌ Could not fetch live price for {symbol}", None
+            return f"❌ Could not fetch live price for {symbol}\nError: {str(e)}", None
     
     elif text.startswith('/buy') or text.startswith('/sell'):
         parts = text.split()
@@ -1698,140 +1821,313 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         logging.error(f"Error deleting credentials: {str(e)}")
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
-def get_live_market_price(symbol):
-    """Get current market price for a symbol with multi-source fallback"""
-    # First try Binance API
+# Price caching and optimization system
+price_cache = {}
+cache_lock = threading.Lock()
+cache_ttl = 10  # Cache for 10 seconds
+api_performance_metrics = {
+    'binance': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
+    'coingecko': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
+    'cryptocompare': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None}
+}
+
+# Thread pool for concurrent API requests
+price_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="price_api")
+
+def update_api_metrics(api_name, success, response_time):
+    """Update API performance metrics"""
+    metrics = api_performance_metrics[api_name]
+    metrics['requests'] += 1
+    if success:
+        metrics['successes'] += 1
+        metrics['last_success'] = datetime.utcnow()
+        # Update rolling average response time
+        if metrics['avg_response_time'] == 0:
+            metrics['avg_response_time'] = response_time
+        else:
+            metrics['avg_response_time'] = (metrics['avg_response_time'] * 0.8) + (response_time * 0.2)
+
+def get_api_priority():
+    """Get API priority based on performance metrics"""
+    apis = []
+    for api_name, metrics in api_performance_metrics.items():
+        if metrics['requests'] > 0:
+            success_rate = metrics['successes'] / metrics['requests']
+            score = success_rate * 100 - metrics['avg_response_time']
+            apis.append((api_name, score))
+        else:
+            apis.append((api_name, 50))  # Default score for untested APIs
+    
+    # Sort by score (higher is better)
+    apis.sort(key=lambda x: x[1], reverse=True)
+    return [api[0] for api in apis]
+
+def fetch_binance_price(symbol):
+    """Fetch price from Binance API with metrics tracking"""
+    start_time = time.time()
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        req.add_header('Accept', 'application/json')
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
         
+        response_time = time.time() - start_time
+        update_api_metrics('binance', True, response_time)
+        
         price = float(data['price'])
-        logging.info(f"Retrieved live price for {symbol}: ${price}")
-        return price
+        return price, 'binance'
     except Exception as e:
-        logging.warning(f"Binance API failed for {symbol}: {str(e)}")
-    
-    # Try CoinGecko API as fallback (for non-Binance pairs)
+        response_time = time.time() - start_time
+        update_api_metrics('binance', False, response_time)
+        raise e
+
+def fetch_coingecko_price(symbol):
+    """Fetch price from CoinGecko API with metrics tracking"""
+    start_time = time.time()
     try:
-        # Map symbol to CoinGecko ID
+        # Extended symbol mapping with more pairs
         symbol_map = {
-            'BTCUSDT': 'bitcoin',
-            'ETHUSDT': 'ethereum', 
-            'BNBUSDT': 'binancecoin',
-            'ADAUSDT': 'cardano',
-            'DOGEUSDT': 'dogecoin',
-            'SOLUSDT': 'solana',
-            'DOTUSDT': 'polkadot',
-            'LINKUSDT': 'chainlink',
-            'LTCUSDT': 'litecoin',
-            'MATICUSDT': 'matic-network',
-            'AVAXUSDT': 'avalanche-2',
-            'UNIUSDT': 'uniswap',
-            'XRPUSDT': 'ripple'
+            'BTCUSDT': 'bitcoin', 'ETHUSDT': 'ethereum', 'BNBUSDT': 'binancecoin',
+            'ADAUSDT': 'cardano', 'DOGEUSDT': 'dogecoin', 'SOLUSDT': 'solana',
+            'DOTUSDT': 'polkadot', 'LINKUSDT': 'chainlink', 'LTCUSDT': 'litecoin',
+            'MATICUSDT': 'matic-network', 'AVAXUSDT': 'avalanche-2', 'UNIUSDT': 'uniswap',
+            'XRPUSDT': 'ripple', 'ALGOUSDT': 'algorand', 'ATOMUSDT': 'cosmos',
+            'FTMUSDT': 'fantom', 'MANAUSDT': 'decentraland', 'SANDUSDT': 'the-sandbox',
+            'AXSUSDT': 'axie-infinity', 'CHZUSDT': 'chiliz', 'ENJUSDT': 'enjincoin',
+            'GMTUSDT': 'stepn', 'APTUSDT': 'aptos', 'NEARUSDT': 'near'
         }
         
         coin_id = symbol_map.get(symbol)
-        if coin_id:
-            url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-            req = urllib.request.Request(url)
-            req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        if not coin_id:
+            raise Exception(f"Symbol {symbol} not supported by CoinGecko")
             
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode())
-            
-            price = float(data[coin_id]['usd'])
-            logging.info(f"Retrieved live price from CoinGecko for {symbol}: ${price}")
-            return price
-    except Exception as e:
-        logging.warning(f"CoinGecko API failed for {symbol}: {str(e)}")
-    
-    # Try CryptoCompare API as final fallback
-    try:
-        base_symbol = symbol.replace('USDT', '')
-        url = f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
         req = urllib.request.Request(url)
-        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebObj/537.36')
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        req.add_header('Accept', 'application/json')
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             data = json.loads(response.read().decode())
         
-        if 'USD' in data:
-            price = float(data['USD'])
-            logging.info(f"Retrieved live price from CryptoCompare for {symbol}: ${price}")
-            return price
+        response_time = time.time() - start_time
+        update_api_metrics('coingecko', True, response_time)
+        
+        price = float(data[coin_id]['usd'])
+        return price, 'coingecko'
     except Exception as e:
-        logging.warning(f"CryptoCompare API failed for {symbol}: {str(e)}")
+        response_time = time.time() - start_time
+        update_api_metrics('coingecko', False, response_time)
+        raise e
+
+def fetch_cryptocompare_price(symbol):
+    """Fetch price from CryptoCompare API with metrics tracking"""
+    start_time = time.time()
+    try:
+        base_symbol = symbol.replace('USDT', '').replace('BUSD', '').replace('USDC', '')
+        url = f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        req.add_header('Accept', 'application/json')
+        
+        with urllib.request.urlopen(req, timeout=8) as response:
+            data = json.loads(response.read().decode())
+        
+        response_time = time.time() - start_time
+        
+        if 'USD' not in data:
+            raise Exception(f"USD price not available for {base_symbol}")
+            
+        update_api_metrics('cryptocompare', True, response_time)
+        
+        price = float(data['USD'])
+        return price, 'cryptocompare'
+    except Exception as e:
+        response_time = time.time() - start_time
+        update_api_metrics('cryptocompare', False, response_time)
+        raise e
+
+def get_live_market_price(symbol, use_cache=True):
+    """
+    Optimized live market price fetching with caching, concurrent requests, and performance tracking
+    """
+    # Check cache first
+    if use_cache:
+        with cache_lock:
+            cache_key = symbol
+            if cache_key in price_cache:
+                cached_data = price_cache[cache_key]
+                if datetime.utcnow() - cached_data['timestamp'] < timedelta(seconds=cache_ttl):
+                    logging.debug(f"Using cached price for {symbol}: ${cached_data['price']}")
+                    return cached_data['price']
     
-    # If all APIs fail, raise error
-    raise Exception(f"Unable to fetch live market price for {symbol} from any source")
+    # Get optimal API order based on performance
+    api_priority = get_api_priority()
+    
+    # Define API functions mapping
+    api_functions = {
+        'binance': fetch_binance_price,
+        'coingecko': fetch_coingecko_price,
+        'cryptocompare': fetch_cryptocompare_price
+    }
+    
+    # Try concurrent requests for faster response
+    futures = {}
+    
+    # Submit requests to top 2 performing APIs concurrently
+    for api_name in api_priority[:2]:
+        if api_name in api_functions:
+            future = price_executor.submit(api_functions[api_name], symbol)
+            futures[future] = api_name
+    
+    # Wait for first successful response
+    success_price = None
+    success_source = None
+    
+    try:
+        for future in as_completed(futures, timeout=10):
+            try:
+                price, source = future.result()
+                success_price = price
+                success_source = source
+                break
+            except Exception as e:
+                logging.warning(f"{futures[future]} API failed for {symbol}: {str(e)}")
+                continue
+    except Exception as e:
+        logging.warning(f"Concurrent API requests timed out for {symbol}")
+    
+    # If concurrent requests failed, try remaining APIs sequentially
+    if success_price is None:
+        for api_name in api_priority[2:]:
+            if api_name in api_functions:
+                try:
+                    success_price, success_source = api_functions[api_name](symbol)
+                    break
+                except Exception as e:
+                    logging.warning(f"{api_name} API failed for {symbol}: {str(e)}")
+                    continue
+    
+    if success_price is None:
+        # Check if we have stale cached data as emergency fallback
+        with cache_lock:
+            cache_key = symbol
+            if cache_key in price_cache:
+                cached_data = price_cache[cache_key]
+                age_minutes = (datetime.utcnow() - cached_data['timestamp']).total_seconds() / 60
+                if age_minutes < 30:  # Use data up to 30 minutes old in emergency
+                    logging.warning(f"Using stale cache for {symbol} (age: {age_minutes:.1f}min): ${cached_data['price']}")
+                    return cached_data['price']
+        
+        raise Exception(f"Unable to fetch live market price for {symbol} from any source")
+    
+    # Cache the successful result
+    if use_cache:
+        with cache_lock:
+            price_cache[symbol] = {
+                'price': success_price,
+                'timestamp': datetime.utcnow(),
+                'source': success_source
+            }
+    
+    logging.info(f"Retrieved live price for {symbol} from {success_source}: ${success_price}")
+    return success_price
 
 def update_all_positions_with_live_data():
-    """Update all active positions with live market data for P&L calculation and check pending limit orders"""
+    """Optimized batch update of all active positions with live market data"""
+    # Collect unique symbols for batch processing
+    symbols_to_update = set()
+    position_configs = []
+    
     for user_id, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
             if config.symbol:
-                try:
-                    # Always update current price with live data
-                    config.current_price = get_live_market_price(config.symbol)
+                symbols_to_update.add(config.symbol)
+                position_configs.append((user_id, trade_id, config))
+    
+    # Batch fetch prices for all symbols concurrently
+    symbol_prices = {}
+    if symbols_to_update:
+        futures = {}
+        for symbol in symbols_to_update:
+            future = price_executor.submit(get_live_market_price, symbol, True)
+            futures[future] = symbol
+        
+        # Collect results with timeout
+        for future in as_completed(futures, timeout=15):
+            symbol = futures[future]
+            try:
+                price = future.result()
+                symbol_prices[symbol] = price
+            except Exception as e:
+                logging.warning(f"Failed to update price for {symbol}: {e}")
+                # Use cached price if available
+                with cache_lock:
+                    if symbol in price_cache:
+                        symbol_prices[symbol] = price_cache[symbol]['price']
+    
+    # Update all positions with fetched prices
+    for user_id, trade_id, config in position_configs:
+        if config.symbol in symbol_prices:
+            try:
+                config.current_price = symbol_prices[config.symbol]
+                
+                # Check pending limit orders for execution
+                if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
+                    should_execute = False
+                    if config.side == "long":
+                        if config.entry_price <= config.current_price:
+                            # Long limit (buy limit): executes when market drops to or below limit price
+                            should_execute = config.current_price <= config.entry_price
+                        else:
+                            # Long stop (buy stop): executes when market rises to or above stop price  
+                            should_execute = config.current_price >= config.entry_price
+                    elif config.side == "short":
+                        if config.entry_price >= config.current_price:
+                            # Short limit (sell limit): executes when market rises to or above limit price
+                            should_execute = config.current_price >= config.entry_price
+                        else:
+                            # Short stop (sell stop): executes when market drops to or below stop price
+                            should_execute = config.current_price <= config.entry_price
                     
-                    # Check pending limit orders for execution
-                    if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
-                        should_execute = False
-                        if config.side == "long":
-                            if config.entry_price <= config.current_price:
-                                # Long limit (buy limit): executes when market drops to or below limit price
-                                should_execute = config.current_price <= config.entry_price
-                            else:
-                                # Long stop (buy stop): executes when market rises to or above stop price  
-                                should_execute = config.current_price >= config.entry_price
-                        elif config.side == "short":
-                            if config.entry_price >= config.current_price:
-                                # Short limit (sell limit): executes when market rises to or above limit price
-                                should_execute = config.current_price >= config.entry_price
-                            else:
-                                # Short stop (sell stop): executes when market drops to or below stop price
-                                should_execute = config.current_price <= config.entry_price
+                    if should_execute:
+                        # Execute the pending limit order
+                        config.status = "active"
+                        config.position_margin = calculate_position_margin(config.amount, config.leverage)
+                        config.position_value = config.amount * config.leverage
+                        config.position_size = config.position_value / config.entry_price
+                        config.unrealized_pnl = 0.0
                         
-                        if should_execute:
-                            # Execute the pending limit order
-                            config.status = "active"
-                            config.position_margin = calculate_position_margin(config.amount, config.leverage)
-                            config.position_value = config.amount * config.leverage
-                            config.position_size = config.position_value / config.entry_price
-                            config.unrealized_pnl = 0.0
-                            
-                            logging.info(f"Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
-                            
-                            # Log trade execution
-                            bot_trades.append({
-                                'id': len(bot_trades) + 1,
-                                'user_id': str(user_id),
-                                'trade_id': trade_id,
-                                'symbol': config.symbol,
-                                'side': config.side,
-                                'amount': config.amount,
-                                'leverage': config.leverage,
-                                'entry_price': config.entry_price,
-                                'timestamp': datetime.utcnow().isoformat(),
-                                'status': 'executed'
-                            })
-                            
-                            bot_status['total_trades'] += 1
+                        logging.info(f"Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
+                        
+                        # Log trade execution
+                        bot_trades.append({
+                            'id': len(bot_trades) + 1,
+                            'user_id': str(user_id),
+                            'trade_id': trade_id,
+                            'symbol': config.symbol,
+                            'side': config.side,
+                            'amount': config.amount,
+                            'leverage': config.leverage,
+                            'entry_price': config.entry_price,
+                            'timestamp': datetime.utcnow().isoformat(),
+                            'status': 'executed'
+                        })
+                        
+                        bot_status['total_trades'] += 1
+                
+                # Recalculate P&L for active positions
+                if config.status == "active" and config.entry_price and config.current_price:
+                    config.unrealized_pnl = calculate_unrealized_pnl(
+                        config.entry_price, config.current_price,
+                        config.amount, config.leverage, config.side
+                    )
                     
-                    # Recalculate P&L for active positions
-                    if config.status == "active" and config.entry_price and config.current_price:
-                        config.unrealized_pnl = calculate_unrealized_pnl(
-                            config.entry_price, config.current_price,
-                            config.amount, config.leverage, config.side
-                        )
-                        
-                except Exception as e:
-                    logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
-                    # Keep existing current_price as fallback
+            except Exception as e:
+                logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
+                # Keep existing current_price as fallback
 
 
 
