@@ -2878,11 +2878,11 @@
             loadPositions(); // Start with positions tab
         });
 
-        // Auto-refresh every 30 seconds
+        // Auto-refresh every 30 seconds (only for portfolio - positions use live price updates)
         setInterval(() => {
             const activeTab = document.querySelector('.nav-link.active').getAttribute('data-bs-target');
-            if (activeTab === '#positions') loadPositions();
-            else if (activeTab === '#portfolio') loadPortfolio();
+            // Don't reload positions - live price updates handle that
+            if (activeTab === '#portfolio') loadPortfolio();
         }, 30000);
 
         // Mobile-specific enhancements
@@ -3074,7 +3074,7 @@
         // Tab switching management for live price updates
         function handleTabSwitch(tabName) {
             if (tabName === 'positions') {
-                // Only start updates if there are active positions
+                // Load positions initially but don't reload during price updates
                 loadPositions().then(() => {
                     const activePositions = document.querySelectorAll('[data-trade-id]');
                     if (activePositions.length > 0) {
