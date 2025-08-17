@@ -83,6 +83,17 @@
             margin-bottom: 0.5rem;
         }
 
+        /* Live price indicator animation */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .live-indicator {
+            animation: pulse 2s infinite;
+        }
+
         .header h5 {
             font-weight: 700;
             font-size: 1.25rem;
@@ -1616,6 +1627,98 @@
             }
         }
 
+        // Live price update variables
+        let livePriceInterval = null;
+        let isLivePriceUpdateActive = false;
+        const PRICE_UPDATE_INTERVAL = 10000; // 10 seconds
+
+        // Live price update function
+        async function updateLivePrices() {
+            if (!isLivePriceUpdateActive) return;
+            
+            try {
+                const data = await apiCall(`/api/positions/live-update?user_id=${currentUser?.id}`);
+                if (!data || !data.positions) return;
+                
+                // Update active position prices and P&L
+                Object.entries(data.positions).forEach(([tradeId, positionData]) => {
+                    updatePositionPriceDisplay(tradeId, positionData);
+                });
+                
+                // Update total unrealized P&L
+                const totalPnlElement = document.getElementById('total-unrealized-pnl');
+                if (totalPnlElement && data.total_unrealized_pnl !== undefined) {
+                    totalPnlElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
+                    totalPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update summary total P&L if exists
+                const portfolioTotalPnlElement = document.getElementById('total-pnl-portfolio');
+                if (portfolioTotalPnlElement && data.total_unrealized_pnl !== undefined) {
+                    const currentRealized = parseFloat(portfolioTotalPnlElement.textContent.replace('$', '') || '0');
+                    const newTotal = currentRealized + data.total_unrealized_pnl;
+                    portfolioTotalPnlElement.textContent = `$${newTotal.toFixed(2)}`;
+                    portfolioTotalPnlElement.style.color = newTotal >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                console.log('Live prices updated:', data.timestamp);
+            } catch (error) {
+                console.error('Error updating live prices:', error);
+            }
+        }
+
+        // Update individual position price display
+        function updatePositionPriceDisplay(tradeId, positionData) {
+            // Update current price
+            const priceElement = document.querySelector(`[data-trade-id="${tradeId}"] .current-price`);
+            if (priceElement && positionData.current_price) {
+                priceElement.textContent = `$${positionData.current_price.toFixed(4)}`;
+                
+                // Add price change indicator
+                if (positionData.price_change_percentage !== undefined) {
+                    const changeClass = positionData.price_change_percentage >= 0 ? 'text-success' : 'text-danger';
+                    const changeSymbol = positionData.price_change_percentage >= 0 ? '+' : '';
+                    priceElement.innerHTML = `$${positionData.current_price.toFixed(4)} <small class="${changeClass}">${changeSymbol}${positionData.price_change_percentage.toFixed(2)}%</small>`;
+                }
+            }
+            
+            // Update unrealized P&L
+            const pnlElement = document.querySelector(`[data-trade-id="${tradeId}"] .unrealized-pnl`);
+            if (pnlElement && positionData.unrealized_pnl !== undefined) {
+                pnlElement.textContent = `$${positionData.unrealized_pnl.toFixed(2)}`;
+                pnlElement.style.color = positionData.unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+            }
+            
+            // Update ROE percentage
+            const roeElement = document.querySelector(`[data-trade-id="${tradeId}"] .roe-percentage`);
+            if (roeElement && positionData.roe_percentage !== undefined) {
+                roeElement.textContent = `${positionData.roe_percentage.toFixed(2)}%`;
+                roeElement.style.color = positionData.roe_percentage >= 0 ? '#28a745' : '#dc3545';
+            }
+        }
+
+        // Start live price updates
+        function startLivePriceUpdates() {
+            if (isLivePriceUpdateActive) return;
+            
+            isLivePriceUpdateActive = true;
+            updateLivePrices(); // Initial update
+            livePriceInterval = setInterval(updateLivePrices, PRICE_UPDATE_INTERVAL);
+            console.log('Live price updates started');
+        }
+
+        // Stop live price updates
+        function stopLivePriceUpdates() {
+            if (!isLivePriceUpdateActive) return;
+            
+            isLivePriceUpdateActive = false;
+            if (livePriceInterval) {
+                clearInterval(livePriceInterval);
+                livePriceInterval = null;
+            }
+            console.log('Live price updates stopped');
+        }
+
         // Load data functions
         async function loadPositions() {
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
@@ -1640,7 +1743,7 @@
             } else {
             
             content += activePositions.map((pos, index) => `
-                <div class="position-item">
+                <div class="position-item" data-trade-id="${pos.trade_id}">
                     <div class="collapsible-header" onclick="togglePosition(${index})">
                         <div class="d-flex justify-content-between align-items-center w-100">
                             <div>
@@ -1650,7 +1753,7 @@
                             </div>
                             <div class="d-flex align-items-center">
                                 <div class="text-end me-3">
-                                    <div class="stat-value" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
+                                    <div class="stat-value unrealized-pnl" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
                                         $${(pos.unrealized_pnl || 0).toFixed(2)}
                                     </div>
                                     <small class="text-muted">P&L</small>
@@ -1683,11 +1786,11 @@
                     <div class="row mt-2">
                         <div class="col-6">
                             <small class="text-muted">Current Price:</small><br>
-                            <strong>$${pos.current_price}</strong>
+                            <strong class="current-price">$${pos.current_price}</strong>
                         </div>
                         <div class="col-6">
                             <small class="text-muted">ROE:</small><br>
-                            <strong style="color: ${calculateROE(pos) >= 0 ? '#28a745' : '#dc3545'}">
+                            <strong class="roe-percentage" style="color: ${calculateROE(pos) >= 0 ? '#28a745' : '#dc3545'}">
                                 ${calculateROE(pos).toFixed(2)}%
                             </strong>
                         </div>
@@ -1748,6 +1851,13 @@
 
             
             container.innerHTML = content;
+            
+            // Start live price updates for active positions
+            if (activePositions.length > 0) {
+                startLivePriceUpdates();
+            } else {
+                stopLivePriceUpdates();
+            }
         }
 
         async function loadTradeConfigs() {
@@ -2016,7 +2126,7 @@
             
             if (activePositions.length > 0) {
                 content += activePositions.map(pos => `
-                    <div class="trade-card">
+                    <div class="trade-card" data-trade-id="${pos.trade_id}">
                         <div class="d-flex justify-content-between mb-2">
                             <strong>${pos.symbol}</strong>
                             <span class="status-badge status-${pos.status}">${pos.side.toUpperCase()}</span>
@@ -2029,14 +2139,17 @@
                                 <br><small class="text-muted">Margin: $${pos.amount || '0'}</small>
                             </div>
                             <div class="col-4">
-                                <small class="text-muted">Entry</small><br>
-                                <strong>$${pos.entry_price || 'Market'}</strong>
+                                <small class="text-muted">Current</small><br>
+                                <strong class="current-price">$${pos.current_price || pos.entry_price || 'Market'}</strong>
                             </div>
                             <div class="col-4">
                                 <small class="text-muted">P&L</small><br>
-                                <strong style="color: ${(pos.unrealized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                <strong class="unrealized-pnl" style="color: ${(pos.unrealized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
                                     $${(pos.unrealized_pnl || 0).toFixed(2)}
                                 </strong>
+                                <br><small class="roe-percentage" style="color: ${calculateROE(pos) >= 0 ? '#28a745' : '#dc3545'}">
+                                    ${calculateROE(pos).toFixed(2)}%
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -2871,9 +2984,79 @@
             });
         }
 
+        // Tab switching management for live price updates
+        function handleTabSwitch(tabName) {
+            if (tabName === 'positions') {
+                // Only start updates if there are active positions
+                loadPositions().then(() => {
+                    const activePositions = document.querySelectorAll('[data-trade-id]');
+                    if (activePositions.length > 0) {
+                        startLivePriceUpdates();
+                    }
+                });
+            } else if (tabName === 'portfolio') {
+                // Start updates for portfolio active positions
+                loadPortfolio().then(() => {
+                    const activePositions = document.querySelectorAll('[data-trade-id]');
+                    if (activePositions.length > 0) {
+                        startLivePriceUpdates();
+                    }
+                });
+            } else {
+                // Stop updates for other tabs
+                stopLivePriceUpdates();
+            }
+        }
+
+        // Add live price indicator to header
+        function addLivePriceIndicator() {
+            const header = document.querySelector('.header h5');
+            if (header && !header.querySelector('.live-indicator')) {
+                const indicator = document.createElement('span');
+                indicator.className = 'live-indicator';
+                indicator.innerHTML = ' <small style="color: #28a745; animation: pulse 2s infinite;">● LIVE</small>';
+                header.appendChild(indicator);
+            }
+        }
+
+        function removeLivePriceIndicator() {
+            const indicator = document.querySelector('.live-indicator');
+            if (indicator) indicator.remove();
+        }
+
+        // Override start/stop functions to manage indicator
+        const originalStartLivePriceUpdates = startLivePriceUpdates;
+        const originalStopLivePriceUpdates = stopLivePriceUpdates;
+        
+        startLivePriceUpdates = function() {
+            originalStartLivePriceUpdates();
+            addLivePriceIndicator();
+        };
+        
+        stopLivePriceUpdates = function() {
+            originalStopLivePriceUpdates();
+            removeLivePriceIndicator();
+        };
+
         // Initialize mobile enhancements after DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
             initializeMobileEnhancements();
+            
+            // Set up tab click handlers for live price management
+            document.querySelectorAll('.nav-link').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const targetTab = this.getAttribute('data-bs-target')?.replace('#', '');
+                    if (targetTab) {
+                        setTimeout(() => handleTabSwitch(targetTab), 100);
+                    }
+                });
+            });
+            
+            // Auto-load positions tab data if it's the default active tab
+            const activeTab = document.querySelector('.nav-link.active')?.getAttribute('data-bs-target')?.replace('#', '');
+            if (activeTab === 'positions') {
+                handleTabSwitch('positions');
+            }
         });
     </script>
 </body>

@@ -663,6 +663,63 @@ def api_positions():
     """Get positions for the web app - alias for margin-data"""
     return margin_data()
 
+@app.route('/api/positions/live-update')
+def live_position_update():
+    """Get only current prices and P&L for active positions (lightweight update)"""
+    user_id = request.args.get('user_id')
+    if not user_id or user_id == 'undefined':
+        user_id = '123456789'
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Initialize user environment if needed
+    initialize_user_environment(chat_id)
+    
+    # Update all positions with live data
+    update_all_positions_with_live_data()
+    
+    # Return only essential price and P&L data for fast updates
+    live_data = {}
+    total_unrealized_pnl = 0.0
+    
+    if chat_id in user_trade_configs:
+        for trade_id, config in user_trade_configs[chat_id].items():
+            if config.status in ["active", "pending"] and config.symbol:
+                # Calculate percentage change and ROE
+                roe_percentage = 0.0
+                price_change_percentage = 0.0
+                
+                if config.entry_price and config.current_price and config.entry_price > 0:
+                    raw_change = (config.current_price - config.entry_price) / config.entry_price
+                    price_change_percentage = raw_change * 100
+                    
+                    # Apply side adjustment for ROE calculation
+                    if config.side == "short":
+                        roe_percentage = -raw_change * config.leverage * 100
+                    else:
+                        roe_percentage = raw_change * config.leverage * 100
+                
+                live_data[trade_id] = {
+                    'current_price': config.current_price,
+                    'unrealized_pnl': config.unrealized_pnl,
+                    'roe_percentage': round(roe_percentage, 2),
+                    'price_change_percentage': round(price_change_percentage, 2),
+                    'status': config.status
+                }
+                
+                if config.status == "active":
+                    total_unrealized_pnl += config.unrealized_pnl
+    
+    return jsonify({
+        'positions': live_data,
+        'total_unrealized_pnl': total_unrealized_pnl,
+        'timestamp': datetime.utcnow().isoformat(),
+        'update_type': 'live_prices'
+    })
+
 @app.route('/api/trading/new')
 def api_trading_new():
     """Create new trading configuration"""
