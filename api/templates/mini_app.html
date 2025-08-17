@@ -1718,8 +1718,16 @@
             }
         }
 
-        // Start live price updates
+        // Debounce mechanism to prevent rapid start/stop cycles
+        let livePriceDebounceTimeout = null;
+        
+        // Start live price updates with debouncing
         function startLivePriceUpdates() {
+            if (livePriceDebounceTimeout) {
+                clearTimeout(livePriceDebounceTimeout);
+                livePriceDebounceTimeout = null;
+            }
+            
             if (isLivePriceUpdateActive) return;
             
             isLivePriceUpdateActive = true;
@@ -1728,16 +1736,23 @@
             console.log('Live price updates started');
         }
 
-        // Stop live price updates
+        // Stop live price updates with debouncing
         function stopLivePriceUpdates() {
-            if (!isLivePriceUpdateActive) return;
-            
-            isLivePriceUpdateActive = false;
-            if (livePriceInterval) {
-                clearInterval(livePriceInterval);
-                livePriceInterval = null;
+            if (livePriceDebounceTimeout) {
+                clearTimeout(livePriceDebounceTimeout);
             }
-            console.log('Live price updates stopped');
+            
+            livePriceDebounceTimeout = setTimeout(() => {
+                if (!isLivePriceUpdateActive) return;
+                
+                isLivePriceUpdateActive = false;
+                if (livePriceInterval) {
+                    clearInterval(livePriceInterval);
+                    livePriceInterval = null;
+                }
+                console.log('Live price updates stopped');
+                livePriceDebounceTimeout = null;
+            }, 100); // Small delay to prevent rapid cycling
         }
 
         // Load data functions
@@ -1890,12 +1905,7 @@
                 });
             }, 50);
             
-            // Start live price updates for active positions
-            if (activePositions.length > 0) {
-                startLivePriceUpdates();
-            } else {
-                stopLivePriceUpdates();
-            }
+            // Note: Live price updates are managed by handleTabSwitch function
         }
 
         async function loadTradeConfigs() {
@@ -3053,35 +3063,47 @@
             });
         }
 
+        // Track current active tab to prevent conflicts
+        let currentActiveTab = 'positions';
+        
         // Tab switching management for live price updates
         function handleTabSwitch(tabName) {
+            currentActiveTab = tabName;
+            
             if (tabName === 'positions') {
-                // Load positions initially but don't reload during price updates
+                // Load positions and start live updates
                 loadPositions().then(() => {
-                    const activePositions = document.querySelectorAll('[data-trade-id]');
-                    if (activePositions.length > 0) {
-                        startLivePriceUpdates();
+                    // Only start updates if still on positions tab
+                    if (currentActiveTab === 'positions') {
+                        const activePositions = document.querySelectorAll('[data-trade-id]');
+                        if (activePositions.length > 0) {
+                            startLivePriceUpdates();
+                        } else {
+                            stopLivePriceUpdates();
+                        }
                     }
                 });
             } else if (tabName === 'trading') {
-                // Load trade configs and stop live updates (trading tab doesn't need real-time prices)
-                loadTradeConfigs();
+                // Stop live updates and load trade configs
                 stopLivePriceUpdates();
+                loadTradeConfigs();
             } else if (tabName === 'portfolio') {
-                // Start updates for portfolio active positions
+                // Load portfolio and start updates for active positions
                 loadPortfolio().then(() => {
-                    const activePositions = document.querySelectorAll('[data-trade-id]');
-                    if (activePositions.length > 0) {
-                        startLivePriceUpdates();
+                    // Only start updates if still on portfolio tab
+                    if (currentActiveTab === 'portfolio') {
+                        const activePositions = document.querySelectorAll('[data-trade-id]');
+                        if (activePositions.length > 0) {
+                            startLivePriceUpdates();
+                        } else {
+                            stopLivePriceUpdates();
+                        }
                     }
                 });
             } else if (tabName === 'credentials') {
-                // Load credentials and stop live updates
+                // Stop live updates and load credentials
+                stopLivePriceUpdates();
                 loadCredentialsStatus();
-                stopLivePriceUpdates();
-            } else {
-                // Stop updates for other tabs
-                stopLivePriceUpdates();
             }
         }
 
