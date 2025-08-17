@@ -2093,14 +2093,15 @@ def get_live_market_price(symbol, use_cache=True):
     return success_price
 
 def update_all_positions_with_live_data():
-    """Optimized batch update of all active positions with live market data"""
-    # Collect unique symbols for batch processing
+    """Optimized batch update of only active positions with live market data"""
+    # Collect unique symbols for batch processing - ONLY for active positions
     symbols_to_update = set()
     position_configs = []
     
     for user_id, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
-            if config.symbol:
+            # Only update prices for active positions and configured trades that need live updates
+            if config.symbol and (config.status == "active" or config.status == "configured"):
                 symbols_to_update.add(config.symbol)
                 position_configs.append((user_id, trade_id, config))
     
