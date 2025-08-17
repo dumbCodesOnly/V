@@ -2853,25 +2853,7 @@
 
 
 
-        // Tab switching handlers
-        document.addEventListener('shown.bs.tab', function (event) {
-            const tabId = event.target.getAttribute('data-bs-target');
-            
-            switch (tabId) {
-                case '#positions':
-                    loadPositions();
-                    break;
-                case '#trading':
-                    loadTradeConfigs();
-                    break;
-                case '#portfolio':
-                    loadPortfolio();
-                    break;
-                case '#credentials':
-                    loadCredentialsStatus();
-                    break;
-            }
-        });
+        // Tab switching managed by handleTabSwitch function below
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
@@ -3081,6 +3063,10 @@
                         startLivePriceUpdates();
                     }
                 });
+            } else if (tabName === 'trading') {
+                // Load trade configs and stop live updates (trading tab doesn't need real-time prices)
+                loadTradeConfigs();
+                stopLivePriceUpdates();
             } else if (tabName === 'portfolio') {
                 // Start updates for portfolio active positions
                 loadPortfolio().then(() => {
@@ -3089,6 +3075,10 @@
                         startLivePriceUpdates();
                     }
                 });
+            } else if (tabName === 'credentials') {
+                // Load credentials and stop live updates
+                loadCredentialsStatus();
+                stopLivePriceUpdates();
             } else {
                 // Stop updates for other tabs
                 stopLivePriceUpdates();
