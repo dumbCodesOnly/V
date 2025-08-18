@@ -181,17 +181,17 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #0a0f1e 0%, #1a2332 25%, #2d3e5a 75%, #4a6186 100%);
-            color: var(--tg-theme-button-text-color);
+            background: linear-gradient(135deg, #0f1419 0%, #1a2332 25%, #2d3e5a 75%, #4a6186 100%);
+            color: #ffffff;
             padding: 1.5rem 1.25rem;
             text-align: center;
             position: sticky;
             top: 0;
             z-index: 1000;
-            border-bottom: 1px solid rgba(107, 139, 179, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 
-                        0 4px 16px rgba(75, 93, 122, 0.2),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(107, 139, 179, 0.4);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 
+                        0 4px 16px rgba(75, 93, 122, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
         }
@@ -249,21 +249,35 @@
             font-size: 1.4rem;
             font-weight: 700;
             letter-spacing: -0.025em;
-            background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 50%, #cbd5e1 100%);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: none;
+            color: #ffffff;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 
+                         0 1px 3px rgba(255, 255, 255, 0.1);
             position: relative;
+            /* Fallback for browsers that don't support background-clip */
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #e2e8f0 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            /* Ensure text is visible if background-clip fails */
+        }
+        
+        /* Fallback for better browser support */
+        @supports not (-webkit-background-clip: text) {
+            .header h1 {
+                color: #ffffff !important;
+                background: none !important;
+                -webkit-text-fill-color: #ffffff !important;
+            }
         }
 
         .header .subtitle {
             font-size: 0.75rem;
-            color: rgba(255, 255, 255, 0.7);
-            font-weight: 400;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
             margin-top: 0.25rem;
             letter-spacing: 0.5px;
             text-transform: uppercase;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
         }
 
         /* Hamburger Menu Styling */
@@ -1696,7 +1710,7 @@
                     </div>
                 </div>
             </div>
-            <div id="user-info" style="margin-top: 0.75rem; color: rgba(255,255,255,0.8); font-size: 0.85rem;">Loading...</div>
+            <div id="user-info" style="margin-top: 0.75rem; color: #ffffff; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); font-weight: 500;">Loading...</div>
         </div>
 
         <!-- Navigation Tabs -->
