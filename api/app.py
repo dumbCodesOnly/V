@@ -2195,9 +2195,15 @@ def get_margin_summary(chat_id):
     user_trades = user_trade_configs.get(chat_id, {})
     
     # Account totals - each user gets 1000 USDT trial fund
-    account_balance = 1000.0  # Individual trial fund per user
+    initial_balance = 1000.0  # Individual trial fund per user
     total_position_margin = 0.0
     total_unrealized_pnl = 0.0
+    total_realized_pnl = 0.0
+    
+    # Calculate realized P&L from closed positions
+    for config in user_trades.values():
+        if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
+            total_realized_pnl += config.final_pnl
     
     # Calculate totals from active positions
     for config in user_trades.values():
@@ -2224,8 +2230,8 @@ def get_margin_summary(chat_id):
             total_position_margin += config.position_margin
             total_unrealized_pnl += config.unrealized_pnl
     
-    # Include unrealized P&L in account balance to reflect current account value
-    account_balance = 1000.0 + total_unrealized_pnl
+    # Calculate account balance including realized P&L
+    account_balance = initial_balance + total_realized_pnl
     free_margin = account_balance - total_position_margin
     
     return {
@@ -2233,6 +2239,7 @@ def get_margin_summary(chat_id):
         'total_margin': total_position_margin,
         'free_margin': free_margin,
         'unrealized_pnl': total_unrealized_pnl,
+        'realized_pnl': total_realized_pnl,
         'margin_level': (account_balance + total_unrealized_pnl) / total_position_margin * 100 if total_position_margin > 0 else 0
     }
 
