@@ -33,6 +33,18 @@ VERCEL=1
 Deploy to Vercel and check the function logs for:
 - "Database tables created successfully"
 - "Loaded X trades for user Y from database"
+- "Trade configuration saved successfully" (when creating trades)
+
+## Step 5: Test Trade Creation
+
+Create a test trade to verify the database is working:
+```bash
+curl -X POST "https://your-app.vercel.app/api/save-trade" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test", "trade": {"trade_id":"test1", "name":"Test", "symbol":"BTCUSDT", "side":"long", "amount":100, "leverage":10, "entry_type":"market", "status":"configured"}}'
+```
+
+Should return: `{"success": true, "message": "Trade configuration saved successfully"}`
 
 ## Neon-Specific Optimizations Included
 

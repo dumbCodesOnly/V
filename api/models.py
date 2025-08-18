@@ -169,6 +169,7 @@ class TradeConfiguration(db.Model):
         config.entry_type = self.entry_type
         config.entry_price = self.entry_price
         config.stop_loss_percent = self.stop_loss_percent
+        # Convert breakeven_after back to expected format
         config.breakeven_after = self.breakeven_after
         config.trailing_stop_enabled = self.trailing_stop_enabled
         config.trail_percentage = self.trail_percentage
@@ -211,7 +212,17 @@ class TradeConfiguration(db.Model):
         db_config.entry_price = config.entry_price
         db_config.take_profits = json.dumps(config.take_profits)
         db_config.stop_loss_percent = config.stop_loss_percent
-        db_config.breakeven_after = config.breakeven_after
+        # Convert breakeven_after - handle "disabled" string case
+        if hasattr(config, 'breakeven_after'):
+            if config.breakeven_after == "disabled" or config.breakeven_after == 0:
+                db_config.breakeven_after = 0.0
+            else:
+                try:
+                    db_config.breakeven_after = float(config.breakeven_after)
+                except (ValueError, TypeError):
+                    db_config.breakeven_after = 0.0
+        else:
+            db_config.breakeven_after = 0.0
         db_config.trailing_stop_enabled = config.trailing_stop_enabled
         db_config.trail_percentage = config.trail_percentage
         db_config.trail_activation_price = config.trail_activation_price
