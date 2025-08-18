@@ -193,6 +193,20 @@ trade_counter = 0
 def initialize_user_environment(user_id, force_reload=False):
     """Initialize trading environment for a user, loading from database only when necessary"""
     user_id = int(user_id)
+    user_id_str = str(user_id)
+    
+    # For serverless (Vercel): Check cache first since in-memory dict resets
+    if os.environ.get("VERCEL") and not force_reload and user_id_str in user_data_cache:
+        import time
+        cache_entry = user_data_cache[user_id_str]
+        cache_age = time.time() - cache_entry['timestamp']
+        if cache_age < cache_ttl:
+            # Use cached data instead of hitting DB
+            user_trade_configs[user_id] = cache_entry['data']
+            # Initialize user's selected trade if not exists
+            if user_id not in user_selected_trade:
+                user_selected_trade[user_id] = None
+            return
     
     # Only load from database if user has no data in memory or force_reload is True
     # This prevents unnecessary database calls during frequent price updates
@@ -1172,17 +1186,13 @@ def user_trades():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Always initialize from database for serverless reliability
+    # Initialize user environment (will use cache if available)
     initialize_user_environment(chat_id)
     
     user_trade_list = []
     
-    # Use cached loading to prevent constant DB hits - check memory first
-    initialize_user_environment(chat_id)  # Ensure user is in memory
-    if chat_id in user_trade_configs:
-        user_configs = user_trade_configs[chat_id]
-    else:
-        user_configs = load_user_trades_from_db(chat_id)
+    # Get user configs from memory (already loaded by initialize_user_environment)
+    user_configs = user_trade_configs.get(chat_id, {})
     
     if user_configs:
         for trade_id, config in user_configs.items():
