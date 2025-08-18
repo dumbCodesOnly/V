@@ -171,13 +171,14 @@ user_selected_trade = {}  # {user_id: trade_id}
 trade_counter = 0
 
 # Initialize clean user environment
-def initialize_user_environment(user_id):
-    """Initialize trading environment for a user, loading from database"""
+def initialize_user_environment(user_id, force_reload=False):
+    """Initialize trading environment for a user, loading from database only when necessary"""
     user_id = int(user_id)
     
-    # Always load from database to handle serverless cold starts
-    # In serverless environments, in-memory storage is unreliable
-    user_trade_configs[user_id] = load_user_trades_from_db(user_id)
+    # Only load from database if user has no data in memory or force_reload is True
+    # This prevents unnecessary database calls during frequent price updates
+    if user_id not in user_trade_configs or force_reload:
+        user_trade_configs[user_id] = load_user_trades_from_db(user_id)
     
     # Initialize user's selected trade if not exists
     if user_id not in user_selected_trade:
@@ -652,8 +653,8 @@ def margin_data():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize user environment if needed
-    initialize_user_environment(chat_id)
+    # Initialize user environment if needed (optimized to avoid unnecessary database loads)
+    initialize_user_environment(chat_id, force_reload=False)
     
     # Update all positions with live market data before returning margin data
     update_all_positions_with_live_data()
@@ -725,10 +726,18 @@ def live_position_update():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize user environment if needed
-    initialize_user_environment(chat_id)
+    # Skip database initialization for live updates - only update existing in-memory data
+    # Only proceed if user already has trades in memory
+    if chat_id not in user_trade_configs:
+        return jsonify({
+            'positions': {},
+            'total_unrealized_pnl': 0.0,
+            'active_positions_count': 0,
+            'timestamp': get_iran_time().isoformat(),
+            'update_type': 'live_prices'
+        })
     
-    # Update all positions with live data
+    # Update all positions with live data (this only fetches prices, doesn't touch database)
     update_all_positions_with_live_data()
     
     # Return only essential price and P&L data for fast updates
