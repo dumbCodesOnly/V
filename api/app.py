@@ -390,7 +390,9 @@ def load_user_trades_from_db(user_id):
                     trade_config = db_trade.to_trade_config()
                     user_trades[db_trade.trade_id] = trade_config
                     
-                logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
+                # Only log in development or when significant number of trades loaded
+                if not os.environ.get("VERCEL") or len(user_trades) > 5:
+                    logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
                 return user_trades
                 
         except Exception as e:
@@ -454,7 +456,9 @@ def save_trade_to_db(user_id, trade_config):
                 # Neon-optimized commit process
                 db.session.flush()
                 db.session.commit()
-                logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
+                # Only log saves in development or for error debugging
+                if not os.environ.get("VERCEL"):
+                    logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
                 return True
                 
         except Exception as e:

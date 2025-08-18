@@ -3,6 +3,7 @@ Vercel-optimized Exchange Synchronization
 Handles exchange sync for serverless environment without background processes
 """
 
+import os
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -273,7 +274,9 @@ def initialize_vercel_sync_service(app, db):
     """Initialize Vercel-optimized sync service"""
     global vercel_sync_service
     vercel_sync_service = VercelSyncService(app, db)
-    logging.info("Vercel exchange sync service initialized")
+    # Only log initialization in debug mode to reduce Vercel log noise
+    if app.debug or not os.environ.get("VERCEL"):
+        logging.info("Vercel exchange sync service initialized")
     return vercel_sync_service
 
 def get_vercel_sync_service():
