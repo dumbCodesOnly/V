@@ -1352,6 +1352,77 @@ def close_trade():
         logging.error(f"Error closing trade: {str(e)}")
         return jsonify({'error': 'Failed to close trade'}), 500
 
+@app.route('/api/close-all-trades', methods=['POST'])
+def close_all_trades():
+    """Close all active trades for a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID required'}), 400
+        
+        chat_id = int(user_id)
+        
+        if chat_id not in user_trade_configs:
+            return jsonify({'success': True, 'message': 'No trades to close', 'closed_count': 0})
+        
+        # Find all active trades
+        active_trades = []
+        for trade_id, config in user_trade_configs[chat_id].items():
+            if config.status == "active":
+                active_trades.append((trade_id, config))
+        
+        if not active_trades:
+            return jsonify({'success': True, 'message': 'No active trades to close', 'closed_count': 0})
+        
+        closed_count = 0
+        total_final_pnl = 0.0
+        
+        # Close each active trade
+        for trade_id, config in active_trades:
+            try:
+                # Simulate closing the trade
+                final_pnl = config.unrealized_pnl
+                config.status = "stopped"
+                config.final_pnl = final_pnl
+                config.closed_at = get_iran_time().isoformat()
+                config.unrealized_pnl = 0.0
+                
+                # Save updated status to database
+                save_trade_to_db(chat_id, config)
+                
+                # Log trade closure
+                bot_trades.append({
+                    'id': len(bot_trades) + 1,
+                    'user_id': str(chat_id),
+                    'trade_id': trade_id,
+                    'symbol': config.symbol,
+                    'side': config.side,
+                    'amount': config.amount,
+                    'final_pnl': final_pnl,
+                    'timestamp': get_iran_time().isoformat(),
+                    'status': 'closed'
+                })
+                
+                closed_count += 1
+                total_final_pnl += final_pnl
+                
+            except Exception as trade_error:
+                logging.error(f"Error closing trade {trade_id}: {str(trade_error)}")
+                continue
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully closed {closed_count} trades',
+            'closed_count': closed_count,
+            'total_final_pnl': total_final_pnl
+        })
+        
+    except Exception as e:
+        logging.error(f"Error closing all trades: {str(e)}")
+        return jsonify({'error': 'Failed to close all trades'}), 500
+
 @app.route('/api/delete-trade', methods=['POST'])
 def delete_trade():
     """Delete a trade configuration"""

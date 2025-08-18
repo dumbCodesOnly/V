@@ -1734,6 +1734,13 @@
                     </div>
                 </div>
                 
+                <!-- Close All Trades Button -->
+                <div class="d-flex justify-content-center mb-3" id="close-all-container" style="display: none !important;">
+                    <button class="btn btn-danger" onclick="closeAllTrades()" id="close-all-btn">
+                        ⚠️ Close All Trades
+                    </button>
+                </div>
+                
                 <div id="positions-list">
                     <div class="loading">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
@@ -2366,6 +2373,16 @@
             document.getElementById('total-pnl').textContent = `$${totalPnl.toFixed(2)}`;
             document.getElementById('total-pnl').style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
             
+            // Show/hide Close All Trades button based on active positions
+            const closeAllContainer = document.getElementById('close-all-container');
+            if (closeAllContainer) {
+                if (activePositions.length > 1) {
+                    closeAllContainer.style.display = 'flex';
+                } else {
+                    closeAllContainer.style.display = 'none';
+                }
+            }
+            
             let content = '';
             
             // Active Positions Section
@@ -2985,6 +3002,48 @@
                 }
             } else {
                 alert('Failed to close position. Please try again.');
+            }
+        }
+
+        async function closeAllTrades() {
+            if (!confirm('Are you sure you want to close ALL active trades? This action cannot be undone.')) return;
+            
+            // Show loading state
+            const closeAllBtn = document.getElementById('close-all-btn');
+            const originalText = closeAllBtn.textContent;
+            closeAllBtn.textContent = '⏳ Closing Trades...';
+            closeAllBtn.disabled = true;
+            
+            try {
+                const result = await apiCall('/api/close-all-trades', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: currentUser?.id
+                    })
+                });
+                
+                if (result && result.success) {
+                    const message = result.closed_count > 0 
+                        ? `Successfully closed ${result.closed_count} trades! Total P&L: $${result.total_final_pnl?.toFixed(2) || '0.00'}`
+                        : 'No active trades to close.';
+                    alert(message);
+                    
+                    // Reload positions and portfolio to reflect changes
+                    if (currentActiveTab === 'positions') {
+                        loadPositions();
+                    } else if (currentActiveTab === 'portfolio') {
+                        loadPortfolio();
+                    }
+                } else {
+                    alert('Failed to close all trades. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error closing all trades:', error);
+                alert('An error occurred while closing trades. Please try again.');
+            } finally {
+                // Restore button state
+                closeAllBtn.textContent = originalText;
+                closeAllBtn.disabled = false;
             }
         }
 
