@@ -1,127 +1,211 @@
-# Toobit Multi-Trade Telegram Bot - Complete Deployment Guide
+# Deployment Guide: Replit Agent to Standard Replit + Vercel
 
 ## Overview
-This guide covers both Replit development and Vercel production deployment for the Telegram Trading Bot.
+This guide covers deploying the Toobit Multi-Trade Telegram Bot to both Replit (development) and Vercel (production) environments with full exchange synchronization support.
 
-## Replit Development Environment
+## Architecture
 
-### Quick Start
-1. The Flask application runs automatically via the "Start application" workflow
-2. Access the web interface at the provided Replit URL
-3. The application uses SQLite database for development
+### Replit Environment (Development)
+- **Background Services**: Full `ExchangeSyncService` with 60-second polling
+- **Database**: PostgreSQL with connection pooling
+- **Sync Method**: Continuous background monitoring
+- **Performance**: Optimized for persistent server environment
 
-### Environment Variables (Replit)
+### Vercel Environment (Production)
+- **On-Demand Services**: `VercelSyncService` with smart cooldown (30s)
+- **Database**: Neon PostgreSQL with serverless optimization
+- **Sync Method**: Triggered by user requests and webhooks
+- **Performance**: Optimized for serverless cold starts
+
+## Environment Variables Required
+
+### Core Application
 ```bash
-SESSION_SECRET=your-secure-random-string
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-DATABASE_URL=sqlite:///trading_bot.db
+# Database
+DATABASE_URL=postgresql://user:pass@host:port/db
+NEON_DATABASE_URL=postgresql://user:pass@neon-host/db  # For Vercel
+
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+WEBHOOK_URL=https://your-domain.com/webhook
+WEBHOOK_SECRET_TOKEN=your_webhook_secret
+
+# Encryption
+SESSION_SECRET=your_session_secret_key
+
+# Toobit Exchange (Optional - for webhook security)
+TOOBIT_WEBHOOK_SECRET=your_toobit_webhook_secret
 ```
 
-## Vercel Production Deployment
-
-### Prerequisites
-- Vercel account connected to your Git repository
-- PostgreSQL database (recommended: Neon, PlanetScale, or Vercel Postgres)
-- Telegram Bot Token
-
-### Environment Variables (Vercel)
-Set these in your Vercel dashboard:
+### Environment Detection
 ```bash
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-SESSION_SECRET=your-secure-random-string
-DATABASE_URL=your-neon-postgresql-connection-string
-WEBHOOK_SECRET_TOKEN=optional-webhook-security-token
-VERCEL=1
+# Automatically set by platforms
+VERCEL=1          # Set by Vercel
+REPLIT_DOMAIN=... # Set by Replit
 ```
 
-**CRITICAL**: The `DATABASE_URL` must be a valid Neon PostgreSQL connection string that starts with `postgresql://`. The application uses database persistence to ensure trades don't get deleted after execution. Without a proper database connection, all trades will be lost on serverless cold starts.
+## Exchange Synchronization Features
 
-**Neon-Specific Configuration:**
-- The connection string includes SSL by default (required by Neon)
-- Optimized for serverless with minimal connection pooling
-- Includes retry logic for Neon's occasional connection drops
-- Application name is set for better logging in Neon dashboard
+### API Endpoints
+- `/api/exchange/sync-status` - Get sync service status
+- `/api/exchange/force-sync` - Force immediate sync
+- `/api/exchange/test-connection` - Test Toobit API connection
+- `/api/exchange/positions` - Get live exchange positions
+- `/api/exchange/orders` - Get exchange orders
+- `/webhook/toobit` - Handle Toobit webhooks
 
-### Deployment Configuration
-The project includes:
-- `vercel.json` - Vercel deployment configuration
-- `api/app.py` - Main Flask application
-- `api/index.py` - Vercel serverless entry point
-- `api/requirements.txt` - Python dependencies
-
-### Manual Webhook Setup
-After deployment, set up the Telegram webhook:
-
-```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "url": "https://your-vercel-app.vercel.app/webhook",
-       "secret_token": "your-secret-token"
-     }'
+### Replit Sync Behavior
+```python
+# Background service runs continuously
+- Polls exchange every 60 seconds
+- Monitors all users with active positions
+- Updates database automatically
+- Handles connection retries
 ```
 
-### Security Features
-- Webhook request validation
-- Secret token authentication
-- IP-based filtering (optional)
-- Encrypted API credential storage
+### Vercel Sync Behavior
+```python
+# On-demand service triggered by:
+- User API requests (with 30s cooldown)
+- Force sync requests
+- Webhook events
+- Position live updates
+```
 
-## Database Schema
-The application automatically creates required tables:
-- `user_credentials` - Encrypted API keys
-- `user_trading_sessions` - Trading session data
-- `trade_configurations` - Persistent trade configurations and execution data
+## Deployment Steps
 
-**Database Persistence Features:**
-- All trade configurations are automatically saved to database
-- Trade execution status and P&L are persisted across sessions
-- Closed positions history is maintained permanently
-- Serverless-optimized with explicit transaction handling
-- Automatic database initialization on cold starts
+### 1. Replit Deployment
+```bash
+# Environment is already configured
+# Service runs automatically via gunicorn
+# Background sync starts on app initialization
+```
 
-## API Endpoints
-- `/` - Main Telegram Mini-App interface
-- `/webhook` - Telegram webhook handler
-- `/api/market-data` - Live market data
-- `/api/kline-data` - Chart data
-- `/api/user-positions` - User trading positions
-- `/api/save-trade` - Save trade configurations
-- `/api/execute-trade` - Execute trades
+### 2. Vercel Deployment
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+
+# Set environment variables
+vercel env add DATABASE_URL
+vercel env add TELEGRAM_BOT_TOKEN
+vercel env add SESSION_SECRET
+# ... add other required variables
+```
+
+### 3. Webhook Configuration
+
+#### Telegram Webhook
+```bash
+curl -X POST "https://api.telegram.org/bot{BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-domain.com/webhook",
+    "secret_token": "your_webhook_secret"
+  }'
+```
+
+#### Toobit Webhook (Optional)
+```bash
+# Configure in Toobit dashboard
+URL: https://your-domain.com/webhook/toobit
+Secret: your_toobit_webhook_secret
+Events: ORDER_UPDATE, POSITION_UPDATE, BALANCE_UPDATE
+```
+
+## Database Optimization
+
+### Neon PostgreSQL for Vercel
+```python
+# Optimized connection settings
+{
+    "pool_recycle": 3600,
+    "pool_pre_ping": True,
+    "pool_size": 1,
+    "max_overflow": 0,
+    "pool_timeout": 30,
+    "connect_args": {
+        "sslmode": "require",
+        "connect_timeout": 10,
+        "application_name": "trading_bot_vercel"
+    }
+}
+```
+
+### Standard PostgreSQL for Replit
+```python
+# Standard connection settings
+{
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+    "pool_size": 5,
+    "max_overflow": 10
+}
+```
+
+## Performance Considerations
+
+### Replit (Always-On Server)
+- Background sync service runs continuously
+- Full real-time monitoring
+- Immediate position updates
+- Higher resource usage but better responsiveness
+
+### Vercel (Serverless Functions)
+- On-demand sync with intelligent cooldown
+- Webhook-driven updates for real-time events
+- Cold start optimization
+- Lower resource usage, slight delay in sync
+
+## Monitoring and Debugging
+
+### Check Sync Status
+```bash
+# Get sync service status
+GET /api/exchange/sync-status?user_id=123456789
+
+# Force sync (useful for testing)
+POST /api/exchange/force-sync?user_id=123456789
+```
+
+### Test Exchange Connection
+```bash
+POST /api/exchange/test-connection?user_id=123456789
+```
+
+### View Logs
+- **Replit**: Check workflow console logs
+- **Vercel**: Check function logs in Vercel dashboard
+
+## Security Best Practices
+
+1. **API Credentials**: Encrypted in database using Fernet
+2. **Webhook Security**: Secret token validation
+3. **Environment Variables**: Secure storage of sensitive data
+4. **Database**: SSL connections required for production
+5. **Rate Limiting**: Built-in cooldown for sync operations
 
 ## Troubleshooting
 
-### Vercel 404 Error
-Ensure `vercel.json` points to `api/app.py` and `api/index.py` imports correctly:
-```python
-from .app import app
+### Common Issues
+1. **Connection Timeouts**: Check database URL and credentials
+2. **Sync Not Working**: Verify API credentials are set up
+3. **Webhook Failures**: Check secret tokens and URL configuration
+4. **Cold Start Delays**: Normal for Vercel, use force sync if needed
+
+### Debug Commands
+```bash
+# Check if services are running
+curl https://your-domain.com/api/health
+
+# Test database connection
+curl https://your-domain.com/api/positions
+
+# Check exchange integration
+curl -X POST https://your-domain.com/api/exchange/test-connection
 ```
 
-### Database Connection Issues
-- For Replit: Ensure SQLite file permissions
-- For Vercel: Verify PostgreSQL connection string format
-
-### Webhook Not Receiving Messages
-1. Check webhook URL is publicly accessible
-2. Verify bot token is correct
-3. Ensure secret token matches (if used)
-
-## Development vs Production
-- **Replit**: SQLite database, debug mode enabled, local development
-- **Vercel**: PostgreSQL database, production optimized, serverless deployment
-
-## File Structure (After Consolidation)
-```
-├── api/
-│   ├── app.py           # Main Flask application
-│   ├── models.py        # Database models
-│   ├── index.py         # Vercel entry point
-│   ├── requirements.txt # Dependencies
-│   └── templates/       # HTML templates
-├── main.py              # Replit entry point
-├── vercel.json          # Vercel configuration
-├── requirements.txt     # Main dependencies
-└── replit.md           # Project documentation
-```
-
-This consolidated structure eliminates redundancy while maintaining full functionality for both development and production environments.
+This dual-environment setup provides the best of both worlds: real-time monitoring for development and optimized serverless performance for production.

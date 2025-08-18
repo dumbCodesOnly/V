@@ -3,12 +3,29 @@
   "builds": [
     {
       "src": "api/app.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
     {
       "src": "/webhook",
+      "dest": "api/app.py",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
+      "src": "/webhook/toobit",
+      "dest": "api/app.py",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
+      "src": "/api/exchange/(.*)",
       "dest": "api/app.py",
       "headers": {
         "Cache-Control": "no-cache"
@@ -21,5 +38,10 @@
   ],
   "env": {
     "VERCEL": "1"
+  },
+  "functions": {
+    "api/app.py": {
+      "maxDuration": 60
+    }
   }
 }

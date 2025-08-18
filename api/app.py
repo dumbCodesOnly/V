@@ -16,11 +16,13 @@ try:
     # Try relative import first (for module import - Vercel/main.py)
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from .exchange_sync import initialize_sync_service, get_sync_service
+    from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .toobit_client import ToobitClient
 except ImportError:
     # Fall back to absolute import (for direct execution - Telegram workflow)
     from models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from exchange_sync import initialize_sync_service, get_sync_service
+    from vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from toobit_client import ToobitClient
 
 # Configure logging - reduce verbosity for serverless
@@ -81,20 +83,22 @@ def init_database():
 # Initialize database conditionally
 if not os.environ.get("VERCEL"):
     init_database()
-    # Initialize exchange sync service for Replit
+    # Initialize background exchange sync service for Replit
     exchange_sync_service = initialize_sync_service(app, db)
+    vercel_sync_service = None
 else:
     # For Vercel, initialize on first request using newer Flask syntax
     initialized = False
     exchange_sync_service = None
+    vercel_sync_service = None
     
     @app.before_request
     def create_tables():
-        global initialized, exchange_sync_service
+        global initialized, vercel_sync_service
         if not initialized:
             init_database()
-            # Initialize exchange sync service for Vercel
-            exchange_sync_service = initialize_sync_service(app, db)
+            # Initialize on-demand sync service for Vercel (no background processes)
+            vercel_sync_service = initialize_vercel_sync_service(app, db)
             initialized = True
 
 # Bot token and webhook URL from environment
@@ -526,7 +530,12 @@ def exchange_sync_status():
     """Get exchange synchronization status"""
     user_id = request.args.get('user_id', '123456789')
     
-    sync_service = get_sync_service()
+    # Use appropriate sync service based on environment
+    if os.environ.get("VERCEL"):
+        sync_service = get_vercel_sync_service()
+    else:
+        sync_service = get_sync_service()
+    
     if sync_service:
         status = sync_service.get_sync_status(user_id)
         return jsonify(status)
@@ -538,15 +547,24 @@ def force_exchange_sync():
     """Force immediate synchronization with Toobit exchange"""
     user_id = request.args.get('user_id', '123456789')
     
-    sync_service = get_sync_service()
-    if sync_service:
-        success = sync_service.force_sync_user(user_id)
-        if success:
-            return jsonify({'success': True, 'message': 'Synchronization completed'})
+    # Use appropriate sync service based on environment
+    if os.environ.get("VERCEL"):
+        sync_service = get_vercel_sync_service()
+        if sync_service:
+            result = sync_service.sync_user_on_request(user_id, force=True)
+            return jsonify(result)
         else:
-            return jsonify({'success': False, 'message': 'Synchronization failed'}), 500
+            return jsonify({'error': 'Vercel sync service not available'}), 503
     else:
-        return jsonify({'error': 'Exchange sync service not available'}), 503
+        sync_service = get_sync_service()
+        if sync_service:
+            success = sync_service.force_sync_user(user_id)
+            if success:
+                return jsonify({'success': True, 'message': 'Synchronization completed'})
+            else:
+                return jsonify({'success': False, 'message': 'Synchronization failed'}), 500
+        else:
+            return jsonify({'error': 'Exchange sync service not available'}), 503
 
 @app.route('/api/exchange/test-connection', methods=['POST'])
 def test_exchange_connection():
@@ -1002,6 +1020,13 @@ def live_position_update():
         chat_id = int(user_id)
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # For Vercel: Trigger on-demand sync if needed
+    if os.environ.get("VERCEL"):
+        sync_service = get_vercel_sync_service()
+        if sync_service:
+            sync_result = sync_service.sync_user_on_request(user_id)
+            # Continue with regular live update regardless of sync result
     
     # Skip database initialization for live updates - only update existing in-memory data
     # Only proceed if user already has trades in memory
