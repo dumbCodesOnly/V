@@ -1686,13 +1686,31 @@
                     totalPositionsElement.textContent = data.active_positions_count;
                 }
                 
-                // Update summary total P&L if exists
-                const portfolioTotalPnlElement = document.getElementById('total-pnl-portfolio');
-                if (portfolioTotalPnlElement && data.total_unrealized_pnl !== undefined) {
-                    const currentRealized = parseFloat(portfolioTotalPnlElement.textContent.replace('$', '') || '0');
-                    const newTotal = currentRealized + data.total_unrealized_pnl;
-                    portfolioTotalPnlElement.textContent = `$${newTotal.toFixed(2)}`;
-                    portfolioTotalPnlElement.style.color = newTotal >= 0 ? '#28a745' : '#dc3545';
+                // Update portfolio tab totals if on portfolio tab
+                if (currentActiveTab === 'portfolio') {
+                    // Refresh portfolio summary data
+                    const portfolioData = await apiCall(`/api/positions?user_id=${currentUser?.id}`);
+                    if (portfolioData && portfolioData.summary) {
+                        const summary = portfolioData.summary;
+                        document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
+                        document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
+                        document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
+                        
+                        // Update portfolio total P&L with real-time data
+                        const portfolioTotalPnlElement = document.getElementById('total-pnl-portfolio');
+                        if (portfolioTotalPnlElement) {
+                            const totalPnl = summary.total_pnl || 0;
+                            portfolioTotalPnlElement.textContent = `$${totalPnl.toFixed(2)}`;
+                            portfolioTotalPnlElement.style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
+                        }
+                        
+                        // Update margin ratio
+                        const marginRatioElement = document.getElementById('margin-ratio');
+                        if (marginRatioElement && summary.account_balance > 0) {
+                            const ratio = ((summary.total_margin_used || 0) / summary.account_balance) * 100;
+                            marginRatioElement.textContent = `${ratio.toFixed(1)}%`;
+                        }
+                    }
                 }
                 
                 console.log('Live prices updated:', data.timestamp);
