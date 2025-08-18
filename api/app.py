@@ -26,18 +26,37 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database - optimized for serverless deployment
+# Configure database - optimized for Neon PostgreSQL on Vercel
 database_url = os.environ.get("DATABASE_URL", "sqlite:///trading_bot.db")
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-    "pool_size": 5,
-    "max_overflow": 10
-}
+
+# Neon-optimized engine configuration
+if os.environ.get("VERCEL"):
+    # Neon PostgreSQL serverless configuration
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_recycle": 3600,  # Neon allows longer connections
+        "pool_pre_ping": True,  # Essential for Neon connection validation
+        "pool_size": 1,  # Serverless functions need minimal pool size
+        "max_overflow": 0,  # No overflow for serverless
+        "pool_timeout": 30,  # Timeout for getting connection from pool
+        "connect_args": {
+            "sslmode": "require",  # Neon requires SSL
+            "connect_timeout": 10,  # Connection timeout
+            "application_name": "trading_bot_vercel"  # Identify your app in Neon logs
+        }
+    }
+else:
+    # Replit PostgreSQL configuration
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 10
+    }
+
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize database
@@ -335,79 +354,108 @@ class TradeConfig:
 # Database helper functions for trade persistence
 def load_user_trades_from_db(user_id):
     """Load all trade configurations for a user from database"""
-    try:
-        with app.app_context():
-            # Ensure database is properly initialized
-            if not hasattr(db.engine, 'table_names'):
-                db.create_all()
+    max_retries = 2
+    retry_delay = 0.3
+    
+    for attempt in range(max_retries):
+        try:
+            with app.app_context():
+                # Ensure database is properly initialized
+                if not hasattr(db.engine, 'table_names'):
+                    db.create_all()
+                    
+                # Use read-committed isolation for Neon
+                db_trades = TradeConfiguration.query.filter_by(
+                    telegram_user_id=str(user_id)
+                ).order_by(TradeConfiguration.created_at.desc()).all()
                 
-            db_trades = TradeConfiguration.query.filter_by(telegram_user_id=str(user_id)).all()
-            user_trades = {}
-            for db_trade in db_trades:
-                trade_config = db_trade.to_trade_config()
-                user_trades[db_trade.trade_id] = trade_config
-            logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
-            return user_trades
-    except Exception as e:
-        logging.error(f"Error loading trades for user {user_id}: {e}")
-        return {}
+                user_trades = {}
+                for db_trade in db_trades:
+                    trade_config = db_trade.to_trade_config()
+                    user_trades[db_trade.trade_id] = trade_config
+                    
+                logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
+                return user_trades
+                
+        except Exception as e:
+            logging.warning(f"Database load attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+            else:
+                logging.error(f"Failed to load trades for user {user_id} after {max_retries} attempts: {e}")
+                return {}
+    
+    return {}
 
 def save_trade_to_db(user_id, trade_config):
     """Save or update a trade configuration in the database"""
-    try:
-        with app.app_context():
-            # Ensure database is properly initialized
-            if not hasattr(db.engine, 'table_names'):
-                db.create_all()
-            
-            # Check if trade already exists in database
-            existing_trade = TradeConfiguration.query.filter_by(
-                telegram_user_id=str(user_id),
-                trade_id=trade_config.trade_id
-            ).first()
-            
-            if existing_trade:
-                # Update existing trade
-                db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
-                existing_trade.name = db_trade.name
-                existing_trade.symbol = db_trade.symbol
-                existing_trade.side = db_trade.side
-                existing_trade.amount = db_trade.amount
-                existing_trade.leverage = db_trade.leverage
-                existing_trade.entry_type = db_trade.entry_type
-                existing_trade.entry_price = db_trade.entry_price
-                existing_trade.take_profits = db_trade.take_profits
-                existing_trade.stop_loss_percent = db_trade.stop_loss_percent
-                existing_trade.breakeven_after = db_trade.breakeven_after
-                existing_trade.trailing_stop_enabled = db_trade.trailing_stop_enabled
-                existing_trade.trail_percentage = db_trade.trail_percentage
-                existing_trade.trail_activation_price = db_trade.trail_activation_price
-                existing_trade.status = db_trade.status
-                existing_trade.position_margin = db_trade.position_margin
-                existing_trade.unrealized_pnl = db_trade.unrealized_pnl
-                existing_trade.current_price = db_trade.current_price
-                existing_trade.position_size = db_trade.position_size
-                existing_trade.position_value = db_trade.position_value
-                existing_trade.final_pnl = db_trade.final_pnl
-                existing_trade.closed_at = db_trade.closed_at
-                existing_trade.updated_at = datetime.utcnow()
-            else:
-                # Create new trade
-                db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
-                db.session.add(db_trade)
-            
-            # Force commit with explicit flush
-            db.session.flush()
-            db.session.commit()
-            logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
-            return True
-    except Exception as e:
-        logging.error(f"Error saving trade {trade_config.trade_id} to database: {e}")
+    max_retries = 3
+    retry_delay = 0.5
+    
+    for attempt in range(max_retries):
         try:
-            db.session.rollback()
-        except:
-            pass
-        return False
+            with app.app_context():
+                # Ensure database is properly initialized
+                if not hasattr(db.engine, 'table_names'):
+                    db.create_all()
+                
+                # Check if trade already exists in database
+                existing_trade = TradeConfiguration.query.filter_by(
+                    telegram_user_id=str(user_id),
+                    trade_id=trade_config.trade_id
+                ).first()
+                
+                if existing_trade:
+                    # Update existing trade
+                    db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+                    existing_trade.name = db_trade.name
+                    existing_trade.symbol = db_trade.symbol
+                    existing_trade.side = db_trade.side
+                    existing_trade.amount = db_trade.amount
+                    existing_trade.leverage = db_trade.leverage
+                    existing_trade.entry_type = db_trade.entry_type
+                    existing_trade.entry_price = db_trade.entry_price
+                    existing_trade.take_profits = db_trade.take_profits
+                    existing_trade.stop_loss_percent = db_trade.stop_loss_percent
+                    existing_trade.breakeven_after = db_trade.breakeven_after
+                    existing_trade.trailing_stop_enabled = db_trade.trailing_stop_enabled
+                    existing_trade.trail_percentage = db_trade.trail_percentage
+                    existing_trade.trail_activation_price = db_trade.trail_activation_price
+                    existing_trade.status = db_trade.status
+                    existing_trade.position_margin = db_trade.position_margin
+                    existing_trade.unrealized_pnl = db_trade.unrealized_pnl
+                    existing_trade.current_price = db_trade.current_price
+                    existing_trade.position_size = db_trade.position_size
+                    existing_trade.position_value = db_trade.position_value
+                    existing_trade.final_pnl = db_trade.final_pnl
+                    existing_trade.closed_at = db_trade.closed_at
+                    existing_trade.updated_at = datetime.utcnow()
+                else:
+                    # Create new trade
+                    db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+                    db.session.add(db_trade)
+                
+                # Neon-optimized commit process
+                db.session.flush()
+                db.session.commit()
+                logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
+                return True
+                
+        except Exception as e:
+            logging.warning(f"Database save attempt {attempt + 1} failed: {e}")
+            try:
+                db.session.rollback()
+            except:
+                pass
+            
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logging.error(f"Failed to save trade {trade_config.trade_id} after {max_retries} attempts: {e}")
+                return False
+    
+    return False
 
 def delete_trade_from_db(user_id, trade_id):
     """Delete a trade configuration from the database"""

@@ -29,12 +29,18 @@ Set these in your Vercel dashboard:
 ```bash
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 SESSION_SECRET=your-secure-random-string
-DATABASE_URL=your-postgresql-connection-string
+DATABASE_URL=your-neon-postgresql-connection-string
 WEBHOOK_SECRET_TOKEN=optional-webhook-security-token
 VERCEL=1
 ```
 
-**CRITICAL**: The `DATABASE_URL` must be a valid PostgreSQL connection string. The application uses database persistence to ensure trades don't get deleted after execution. Without a proper database connection, all trades will be lost on serverless cold starts.
+**CRITICAL**: The `DATABASE_URL` must be a valid Neon PostgreSQL connection string that starts with `postgresql://`. The application uses database persistence to ensure trades don't get deleted after execution. Without a proper database connection, all trades will be lost on serverless cold starts.
+
+**Neon-Specific Configuration:**
+- The connection string includes SSL by default (required by Neon)
+- Optimized for serverless with minimal connection pooling
+- Includes retry logic for Neon's occasional connection drops
+- Application name is set for better logging in Neon dashboard
 
 ### Deployment Configuration
 The project includes:
