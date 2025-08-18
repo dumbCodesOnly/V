@@ -9,10 +9,12 @@
 
 ## Step 2: Get Connection String
 
-From your Neon dashboard, copy the connection string:
+From your Neon dashboard, copy the connection string. It should look like this:
 ```
 postgresql://username:password@ep-xxx-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
 ```
+
+**Your connection string format is correct!** ✅
 
 ## Step 3: Configure Vercel Environment Variables
 
