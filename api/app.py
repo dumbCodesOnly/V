@@ -1,5 +1,7 @@
 import os
 import logging
+import hmac
+import hashlib
 from flask import Flask, request, jsonify, render_template
 from datetime import datetime, timedelta
 import urllib.request
@@ -13,9 +15,13 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 try:
     # Try relative import first (for module import - Vercel/main.py)
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
+    from .exchange_sync import initialize_sync_service, get_sync_service
+    from .toobit_client import ToobitClient
 except ImportError:
     # Fall back to absolute import (for direct execution - Telegram workflow)
     from models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
+    from exchange_sync import initialize_sync_service, get_sync_service
+    from toobit_client import ToobitClient
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
@@ -75,15 +81,20 @@ def init_database():
 # Initialize database conditionally
 if not os.environ.get("VERCEL"):
     init_database()
+    # Initialize exchange sync service for Replit
+    exchange_sync_service = initialize_sync_service(app, db)
 else:
     # For Vercel, initialize on first request using newer Flask syntax
     initialized = False
+    exchange_sync_service = None
     
     @app.before_request
     def create_tables():
-        global initialized
+        global initialized, exchange_sync_service
         if not initialized:
             init_database()
+            # Initialize exchange sync service for Vercel
+            exchange_sync_service = initialize_sync_service(app, db)
             initialized = True
 
 # Bot token and webhook URL from environment
@@ -508,6 +519,272 @@ def api_health_check():
         'timestamp': get_iran_time().isoformat(),
         'api_version': '1.0'
     })
+
+# Exchange Synchronization Endpoints
+@app.route('/api/exchange/sync-status')
+def exchange_sync_status():
+    """Get exchange synchronization status"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    sync_service = get_sync_service()
+    if sync_service:
+        status = sync_service.get_sync_status(user_id)
+        return jsonify(status)
+    else:
+        return jsonify({'error': 'Exchange sync service not available'}), 503
+
+@app.route('/api/exchange/force-sync', methods=['POST'])
+def force_exchange_sync():
+    """Force immediate synchronization with Toobit exchange"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    sync_service = get_sync_service()
+    if sync_service:
+        success = sync_service.force_sync_user(user_id)
+        if success:
+            return jsonify({'success': True, 'message': 'Synchronization completed'})
+        else:
+            return jsonify({'success': False, 'message': 'Synchronization failed'}), 500
+    else:
+        return jsonify({'error': 'Exchange sync service not available'}), 503
+
+@app.route('/api/exchange/test-connection', methods=['POST'])
+def test_exchange_connection():
+    """Test connection to Toobit exchange"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    try:
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'success': False, 'message': 'No API credentials found'}), 400
+        
+        # Create client and test connection
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        is_connected, message = client.test_connection()
+        
+        return jsonify({
+            'success': is_connected,
+            'message': message,
+            'testnet': user_creds.testnet_mode
+        })
+        
+    except Exception as e:
+        logging.error(f"Error testing exchange connection: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/exchange/positions')
+def get_exchange_positions():
+    """Get positions directly from Toobit exchange"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    try:
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'error': 'No API credentials found'}), 400
+        
+        # Create client and get positions
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        positions = client.get_positions()
+        
+        return jsonify({
+            'success': True,
+            'positions': positions,
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting exchange positions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/exchange/orders')  
+def get_exchange_orders():
+    """Get orders directly from Toobit exchange"""
+    user_id = request.args.get('user_id', '123456789')
+    symbol = request.args.get('symbol')
+    status = request.args.get('status')
+    
+    try:
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'error': 'No API credentials found'}), 400
+        
+        # Create client and get orders
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        orders = client.get_orders(symbol=symbol, status=status)
+        
+        return jsonify({
+            'success': True,
+            'orders': orders,
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting exchange orders: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/webhook/toobit', methods=['POST'])
+def toobit_webhook():
+    """Handle Toobit exchange webhooks for real-time updates"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Verify webhook signature if configured
+        webhook_secret = os.environ.get('TOOBIT_WEBHOOK_SECRET')
+        if webhook_secret:
+            signature = request.headers.get('X-Toobit-Signature')
+            if not signature:
+                return jsonify({'error': 'Missing signature'}), 401
+            
+            # Verify signature (implementation depends on Toobit's webhook format)
+            # This is a placeholder - adjust based on actual Toobit webhook specification
+            expected_signature = hmac.new(
+                webhook_secret.encode(),
+                request.data,
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(signature, expected_signature):
+                return jsonify({'error': 'Invalid signature'}), 401
+        
+        # Process webhook data
+        event_type = data.get('eventType')
+        user_id = data.get('userId')
+        
+        if event_type and user_id:
+            # Process different webhook events
+            if event_type == 'ORDER_UPDATE':
+                handle_order_update_webhook(data)
+            elif event_type == 'POSITION_UPDATE':
+                handle_position_update_webhook(data)
+            elif event_type == 'BALANCE_UPDATE':
+                handle_balance_update_webhook(data)
+            
+            logging.info(f"Processed Toobit webhook: {event_type} for user {user_id}")
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logging.error(f"Error processing Toobit webhook: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def handle_order_update_webhook(data):
+    """Handle order update webhook from Toobit"""
+    try:
+        user_id = data.get('userId')
+        order_data = data.get('orderData', {})
+        
+        # Find corresponding local trade
+        symbol = order_data.get('symbol')
+        order_status = order_data.get('status')
+        
+        if order_status == 'filled':
+            # Update local trade records
+            trade = TradeConfiguration.query.filter_by(
+                telegram_user_id=str(user_id),
+                symbol=symbol,
+                status='active'
+            ).first()
+            
+            if trade:
+                # Calculate final P&L and update trade
+                fill_price = float(order_data.get('avgPrice', 0))
+                fill_quantity = float(order_data.get('executedQty', 0))
+                
+                if trade.side == 'long':
+                    final_pnl = (fill_price - trade.entry_price) * fill_quantity
+                else:
+                    final_pnl = (trade.entry_price - fill_price) * fill_quantity
+                
+                trade.status = 'stopped'
+                trade.final_pnl = final_pnl
+                trade.closed_at = get_iran_time().replace(tzinfo=None)
+                
+                db.session.commit()
+                logging.info(f"Updated trade {trade.trade_id} from webhook")
+        
+    except Exception as e:
+        logging.error(f"Error handling order update webhook: {e}")
+
+def handle_position_update_webhook(data):
+    """Handle position update webhook from Toobit"""
+    try:
+        user_id = data.get('userId')
+        position_data = data.get('positionData', {})
+        
+        # Update local trade records with real-time position data
+        symbol = position_data.get('symbol')
+        unrealized_pnl = float(position_data.get('unrealizedPnl', 0))
+        mark_price = float(position_data.get('markPrice', 0))
+        
+        trades = TradeConfiguration.query.filter_by(
+            telegram_user_id=str(user_id),
+            symbol=symbol,
+            status='active'
+        ).all()
+        
+        for trade in trades:
+            trade.current_price = mark_price
+            trade.unrealized_pnl = unrealized_pnl
+        
+        db.session.commit()
+        
+    except Exception as e:
+        logging.error(f"Error handling position update webhook: {e}")
+
+def handle_balance_update_webhook(data):
+    """Handle balance update webhook from Toobit"""
+    try:
+        user_id = data.get('userId')
+        balance_data = data.get('balanceData', {})
+        
+        # Update user session with new balance information
+        session = UserTradingSession.query.filter_by(
+            telegram_user_id=str(user_id)
+        ).first()
+        
+        if session:
+            new_balance = float(balance_data.get('balance', session.account_balance))
+            session.account_balance = new_balance
+            db.session.commit()
+        
+    except Exception as e:
+        logging.error(f"Error handling balance update webhook: {e}")
 
 
 
