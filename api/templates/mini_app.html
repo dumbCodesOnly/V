@@ -1292,14 +1292,113 @@
             grid-template-columns: 1fr 1fr;
             gap: 0.5rem;
         }
+
+        /* Hamburger Menu Styles */
+        .hamburger-menu {
+            position: relative;
+            display: inline-block;
+        }
+
+        .hamburger-btn {
+            background: none;
+            border: none;
+            color: var(--tg-theme-text-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .hamburger-btn:hover {
+            background: var(--tg-theme-border-color);
+        }
+
+        .hamburger-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: var(--tg-theme-secondary-bg-color);
+            border: 2px solid var(--tg-theme-border-color);
+            border-radius: 12px;
+            min-width: 200px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hamburger-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            padding: 0.875rem 1.25rem;
+            color: var(--tg-theme-text-color);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-bottom: 1px solid var(--tg-theme-border-color);
+            transition: background 0.2s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .dropdown-item:hover {
+            background: var(--tg-theme-border-color);
+            color: var(--tg-theme-text-color);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 10px 10px;
+        }
+
+        .dropdown-item:first-child {
+            border-radius: 10px 10px 0 0;
+        }
+
+        .dropdown-item.single {
+            border-radius: 10px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+        }
     </style>
 </head>
 <body>
     <div class="mini-app-container">
         <!-- Header -->
         <div class="header">
-            <h5 class="mb-0">⚡ Trading Expert</h5>
-            <small id="user-info">Loading...</small>
+            <div class="header-left">
+                <h5 class="mb-0">⚡ Trading Expert</h5>
+                <small id="user-info">Loading...</small>
+            </div>
+            
+            <!-- Hamburger Menu -->
+            <div class="hamburger-menu">
+                <button class="hamburger-btn" onclick="toggleHamburgerMenu()">
+                    ☰
+                </button>
+                <div class="hamburger-dropdown" id="hamburger-dropdown">
+                    <a href="#" class="dropdown-item single" onclick="openApiKeysSettings()">
+                        ⚿ API Keys
+                    </a>
+                </div>
+            </div>
         </div>
 
         <!-- Navigation Tabs -->
@@ -1317,11 +1416,6 @@
             <li class="nav-item">
                 <button class="nav-link" id="portfolio-tab" data-bs-toggle="tab" data-bs-target="#portfolio" type="button">
                     ◈ Portfolio
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="credentials-tab" data-bs-toggle="tab" data-bs-target="#credentials" type="button">
-                    ⚿ API Keys
                 </button>
             </li>
         </ul>
@@ -3609,6 +3703,182 @@
             }
         }
 
+        // Hamburger menu functionality
+        function toggleHamburgerMenu() {
+            const dropdown = document.getElementById('hamburger-dropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function openApiKeysSettings() {
+            // Hide hamburger menu
+            document.getElementById('hamburger-dropdown').classList.remove('show');
+            
+            // Show API Keys modal
+            const modal = new bootstrap.Modal(document.getElementById('apiKeysModal'));
+            modal.show();
+            
+            // Load current credentials status
+            loadCredentialsStatus();
+        }
+
+        // Close hamburger menu when clicking outside
+        document.addEventListener('click', function(event) {
+            const hamburgerMenu = document.querySelector('.hamburger-menu');
+            const dropdown = document.getElementById('hamburger-dropdown');
+            
+            if (hamburgerMenu && !hamburgerMenu.contains(event.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+
+        // API Keys modal functions (reusing existing functionality)
+        async function loadCredentialsStatus() {
+            const statusContainer = document.getElementById('api-credentials-status');
+            const setupContainer = document.getElementById('api-credentials-setup');
+            
+            try {
+                const data = await apiCall('/api/credentials-status');
+                
+                if (data && data.has_credentials) {
+                    statusContainer.innerHTML = `
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">✅ ${data.exchange} Credentials</h6>
+                                        <small class="text-muted">API Key: ${data.api_key_preview}</small>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-outline-danger btn-sm" onclick="deleteApiCredentials()">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    setupContainer.classList.add('hidden');
+                } else {
+                    statusContainer.innerHTML = `
+                        <div class="text-center">
+                            <h6 class="text-muted">No API credentials configured</h6>
+                            <button class="btn btn-primary" onclick="showApiCredentialsSetup()">
+                                Add API Credentials
+                            </button>
+                        </div>
+                    `;
+                    setupContainer.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to load credentials status:', error);
+                statusContainer.innerHTML = `
+                    <div class="text-center">
+                        <div class="text-danger">Failed to load credentials status</div>
+                        <button class="btn btn-primary mt-2" onclick="loadCredentialsStatus()">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function showApiCredentialsSetup() {
+            document.getElementById('api-credentials-setup').classList.remove('hidden');
+            
+            // Clear form
+            document.getElementById('api-exchange-select').value = 'toobit';
+            document.getElementById('api-key-modal-input').value = '';
+            document.getElementById('api-secret-modal-input').value = '';
+            document.getElementById('api-passphrase-modal-input').value = '';
+            
+            // Show/hide passphrase based on exchange
+            const exchange = document.getElementById('api-exchange-select').value;
+            const passphraseGroup = document.getElementById('api-passphrase-group');
+            passphraseGroup.style.display = exchange === 'okx' ? 'block' : 'none';
+        }
+
+        function cancelApiCredentialsSetup() {
+            document.getElementById('api-credentials-setup').classList.add('hidden');
+        }
+
+        async function saveApiCredentials() {
+            const exchange = document.getElementById('api-exchange-select').value;
+            const apiKey = document.getElementById('api-key-modal-input').value.trim();
+            const apiSecret = document.getElementById('api-secret-modal-input').value.trim();
+            const passphrase = document.getElementById('api-passphrase-modal-input').value.trim();
+
+            if (!apiKey || !apiSecret) {
+                alert('Please enter both API key and secret');
+                return;
+            }
+
+            if (exchange === 'okx' && !passphrase) {
+                alert('Passphrase is required for OKX');
+                return;
+            }
+
+            try {
+                const response = await apiCall('/api/save-credentials', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: currentUser?.id,
+                        exchange: exchange,
+                        api_key: apiKey,
+                        api_secret: apiSecret,
+                        passphrase: passphrase || null
+                    })
+                });
+
+                if (response && response.success) {
+                    alert('API credentials saved successfully!');
+                    cancelApiCredentialsSetup();
+                    loadCredentialsStatus();
+                } else {
+                    alert('Failed to save credentials: ' + (response?.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Save credentials error:', error);
+                alert('Failed to save credentials. Please try again.');
+            }
+        }
+
+        async function deleteApiCredentials() {
+            if (!confirm('Are you sure you want to delete your API credentials?')) {
+                return;
+            }
+
+            try {
+                const response = await apiCall('/api/delete-credentials', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: currentUser?.id
+                    })
+                });
+
+                if (response && response.success) {
+                    alert('API credentials deleted successfully!');
+                    loadCredentialsStatus();
+                } else {
+                    alert('Failed to delete credentials: ' + (response?.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Delete credentials error:', error);
+                alert('Failed to delete credentials. Please try again.');
+            }
+        }
+
+        // Exchange change handler for modal
+        document.addEventListener('DOMContentLoaded', function() {
+            const exchangeSelect = document.getElementById('api-exchange-select');
+            if (exchangeSelect) {
+                exchangeSelect.addEventListener('change', function() {
+                    const exchange = this.value;
+                    const passphraseGroup = document.getElementById('api-passphrase-group');
+                    passphraseGroup.style.display = exchange === 'okx' ? 'block' : 'none';
+                });
+            }
+        });
+
         // Initialize mobile enhancements after DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
             initializeMobileEnhancements();
@@ -3630,5 +3900,78 @@
             }
         });
     </script>
+
+    <!-- API Keys Settings Modal -->
+    <div class="modal fade" id="apiKeysModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">⚿ API Keys Settings</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <p class="text-muted">Manage your exchange API credentials for live trading</p>
+                    </div>
+                    
+                    <div id="api-credentials-status" class="mb-4">
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            Loading credentials status...
+                        </div>
+                    </div>
+
+                    <div id="api-credentials-setup" class="hidden">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Add API Credentials</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Exchange</label>
+                                    <select class="form-control" id="api-exchange-select">
+                                        <option value="toobit">Toobit</option>
+                                        <option value="binance">Binance</option>
+                                        <option value="okx">OKX</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">API Key</label>
+                                    <input type="text" class="form-control" id="api-key-modal-input" placeholder="Enter your API key">
+                                    <small class="text-muted">Your API key will be encrypted and stored securely</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">API Secret</label>
+                                    <input type="password" class="form-control" id="api-secret-modal-input" placeholder="Enter your API secret">
+                                    <small class="text-muted">Your secret will be encrypted and stored securely</small>
+                                </div>
+                                <div class="mb-3" id="api-passphrase-group" style="display: none;">
+                                    <label class="form-label">Passphrase (if required)</label>
+                                    <input type="password" class="form-control" id="api-passphrase-modal-input" placeholder="Enter passphrase if required">
+                                </div>
+                                <div class="two-column-grid">
+                                    <button class="btn btn-outline-secondary" onclick="cancelApiCredentialsSetup()">Cancel</button>
+                                    <button class="btn btn-primary" onclick="saveApiCredentials()">Save Credentials</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <div class="alert alert-info">
+                            <strong>🔐 Security Information:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>Your API credentials are encrypted using military-grade encryption</li>
+                                <li>Only trading permissions are required - never share withdrawal access</li>
+                                <li>All credentials are stored securely and never shared</li>
+                                <li>You can delete your credentials at any time</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
