@@ -429,7 +429,7 @@ def save_trade_to_db(user_id, trade_config):
                     existing_trade.position_value = db_trade.position_value
                     existing_trade.final_pnl = db_trade.final_pnl
                     existing_trade.closed_at = db_trade.closed_at
-                    existing_trade.updated_at = datetime.utcnow()
+                    existing_trade.updated_at = get_iran_time().replace(tzinfo=None)
                 else:
                     # Create new trade
                     db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
@@ -496,7 +496,7 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': get_iran_time().isoformat()
     })
 
 @app.route('/api/health')
@@ -504,7 +504,7 @@ def api_health_check():
     """API Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': get_iran_time().isoformat(),
         'api_version': '1.0'
     })
 
@@ -517,7 +517,9 @@ def get_bot_status():
     """Get bot status with API performance metrics"""
     # Check if bot is active (heartbeat within last 5 minutes)
     if bot_status['last_heartbeat']:
-        time_diff = datetime.utcnow() - datetime.fromisoformat(bot_status['last_heartbeat'])
+        current_time = get_iran_time().replace(tzinfo=None)  # Remove timezone for comparison
+        last_heartbeat = datetime.fromisoformat(bot_status['last_heartbeat']).replace(tzinfo=None)
+        time_diff = current_time - last_heartbeat
         is_active = time_diff.total_seconds() < 300  # 5 minutes
         bot_status['status'] = 'active' if is_active else 'inactive'
     
@@ -560,7 +562,7 @@ def get_symbol_price(symbol):
         with cache_lock:
             if symbol in price_cache:
                 cached_data = price_cache[symbol]
-                age_seconds = (datetime.utcnow() - cached_data['timestamp']).total_seconds()
+                age_seconds = (get_iran_time().replace(tzinfo=None) - cached_data['timestamp']).total_seconds()
                 cache_info = {
                     'cached': True,
                     'age_seconds': round(age_seconds, 2),
@@ -574,7 +576,7 @@ def get_symbol_price(symbol):
         return jsonify({
             'symbol': symbol,
             'price': price,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': get_iran_time().isoformat(),
             'cache_info': cache_info
         })
     except Exception as e:
@@ -620,7 +622,7 @@ def get_multiple_prices():
         
         return jsonify({
             'results': results,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': get_iran_time().isoformat(),
             'total_symbols': len(symbols),
             'successful': len([r for r in results.values() if r['status'] == 'success'])
         })
@@ -703,7 +705,7 @@ def margin_data():
             'total_positions': len(user_positions)
         },
         'positions': user_positions,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': get_iran_time().isoformat()
     })
 
 @app.route('/api/positions')
@@ -1160,7 +1162,7 @@ def execute_trade():
             'amount': config.amount,
             'leverage': config.leverage,
             'entry_price': config.entry_price,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': get_iran_time().isoformat(),
             'status': 'executed'
         })
         
@@ -1315,7 +1317,7 @@ def close_trade():
         final_pnl = config.unrealized_pnl
         config.status = "stopped"
         config.final_pnl = final_pnl  # Store final P&L in the config object too
-        config.closed_at = datetime.utcnow().isoformat()  # Store closure timestamp
+        config.closed_at = get_iran_time().isoformat()  # Store closure timestamp
         config.unrealized_pnl = 0.0
         
         # Save updated status to database
@@ -1330,7 +1332,7 @@ def close_trade():
             'side': config.side,
             'amount': config.amount,
             'final_pnl': final_pnl,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': get_iran_time().isoformat(),
             'status': 'closed'
         })
         
@@ -1550,7 +1552,7 @@ Use the menu below to navigate:"""
             with cache_lock:
                 if symbol in price_cache:
                     cached_data = price_cache[symbol]
-                    age_seconds = (datetime.utcnow() - cached_data['timestamp']).total_seconds()
+                    age_seconds = (get_iran_time().replace(tzinfo=None) - cached_data['timestamp']).total_seconds()
                     source = cached_data.get('source', 'unknown')
                     if age_seconds < cache_ttl:
                         cache_info = f" (cached, {source})"
