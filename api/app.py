@@ -585,6 +585,7 @@ def live_position_update():
     # Return only essential price and P&L data for fast updates
     live_data = {}
     total_unrealized_pnl = 0.0
+    active_positions_count = 0
     
     if chat_id in user_trade_configs:
         for trade_id, config in user_trade_configs[chat_id].items():
@@ -613,10 +614,14 @@ def live_position_update():
                 
                 if config.status == "active":
                     total_unrealized_pnl += config.unrealized_pnl
+                    active_positions_count += 1
+                elif config.status == "pending":
+                    active_positions_count += 1
     
     return jsonify({
         'positions': live_data,
         'total_unrealized_pnl': total_unrealized_pnl,
+        'active_positions_count': active_positions_count,
         'timestamp': datetime.utcnow().isoformat(),
         'update_type': 'live_prices'
     })

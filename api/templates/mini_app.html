@@ -1673,6 +1673,19 @@
                     totalPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
                 }
                 
+                // Update positions tab total P&L (main totals)
+                const positionsTabTotalPnl = document.getElementById('total-pnl');
+                if (positionsTabTotalPnl && data.total_unrealized_pnl !== undefined) {
+                    positionsTabTotalPnl.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
+                    positionsTabTotalPnl.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update total active positions count
+                const totalPositionsElement = document.getElementById('total-positions');
+                if (totalPositionsElement && data.active_positions_count !== undefined) {
+                    totalPositionsElement.textContent = data.active_positions_count;
+                }
+                
                 // Update summary total P&L if exists
                 const portfolioTotalPnlElement = document.getElementById('total-pnl-portfolio');
                 if (portfolioTotalPnlElement && data.total_unrealized_pnl !== undefined) {
