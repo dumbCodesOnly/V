@@ -3737,7 +3737,7 @@
             const setupContainer = document.getElementById('api-credentials-setup');
             
             try {
-                const data = await apiCall('/api/credentials-status');
+                const data = await apiCall(`/api/credentials-status?user_id=${currentUser?.id}`);
                 
                 if (data && data.has_credentials) {
                     statusContainer.innerHTML = `

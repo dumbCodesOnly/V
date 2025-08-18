@@ -1186,6 +1186,7 @@ def execute_trade():
         return jsonify({'error': 'Failed to execute trade'}), 500
 
 @app.route('/api/user-credentials')
+@app.route('/api/credentials-status')
 def get_user_credentials():
     """Get user API credentials status"""
     user_id = request.args.get('user_id')
@@ -1196,9 +1197,13 @@ def get_user_credentials():
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         
         if user_creds:
+            api_key = user_creds.get_api_key()
+            api_key_preview = f"{api_key[:8]}...{api_key[-4:]}" if api_key and len(api_key) > 12 else "****"
+            
             return jsonify({
                 'has_credentials': user_creds.has_credentials(),
                 'exchange': user_creds.exchange_name,
+                'api_key_preview': api_key_preview,
                 'testnet_mode': user_creds.testnet_mode,
                 'is_active': user_creds.is_active,
                 'last_used': user_creds.last_used.isoformat() if user_creds.last_used else None,
@@ -1208,6 +1213,7 @@ def get_user_credentials():
             return jsonify({
                 'has_credentials': False,
                 'exchange': None,
+                'api_key_preview': None,
                 'testnet_mode': True,
                 'is_active': False,
                 'last_used': None,
@@ -1417,7 +1423,9 @@ def reset_trade_history():
                 session.session_end = None
             else:
                 # Create new session if doesn't exist
-                session = UserTradingSession(telegram_user_id=str(chat_id))
+                session = UserTradingSession()
+                session.telegram_user_id = str(chat_id)
+                session.session_start = get_iran_time()
                 db.session.add(session)
             
             # Commit changes to database
