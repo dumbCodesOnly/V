@@ -1402,23 +1402,22 @@ def reset_trade_history():
         
         # Clear all trade configurations and history
         with app.app_context():
-            # Delete all trade configurations from database
-            TradeConfiguration.query.filter_by(user_id=chat_id).delete()
+            # Delete all trade configurations from database (correct field name)
+            TradeConfiguration.query.filter_by(telegram_user_id=str(chat_id)).delete()
             
             # Reset user trading session (keeps credentials but resets balance)
-            session = UserTradingSession.query.filter_by(user_id=chat_id).first()
+            session = UserTradingSession.query.filter_by(telegram_user_id=str(chat_id)).first()
             if session:
-                session.initial_balance = 1000.0  # Reset to default
-                session.realized_pnl = 0.0
-                session.last_updated = get_iran_time()
+                # Reset session metrics but keep the existing session
+                session.total_trades = 0
+                session.successful_trades = 0
+                session.failed_trades = 0
+                session.total_volume = 0.0
+                session.session_start = get_iran_time()
+                session.session_end = None
             else:
                 # Create new session if doesn't exist
-                session = UserTradingSession(
-                    user_id=chat_id,
-                    initial_balance=1000.0,
-                    realized_pnl=0.0,
-                    last_updated=get_iran_time()
-                )
+                session = UserTradingSession(telegram_user_id=str(chat_id))
                 db.session.add(session)
             
             # Commit changes to database
