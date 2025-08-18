@@ -12,10 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.middleware.proxy_fix import ProxyFix
 try:
     # Try relative import first (for module import - Vercel/main.py)
-    from .models import db, UserCredentials, UserTradingSession
+    from .models import db, UserCredentials, UserTradingSession, TradeConfiguration
 except ImportError:
     # Fall back to absolute import (for direct execution - Telegram workflow)
-    from models import db, UserCredentials, UserTradingSession
+    from models import db, UserCredentials, UserTradingSession, TradeConfiguration
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
@@ -153,18 +153,16 @@ trade_counter = 0
 
 # Initialize clean user environment
 def initialize_user_environment(user_id):
-    """Initialize a clean trading environment for a new user"""
+    """Initialize trading environment for a user, loading from database"""
     user_id = int(user_id)
     
-    # Create empty trade configurations for user
+    # Load trade configurations from database
     if user_id not in user_trade_configs:
-        user_trade_configs[user_id] = {}
+        user_trade_configs[user_id] = load_user_trades_from_db(user_id)
     
     # Initialize user's selected trade if not exists
     if user_id not in user_selected_trade:
         user_selected_trade[user_id] = None
-    
-    # User starts with clean environment - no demo data
 
 
 
@@ -333,6 +331,86 @@ class TradeConfig:
             header += f"\n🔧 Current Step: {current_step}\n"
         header += "─" * 40 + "\n"
         return header
+
+# Database helper functions for trade persistence
+def load_user_trades_from_db(user_id):
+    """Load all trade configurations for a user from database"""
+    try:
+        db_trades = TradeConfiguration.query.filter_by(telegram_user_id=str(user_id)).all()
+        user_trades = {}
+        for db_trade in db_trades:
+            trade_config = db_trade.to_trade_config()
+            user_trades[db_trade.trade_id] = trade_config
+        return user_trades
+    except Exception as e:
+        logging.error(f"Error loading trades for user {user_id}: {e}")
+        return {}
+
+def save_trade_to_db(user_id, trade_config):
+    """Save or update a trade configuration in the database"""
+    try:
+        # Check if trade already exists in database
+        existing_trade = TradeConfiguration.query.filter_by(
+            telegram_user_id=str(user_id),
+            trade_id=trade_config.trade_id
+        ).first()
+        
+        if existing_trade:
+            # Update existing trade
+            db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+            existing_trade.name = db_trade.name
+            existing_trade.symbol = db_trade.symbol
+            existing_trade.side = db_trade.side
+            existing_trade.amount = db_trade.amount
+            existing_trade.leverage = db_trade.leverage
+            existing_trade.entry_type = db_trade.entry_type
+            existing_trade.entry_price = db_trade.entry_price
+            existing_trade.take_profits = db_trade.take_profits
+            existing_trade.stop_loss_percent = db_trade.stop_loss_percent
+            existing_trade.breakeven_after = db_trade.breakeven_after
+            existing_trade.trailing_stop_enabled = db_trade.trailing_stop_enabled
+            existing_trade.trail_percentage = db_trade.trail_percentage
+            existing_trade.trail_activation_price = db_trade.trail_activation_price
+            existing_trade.status = db_trade.status
+            existing_trade.position_margin = db_trade.position_margin
+            existing_trade.unrealized_pnl = db_trade.unrealized_pnl
+            existing_trade.current_price = db_trade.current_price
+            existing_trade.position_size = db_trade.position_size
+            existing_trade.position_value = db_trade.position_value
+            existing_trade.final_pnl = db_trade.final_pnl
+            existing_trade.closed_at = db_trade.closed_at
+            existing_trade.updated_at = datetime.utcnow()
+        else:
+            # Create new trade
+            db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+            db.session.add(db_trade)
+        
+        db.session.commit()
+        logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error saving trade {trade_config.trade_id} to database: {e}")
+        db.session.rollback()
+        return False
+
+def delete_trade_from_db(user_id, trade_id):
+    """Delete a trade configuration from the database"""
+    try:
+        trade = TradeConfiguration.query.filter_by(
+            telegram_user_id=str(user_id),
+            trade_id=trade_id
+        ).first()
+        
+        if trade:
+            db.session.delete(trade)
+            db.session.commit()
+            logging.info(f"Deleted trade {trade_id} from database for user {user_id}")
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Error deleting trade {trade_id} from database: {e}")
+        db.session.rollback()
+        return False
 
 @app.route('/')
 def mini_app():
@@ -873,6 +951,9 @@ def save_trade():
         # Set as selected trade for user
         user_selected_trade[chat_id] = trade_id
         
+        # Save to database
+        save_trade_to_db(chat_id, config)
+        
         success_message = 'Trade configuration saved successfully'
         if is_active_trade and risk_params_updated:
             success_message = f"Risk management parameters updated for active trade: {', '.join(risk_params_updated)}"
@@ -943,6 +1024,8 @@ def execute_trade():
                 # Set as pending order, waiting for price to reach limit
                 config.status = "pending"
                 config.current_price = current_market_price
+                # Save to database
+                save_trade_to_db(chat_id, config)
                 config.unrealized_pnl = 0.0
                 
                 logging.info(f"Limit order placed: {config.symbol} {config.side} at ${config.entry_price} (current market: ${current_market_price})")
@@ -979,6 +1062,9 @@ def execute_trade():
             # entry_price already set to limit price
         
         config.unrealized_pnl = 0.0
+        
+        # Save to database
+        save_trade_to_db(chat_id, config)
         
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
@@ -1150,6 +1236,9 @@ def close_trade():
         config.closed_at = datetime.utcnow().isoformat()  # Store closure timestamp
         config.unrealized_pnl = 0.0
         
+        # Save updated status to database
+        save_trade_to_db(chat_id, config)
+        
         # Log trade closure
         bot_trades.append({
             'id': len(bot_trades) + 1,
@@ -1191,6 +1280,9 @@ def delete_trade():
         
         config = user_trade_configs[chat_id][trade_id]
         trade_name = config.get_display_name() if hasattr(config, 'get_display_name') else config.name
+        
+        # Remove from database first
+        delete_trade_from_db(chat_id, trade_id)
         
         # Remove from configurations
         del user_trade_configs[chat_id][trade_id]

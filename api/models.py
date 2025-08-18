@@ -113,3 +113,124 @@ class UserTradingSession(db.Model):
     
     def __repr__(self):
         return f'<UserTradingSession {self.telegram_user_id}:{self.session_start}>'
+
+class TradeConfiguration(db.Model):
+    """Persistent storage for trade configurations"""
+    __tablename__ = 'trade_configurations'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    trade_id = db.Column(db.String(50), nullable=False, index=True)
+    telegram_user_id = db.Column(db.String(50), nullable=False, index=True)
+    
+    # Basic trade info
+    name = db.Column(db.String(200), nullable=False)
+    symbol = db.Column(db.String(20), nullable=False)
+    side = db.Column(db.String(10), nullable=False)  # 'long' or 'short'
+    amount = db.Column(db.Float, nullable=False)  # Margin amount
+    leverage = db.Column(db.Integer, default=1)
+    
+    # Entry configuration
+    entry_type = db.Column(db.String(20), default='market')  # 'market' or 'limit'
+    entry_price = db.Column(db.Float, default=0.0)
+    
+    # Risk management (stored as JSON)
+    take_profits = db.Column(db.Text)  # JSON string of TP levels
+    stop_loss_percent = db.Column(db.Float, default=0.0)
+    breakeven_after = db.Column(db.Float, default=0.0)
+    
+    # Trailing stop configuration
+    trailing_stop_enabled = db.Column(db.Boolean, default=False)
+    trail_percentage = db.Column(db.Float, default=0.0)
+    trail_activation_price = db.Column(db.Float, default=0.0)
+    
+    # Status and tracking
+    status = db.Column(db.String(20), default='configured')  # configured, pending, active, stopped
+    position_margin = db.Column(db.Float, default=0.0)
+    unrealized_pnl = db.Column(db.Float, default=0.0)
+    current_price = db.Column(db.Float, default=0.0)
+    position_size = db.Column(db.Float, default=0.0)
+    position_value = db.Column(db.Float, default=0.0)
+    final_pnl = db.Column(db.Float, default=0.0)
+    closed_at = db.Column(db.DateTime)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_trade_config(self):
+        """Convert database model to TradeConfig object"""
+        # Import locally to avoid circular dependency
+        from . import app
+        config = app.TradeConfig(self.trade_id, self.name)
+        config.symbol = self.symbol
+        config.side = self.side
+        config.amount = self.amount
+        config.leverage = self.leverage
+        config.entry_type = self.entry_type
+        config.entry_price = self.entry_price
+        config.stop_loss_percent = self.stop_loss_percent
+        config.breakeven_after = self.breakeven_after
+        config.trailing_stop_enabled = self.trailing_stop_enabled
+        config.trail_percentage = self.trail_percentage
+        config.trail_activation_price = self.trail_activation_price
+        config.status = self.status
+        config.position_margin = self.position_margin
+        config.unrealized_pnl = self.unrealized_pnl
+        config.current_price = self.current_price
+        config.position_size = self.position_size
+        config.position_value = self.position_value
+        config.final_pnl = self.final_pnl
+        config.closed_at = self.closed_at.isoformat() if self.closed_at else ""
+        
+        # Parse take profits JSON
+        if self.take_profits:
+            try:
+                import json
+                config.take_profits = json.loads(self.take_profits)
+            except:
+                config.take_profits = []
+        else:
+            config.take_profits = []
+            
+        return config
+    
+    @staticmethod
+    def from_trade_config(user_id, config):
+        """Create database model from TradeConfig object"""
+        import json
+        
+        db_config = TradeConfiguration()
+        db_config.trade_id = config.trade_id
+        db_config.telegram_user_id = str(user_id)
+        db_config.name = config.name
+        db_config.symbol = config.symbol
+        db_config.side = config.side
+        db_config.amount = config.amount
+        db_config.leverage = config.leverage
+        db_config.entry_type = config.entry_type
+        db_config.entry_price = config.entry_price
+        db_config.take_profits = json.dumps(config.take_profits)
+        db_config.stop_loss_percent = config.stop_loss_percent
+        db_config.breakeven_after = config.breakeven_after
+        db_config.trailing_stop_enabled = config.trailing_stop_enabled
+        db_config.trail_percentage = config.trail_percentage
+        db_config.trail_activation_price = config.trail_activation_price
+        db_config.status = config.status
+        db_config.position_margin = config.position_margin
+        db_config.unrealized_pnl = config.unrealized_pnl
+        db_config.current_price = config.current_price
+        db_config.position_size = config.position_size
+        db_config.position_value = config.position_value
+        db_config.final_pnl = config.final_pnl
+        
+        if config.closed_at and config.closed_at != "":
+            try:
+                from datetime import datetime
+                db_config.closed_at = datetime.fromisoformat(config.closed_at.replace('Z', '+00:00'))
+            except:
+                pass
+        
+        return db_config
+    
+    def __repr__(self):
+        return f'<TradeConfiguration {self.telegram_user_id}:{self.trade_id}>'
