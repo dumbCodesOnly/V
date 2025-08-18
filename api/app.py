@@ -183,6 +183,10 @@ user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase',
 # Multi-trade management storage
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
+
+# Cache for database loads to prevent frequent database hits
+user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
+cache_ttl = 30  # Cache TTL in seconds for Vercel optimization
 trade_counter = 0
 
 # Initialize clean user environment
@@ -368,8 +372,22 @@ class TradeConfig:
         return header
 
 # Database helper functions for trade persistence
-def load_user_trades_from_db(user_id):
-    """Load all trade configurations for a user from database"""
+def load_user_trades_from_db(user_id, force_reload=False):
+    """Load all trade configurations for a user from database with intelligent caching"""
+    import time
+    
+    current_time = time.time()
+    user_id_str = str(user_id)
+    
+    # Check cache for Vercel optimization (avoid constant DB hits)
+    if not force_reload and user_id_str in user_data_cache:
+        cache_entry = user_data_cache[user_id_str]
+        cache_age = current_time - cache_entry['timestamp']
+        
+        # Use cached data if still valid (TTL not exceeded)
+        if cache_age < cache_ttl:
+            return cache_entry['data']
+    
     max_retries = 2
     retry_delay = 0.3
     
@@ -382,17 +400,24 @@ def load_user_trades_from_db(user_id):
                     
                 # Use read-committed isolation for Neon
                 db_trades = TradeConfiguration.query.filter_by(
-                    telegram_user_id=str(user_id)
+                    telegram_user_id=user_id_str
                 ).order_by(TradeConfiguration.created_at.desc()).all()
                 
                 user_trades = {}
                 for db_trade in db_trades:
                     trade_config = db_trade.to_trade_config()
                     user_trades[db_trade.trade_id] = trade_config
-                    
-                # Only log in development or when significant number of trades loaded
-                if not os.environ.get("VERCEL") or len(user_trades) > 5:
-                    logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
+                
+                # Update cache with fresh data
+                user_data_cache[user_id_str] = {
+                    'data': user_trades,
+                    'timestamp': current_time,
+                    'version': len(user_trades)  # Simple version tracking
+                }
+                
+                # Only log in development or when cache miss occurs with significant data
+                if not os.environ.get("VERCEL") or (len(user_trades) > 3 and force_reload):
+                    logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database (cache {'refresh' if force_reload else 'miss'})")
                 return user_trades
                 
         except Exception as e:
@@ -401,6 +426,10 @@ def load_user_trades_from_db(user_id):
                 time.sleep(retry_delay)
             else:
                 logging.error(f"Failed to load trades for user {user_id} after {max_retries} attempts: {e}")
+                # Return cached data if available, even if stale
+                if user_id_str in user_data_cache:
+                    logging.info(f"Returning stale cached data for user {user_id}")
+                    return user_data_cache[user_id_str]['data']
                 return {}
     
     return {}
@@ -456,6 +485,12 @@ def save_trade_to_db(user_id, trade_config):
                 # Neon-optimized commit process
                 db.session.flush()
                 db.session.commit()
+                
+                # Invalidate cache when data changes
+                user_id_str = str(user_id)
+                if user_id_str in user_data_cache:
+                    del user_data_cache[user_id_str]
+                
                 # Only log saves in development or for error debugging
                 if not os.environ.get("VERCEL"):
                     logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
@@ -1141,11 +1176,8 @@ def user_trades():
     
     user_trade_list = []
     
-    # Load directly from database for Vercel reliability
-    if os.environ.get("VERCEL"):
-        user_configs = load_user_trades_from_db(chat_id)
-    else:
-        user_configs = user_trade_configs.get(chat_id, {})
+    # Use cached loading to prevent constant DB hits
+    user_configs = load_user_trades_from_db(chat_id)
     
     if user_configs:
         for trade_id, config in user_configs.items():
