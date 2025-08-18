@@ -1002,7 +1002,7 @@ def margin_data():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize user environment if needed (optimized to avoid unnecessary database loads)
+    # Initialize user environment (uses cache to prevent DB hits)
     initialize_user_environment(chat_id, force_reload=False)
     
     # Update all positions with live market data before returning margin data
@@ -1082,8 +1082,10 @@ def live_position_update():
             sync_result = sync_service.sync_user_on_request(user_id)
             # Continue with regular live update regardless of sync result
     
-    # Skip database initialization for live updates - only update existing in-memory data
-    # Only proceed if user already has trades in memory
+    # For live updates, ensure user is initialized from cache (no DB hit)
+    initialize_user_environment(chat_id, force_reload=False)
+    
+    # Only proceed if user has trades loaded
     if chat_id not in user_trade_configs:
         return jsonify({
             'positions': {},
@@ -1257,12 +1259,9 @@ def trade_config():
     
     chat_id = int(user_id)
     
-    # Always load from database for Vercel
-    if os.environ.get("VERCEL"):
-        user_configs = load_user_trades_from_db(chat_id)
-    else:
-        initialize_user_environment(chat_id)
-        user_configs = user_trade_configs.get(chat_id, {})
+    # Use cached initialization for both Vercel and Replit
+    initialize_user_environment(chat_id)
+    user_configs = user_trade_configs.get(chat_id, {})
     
     if user_configs and trade_id in user_configs:
         config = user_configs[trade_id]
