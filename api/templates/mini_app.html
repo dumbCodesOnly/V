@@ -1391,6 +1391,13 @@
                     </div>
                 </div>
                 
+                <!-- Reset History Button -->
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-outline-danger btn-sm" onclick="confirmResetHistory()" id="reset-history-btn">
+                        🗑️ Reset History
+                    </button>
+                </div>
+                
                 <div id="portfolio-details">
                     <div class="loading">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
@@ -3509,6 +3516,85 @@
             originalStopLivePriceUpdates();
             removeLivePriceIndicator();
         };
+
+        // Reset History Functions
+        async function confirmResetHistory() {
+            if (!currentUser?.id) {
+                showToast('Please set up your Telegram user first', 'error');
+                return;
+            }
+            
+            const confirmed = confirm(
+                "⚠️ WARNING: This will permanently delete all your trade history and reset your P&L to zero.\n\n" +
+                "Your API credentials will NOT be affected.\n\n" + 
+                "Are you sure you want to continue?"
+            );
+            
+            if (confirmed) {
+                await resetTradeHistory();
+            }
+        }
+        
+        async function resetTradeHistory() {
+            const resetBtn = document.getElementById('reset-history-btn');
+            if (!resetBtn) return;
+            
+            try {
+                // Show loading state
+                const originalText = resetBtn.innerHTML;
+                resetBtn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Resetting...';
+                resetBtn.disabled = true;
+                resetBtn.classList.add('btn-loading');
+                
+                const response = await fetch('/api/reset-history', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: currentUser.id
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('Trade history reset successfully', 'success');
+                    
+                    // Reset UI elements to zero
+                    document.getElementById('account-balance').textContent = '$1000.00';
+                    document.getElementById('margin-used').textContent = '$0.00';
+                    document.getElementById('free-margin').textContent = '$1000.00';
+                    document.getElementById('margin-ratio').textContent = '0%';
+                    document.getElementById('realized-pnl').textContent = '$0.00';
+                    document.getElementById('total-pnl-portfolio').textContent = '$0.00';
+                    document.getElementById('total-pnl-portfolio').style.color = '#28a745';
+                    
+                    // Clear portfolio details
+                    const portfolioDetails = document.getElementById('portfolio-details');
+                    if (portfolioDetails) {
+                        portfolioDetails.innerHTML = '<div class="text-center py-4"><small class="text-muted">No trade history</small></div>';
+                    }
+                    
+                    // Refresh other tabs if they're active
+                    if (currentActiveTab === 'positions') {
+                        await loadPositions();
+                    } else if (currentActiveTab === 'trading') {
+                        await loadTradeConfigs();
+                    }
+                } else {
+                    showToast(result.error || 'Failed to reset history', 'error');
+                }
+            } catch (error) {
+                console.error('Reset history error:', error);
+                showToast('Failed to reset history', 'error');
+            } finally {
+                // Restore button state
+                resetBtn.innerHTML = '🗑️ Reset History';
+                resetBtn.disabled = false;
+                resetBtn.classList.remove('btn-loading');
+            }
+        }
 
         // Initialize mobile enhancements after DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {

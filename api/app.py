@@ -1385,6 +1385,66 @@ def delete_trade():
         logging.error(f"Error deleting trade: {str(e)}")
         return jsonify({'error': 'Failed to delete trade'}), 500
 
+@app.route('/api/reset-history', methods=['POST'])
+def reset_trade_history():
+    """Reset all trade history and P&L for a user (keeps credentials)"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+            
+        chat_id = int(user_id)
+        
+        # Initialize user environment
+        initialize_user_environment(chat_id)
+        
+        # Clear all trade configurations and history
+        with app.app_context():
+            # Delete all trade configurations from database
+            TradeConfiguration.query.filter_by(user_id=chat_id).delete()
+            
+            # Reset user trading session (keeps credentials but resets balance)
+            session = UserTradingSession.query.filter_by(user_id=chat_id).first()
+            if session:
+                session.initial_balance = 1000.0  # Reset to default
+                session.realized_pnl = 0.0
+                session.last_updated = get_iran_time()
+            else:
+                # Create new session if doesn't exist
+                session = UserTradingSession(
+                    user_id=chat_id,
+                    initial_balance=1000.0,
+                    realized_pnl=0.0,
+                    last_updated=get_iran_time()
+                )
+                db.session.add(session)
+            
+            # Commit changes to database
+            db.session.commit()
+        
+        # Clear in-memory data
+        if chat_id in user_trade_configs:
+            user_trade_configs[chat_id].clear()
+        if chat_id in user_selected_trade:
+            del user_selected_trade[chat_id]
+        
+        # Clear trade history from bot_trades list
+        global bot_trades
+        bot_trades = [trade for trade in bot_trades if trade.get('user_id') != str(chat_id)]
+        
+        logging.info(f"Trade history reset successfully for user {chat_id}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Trade history and P&L reset successfully. Credentials preserved.'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error resetting trade history: {e}")
+        return jsonify({'error': 'Failed to reset trade history'}), 500
+
 def verify_telegram_webhook(data):
     """Verify that the webhook request is from Telegram"""
     try:
