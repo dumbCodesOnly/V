@@ -415,8 +415,9 @@ def load_user_trades_from_db(user_id, force_reload=False):
                     'version': len(user_trades)  # Simple version tracking
                 }
                 
-                # Only log in development or when cache miss occurs with significant data
-                if not os.environ.get("VERCEL") or (len(user_trades) > 3 and force_reload):
+                # Only log when debugging or significant cache operations
+                debug_mode = os.environ.get("DEBUG") or os.environ.get("FLASK_DEBUG")
+                if debug_mode or (force_reload and len(user_trades) > 0):
                     logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database (cache {'refresh' if force_reload else 'miss'})")
                 return user_trades
                 
@@ -1176,8 +1177,12 @@ def user_trades():
     
     user_trade_list = []
     
-    # Use cached loading to prevent constant DB hits
-    user_configs = load_user_trades_from_db(chat_id)
+    # Use cached loading to prevent constant DB hits - check memory first
+    initialize_user_environment(chat_id)  # Ensure user is in memory
+    if chat_id in user_trade_configs:
+        user_configs = user_trade_configs[chat_id]
+    else:
+        user_configs = load_user_trades_from_db(chat_id)
     
     if user_configs:
         for trade_id, config in user_configs.items():
