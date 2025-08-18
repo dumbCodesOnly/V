@@ -156,9 +156,9 @@ def initialize_user_environment(user_id):
     """Initialize trading environment for a user, loading from database"""
     user_id = int(user_id)
     
-    # Load trade configurations from database
-    if user_id not in user_trade_configs:
-        user_trade_configs[user_id] = load_user_trades_from_db(user_id)
+    # Always load from database to handle serverless cold starts
+    # In serverless environments, in-memory storage is unreliable
+    user_trade_configs[user_id] = load_user_trades_from_db(user_id)
     
     # Initialize user's selected trade if not exists
     if user_id not in user_selected_trade:
@@ -336,12 +336,18 @@ class TradeConfig:
 def load_user_trades_from_db(user_id):
     """Load all trade configurations for a user from database"""
     try:
-        db_trades = TradeConfiguration.query.filter_by(telegram_user_id=str(user_id)).all()
-        user_trades = {}
-        for db_trade in db_trades:
-            trade_config = db_trade.to_trade_config()
-            user_trades[db_trade.trade_id] = trade_config
-        return user_trades
+        with app.app_context():
+            # Ensure database is properly initialized
+            if not hasattr(db.engine, 'table_names'):
+                db.create_all()
+                
+            db_trades = TradeConfiguration.query.filter_by(telegram_user_id=str(user_id)).all()
+            user_trades = {}
+            for db_trade in db_trades:
+                trade_config = db_trade.to_trade_config()
+                user_trades[db_trade.trade_id] = trade_config
+            logging.info(f"Loaded {len(user_trades)} trades for user {user_id} from database")
+            return user_trades
     except Exception as e:
         logging.error(f"Error loading trades for user {user_id}: {e}")
         return {}
@@ -349,67 +355,82 @@ def load_user_trades_from_db(user_id):
 def save_trade_to_db(user_id, trade_config):
     """Save or update a trade configuration in the database"""
     try:
-        # Check if trade already exists in database
-        existing_trade = TradeConfiguration.query.filter_by(
-            telegram_user_id=str(user_id),
-            trade_id=trade_config.trade_id
-        ).first()
-        
-        if existing_trade:
-            # Update existing trade
-            db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
-            existing_trade.name = db_trade.name
-            existing_trade.symbol = db_trade.symbol
-            existing_trade.side = db_trade.side
-            existing_trade.amount = db_trade.amount
-            existing_trade.leverage = db_trade.leverage
-            existing_trade.entry_type = db_trade.entry_type
-            existing_trade.entry_price = db_trade.entry_price
-            existing_trade.take_profits = db_trade.take_profits
-            existing_trade.stop_loss_percent = db_trade.stop_loss_percent
-            existing_trade.breakeven_after = db_trade.breakeven_after
-            existing_trade.trailing_stop_enabled = db_trade.trailing_stop_enabled
-            existing_trade.trail_percentage = db_trade.trail_percentage
-            existing_trade.trail_activation_price = db_trade.trail_activation_price
-            existing_trade.status = db_trade.status
-            existing_trade.position_margin = db_trade.position_margin
-            existing_trade.unrealized_pnl = db_trade.unrealized_pnl
-            existing_trade.current_price = db_trade.current_price
-            existing_trade.position_size = db_trade.position_size
-            existing_trade.position_value = db_trade.position_value
-            existing_trade.final_pnl = db_trade.final_pnl
-            existing_trade.closed_at = db_trade.closed_at
-            existing_trade.updated_at = datetime.utcnow()
-        else:
-            # Create new trade
-            db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
-            db.session.add(db_trade)
-        
-        db.session.commit()
-        logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
-        return True
+        with app.app_context():
+            # Ensure database is properly initialized
+            if not hasattr(db.engine, 'table_names'):
+                db.create_all()
+            
+            # Check if trade already exists in database
+            existing_trade = TradeConfiguration.query.filter_by(
+                telegram_user_id=str(user_id),
+                trade_id=trade_config.trade_id
+            ).first()
+            
+            if existing_trade:
+                # Update existing trade
+                db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+                existing_trade.name = db_trade.name
+                existing_trade.symbol = db_trade.symbol
+                existing_trade.side = db_trade.side
+                existing_trade.amount = db_trade.amount
+                existing_trade.leverage = db_trade.leverage
+                existing_trade.entry_type = db_trade.entry_type
+                existing_trade.entry_price = db_trade.entry_price
+                existing_trade.take_profits = db_trade.take_profits
+                existing_trade.stop_loss_percent = db_trade.stop_loss_percent
+                existing_trade.breakeven_after = db_trade.breakeven_after
+                existing_trade.trailing_stop_enabled = db_trade.trailing_stop_enabled
+                existing_trade.trail_percentage = db_trade.trail_percentage
+                existing_trade.trail_activation_price = db_trade.trail_activation_price
+                existing_trade.status = db_trade.status
+                existing_trade.position_margin = db_trade.position_margin
+                existing_trade.unrealized_pnl = db_trade.unrealized_pnl
+                existing_trade.current_price = db_trade.current_price
+                existing_trade.position_size = db_trade.position_size
+                existing_trade.position_value = db_trade.position_value
+                existing_trade.final_pnl = db_trade.final_pnl
+                existing_trade.closed_at = db_trade.closed_at
+                existing_trade.updated_at = datetime.utcnow()
+            else:
+                # Create new trade
+                db_trade = TradeConfiguration.from_trade_config(user_id, trade_config)
+                db.session.add(db_trade)
+            
+            # Force commit with explicit flush
+            db.session.flush()
+            db.session.commit()
+            logging.info(f"Saved trade {trade_config.trade_id} to database for user {user_id}")
+            return True
     except Exception as e:
         logging.error(f"Error saving trade {trade_config.trade_id} to database: {e}")
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except:
+            pass
         return False
 
 def delete_trade_from_db(user_id, trade_id):
     """Delete a trade configuration from the database"""
     try:
-        trade = TradeConfiguration.query.filter_by(
-            telegram_user_id=str(user_id),
-            trade_id=trade_id
-        ).first()
-        
-        if trade:
-            db.session.delete(trade)
-            db.session.commit()
-            logging.info(f"Deleted trade {trade_id} from database for user {user_id}")
-            return True
-        return False
+        with app.app_context():
+            trade = TradeConfiguration.query.filter_by(
+                telegram_user_id=str(user_id),
+                trade_id=trade_id
+            ).first()
+            
+            if trade:
+                db.session.delete(trade)
+                db.session.flush()
+                db.session.commit()
+                logging.info(f"Deleted trade {trade_id} from database for user {user_id}")
+                return True
+            return False
     except Exception as e:
         logging.error(f"Error deleting trade {trade_id} from database: {e}")
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except:
+            pass
         return False
 
 @app.route('/')
@@ -750,13 +771,19 @@ def user_trades():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
-    # Initialize user environment if needed
+    # Always initialize from database for serverless reliability
     initialize_user_environment(chat_id)
     
     user_trade_list = []
     
-    if chat_id in user_trade_configs:
-        for trade_id, config in user_trade_configs[chat_id].items():
+    # Load directly from database for Vercel reliability
+    if os.environ.get("VERCEL"):
+        user_configs = load_user_trades_from_db(chat_id)
+    else:
+        user_configs = user_trade_configs.get(chat_id, {})
+    
+    if user_configs:
+        for trade_id, config in user_configs.items():
             # Calculate TP/SL prices and amounts
             tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
             
@@ -818,8 +845,15 @@ def trade_config():
     
     chat_id = int(user_id)
     
-    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-        config = user_trade_configs[chat_id][trade_id]
+    # Always load from database for Vercel
+    if os.environ.get("VERCEL"):
+        user_configs = load_user_trades_from_db(chat_id)
+    else:
+        initialize_user_environment(chat_id)
+        user_configs = user_trade_configs.get(chat_id, {})
+    
+    if user_configs and trade_id in user_configs:
+        config = user_configs[trade_id]
         return jsonify({
             'trade_id': trade_id,
             'name': config.name,

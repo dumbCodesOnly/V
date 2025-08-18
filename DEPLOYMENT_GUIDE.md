@@ -34,6 +34,8 @@ WEBHOOK_SECRET_TOKEN=optional-webhook-security-token
 VERCEL=1
 ```
 
+**CRITICAL**: The `DATABASE_URL` must be a valid PostgreSQL connection string. The application uses database persistence to ensure trades don't get deleted after execution. Without a proper database connection, all trades will be lost on serverless cold starts.
+
 ### Deployment Configuration
 The project includes:
 - `vercel.json` - Vercel deployment configuration
@@ -62,7 +64,15 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 ## Database Schema
 The application automatically creates required tables:
 - `user_credentials` - Encrypted API keys
-- `user_trading_session` - Trading session data
+- `user_trading_sessions` - Trading session data
+- `trade_configurations` - Persistent trade configurations and execution data
+
+**Database Persistence Features:**
+- All trade configurations are automatically saved to database
+- Trade execution status and P&L are persisted across sessions
+- Closed positions history is maintained permanently
+- Serverless-optimized with explicit transaction handling
+- Automatic database initialization on cold starts
 
 ## API Endpoints
 - `/` - Main Telegram Mini-App interface
