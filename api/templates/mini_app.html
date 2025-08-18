@@ -246,38 +246,30 @@
 
         .header h1 {
             margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-size: 1.4rem;
             font-weight: 700;
             letter-spacing: -0.025em;
-            color: #ffffff;
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 
-                         0 1px 3px rgba(255, 255, 255, 0.1);
+            color: #ffffff !important;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 
+                         0 1px 2px rgba(0, 0, 0, 0.6);
             position: relative;
-            /* Fallback for browsers that don't support background-clip */
-            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #e2e8f0 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            /* Ensure text is visible if background-clip fails */
-        }
-        
-        /* Fallback for better browser support */
-        @supports not (-webkit-background-clip: text) {
-            .header h1 {
-                color: #ffffff !important;
-                background: none !important;
-                -webkit-text-fill-color: #ffffff !important;
-            }
+            /* Remove gradient to fix fogginess */
+            background: none !important;
+            -webkit-background-clip: unset !important;
+            background-clip: unset !important;
+            -webkit-text-fill-color: #ffffff !important;
         }
 
         .header .subtitle {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-size: 0.75rem;
-            color: rgba(255, 255, 255, 0.9);
+            color: rgba(255, 255, 255, 0.95) !important;
             font-weight: 500;
             margin-top: 0.25rem;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
-            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
         }
 
         /* Hamburger Menu Styling */
@@ -384,6 +376,7 @@
             padding: 14px 18px;
             color: var(--tg-theme-text-color);
             text-decoration: none;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             font-weight: 500;
             font-size: 0.9rem;
             border-bottom: 1px solid rgba(107, 139, 179, 0.1);
@@ -1710,7 +1703,7 @@
                     </div>
                 </div>
             </div>
-            <div id="user-info" style="margin-top: 0.75rem; color: #ffffff; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0,0,0,0.5); font-weight: 500;">Loading...</div>
+            <div id="user-info" style="margin-top: 0.75rem; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #ffffff !important; font-size: 0.85rem; text-shadow: 0 1px 4px rgba(0,0,0,0.8); font-weight: 500;">Loading...</div>
         </div>
 
         <!-- Navigation Tabs -->
