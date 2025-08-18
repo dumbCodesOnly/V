@@ -1767,6 +1767,13 @@
 
             <!-- Portfolio Tab -->
             <div class="tab-pane fade" id="portfolio" role="tabpanel">
+                <!-- Reset History Button -->
+                <div class="d-flex justify-content-center mb-3">
+                    <button class="btn btn-outline-warning" onclick="confirmResetHistory()" id="reset-history-btn">
+                        🗑️ Reset History
+                    </button>
+                </div>
+                
                 <!-- Account Summary - Compact 2x3 Grid -->
                 <div class="portfolio-summary">
                     <div class="portfolio-grid">
@@ -1795,13 +1802,6 @@
                             <div class="stat-label">Total P&L</div>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Reset History Button -->
-                <div class="d-flex justify-content-end mb-3">
-                    <button class="btn btn-outline-danger btn-sm" onclick="confirmResetHistory()" id="reset-history-btn">
-                        🗑️ Reset History
-                    </button>
                 </div>
                 
                 <div id="portfolio-details">
