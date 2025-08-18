@@ -12,10 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.middleware.proxy_fix import ProxyFix
 try:
     # Try relative import first (for module import - Vercel/main.py)
-    from .models import db, UserCredentials, UserTradingSession, TradeConfiguration
+    from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
 except ImportError:
     # Fall back to absolute import (for direct execution - Telegram workflow)
-    from models import db, UserCredentials, UserTradingSession, TradeConfiguration
+    from models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
@@ -159,7 +159,7 @@ bot_status = {
     'total_messages': 5,
     'total_trades': 2,
     'error_count': 0,
-    'last_heartbeat': datetime.utcnow().isoformat()
+    'last_heartbeat': get_iran_time().isoformat()
 }
 
 # User state tracking for API setup
@@ -769,7 +769,7 @@ def live_position_update():
         'positions': live_data,
         'total_unrealized_pnl': total_unrealized_pnl,
         'active_positions_count': active_positions_count,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': get_iran_time().isoformat(),
         'update_type': 'live_prices'
     })
 
@@ -1457,7 +1457,7 @@ def webhook():
             text = message.get('text', '')
             
             # Update bot status
-            bot_status['last_heartbeat'] = datetime.utcnow().isoformat()
+            bot_status['last_heartbeat'] = get_iran_time().isoformat()
             bot_status['total_messages'] += 1
             
             # Log the message
@@ -1466,7 +1466,7 @@ def webhook():
                 'user_id': str(user.get('id', 'unknown')),
                 'username': user.get('username', 'Unknown'),
                 'message': text,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_iran_time().isoformat(),
                 'command_type': text.split()[0] if text.startswith('/') else 'message'
             })
             
@@ -1486,7 +1486,7 @@ def webhook():
             user = callback_query.get('from', {})
             
             # Update bot status
-            bot_status['last_heartbeat'] = datetime.utcnow().isoformat()
+            bot_status['last_heartbeat'] = get_iran_time().isoformat()
             
             # Log the callback
             bot_messages.append({
@@ -1494,7 +1494,7 @@ def webhook():
                 'user_id': str(user.get('id', 'unknown')),
                 'username': user.get('username', 'Unknown'),
                 'message': f"[CALLBACK] {callback_data}",
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': get_iran_time().isoformat(),
                 'command_type': 'callback'
             })
             
@@ -2250,7 +2250,7 @@ def update_all_positions_with_live_data():
                             'amount': config.amount,
                             'leverage': config.leverage,
                             'entry_price': config.entry_price,
-                            'timestamp': datetime.utcnow().isoformat(),
+                            'timestamp': get_iran_time().isoformat(),
                             'status': 'executed'
                         })
                         
@@ -2844,7 +2844,9 @@ def handle_callback_query(callback_data, chat_id, user):
                         # Add timestamp if available
                         if closed_trade and 'timestamp' in closed_trade:
                             timestamp = datetime.fromisoformat(closed_trade['timestamp'])
-                            response += f"   Closed: {timestamp.strftime('%Y-%m-%d %H:%M')}\n"
+                            iran_time = utc_to_iran_time(timestamp)
+                            if iran_time:
+                                response += f"   Closed: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n"
                         response += "\n"
                 
                 if len(closed_positions) > 5:
@@ -2896,7 +2898,9 @@ def handle_callback_query(callback_data, chat_id, user):
                     if 'leverage' in trade:
                         response += f"   Leverage: {trade['leverage']}x\n"
                     timestamp = datetime.fromisoformat(trade['timestamp'])
-                    response += f"   Time: {timestamp.strftime('%Y-%m-%d %H:%M')}\n\n"
+                    iran_time = utc_to_iran_time(timestamp)
+                    if iran_time:
+                        response += f"   Time: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n\n"
             
             # Show current position status
             if user_trades:

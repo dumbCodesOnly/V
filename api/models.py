@@ -1,10 +1,34 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from cryptography.fernet import Fernet
 import base64
 import hashlib
+
+# GMT+3:30 timezone (Iran Standard Time)
+IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+
+def get_iran_time():
+    """Get current time in GMT+3:30 timezone"""
+    return datetime.now(IRAN_TZ)
+
+def utc_to_iran_time(utc_dt):
+    """Convert UTC datetime to GMT+3:30 timezone"""
+    if utc_dt is None:
+        return None
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    return utc_dt.astimezone(IRAN_TZ)
+
+def format_iran_time(dt, format_str='%Y-%m-%d %H:%M:%S'):
+    """Format datetime in GMT+3:30 timezone"""
+    if dt is None:
+        return ""
+    iran_time = utc_to_iran_time(dt) if dt.tzinfo is None or dt.tzinfo == timezone.utc else dt
+    if iran_time is None:
+        return ""
+    return iran_time.strftime(format_str)
 
 class Base(DeclarativeBase):
     pass
@@ -181,7 +205,7 @@ class TradeConfiguration(db.Model):
         config.position_size = self.position_size
         config.position_value = self.position_value
         config.final_pnl = self.final_pnl
-        config.closed_at = self.closed_at.isoformat() if self.closed_at else ""
+        config.closed_at = format_iran_time(self.closed_at) if self.closed_at else ""
         
         # Parse take profits JSON
         if self.take_profits:
