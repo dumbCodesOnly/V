@@ -1120,15 +1120,15 @@
             }
 
             .position-summary-compact .stat-item {
-                padding: 0.25rem;
+                padding: 0.2rem;
             }
 
             .position-summary-compact .stat-value {
-                font-size: 1.2rem;
+                font-size: 1.1rem;
             }
 
             .position-summary-compact .stat-label {
-                font-size: 0.65rem;
+                font-size: 0.6rem;
             }
 
             .portfolio-grid {
@@ -1805,6 +1805,10 @@
                         <div class="stat-label">Unrealized</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-value" id="total-realized-pnl">$0.00</div>
+                        <div class="stat-label">Realized</div>
+                    </div>
+                    <div class="stat-item">
                         <div class="stat-value" id="total-pnl">$0.00</div>
                         <div class="stat-label">Total P&L</div>
                     </div>
@@ -2314,10 +2318,24 @@
                 });
                 
                 // Update total unrealized P&L (Active Positions section)
-                const totalPnlElement = document.getElementById('total-unrealized-pnl');
-                if (totalPnlElement && data.total_unrealized_pnl !== undefined) {
-                    totalPnlElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
-                    totalPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                const totalUnrealizedElement = document.getElementById('total-unrealized-pnl');
+                if (totalUnrealizedElement && data.total_unrealized_pnl !== undefined) {
+                    totalUnrealizedElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
+                    totalUnrealizedElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update total realized P&L
+                const totalRealizedElement = document.getElementById('total-realized-pnl');
+                if (totalRealizedElement && data.total_realized_pnl !== undefined) {
+                    totalRealizedElement.textContent = `$${data.total_realized_pnl.toFixed(2)}`;
+                    totalRealizedElement.style.color = data.total_realized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update total P&L
+                const totalPnlElement = document.getElementById('total-pnl');
+                if (totalPnlElement && data.total_pnl !== undefined) {
+                    totalPnlElement.textContent = `$${data.total_pnl.toFixed(2)}`;
+                    totalPnlElement.style.color = data.total_pnl >= 0 ? '#28a745' : '#dc3545';
                 }
                 
                 // Update positions tab total P&L (main totals) - should include realized + unrealized
@@ -2377,6 +2395,13 @@
                 if (totalUnrealizedPnlElement && data.total_unrealized_pnl !== undefined) {
                     totalUnrealizedPnlElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
                     totalUnrealizedPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update total realized P&L
+                const totalRealizedPnlElement = document.getElementById('total-realized-pnl');
+                if (totalRealizedPnlElement && data.total_realized_pnl !== undefined) {
+                    totalRealizedPnlElement.textContent = `$${data.total_realized_pnl.toFixed(2)}`;
+                    totalRealizedPnlElement.style.color = data.total_realized_pnl >= 0 ? '#28a745' : '#dc3545';
                 }
                 
                 // Update total P&L (realized + unrealized)
