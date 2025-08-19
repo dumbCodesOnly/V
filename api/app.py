@@ -3050,12 +3050,17 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - required_price_movement)
             
-            # Calculate position size to close at this TP (based on allocation)
-            position_size_to_close = total_position_size * (allocation / 100)
+            # Calculate profit amount: TP percentage of margin * allocation
+            # User wants 10% profit on $100 margin = $10 total profit
+            # With 30% allocation = $10 * 30% = $3 profit at this TP level
+            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
             
-            # Calculate profit amount: price_difference * position_size_closed
+            # Calculate position size to close to achieve this profit amount
             price_difference = abs(tp_price - config.entry_price)
-            profit_amount = price_difference * position_size_to_close
+            if price_difference > 0:
+                position_size_to_close = profit_amount / price_difference
+            else:
+                position_size_to_close = 0
             
             result['take_profits'].append({
                 'level': i + 1,
