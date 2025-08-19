@@ -200,19 +200,31 @@ class ExchangeSyncService:
             return 0.0
     
     def _check_tp_sl_orders(self, trade: TradeConfiguration, orders: List[Dict]):
-        """Check if any TP/SL orders were partially filled"""
+        """Check if any TP/SL orders were partially filled and update TP levels"""
         try:
             tp_filled = False
             sl_filled = False
+            partial_tp_fills = []
             
             for order in orders:
                 if order.get('status') == 'filled' and order.get('reduceOnly'):
                     order_type = order.get('type', '').lower()
+                    fill_price = float(order.get('avgPrice', 0))
+                    fill_quantity = float(order.get('executedQty', 0))
                     
                     if 'limit' in order_type:
                         tp_filled = True
+                        partial_tp_fills.append({
+                            'price': fill_price,
+                            'quantity': fill_quantity,
+                            'order': order
+                        })
                     elif 'stop' in order_type:
                         sl_filled = True
+            
+            # Process partial TP fills
+            if tp_filled and partial_tp_fills:
+                self._process_partial_tp_fills(trade, partial_tp_fills)
             
             # Log significant events
             if tp_filled:
@@ -222,6 +234,56 @@ class ExchangeSyncService:
                 
         except Exception as e:
             logging.error(f"Error checking TP/SL orders: {e}")
+    
+    def _process_partial_tp_fills(self, trade: TradeConfiguration, tp_fills: List[Dict]):
+        """Process partial take profit fills and update remaining TP levels"""
+        try:
+            if not trade.take_profits:
+                return
+            
+            import json
+            
+            # Parse current take profits
+            current_tps = json.loads(trade.take_profits) if trade.take_profits else []
+            if not current_tps:
+                return
+            
+            # Calculate realized P&L from this TP fill
+            total_realized_pnl = 0.0
+            for tp_fill in tp_fills:
+                fill_price = tp_fill['price']
+                fill_quantity = tp_fill['quantity']
+                
+                # Calculate P&L for this partial close
+                if trade.side == 'long':
+                    pnl = (fill_price - trade.entry_price) * fill_quantity
+                else:
+                    pnl = (trade.entry_price - fill_price) * fill_quantity
+                
+                total_realized_pnl += pnl
+            
+            # Update realized P&L
+            current_realized_pnl = getattr(trade, 'realized_pnl', 0.0) or 0.0
+            trade.realized_pnl = current_realized_pnl + total_realized_pnl
+            
+            # Remove the first TP level (the one that was just triggered)
+            if current_tps:
+                triggered_tp = current_tps.pop(0)  # Remove the first TP
+                logging.info(f"Removed triggered TP level: {triggered_tp}")
+                
+                # Update the trade configuration with remaining TPs
+                trade.take_profits = json.dumps(current_tps)
+                
+                # Trigger breakeven stop loss if this was the first TP
+                if hasattr(trade, 'breakeven_after') and trade.breakeven_after > 0:
+                    if not getattr(trade, 'breakeven_sl_triggered', False):
+                        trade.breakeven_sl_triggered = True
+                        logging.info(f"Breakeven stop loss triggered for trade {trade.trade_id}")
+            
+            logging.info(f"Updated TP levels for trade {trade.trade_id}. Remaining TPs: {len(current_tps)}")
+            
+        except Exception as e:
+            logging.error(f"Error processing partial TP fills: {e}")
     
     def force_sync_user(self, user_id: str):
         """Force immediate synchronization for a specific user"""
