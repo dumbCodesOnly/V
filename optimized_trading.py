@@ -3,7 +3,88 @@ OPTIMIZED TRADING SYSTEM - Exchange-Native Orders with Break-Even Only Monitorin
 This replaces the heavy real-time monitoring system with lightweight break-even-only monitoring.
 """
 
-def update_positions_lightweight():
+import logging
+import sys
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import Dict, List, Optional
+
+# Add api directory to path to import app modules
+sys.path.append(os.path.join(os.path.dirname(__file__), 'api'))
+
+# Initialize thread pool executor for price fetching
+price_executor = ThreadPoolExecutor(max_workers=10)
+
+# Optional: Import functions from main app if available
+try:
+    import api.app as main_app
+    user_trade_configs = main_app.user_trade_configs
+    MAIN_APP_AVAILABLE = True
+    
+    # Use main app functions directly
+    get_live_market_price = main_app.get_live_market_price
+    calculate_unrealized_pnl = main_app.calculate_unrealized_pnl
+    save_trade_to_db = main_app.save_trade_to_db
+    get_user_credentials = main_app.get_user_credentials
+    calculate_tp_sl_prices_and_amounts = main_app.calculate_tp_sl_prices_and_amounts
+        
+except ImportError:
+    MAIN_APP_AVAILABLE = False
+    # Create placeholder data and functions for standalone use
+    user_trade_configs = {}
+    
+    # Placeholder functions that match the main app signatures
+    def get_live_market_price(symbol, use_cache=True):
+        """Placeholder for get_live_market_price"""
+        return 0.0
+    
+    def calculate_unrealized_pnl(entry_price, current_price, margin, leverage, side):
+        """Placeholder for calculate_unrealized_pnl"""
+        return 0.0
+    
+    def save_trade_to_db(user_id, trade_config):
+        """Placeholder for save_trade_to_db"""
+        return True
+    
+    def get_user_credentials(user_id):
+        """Placeholder for get_user_credentials"""
+        return {"api_key": "", "api_secret": "", "testnet": True}
+    
+    def calculate_tp_sl_prices_and_amounts(config):
+        """Placeholder for calculate_tp_sl_prices_and_amounts"""
+        return {"take_profits": [], "stop_loss": {}}
+
+# Convenience functions for integrated use
+def update_positions_lightweight_integrated():
+    """Integrated version using main app functions"""
+    if MAIN_APP_AVAILABLE:
+        return update_positions_lightweight(
+            user_trade_configs, get_live_market_price, 
+            calculate_unrealized_pnl, save_trade_to_db
+        )
+    else:
+        logging.warning("Main app not available - using standalone mode")
+
+def place_exchange_native_orders_integrated(config, user_id):
+    """Integrated version using main app functions"""
+    if MAIN_APP_AVAILABLE:
+        return place_exchange_native_orders(
+            config, user_id, get_user_credentials, 
+            calculate_tp_sl_prices_and_amounts
+        )
+    else:
+        logging.warning("Main app not available - using standalone mode")
+        return False
+
+def update_positions_ultra_lightweight_integrated():
+    """Integrated version using main app functions"""
+    if MAIN_APP_AVAILABLE:
+        return update_positions_ultra_lightweight(user_trade_configs)
+    else:
+        logging.warning("Main app not available - using standalone mode")
+
+def update_positions_lightweight(user_trade_configs, get_live_market_price, calculate_unrealized_pnl, save_trade_to_db):
     """OPTIMIZED: Lightweight position updates - only for break-even monitoring"""
     # Only collect positions that need break-even monitoring
     breakeven_positions = []
@@ -67,7 +148,7 @@ def update_positions_lightweight():
                 logging.warning(f"Break-even check failed for {config.symbol}: {e}")
 
 
-def place_exchange_native_orders(config, user_id):
+def place_exchange_native_orders(config, user_id, get_user_credentials, calculate_tp_sl_prices_and_amounts):
     """Place all TP/SL/Trailing Stop orders directly on exchange after position opens"""
     try:
         credentials = get_user_credentials(user_id)
@@ -118,15 +199,21 @@ def place_exchange_native_orders(config, user_id):
             sl_calc = calculate_tp_sl_prices_and_amounts(config)
             sl_price = str(sl_calc.get('stop_loss', {}).get('price', 0))
         
-        # Place all orders on exchange (including trailing stop if enabled)
-        orders_placed = client.place_multiple_tp_sl_orders(
-            symbol=config.symbol,
-            side=config.side,
-            total_quantity=str(position_size),
-            take_profits=tp_orders,
-            stop_loss_price=sl_price,
-            trailing_stop=trailing_stop
-        )
+        # Place all orders on exchange
+        if trailing_stop:
+            # For trailing stops, use a different approach or API endpoint
+            logging.info(f"Trailing stop configuration: {trailing_stop}")
+            # TODO: Implement exchange-native trailing stop placement
+            orders_placed = []
+        else:
+            # Place regular TP/SL orders
+            orders_placed = client.place_multiple_tp_sl_orders(
+                symbol=config.symbol,
+                side=config.side,
+                total_quantity=str(position_size),
+                take_profits=tp_orders,
+                stop_loss_price=sl_price
+            )
         
         logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")
         
@@ -141,7 +228,7 @@ def place_exchange_native_orders(config, user_id):
         return False
 
 
-def update_positions_ultra_lightweight():
+def update_positions_ultra_lightweight(user_trade_configs):
     """ULTRA-OPTIMIZED: Only monitor positions that absolutely require bot intervention"""
     # Only monitor positions that need break-even AND don't have trailing stops
     positions_needing_monitoring = []
