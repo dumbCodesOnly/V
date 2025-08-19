@@ -216,6 +216,58 @@ class ToobitClient:
         except Exception as e:
             logging.error(f"Failed to place TP/SL orders: {e}")
             return orders_placed
+
+    def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str,
+                                   take_profits: List[Dict] = None, stop_loss_price: str = None) -> List[Dict]:
+        """Place multiple partial take profit orders and one stop loss order"""
+        orders_placed = []
+        
+        try:
+            # Place multiple take profit orders (opposite side)
+            if take_profits:
+                tp_side = "sell" if side.lower() == "buy" else "buy"
+                
+                for i, tp in enumerate(take_profits):
+                    tp_price = str(tp.get('price', 0))
+                    tp_quantity = str(tp.get('quantity', 0))
+                    
+                    if float(tp_price) > 0 and float(tp_quantity) > 0:
+                        tp_order = self.place_order(
+                            symbol=symbol,
+                            side=tp_side,
+                            order_type="limit",
+                            quantity=tp_quantity,
+                            price=tp_price,
+                            timeInForce="GTC",
+                            reduceOnly=True
+                        )
+                        if tp_order:
+                            orders_placed.append({
+                                "type": f"take_profit_{i+1}", 
+                                "order": tp_order,
+                                "percentage": tp.get('percentage', 0),
+                                "allocation": tp.get('allocation', 100)
+                            })
+            
+            # Place stop loss order (opposite side, full remaining quantity)
+            if stop_loss_price:
+                sl_side = "sell" if side.lower() == "buy" else "buy"
+                sl_order = self.place_order(
+                    symbol=symbol,
+                    side=sl_side,
+                    order_type="stop_market",
+                    quantity=total_quantity,
+                    stop_price=stop_loss_price,
+                    timeInForce="GTC",
+                    reduceOnly=True
+                )
+                if sl_order:
+                    orders_placed.append({"type": "stop_loss", "order": sl_order})
+                    
+            return orders_placed
+        except Exception as e:
+            logging.error(f"Failed to place multiple TP/SL orders: {e}")
+            return orders_placed
     
     def get_trade_history(self, symbol: str = None, limit: int = 100) -> List[Dict]:
         """Get trade history"""
