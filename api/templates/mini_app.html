@@ -2462,7 +2462,10 @@
                                 <small class="text-muted">Stop Loss:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${pos.tp_sl_calculations && pos.tp_sl_calculations.stop_loss && pos.tp_sl_calculations.stop_loss.price ? 
-                                        `<div><strong>SL:</strong> $${pos.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${pos.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        (pos.tp_sl_calculations.stop_loss.is_breakeven ? 
+                                            `<div><strong>SL:</strong> $${pos.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #52c41a;">(Break-even)</span></div>` :
+                                            `<div><strong>SL:</strong> $${pos.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${pos.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>`
+                                        ) : 
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
@@ -2632,7 +2635,10 @@
                                 <small class="text-muted">Stop Loss:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.stop_loss && trade.tp_sl_calculations.stop_loss.price ? 
-                                        `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        (trade.tp_sl_calculations.stop_loss.is_breakeven ? 
+                                            `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #52c41a;">(Break-even)</span></div>` :
+                                            `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>`
+                                        ) : 
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
@@ -2690,7 +2696,10 @@
                                 <small class="text-muted">Stop Loss:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.stop_loss && trade.tp_sl_calculations.stop_loss.price ? 
-                                        `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
+                                        (trade.tp_sl_calculations.stop_loss.is_breakeven ? 
+                                            `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #52c41a;">(Break-even)</span></div>` :
+                                            `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>`
+                                        ) : 
                                         trade.stop_loss_percent > 0 ? 
                                             `<div><strong>SL:</strong> ${trade.stop_loss_percent}%</div>` :
                                         (trade.stop_loss_percent == 0 && trade.status === 'active' ?

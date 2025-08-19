@@ -288,17 +288,16 @@ class TradeConfig:
             summary += f"Take Profits: Not set\n"
             
         # Show stop loss with price if entry price is available
-        if self.stop_loss_percent > 0:
-            tp_sl_data = calculate_tp_sl_prices_and_amounts(self) if self.entry_price > 0 else {}
-            
-            if tp_sl_data.get('stop_loss'):
-                sl_calc = tp_sl_data['stop_loss']
-                summary += f"Stop Loss: ${sl_calc['price']:.4f} (-${sl_calc['loss_amount']:.2f}) [{self.stop_loss_percent}%]\n"
+        tp_sl_data = calculate_tp_sl_prices_and_amounts(self) if self.entry_price > 0 else {}
+        
+        if tp_sl_data.get('stop_loss'):
+            sl_calc = tp_sl_data['stop_loss']
+            if sl_calc.get('is_breakeven'):
+                summary += f"Stop Loss: ${sl_calc['price']:.4f} (Break-even)\n"
             else:
-                summary += f"Stop Loss: {self.stop_loss_percent}%\n"
-        elif self.stop_loss_percent == 0.0 and hasattr(self, 'status') and self.status == 'active':
-            # 0% stop loss on active position means break-even
-            summary += "Stop Loss: Break-even (Entry Price)\n"
+                summary += f"Stop Loss: ${sl_calc['price']:.4f} (-${sl_calc['loss_amount']:.2f}) [{self.stop_loss_percent}%]\n"
+        elif self.stop_loss_percent > 0:
+            summary += f"Stop Loss: {self.stop_loss_percent}%\n"
         else:
             summary += "Stop Loss: Not set\n"
         
@@ -2875,7 +2874,9 @@ def update_all_positions_with_live_data():
                                     if i == 0:  # First TP triggered
                                         # Move stop loss to entry price (break-even)
                                         original_sl_percent = config.stop_loss_percent
-                                        config.stop_loss_percent = 0.0  # 0% = break-even (entry price)
+                                        # Set a special flag to indicate break-even stop loss
+                                        config.breakeven_sl_triggered = True
+                                        config.breakeven_sl_price = config.entry_price
                                         logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
                                         save_trade_to_db(user_id, config)
                                     
@@ -2960,7 +2961,17 @@ def calculate_tp_sl_prices_and_amounts(config):
             })
     
     # Calculate Stop Loss
-    if config.stop_loss_percent > 0:
+    if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
+        # Break-even stop loss - set to entry price
+        sl_price = config.entry_price
+        result['stop_loss'] = {
+            'percentage': 0.0,  # 0% = break-even
+            'price': sl_price,
+            'loss_amount': 0.0,  # No loss at entry price
+            'is_breakeven': True
+        }
+    elif config.stop_loss_percent > 0:
+        # Regular stop loss calculation
         # SL percentage is the desired loss on margin (what user risks), not price movement
         # For leveraged trading: required price movement = sl_percentage / leverage
         required_price_movement = config.stop_loss_percent / config.leverage / 100
@@ -2977,7 +2988,8 @@ def calculate_tp_sl_prices_and_amounts(config):
         result['stop_loss'] = {
             'percentage': config.stop_loss_percent,
             'price': sl_price,
-            'loss_amount': loss_amount
+            'loss_amount': loss_amount,
+            'is_breakeven': False
         }
     
     return result
