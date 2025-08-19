@@ -2797,6 +2797,76 @@ def update_all_positions_with_live_data():
                             
                             logging.info(f"Position auto-closed: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
                     
+                    # Check take profit targets (ALSO MISSING LOGIC)
+                    elif config.take_profits and config.unrealized_pnl > 0:
+                        # Calculate current profit percentage based on margin
+                        profit_percentage = (config.unrealized_pnl / config.amount) * 100
+                        
+                        # Check each TP level
+                        for i, tp in enumerate(config.take_profits):
+                            tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
+                            allocation = tp.get('allocation', 100) if isinstance(tp, dict) else 100
+                            
+                            if tp_percentage > 0 and profit_percentage >= tp_percentage:
+                                # Take profit target hit!
+                                logging.warning(f"TAKE-PROFIT {i+1} TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Profit: {profit_percentage:.2f}% >= {tp_percentage}%")
+                                
+                                if allocation >= 100:
+                                    # Full position close
+                                    config.status = "stopped"
+                                    config.final_pnl = config.unrealized_pnl
+                                    config.closed_at = get_iran_time().isoformat()
+                                    config.unrealized_pnl = 0.0
+                                    
+                                    # Save to database
+                                    save_trade_to_db(user_id, config)
+                                    
+                                    # Log trade closure
+                                    bot_trades.append({
+                                        'id': len(bot_trades) + 1,
+                                        'user_id': str(user_id),
+                                        'trade_id': trade_id,
+                                        'symbol': config.symbol,
+                                        'side': config.side,
+                                        'amount': config.amount,
+                                        'final_pnl': config.final_pnl,
+                                        'timestamp': get_iran_time().isoformat(),
+                                        'status': f'take_profit_{i+1}_triggered'
+                                    })
+                                    
+                                    logging.info(f"Position auto-closed at TP{i+1}: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
+                                    break  # Position closed, no need to check other TPs
+                                else:
+                                    # Partial close - simulate reducing position by allocation percentage
+                                    partial_pnl = config.unrealized_pnl * (allocation / 100)
+                                    remaining_amount = config.amount * ((100 - allocation) / 100)
+                                    
+                                    # Log partial closure
+                                    bot_trades.append({
+                                        'id': len(bot_trades) + 1,
+                                        'user_id': str(user_id),
+                                        'trade_id': trade_id,
+                                        'symbol': config.symbol,
+                                        'side': config.side,
+                                        'amount': config.amount * (allocation / 100),
+                                        'final_pnl': partial_pnl,
+                                        'timestamp': get_iran_time().isoformat(),
+                                        'status': f'partial_take_profit_{i+1}'
+                                    })
+                                    
+                                    # Update position with remaining amount
+                                    config.amount = remaining_amount
+                                    config.unrealized_pnl -= partial_pnl
+                                    
+                                    # Remove triggered TP from list
+                                    config.take_profits.pop(i)
+                                    
+                                    # Save partial closure to database
+                                    save_trade_to_db(user_id, config)
+                                    
+                                    logging.info(f"Partial TP{i+1} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
+                                    break  # Only trigger one TP level at a time
+                    
             except Exception as e:
                 logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
                 # Keep existing current_price as fallback
