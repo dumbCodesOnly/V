@@ -232,3 +232,8 @@ gunicorn
 psycopg2-binary
 flask-sqlalchemy
 gunicorn
+email_validator
+flask
+flask-sqlalchemy
+gunicorn
+psycopg2-binary

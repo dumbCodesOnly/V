@@ -39,8 +39,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database - optimized for Neon PostgreSQL on Vercel
-database_url = os.environ.get("DATABASE_URL", "sqlite:///trading_bot.db")
+# Configure database - PostgreSQL only (Neon for Vercel, Replit PostgreSQL for Replit)
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is required")
+
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
