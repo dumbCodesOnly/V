@@ -1,47 +1,29 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/app.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+      "source": "/webhook",
+      "destination": "/api/app.py"
+    },
+    {
+      "source": "/webhook/toobit",
+      "destination": "/api/app.py"
+    },
+    {
+      "source": "/api/exchange/(.*)",
+      "destination": "/api/app.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/app.py"
     }
   ],
-  "routes": [
-    {
-      "src": "/webhook",
-      "dest": "api/app.py",
-      "headers": {
-        "Cache-Control": "no-cache"
-      }
-    },
-    {
-      "src": "/webhook/toobit",
-      "dest": "api/app.py",
-      "headers": {
-        "Cache-Control": "no-cache"
-      }
-    },
-    {
-      "src": "/api/exchange/(.*)",
-      "dest": "api/app.py",
-      "headers": {
-        "Cache-Control": "no-cache"
-      }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "api/app.py"
-    }
-  ],
-  "env": {
-    "VERCEL": "1"
-  },
   "functions": {
     "api/app.py": {
       "maxDuration": 60
     }
+  },
+  "env": {
+    "VERCEL": "1"
   }
 }
