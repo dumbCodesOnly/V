@@ -19,7 +19,11 @@ try:
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .toobit_client import ToobitClient
 except ImportError:
-    # Fall back to absolute import (for direct execution - Telegram workflow)
+    # Fall back to absolute import (for direct execution - Replit)
+    import sys
+    import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.append(current_dir)
     from models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from exchange_sync import initialize_sync_service, get_sync_service
     from vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
@@ -70,6 +74,33 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Initialize database
 db.init_app(app)
 
+# Database migration helper
+def run_database_migrations():
+    """Run database migrations to ensure schema compatibility"""
+    try:
+        with app.app_context():
+            # Ensure breakeven_sl_triggered column exists
+            from sqlalchemy import text
+            try:
+                result = db.session.execute(text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'trade_configurations' 
+                    AND column_name = 'breakeven_sl_triggered'
+                """))
+                if not result.fetchone():
+                    logging.info("Adding missing breakeven_sl_triggered column")
+                    db.session.execute(text("""
+                        ALTER TABLE trade_configurations 
+                        ADD COLUMN breakeven_sl_triggered BOOLEAN DEFAULT FALSE
+                    """))
+                    db.session.commit()
+                    logging.info("Database migration completed successfully")
+            except Exception as migration_error:
+                logging.warning(f"Migration check failed (table may not exist yet): {migration_error}")
+                db.session.rollback()
+    except Exception as e:
+        logging.error(f"Database migration error: {e}")
+
 # Create tables only if not in serverless environment or if explicitly needed
 def init_database():
     """Initialize database tables safely"""
@@ -77,6 +108,8 @@ def init_database():
         with app.app_context():
             db.create_all()
             logging.info("Database tables created successfully")
+            # Run migrations after table creation
+            run_database_migrations()
     except Exception as e:
         logging.error(f"Database initialization error: {e}")
 
