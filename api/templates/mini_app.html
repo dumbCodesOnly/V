@@ -2237,18 +2237,18 @@
                     updatePositionPriceDisplay(tradeId, positionData);
                 });
                 
-                // Update total unrealized P&L
+                // Update total unrealized P&L (Active Positions section)
                 const totalPnlElement = document.getElementById('total-unrealized-pnl');
                 if (totalPnlElement && data.total_unrealized_pnl !== undefined) {
                     totalPnlElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
                     totalPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
                 }
                 
-                // Update positions tab total P&L (main totals)
+                // Update positions tab total P&L (main totals) - should include realized + unrealized
                 const positionsTabTotalPnl = document.getElementById('total-pnl');
-                if (positionsTabTotalPnl && data.total_unrealized_pnl !== undefined) {
-                    positionsTabTotalPnl.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
-                    positionsTabTotalPnl.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                if (positionsTabTotalPnl && data.total_pnl !== undefined) {
+                    positionsTabTotalPnl.textContent = `$${data.total_pnl.toFixed(2)}`;
+                    positionsTabTotalPnl.style.color = data.total_pnl >= 0 ? '#28a745' : '#dc3545';
                 }
                 
                 // Update total active positions count

@@ -1140,9 +1140,24 @@ def live_position_update():
                 elif config.status == "pending":
                     active_positions_count += 1
     
+    # Calculate total realized P&L from closed positions for comprehensive total
+    total_realized_pnl = 0.0
+    if chat_id in user_trade_configs:
+        for config in user_trade_configs[chat_id].values():
+            if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
+                total_realized_pnl += config.final_pnl
+            # Also include partial realized P&L from active positions (from partial TPs)
+            elif config.status == "active" and hasattr(config, 'realized_pnl') and config.realized_pnl is not None:
+                total_realized_pnl += config.realized_pnl
+    
+    # Calculate total P&L (realized + unrealized)
+    total_pnl = total_realized_pnl + total_unrealized_pnl
+
     return jsonify({
         'positions': live_data,
         'total_unrealized_pnl': total_unrealized_pnl,
+        'total_realized_pnl': total_realized_pnl,
+        'total_pnl': total_pnl,
         'active_positions_count': active_positions_count,
         'timestamp': get_iran_time().isoformat(),
         'update_type': 'live_prices'
