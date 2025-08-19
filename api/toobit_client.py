@@ -42,7 +42,7 @@ class ToobitClient:
         ).hexdigest()
         return signature
     
-    def _make_request(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict:
+    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None) -> Dict:
         """Make authenticated request to Toobit API"""
         timestamp = str(int(time.time() * 1000))
         request_path = self.futures_base + endpoint
@@ -118,7 +118,7 @@ class ToobitClient:
             logging.error(f"Failed to get position for {symbol}: {e}")
             return None
     
-    def get_orders(self, symbol: str = None, status: str = None) -> List[Dict]:
+    def get_orders(self, symbol: Optional[str] = None, status: Optional[str] = None) -> List[Dict]:
         """Get orders with optional filters"""
         try:
             params = {}
@@ -143,7 +143,7 @@ class ToobitClient:
             return None
     
     def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
-                   price: str = None, stop_price: str = None, **kwargs) -> Optional[Dict]:
+                   price: Optional[str] = None, stop_price: Optional[str] = None, **kwargs) -> Optional[Dict]:
         """Place a new order"""
         try:
             data = {
@@ -177,7 +177,7 @@ class ToobitClient:
             return False
     
     def place_tp_sl_orders(self, symbol: str, side: str, quantity: str, 
-                          take_profit_price: str = None, stop_loss_price: str = None) -> List[Dict]:
+                          take_profit_price: Optional[str] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:
         """Place take profit and stop loss orders"""
         orders_placed = []
         
@@ -218,7 +218,7 @@ class ToobitClient:
             return orders_placed
 
     def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str,
-                                   take_profits: List[Dict] = None, stop_loss_price: str = None) -> List[Dict]:
+                                   take_profits: Optional[List[Dict]] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:
         """Place multiple partial take profit orders and one stop loss order"""
         orders_placed = []
         
@@ -269,7 +269,7 @@ class ToobitClient:
             logging.error(f"Failed to place multiple TP/SL orders: {e}")
             return orders_placed
     
-    def get_trade_history(self, symbol: str = None, limit: int = 100) -> List[Dict]:
+    def get_trade_history(self, symbol: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """Get trade history"""
         try:
             params = {'limit': str(limit)}
