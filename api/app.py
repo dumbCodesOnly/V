@@ -79,22 +79,38 @@ def run_database_migrations():
     """Run database migrations to ensure schema compatibility"""
     try:
         with app.app_context():
-            # Ensure breakeven_sl_triggered column exists
             from sqlalchemy import text
+            migrations_needed = []
+            
+            # Check for missing columns
+            required_columns = [
+                ('breakeven_sl_triggered', 'BOOLEAN DEFAULT FALSE'),
+                ('realized_pnl', 'FLOAT DEFAULT 0.0')
+            ]
+            
             try:
-                result = db.session.execute(text("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name = 'trade_configurations' 
-                    AND column_name = 'breakeven_sl_triggered'
-                """))
-                if not result.fetchone():
-                    logging.info("Adding missing breakeven_sl_triggered column")
-                    db.session.execute(text("""
+                for column_name, column_def in required_columns:
+                    result = db.session.execute(text("""
+                        SELECT column_name FROM information_schema.columns 
+                        WHERE table_name = 'trade_configurations' 
+                        AND column_name = :column_name
+                    """), {"column_name": column_name})
+                    
+                    if not result.fetchone():
+                        migrations_needed.append((column_name, column_def))
+                
+                # Apply migrations
+                for column_name, column_def in migrations_needed:
+                    logging.info(f"Adding missing {column_name} column")
+                    db.session.execute(text(f"""
                         ALTER TABLE trade_configurations 
-                        ADD COLUMN breakeven_sl_triggered BOOLEAN DEFAULT FALSE
+                        ADD COLUMN {column_name} {column_def}
                     """))
+                
+                if migrations_needed:
                     db.session.commit()
-                    logging.info("Database migration completed successfully")
+                    logging.info(f"Database migration completed successfully - added {len(migrations_needed)} columns")
+                    
             except Exception as migration_error:
                 logging.warning(f"Migration check failed (table may not exist yet): {migration_error}")
                 db.session.rollback()
