@@ -2339,11 +2339,18 @@
                 }
             }
             
-            // Update unrealized P&L
+            // Update unrealized P&L (detail view)
             const pnlElement = document.querySelector(`[data-trade-id="${tradeId}"] .unrealized-pnl`);
             if (pnlElement && positionData.unrealized_pnl !== undefined) {
                 pnlElement.textContent = `$${positionData.unrealized_pnl.toFixed(2)}`;
                 pnlElement.style.color = positionData.unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+            }
+            
+            // Update total P&L (header view) - use total_pnl from API response
+            const totalPnlElement = document.querySelector(`[data-trade-id="${tradeId}"] .total-pnl`);
+            if (totalPnlElement && positionData.total_pnl !== undefined) {
+                totalPnlElement.textContent = `$${positionData.total_pnl.toFixed(2)}`;
+                totalPnlElement.style.color = positionData.total_pnl >= 0 ? '#28a745' : '#dc3545';
             }
             
             // Update ROE percentage

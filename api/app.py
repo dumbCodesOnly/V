@@ -1129,6 +1129,8 @@ def live_position_update():
                 live_data[trade_id] = {
                     'current_price': config.current_price,
                     'unrealized_pnl': config.unrealized_pnl,
+                    'realized_pnl': getattr(config, 'realized_pnl', 0) or 0,
+                    'total_pnl': (config.unrealized_pnl or 0) + (getattr(config, 'realized_pnl', 0) or 0),
                     'roe_percentage': round(roe_percentage, 2),
                     'price_change_percentage': round(price_change_percentage, 2),
                     'status': config.status
