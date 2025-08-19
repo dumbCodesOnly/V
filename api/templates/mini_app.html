@@ -1729,6 +1729,10 @@
                         <div class="stat-label">Active Positions</div>
                     </div>
                     <div class="stat-box">
+                        <div class="stat-value" id="total-unrealized-pnl">$0.00</div>
+                        <div class="stat-label">Unrealized P&L</div>
+                    </div>
+                    <div class="stat-box">
                         <div class="stat-value" id="total-pnl">$0.00</div>
                         <div class="stat-label">Total P&L</div>
                     </div>
@@ -2290,6 +2294,36 @@
             }
         }
 
+        // Update initial totals when loading positions
+        async function updateInitialTotals() {
+            try {
+                const data = await apiCall(`/api/positions/live-update?user_id=${currentUser?.id}`);
+                if (!data) return;
+                
+                // Update total unrealized P&L
+                const totalUnrealizedPnlElement = document.getElementById('total-unrealized-pnl');
+                if (totalUnrealizedPnlElement && data.total_unrealized_pnl !== undefined) {
+                    totalUnrealizedPnlElement.textContent = `$${data.total_unrealized_pnl.toFixed(2)}`;
+                    totalUnrealizedPnlElement.style.color = data.total_unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update total P&L (realized + unrealized)
+                const totalPnlElement = document.getElementById('total-pnl');
+                if (totalPnlElement && data.total_pnl !== undefined) {
+                    totalPnlElement.textContent = `$${data.total_pnl.toFixed(2)}`;
+                    totalPnlElement.style.color = data.total_pnl >= 0 ? '#28a745' : '#dc3545';
+                }
+                
+                // Update active positions count
+                const totalPositionsElement = document.getElementById('total-positions');
+                if (totalPositionsElement && data.active_positions_count !== undefined) {
+                    totalPositionsElement.textContent = data.active_positions_count;
+                }
+            } catch (error) {
+                console.error('Error updating initial totals:', error);
+            }
+        }
+
         // Update individual position price display
         function updatePositionPriceDisplay(tradeId, positionData) {
             // Update current price
@@ -2368,10 +2402,8 @@
             
             document.getElementById('total-positions').textContent = activePositions.length;
             
-            let totalPnl = 0;
-            activePositions.forEach(pos => totalPnl += pos.unrealized_pnl || 0);
-            document.getElementById('total-pnl').textContent = `$${totalPnl.toFixed(2)}`;
-            document.getElementById('total-pnl').style.color = totalPnl >= 0 ? '#28a745' : '#dc3545';
+            // Get initial PnL totals from API (to avoid conflicts with live updates)
+            updateInitialTotals();
             
             // Show/hide Close All Trades button based on active positions
             const closeAllContainer = document.getElementById('close-all-container');
