@@ -47,17 +47,21 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
 # Neon-optimized engine configuration
 if os.environ.get("VERCEL"):
-    # Neon PostgreSQL serverless configuration
+    # Neon PostgreSQL serverless configuration - optimized for connection handling
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 3600,  # Neon allows longer connections
+        "pool_recycle": 1800,  # 30 minutes - shorter for serverless
         "pool_pre_ping": True,  # Essential for Neon connection validation
-        "pool_size": 1,  # Serverless functions need minimal pool size
-        "max_overflow": 0,  # No overflow for serverless
-        "pool_timeout": 30,  # Timeout for getting connection from pool
+        "pool_size": 5,  # Allow more connections for concurrent requests
+        "max_overflow": 10,  # Allow overflow for peak loads
+        "pool_timeout": 60,  # Longer timeout for connection acquisition
+        "pool_reset_on_return": "commit",  # Clean state for each request
         "connect_args": {
             "sslmode": "require",  # Neon requires SSL
-            "connect_timeout": 10,  # Connection timeout
-            "application_name": "trading_bot_vercel"  # Identify your app in Neon logs
+            "connect_timeout": 30,  # Longer connection timeout
+            "application_name": "trading_bot_vercel",  # Identify your app in Neon logs
+            "keepalives_idle": "30",  # Keep connections alive
+            "keepalives_interval": "5",  # Check every 5 seconds
+            "keepalives_count": "3"  # 3 failed checks before disconnect
         }
     }
 else:

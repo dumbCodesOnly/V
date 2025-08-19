@@ -41,4 +41,16 @@ The application automatically handles schema migrations on startup, but for fres
 
 - **Column not found errors**: Run the migration script from `api/create_vercel_schema.sql`
 - **Connection issues**: Verify DATABASE_URL format and SSL settings
-- **Timeout issues**: Check Neon connection limits and pool settings
+- **QueuePool timeout errors**: 
+  - Check Neon connection limits in dashboard
+  - Verify database isn't paused (auto-pause disabled)
+  - Monitor concurrent connections in Neon logs
+- **SSL/Connection errors**: Ensure `sslmode=require` in DATABASE_URL
+
+## Neon-Specific Settings
+
+For optimal performance with Neon:
+- Disable auto-pause in Neon dashboard for production
+- Monitor connection usage in Neon console
+- Consider upgrading to higher connection limits if needed
+- Use connection pooling (already configured in the app)
