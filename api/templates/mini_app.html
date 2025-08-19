@@ -2401,10 +2401,10 @@
                             </div>
                             <div class="d-flex align-items-center">
                                 <div class="text-end me-3">
-                                    <div class="stat-value unrealized-pnl" style="color: ${pos.unrealized_pnl >= 0 ? '#28a745' : '#dc3545'}">
-                                        $${(pos.unrealized_pnl || 0).toFixed(2)}
+                                    <div class="stat-value total-pnl" style="color: ${((pos.unrealized_pnl || 0) + (pos.realized_pnl || 0)) >= 0 ? '#28a745' : '#dc3545'}">
+                                        $${((pos.unrealized_pnl || 0) + (pos.realized_pnl || 0)).toFixed(2)}
                                     </div>
-                                    <small class="text-muted">P&L</small>
+                                    <small class="text-muted">Total P&L</small>
                                 </div>
                                 <span class="expand-icon" id="icon-${index}">▼</span>
                             </div>
@@ -2472,6 +2472,24 @@
                         </div>
                     </div>
                     
+                    <!-- P&L Breakdown -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Realized P&L:</small><br>
+                            <strong style="color: ${(pos.realized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                $${(pos.realized_pnl || 0).toFixed(2)}
+                            </strong>
+                            ${(pos.realized_pnl || 0) > 0 ? '<br><small class="text-muted">(From TPs)</small>' : ''}
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Floating P&L:</small><br>
+                            <strong style="color: ${(pos.unrealized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                $${(pos.unrealized_pnl || 0).toFixed(2)}
+                            </strong>
+                            <br><small class="text-muted">(Current)</small>
+                        </div>
+                    </div>
+
                     <!-- Margin Info -->
                     <div class="row mt-2">
                         <div class="col-6">
@@ -2656,6 +2674,24 @@
                             <strong style="color: ${calculateROE(trade) >= 0 ? '#28a745' : '#dc3545'}">
                                 ${calculateROE(trade).toFixed(2)}%
                             </strong>
+                        </div>
+                    </div>
+                    
+                    <!-- P&L Breakdown for Active Trades -->
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <small class="text-muted">Realized P&L:</small><br>
+                            <strong style="color: ${(trade.realized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                $${(trade.realized_pnl || 0).toFixed(2)}
+                            </strong>
+                            ${(trade.realized_pnl || 0) > 0 ? '<br><small class="text-muted">(From TPs)</small>' : ''}
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Floating P&L:</small><br>
+                            <strong style="color: ${(trade.unrealized_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
+                                $${(trade.unrealized_pnl || 0).toFixed(2)}
+                            </strong>
+                            <br><small class="text-muted">(Current)</small>
                         </div>
                     </div>
                     ` : ''}

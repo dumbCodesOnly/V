@@ -175,6 +175,7 @@ class TradeConfiguration(db.Model):
     current_price = db.Column(db.Float, default=0.0)
     position_size = db.Column(db.Float, default=0.0)
     position_value = db.Column(db.Float, default=0.0)
+    realized_pnl = db.Column(db.Float, default=0.0)
     final_pnl = db.Column(db.Float, default=0.0)
     closed_at = db.Column(db.DateTime)
     
@@ -206,6 +207,7 @@ class TradeConfiguration(db.Model):
         config.current_price = self.current_price
         config.position_size = self.position_size
         config.position_value = self.position_value
+        config.realized_pnl = getattr(self, 'realized_pnl', 0.0)
         config.final_pnl = self.final_pnl
         config.closed_at = format_iran_time(self.closed_at) if self.closed_at else ""
         
@@ -259,6 +261,7 @@ class TradeConfiguration(db.Model):
         db_config.current_price = config.current_price
         db_config.position_size = config.position_size
         db_config.position_value = config.position_value
+        db_config.realized_pnl = getattr(config, 'realized_pnl', 0.0)
         db_config.final_pnl = config.final_pnl
         
         if config.closed_at and config.closed_at != "":

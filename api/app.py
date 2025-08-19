@@ -248,6 +248,7 @@ class TradeConfig:
         self.current_price = 0.0    # Current market price
         self.position_size = 0.0    # Actual position size in contracts
         self.position_value = 0.0   # Total position value
+        self.realized_pnl = 0.0     # Realized P&L from triggered take profits
         self.final_pnl = 0.0        # Final P&L when position is closed
         self.closed_at = ""         # Timestamp when position was closed
         
@@ -1235,6 +1236,7 @@ def user_trades():
                 'status': config.status,
                 'position_margin': config.position_margin,
                 'unrealized_pnl': config.unrealized_pnl,
+                'realized_pnl': getattr(config, 'realized_pnl', 0.0),  # Include realized P&L from triggered TPs
                 'current_price': config.current_price,
                 'breakeven_after': config.breakeven_after,
                 'trailing_stop_enabled': config.trailing_stop_enabled,
@@ -2857,6 +2859,11 @@ def update_all_positions_with_live_data():
                                         'timestamp': get_iran_time().isoformat(),
                                         'status': f'partial_take_profit_{i+1}'
                                     })
+                                    
+                                    # Update realized P&L with the profit from this TP
+                                    if not hasattr(config, 'realized_pnl'):
+                                        config.realized_pnl = 0.0
+                                    config.realized_pnl += partial_pnl
                                     
                                     # Update position with remaining amount
                                     config.amount = remaining_amount
