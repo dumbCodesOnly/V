@@ -3029,6 +3029,12 @@ def calculate_tp_sl_prices_and_amounts(config):
     # Calculate actual margin used for this position
     actual_margin = calculate_position_margin(config.amount, config.leverage)
     
+    # Calculate total position size in base currency (e.g., BTC for BTCUSDT)
+    # Position value = margin * leverage
+    position_value_usdt = actual_margin * config.leverage
+    # Position size in base currency = position_value / entry_price
+    total_position_size = position_value_usdt / config.entry_price
+    
     # Calculate Take Profit levels
     for i, tp in enumerate(config.take_profits or []):
         tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
@@ -3044,16 +3050,20 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - required_price_movement)
             
-            # Profit amount = tp_percentage of margin (what user risks) * allocation
-            # User risks $100 margin, 10% TP = $10 profit, not $100
-            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
+            # Calculate position size to close at this TP (based on allocation)
+            position_size_to_close = total_position_size * (allocation / 100)
+            
+            # Calculate profit amount: price_difference * position_size_closed
+            price_difference = abs(tp_price - config.entry_price)
+            profit_amount = price_difference * position_size_to_close
             
             result['take_profits'].append({
                 'level': i + 1,
                 'percentage': tp_percentage,
                 'allocation': allocation,
                 'price': tp_price,
-                'profit_amount': profit_amount
+                'profit_amount': profit_amount,
+                'position_size_to_close': position_size_to_close
             })
     
     # Calculate Stop Loss

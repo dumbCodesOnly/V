@@ -307,6 +307,8 @@ class VercelSyncService:
                 fill_quantity = tp_fill['quantity']
                 
                 # Calculate P&L for this partial close
+                # P&L = price_difference * position_size_closed
+                # This is already correctly calculated by the exchange
                 if trade.side == 'long':
                     pnl = (fill_price - trade.entry_price) * fill_quantity
                 else:
