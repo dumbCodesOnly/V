@@ -3103,34 +3103,8 @@
             
             container.innerHTML = content;
             
-            // Restore expanded states for portfolio sections after content update
-            setTimeout(() => {
-                // Restore active positions section state
-                if (getExpandedState('sections', 'active-positions')) {
-                    const content = document.getElementById('active-positions-content');
-                    const icon = document.getElementById('active-positions-icon');
-                    const header = content?.previousElementSibling;
-                    
-                    if (content && icon && header) {
-                        content.classList.add('expanded');
-                        header.classList.add('expanded');
-                        icon.classList.add('expanded');
-                    }
-                }
-                
-                // Restore history section state
-                if (getExpandedState('sections', 'history')) {
-                    const content = document.getElementById('history-content');
-                    const icon = document.getElementById('history-icon');
-                    const header = content?.previousElementSibling;
-                    
-                    if (content && icon && header) {
-                        content.classList.add('expanded');
-                        header.classList.add('expanded');
-                        icon.classList.add('expanded');
-                    }
-                }
-            }, 50);
+            // Note: Removed auto-expansion behavior to keep sections collapsed by default
+            // Users can manually expand sections as needed
         }
 
         // Trade configuration functions
