@@ -249,14 +249,15 @@ class ExchangeSyncService:
                 return
             
             # Calculate realized P&L from this TP fill
-            # The exchange already provides the correct P&L amount
+            # TP allocation percentage determines portion of position closed at each TP level
+            # The exchange provides the actual P&L amount for the position size that was closed
             total_realized_pnl = 0.0
             for tp_fill in tp_fills:
                 fill_price = tp_fill['price']
-                fill_quantity = tp_fill['quantity']
+                fill_quantity = tp_fill['quantity']  # Actual position size closed by exchange
                 
                 # Calculate P&L for this partial close
-                # P&L = price_difference * position_size_closed
+                # P&L = price_difference * actual_position_size_closed
                 if trade.side == 'long':
                     pnl = (fill_price - trade.entry_price) * fill_quantity
                 else:
