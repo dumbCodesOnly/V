@@ -68,7 +68,7 @@ def update_positions_lightweight():
 
 
 def place_exchange_native_orders(config, user_id):
-    """Place all TP/SL orders directly on exchange after position opens"""
+    """Place all TP/SL/Trailing Stop orders directly on exchange after position opens"""
     try:
         credentials = get_user_credentials(user_id)
         if not credentials:
@@ -97,27 +97,77 @@ def place_exchange_native_orders(config, user_id):
                     'allocation': tp_data['allocation']
                 })
         
-        # Calculate stop loss price
+        # Determine stop loss strategy
         sl_price = None
-        if config.stop_loss_percent > 0:
+        trailing_stop = None
+        
+        # Check if trailing stop is enabled
+        if hasattr(config, 'trailing_stop_enabled') and config.trailing_stop_enabled:
+            # Use exchange-native trailing stop instead of bot monitoring
+            callback_rate = getattr(config, 'trail_percentage', 1.0)  # Default 1%
+            activation_price = getattr(config, 'trail_activation_price', None)
+            
+            trailing_stop = {
+                'callback_rate': callback_rate,
+                'activation_price': activation_price
+            }
+            logging.info(f"Using exchange-native trailing stop: {callback_rate}% callback")
+            
+        elif config.stop_loss_percent > 0:
+            # Use regular stop loss
             sl_calc = calculate_tp_sl_prices_and_amounts(config)
             sl_price = str(sl_calc.get('stop_loss', {}).get('price', 0))
         
-        # Place all orders on exchange
+        # Place all orders on exchange (including trailing stop if enabled)
         orders_placed = client.place_multiple_tp_sl_orders(
             symbol=config.symbol,
             side=config.side,
             total_quantity=str(position_size),
             take_profits=tp_orders,
-            stop_loss_price=sl_price
+            stop_loss_price=sl_price,
+            trailing_stop=trailing_stop
         )
         
         logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")
+        
+        # If using trailing stop, no bot monitoring needed at all!
+        if trailing_stop:
+            logging.info(f"Exchange-native trailing stop active - NO bot monitoring required!")
+        
         return True
         
     except Exception as e:
         logging.error(f"Failed to place exchange-native orders: {e}")
         return False
+
+
+def update_positions_ultra_lightweight():
+    """ULTRA-OPTIMIZED: Only monitor positions that absolutely require bot intervention"""
+    # Only monitor positions that need break-even AND don't have trailing stops
+    positions_needing_monitoring = []
+    symbols_needed = set()
+    
+    for user_id, trades in user_trade_configs.items():
+        for trade_id, config in trades.items():
+            # Skip if using exchange-native trailing stop (no monitoring needed!)
+            if hasattr(config, 'trailing_stop_enabled') and config.trailing_stop_enabled:
+                continue
+                
+            # Only monitor for break-even if not using trailing stop
+            if (config.status == "active" and config.symbol and 
+                hasattr(config, 'breakeven_after') and config.breakeven_after > 0 and
+                not getattr(config, 'breakeven_triggered', False)):
+                symbols_needed.add(config.symbol)
+                positions_needing_monitoring.append((user_id, trade_id, config))
+    
+    # If nothing needs monitoring, we're done! 
+    if not positions_needing_monitoring:
+        logging.debug("No positions need bot monitoring - all handled by exchange!")
+        return
+    
+    logging.info(f"Ultra-lightweight monitoring: Only {len(positions_needing_monitoring)} positions need bot intervention")
+    
+    # ... rest of break-even monitoring logic ...
 
 
 """
