@@ -161,6 +161,7 @@ class TradeConfiguration(db.Model):
     take_profits = db.Column(db.Text)  # JSON string of TP levels
     stop_loss_percent = db.Column(db.Float, default=0.0)
     breakeven_after = db.Column(db.Float, default=0.0)
+    breakeven_sl_triggered = db.Column(db.Boolean, default=False)
     
     # Trailing stop configuration
     trailing_stop_enabled = db.Column(db.Boolean, default=False)
@@ -195,6 +196,7 @@ class TradeConfiguration(db.Model):
         config.stop_loss_percent = self.stop_loss_percent
         # Convert breakeven_after back to expected format
         config.breakeven_after = self.breakeven_after
+        config.breakeven_sl_triggered = getattr(self, 'breakeven_sl_triggered', False)
         config.trailing_stop_enabled = self.trailing_stop_enabled
         config.trail_percentage = self.trail_percentage
         config.trail_activation_price = self.trail_activation_price
@@ -247,6 +249,7 @@ class TradeConfiguration(db.Model):
                     db_config.breakeven_after = 0.0
         else:
             db_config.breakeven_after = 0.0
+        db_config.breakeven_sl_triggered = getattr(config, 'breakeven_sl_triggered', False)
         db_config.trailing_stop_enabled = config.trailing_stop_enabled
         db_config.trail_percentage = config.trail_percentage
         db_config.trail_activation_price = config.trail_activation_price

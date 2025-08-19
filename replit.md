@@ -1,61 +1,57 @@
 # Toobit Multi-Trade Telegram Bot
 
 ## Overview
-This project is a sophisticated Telegram-based trading bot designed for Toobit USDT-M futures trading, featuring multi-trade capabilities. It enables users to manage multiple simultaneous trading configurations through a conversational interface. Key capabilities include advanced risk management, portfolio tracking, and real-time trade execution monitoring. The business vision is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility and real-time interaction, with ambitions to expand to other exchanges and offer a comprehensive suite of trading tools.
+This project is a Telegram-based trading bot for Toobit USDT-M futures, featuring multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The vision is to offer a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with future expansion to other exchanges and a comprehensive suite of trading tools.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
-The application utilizes Flask as its web framework, serving as the primary interface for the Telegram Mini-App and handling webhook integration for real-time message processing. The core innovation is the `MultiTradeManager` class, enabling concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
+The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
 **UI/UX Decisions:**
-The UI/UX utilizes HTML formatting for rich text and interactive menus, with a sophisticated dark blue theme, elegant gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with a responsive design. Modern, professional trading platform symbols are used throughout the application (e.g., ⚡ for title, ▲/▼ for positions, ⊞ for trading, ◈ for portfolio, ◉ for limit orders, ⦿ for market orders).
+The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. Modern, professional trading platform symbols are used throughout. Typography uses Google Fonts (Inter for text, JetBrains Mono for numerical data).
 
 **Technical Implementations & Feature Specifications:**
-- **Codebase Consolidation:** Streamlined project structure with `api/` directory containing the main Flask application and a clean separation between Replit development and Vercel production environments.
-- **Webhook Security:** Implemented comprehensive webhook security with secret token authentication and request structure validation.
-- **Core Trading Focus:** Removed market data tab and live charting functionality to focus on core trading bot capabilities.
-- **Limit Order Functionality:** Implemented proper limit order functionality, including "pending" status, automated monitoring, and support for all four types of limit orders (long limit, long stop, short limit, short stop).
-- **Trading Logic Correction:** Corrected fundamental flaws in margin, position size, and leverage calculations, ensuring mathematically correct futures trading formulas where profit/loss amounts are calculated from the user's margin input.
-- **Enhanced TP/SL Display:** Comprehensive take profit and stop loss display showing actual prices alongside profit/loss amounts based on margin trading principles.
-- **Template Structure Consolidation:** All templates are consolidated into the `api/templates/` directory for consistent resolution.
-- **Live Market Data Integration:** Migration to real-time market data across all platform deployments, utilizing multiple APIs with fallback mechanisms.
-- **API Exchange Optimization (2025-08-17):** Implemented comprehensive price fetching optimization with intelligent caching (10-second TTL), concurrent API requests, performance metrics tracking, adaptive API prioritization based on success rates and response times, batch price fetching for multiple symbols, emergency stale cache fallback, and detailed performance monitoring endpoints.
-- **Comprehensive Trade Information Display:** Shows full trade details before execution and for active positions, with real-time ROE calculation and color-coded P&L indicators.
-- **Complete Trade Management UI:** Full Edit/Execute/Delete functionality in the web app trading tab, with smart UI controls.
-- **Collapsible UI Enhancement:** Implemented collapsible/expandable functionality for both positions and trading tabs, improving user experience.
-- **Multi-Symbol Trading Support:** Enhanced `get_live_market_price` function with extended cryptocurrency pair support, concurrent request processing, and intelligent fallback mechanisms across Binance, CoinGecko, and CryptoCompare APIs.
-- **Position Size Display:** Correctly displays "Position Size" (margin × leverage) alongside "Margin" in the UI.
-- **Closed Positions History:** Implemented comprehensive tracking and display of the last 5 closed positions in the Portfolio tab, including final P&L and detailed information.
-- **Enhanced Typography System:** Professional typography using Google Fonts (Inter for text, JetBrains Mono for numerical data) with optimized weights, letter spacing, and font hierarchy for improved readability and modern trading platform appearance.
-- **Header Branding Update:** Changed application title from "Toobit Trading Bot" to "Trading Expert" to create a more professional, platform-agnostic brand identity.
-- **Migration to Replit (2025-08-17):** Successfully migrated project from Replit Agent to standard Replit environment, including PostgreSQL database setup, gunicorn configuration, and optimized price fetching to only update symbols for active positions and configured trades rather than all available cryptocurrency pairs. Fixed UI collapsing issue by removing redundant DOM rebuilds during live price updates.
-- **Clean Production Environment (2025-08-18):** Completed final migration cleanup, removing all demo trade data for a clean production-ready environment. Application now starts with no pre-populated trades, ensuring authentic user experience from the start.
-- **Live Price Update Fix (2025-08-18):** Fixed positions tab totals not updating without page refresh by enhancing the live price update mechanism to include real-time position count and total P&L updates directly in the positions summary section. Extended real-time updates to portfolio tab for complete live data refresh across all financial metrics including account balance, margin usage, and P&L calculations.
-- **Hamburger Menu Implementation (2025-08-18):** Added hamburger menu to top right corner of header and moved API Keys functionality from tab navigation into the menu. Implemented dropdown with smooth animations, proper click-outside closing behavior, and dedicated API Keys modal for better mobile UX. Removed API Keys tab from main navigation to create cleaner 3-tab layout focusing on core trading functions.
-- **Account Balance Fix (2025-08-18):** Fixed critical issue where realized P&L from closed trades was not being added to the account balance. Modified `get_margin_summary` function to properly calculate account balance as initial balance plus realized P&L, ensuring accurate financial tracking.
-- **Micro-Interactions Enhancement (2025-08-18):** Implemented comprehensive micro-interactions for trade management buttons including loading states, success/error animations, haptic feedback integration, and smooth visual transitions. Added CSS animations with cubic-bezier easing, button hover effects, ripple animations, and loading spinners to enhance user experience and provide immediate feedback for all trading actions.
-- **Database Persistence Fix (2025-08-18):** Resolved critical trade deletion issue by implementing proper PostgreSQL database persistence. Added `TradeConfiguration` model, database helper functions, and modified all trade operations to save/load from database instead of in-memory storage. Enhanced serverless reliability with explicit app context management, forced database commits, and Vercel-specific database loading to handle cold starts. This ensures trades persist permanently across app sessions and serverless deployments on both Replit and Vercel.
-- **Neon Database Optimization (2025-08-18):** Implemented Neon PostgreSQL-specific configurations for optimal Vercel performance including SSL requirements, serverless connection pooling (pool_size=1), retry logic with exponential backoff, connection timeouts, and application identification in Neon logs. Added dedicated Neon setup guide and troubleshooting documentation.
-- **Database Schema Fix (2025-08-18):** Resolved data type mismatch error where `breakeven_after` field expected numeric values but received "disabled" strings. Implemented proper data type conversion in `TradeConfiguration.from_trade_config()` method to handle string-to-numeric conversion and ensure Neon database compatibility.
-- **Migration to Standard Replit Environment (2025-08-18):** Successfully migrated project from Replit Agent to standard Replit environment with gunicorn server configuration. Confirmed Flask application running properly on port 5000 with PostgreSQL database integration, all packages installed correctly, and Telegram WebApp functionality verified through browser testing.
-- **Timezone Configuration Update (2025-08-18):** Implemented GMT+3:30 (Iran Standard Time) timezone for all trade configurations and history timestamps. Added timezone utility functions (`get_iran_time`, `utc_to_iran_time`, `format_iran_time`) in models.py and updated all timestamp formatting throughout the application including trade execution logs, position history, bot status updates, and user interface displays to show times in GMT+3:30 format.
-- **Reset History Feature (2025-08-18):** Added portfolio reset functionality allowing users to clear all trade history and P&L data while preserving API credentials. Implemented small "Reset History" button in portfolio tab with confirmation dialog, comprehensive backend endpoint `/api/reset-history`, database cleanup for TradeConfiguration records, UserTradingSession reset to clear trade metrics, and UI state reset with loading animations and success feedback. Fixed database schema compatibility issues with proper field name mapping (telegram_user_id vs user_id).
-- **UI Improvements (2025-08-18):** Redesigned expandable boxes in portfolio tab to be more compact and visually appealing. Reduced padding, margins, border thickness, and font sizes for cleaner mobile experience. Changed timestamp formatting from 12-hour to 24-hour format (hour12: false) for consistency across all date displays in the user interface.
-- **Enhanced Visual Design (2025-08-18):** Implemented comprehensive visual refinements including modern gradient header with glowing logo icon, sophisticated hamburger menu with smooth animations, elegant navigation tabs with underline effects, enhanced card styling with backdrop blur and hover effects, micro-interactions throughout the interface, premium typography with Inter and JetBrains Mono fonts, and professional dark theme optimization. Fixed header text visibility in night mode with proper white color, text shadows, and fallback CSS for better browser compatibility.
-- **Header Redesign (2025-08-18):** Removed "Advanced Trading Platform" subtitle from header for cleaner design and replaced lightning emoji with a small semi-transparent live indicator (green pulsing dot) to show application status in a more subtle, professional manner.
-- **Close All Trades Feature (2025-08-18):** Added "Close All Trades" button to positions tab that allows users to close all active positions simultaneously with confirmation dialog, loading states, and comprehensive error handling. Button only appears when 2 or more active positions exist, and provides detailed feedback including total P&L and number of trades closed. Backend endpoint `/api/close-all-trades` handles bulk trade closure with individual error handling for maximum reliability.
-- **Exchange Synchronization System (2025-08-18):** Implemented comprehensive Toobit exchange integration with dual-environment support. For Replit: background polling service (`ExchangeSyncService`) with 60-second intervals for continuous monitoring. For Vercel: on-demand synchronization (`VercelSyncService`) with smart cooldown logic to optimize serverless performance. Added `ToobitClient` for authenticated API communication, order status tracking, position updates, webhook endpoints for real-time event processing, and automatic local database updates when positions change on the exchange. Features environment-aware sync services, connection testing, force synchronization, and direct exchange data access.
-- **Database Access Optimization (2025-08-18):** Implemented intelligent caching system to prevent excessive database queries from Telegram WebView. Added `user_data_cache` with 30-second TTL, cache invalidation on data changes, and stale cache fallback for reliability. Optimized `load_user_trades_from_db` function to check cache before database access, dramatically reducing serverless function database hits. Cache automatically invalidates on save, delete, and reset operations to maintain data consistency.
+- Streamlined project structure with `api/` directory for the main Flask application and clear separation of environments.
+- Comprehensive webhook security with secret token authentication.
+- Focus on core trading bot capabilities; market data tab and live charting functionality removed.
+- Implemented proper limit order functionality with "pending" status and monitoring.
+- Corrected margin, position size, and leverage calculations for mathematically accurate futures trading.
+- Enhanced TP/SL display showing actual prices and profit/loss amounts.
+- Consolidated templates into `api/templates/`.
+- Migrated to real-time market data across all platform deployments with multiple APIs and fallback.
+- Implemented comprehensive price fetching optimization with intelligent caching, concurrent requests, and adaptive API prioritization.
+- Displays full trade details before execution and for active positions, with real-time ROE and color-coded P&L.
+- Complete Edit/Execute/Delete functionality in the web app trading tab with smart UI controls.
+- Collapsible/expandable functionality for positions and trading tabs.
+- Multi-symbol trading support for `get_live_market_price` function with concurrent processing and intelligent fallbacks.
+- Correctly displays "Position Size" alongside "Margin" in the UI.
+- Tracks and displays the last 5 closed positions in the Portfolio tab.
+- Changed application title to "Trading Expert" for a professional, platform-agnostic brand.
+- Implemented hamburger menu with API Keys functionality moved into it.
+- Corrected account balance calculation to include realized P&L from closed trades.
+- Implemented comprehensive micro-interactions for trade management buttons including loading states, success/error animations, and haptic feedback.
+- Critical trade deletion issue resolved by implementing proper PostgreSQL database persistence with `TradeConfiguration` model.
+- Neon PostgreSQL-specific configurations for optimal Vercel performance.
+- Resolved data type mismatch errors in `breakeven_after` field.
+- Fixed break-even stop loss display after TP1 triggers.
+- Implemented GMT+3:30 (Iran Standard Time) timezone for all trade configurations and history timestamps.
+- Added portfolio reset functionality, allowing users to clear all trade history and P&L data while preserving API credentials.
+- Redesigned expandable boxes in portfolio tab for compactness and changed timestamp formatting to 24-hour.
+- Enhanced visual refinements including modern gradient header, sophisticated hamburger menu, elegant navigation tabs, enhanced card styling, and premium typography.
+- Removed "Advanced Trading Platform" subtitle and replaced lightning emoji with a pulsing live indicator in the header.
+- Added "Close All Trades" button to positions tab.
+- Implemented comprehensive Toobit exchange integration with dual-environment support (background polling for Replit, on-demand for Vercel).
+- Implemented intelligent caching system to prevent excessive database queries from Telegram WebView.
 
 **System Design Choices:**
-The trading system features a modular design with `TradeConfig` objects encapsulating trade parameters and `TradingBot` instances handling execution, state tracking, and trailing stop functionality. Position management supports partial closing at configurable take profit levels, and risk management includes breakeven stop loss movement and trailing stop activation. The `PortfolioTracker` offers comprehensive analytics, including multi-user support, detailed trade history, performance metrics, and daily summaries. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are securely encrypted using Fernet encryption.
+The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
 
 ## External Dependencies
-- **Toobit Exchange API**: Custom `ExchangeClient` for Toobit futures API communication.
+- **Toobit Exchange API**: For Toobit futures API communication.
 - **Telegram Bot API**: For webhook-based communication, rich messaging, and inline keyboard support.
 - **Python Libraries**: Flask, Requests/aiohttp, Threading/Asyncio, Logging, Cryptography.
-- **Binance API**: Used for real-time market data (prices).
-- **CoinGecko API**: Utilized as a fallback for live market data.
-- **CryptoCompare API**: Utilized as a fallback for live market data.
+- **Binance API**: For real-time market data.
+- **CoinGecko API**: Fallback for live market data.
+- **CryptoCompare API**: Fallback for live market data.
