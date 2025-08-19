@@ -23,11 +23,12 @@ except ImportError:
     import sys
     import os
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(current_dir)
-    from models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
-    from exchange_sync import initialize_sync_service, get_sync_service
-    from vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
-    from toobit_client import ToobitClient
+    parent_dir = os.path.dirname(current_dir)
+    sys.path.extend([current_dir, parent_dir])
+    from api.models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
+    from api.exchange_sync import initialize_sync_service, get_sync_service
+    from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
+    from api.toobit_client import ToobitClient
 
 # Configure logging - reduce verbosity for serverless
 log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
