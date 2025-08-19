@@ -3029,11 +3029,7 @@ def calculate_tp_sl_prices_and_amounts(config):
     # Calculate actual margin used for this position
     actual_margin = calculate_position_margin(config.amount, config.leverage)
     
-    # Calculate total position size in base currency (e.g., BTC for BTCUSDT)
-    # Position value = margin * leverage
-    position_value_usdt = actual_margin * config.leverage
-    # Position size in base currency = position_value / entry_price
-    total_position_size = position_value_usdt / config.entry_price
+
     
     # Calculate Take Profit levels
     for i, tp in enumerate(config.take_profits or []):
