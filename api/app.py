@@ -296,6 +296,9 @@ class TradeConfig:
                 summary += f"Stop Loss: ${sl_calc['price']:.4f} (-${sl_calc['loss_amount']:.2f}) [{self.stop_loss_percent}%]\n"
             else:
                 summary += f"Stop Loss: {self.stop_loss_percent}%\n"
+        elif self.stop_loss_percent == 0.0 and hasattr(self, 'status') and self.status == 'active':
+            # 0% stop loss on active position means break-even
+            summary += "Stop Loss: Break-even (Entry Price)\n"
         else:
             summary += "Stop Loss: Not set\n"
         
@@ -320,7 +323,7 @@ class TradeConfig:
             "Amount": "✅" if self.amount > 0 else "⏳",
             "Entry": "✅" if (self.entry_type == "market" or (self.entry_type == "limit" and self.entry_price > 0)) else "⏳",
             "Take Profits": "✅" if self.take_profits else "⏳",
-            "Stop Loss": "✅" if self.stop_loss_percent > 0 else "⏳"
+            "Stop Loss": "✅" if self.stop_loss_percent > 0 else ("⚖️" if self.stop_loss_percent == 0.0 and hasattr(self, 'status') and self.status == 'active' else "⏳")
         }
         
         completed = sum(1 for status in steps.values() if status == "✅")
@@ -360,6 +363,8 @@ class TradeConfig:
             
         if self.stop_loss_percent > 0:
             header += f"   🛑 Stop Loss: {self.stop_loss_percent}%\n"
+        elif self.stop_loss_percent == 0.0 and hasattr(self, 'status') and self.status == 'active':
+            header += f"   ⚖️ Stop Loss: Break-even\n"
         else:
             header += f"   🛑 Stop Loss: Not set\n"
             

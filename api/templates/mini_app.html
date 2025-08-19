@@ -2691,8 +2691,10 @@
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.stop_loss && trade.tp_sl_calculations.stop_loss.price ? 
                                         `<div><strong>SL:</strong> $${trade.tp_sl_calculations.stop_loss.price.toFixed(4)} <span style="color: #dc3545;">(-$${trade.tp_sl_calculations.stop_loss.loss_amount.toFixed(2)})</span></div>` : 
-                                        trade.stop_loss_percent ? 
+                                        trade.stop_loss_percent > 0 ? 
                                             `<div><strong>SL:</strong> ${trade.stop_loss_percent}%</div>` :
+                                        (trade.stop_loss_percent === 0 && trade.status === 'active' ?
+                                            `<div><strong>SL:</strong> Break-even</div>` :
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
@@ -3543,7 +3545,7 @@
                 "Amount": trade.amount ? "●" : "○",
                 "Entry": (trade.entry_type === "market" || (trade.entry_type === "limit" && trade.entry_price)) ? "●" : "○",
                 "TPs": trade.take_profits?.length > 0 ? "●" : "○",
-                "SL": trade.stop_loss_percent ? "●" : "○"
+                "SL": trade.stop_loss_percent > 0 ? "●" : (trade.stop_loss_percent === 0 && trade.status === 'active' ? "⚖" : "○")
             };
             
             const completed = Object.values(steps).filter(s => s === "●").length;
