@@ -2770,38 +2770,52 @@ def update_all_positions_with_live_data():
                         config.amount, config.leverage, config.side
                     )
                     
-                    # Check stop-loss threshold (CRITICAL MISSING LOGIC)
-                    if config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
+                    # Check stop-loss threshold (Enhanced with break-even logic)
+                    stop_loss_triggered = False
+                    
+                    # Check break-even stop loss first
+                    if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered and hasattr(config, 'breakeven_sl_price'):
+                        # Break-even stop loss - trigger when price moves against position from entry price
+                        if config.side == "long" and config.current_price <= config.breakeven_sl_price:
+                            stop_loss_triggered = True
+                            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} <= Break-even ${config.breakeven_sl_price}")
+                        elif config.side == "short" and config.current_price >= config.breakeven_sl_price:
+                            stop_loss_triggered = True
+                            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} >= Break-even ${config.breakeven_sl_price}")
+                    
+                    # Check regular stop loss if break-even not triggered
+                    elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
                         # Calculate current loss percentage based on margin
                         loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
                         
                         if loss_percentage >= config.stop_loss_percent:
-                            # Stop-loss triggered! Auto-close position
+                            stop_loss_triggered = True
                             logging.warning(f"STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Loss: {loss_percentage:.2f}% >= {config.stop_loss_percent}%")
-                            
-                            # Close the position
-                            config.status = "stopped"
-                            config.final_pnl = config.unrealized_pnl
-                            config.closed_at = get_iran_time().isoformat()
-                            config.unrealized_pnl = 0.0
-                            
-                            # Save to database
-                            save_trade_to_db(user_id, config)
-                            
-                            # Log trade closure
-                            bot_trades.append({
-                                'id': len(bot_trades) + 1,
-                                'user_id': str(user_id),
-                                'trade_id': trade_id,
-                                'symbol': config.symbol,
-                                'side': config.side,
-                                'amount': config.amount,
-                                'final_pnl': config.final_pnl,
-                                'timestamp': get_iran_time().isoformat(),
-                                'status': 'stop_loss_triggered'
-                            })
-                            
-                            logging.info(f"Position auto-closed: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
+                    
+                    if stop_loss_triggered:
+                        # Close the position
+                        config.status = "stopped"
+                        config.final_pnl = config.unrealized_pnl
+                        config.closed_at = get_iran_time().isoformat()
+                        config.unrealized_pnl = 0.0
+                        
+                        # Save to database
+                        save_trade_to_db(user_id, config)
+                        
+                        # Log trade closure
+                        bot_trades.append({
+                            'id': len(bot_trades) + 1,
+                            'user_id': str(user_id),
+                            'trade_id': trade_id,
+                            'symbol': config.symbol,
+                            'side': config.side,
+                            'amount': config.amount,
+                            'final_pnl': config.final_pnl,
+                            'timestamp': get_iran_time().isoformat(),
+                            'status': 'stop_loss_triggered'
+                        })
+                        
+                        logging.info(f"Position auto-closed: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
                     
                     # Check take profit targets (ALSO MISSING LOGIC)
                     elif config.take_profits and config.unrealized_pnl > 0:

@@ -44,6 +44,8 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Added "Close All Trades" button to positions tab.
 - Implemented comprehensive Toobit exchange integration with dual-environment support (background polling for Replit, on-demand for Vercel).
 - Implemented intelligent caching system to prevent excessive database queries from Telegram WebView.
+- Enhanced realized P&L tracking system for partial take profit closures with separate display of realized vs floating P&L.
+- Fixed and enhanced stop loss trigger logic with proper break-even stop loss support for both long and short positions.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
