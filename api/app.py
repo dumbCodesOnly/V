@@ -3008,8 +3008,8 @@ def get_margin_summary(chat_id):
             total_position_margin += config.position_margin
             total_unrealized_pnl += config.unrealized_pnl
     
-    # Calculate account balance including realized P&L
-    account_balance = initial_balance + total_realized_pnl
+    # Calculate account balance including realized P&L and unrealized P&L from active positions
+    account_balance = initial_balance + total_realized_pnl + total_unrealized_pnl
     free_margin = account_balance - total_position_margin
     
     return {
@@ -3018,7 +3018,7 @@ def get_margin_summary(chat_id):
         'free_margin': free_margin,
         'unrealized_pnl': total_unrealized_pnl,
         'realized_pnl': total_realized_pnl,
-        'margin_level': (account_balance + total_unrealized_pnl) / total_position_margin * 100 if total_position_margin > 0 else 0
+        'margin_level': account_balance / total_position_margin * 100 if total_position_margin > 0 else 0
     }
 
 def send_telegram_message(chat_id, text, keyboard=None):
