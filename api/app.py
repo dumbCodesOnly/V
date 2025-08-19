@@ -2865,6 +2865,15 @@ def update_all_positions_with_live_data():
                                     save_trade_to_db(user_id, config)
                                     
                                     logging.info(f"Partial TP{i+1} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
+                                    
+                                    # Auto move SL to break-even after first TP (TP1)
+                                    if i == 0:  # First TP triggered
+                                        # Move stop loss to entry price (break-even)
+                                        original_sl_percent = config.stop_loss_percent
+                                        config.stop_loss_percent = 0.0  # 0% = break-even (entry price)
+                                        logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
+                                        save_trade_to_db(user_id, config)
+                                    
                                     break  # Only trigger one TP level at a time
                     
             except Exception as e:
