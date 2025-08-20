@@ -21,71 +21,81 @@ class ToobitClient:
         self.passphrase = passphrase
         self.testnet = testnet
         
-        # Base URLs for Toobit API
-        self.base_url = "https://openapi.toobit.com" if not testnet else "https://sandbox-openapi.toobit.com"
+        # Base URLs for Toobit API - Fixed URLs based on official documentation
+        self.base_url = "https://api.toobit.com" if not testnet else "https://testnet-api.toobit.com"
         self.futures_base = "/api/v1/futures"
         
         # Request session for connection pooling
         self.session = requests.Session()
         self.session.headers.update({
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',  # Toobit expects form-encoded data
             'User-Agent': 'TradingExpert/1.0'
         })
         
-    def _generate_signature(self, timestamp: str, method: str, request_path: str, body: str = "") -> str:
+    def _generate_signature(self, params_string: str) -> str:
         """Generate signature for Toobit API authentication"""
-        message = timestamp + method.upper() + request_path + body
+        # Toobit uses HMAC SHA256 on the parameter string only
         signature = hmac.new(
             self.api_secret.encode('utf-8'),
-            message.encode('utf-8'),
+            params_string.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
         return signature
     
-    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None) -> Dict:
-        """Make authenticated request to Toobit API"""
+    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None, authenticated: bool = True) -> Dict:
+        """Make authenticated request to Toobit API following official documentation format"""
         timestamp = str(int(time.time() * 1000))
-        request_path = self.futures_base + endpoint
         
-        # Prepare query string
-        query_string = ""
+        # Combine all parameters (query params + data + required params)
+        all_params = {}
         if params:
-            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-            request_path += "?" + query_string
-        
-        # Prepare body
-        body = ""
+            all_params.update(params)
         if data:
-            body = json.dumps(data, separators=(',', ':'))
+            all_params.update(data)
         
-        # Generate signature
-        signature = self._generate_signature(timestamp, method, request_path, body)
+        # Only add authentication parameters for authenticated endpoints
+        if authenticated:
+            all_params['timestamp'] = timestamp
         
-        # Set headers
-        headers = {
-            'TB-ACCESS-KEY': self.api_key,
-            'TB-ACCESS-SIGN': signature,
-            'TB-ACCESS-TIMESTAMP': timestamp,
-            'TB-ACCESS-PASSPHRASE': self.passphrase if self.passphrase else "",
-        }
+        # Create parameter string for signature (sorted by key)
+        sorted_params = sorted(all_params.items())
+        params_string = "&".join([f"{k}={v}" for k, v in sorted_params])
         
-        url = self.base_url + request_path
+        # Set headers 
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        
+        # Add authentication headers and signature for authenticated requests
+        if authenticated:
+            signature = self._generate_signature(params_string)
+            all_params['signature'] = signature
+            headers['X-BB-APIKEY'] = self.api_key
+        
+        url = self.base_url + self.futures_base + endpoint
         
         # Enhanced logging for debugging API calls
         api_mode = "TESTNET" if self.testnet else "LIVE"
         logging.info(f"[{api_mode}] Toobit API Call: {method} {url}")
-        if data:
-            logging.info(f"[{api_mode}] Request data: {data}")
+        logging.info(f"[{api_mode}] Parameters: {all_params}")
         
         try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=data if data else None,
-                params=params if params and not data else None,
-                timeout=30
-            )
+            # For GET requests with parameters, use query string instead of form data
+            if method.upper() == 'GET' and all_params:
+                response = self.session.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    params=all_params,  # Query parameters for GET
+                    timeout=30
+                )
+            else:
+                # For POST requests, use form-encoded data 
+                response = self.session.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    data=all_params if all_params else None,  # Form-encoded data
+                    timeout=30
+                )
             
             logging.info(f"[{api_mode}] Response status: {response.status_code}")
             response.raise_for_status()
@@ -96,6 +106,8 @@ class ToobitClient:
         except requests.exceptions.RequestException as e:
             logging.error(f"[{api_mode}] Toobit API request failed: {e}")
             logging.error(f"[{api_mode}] Request details: {method} {url}")
+            if 'response' in locals():
+                logging.error(f"[{api_mode}] Response body: {response.text}")
             raise
         except json.JSONDecodeError as e:
             logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
@@ -108,7 +120,8 @@ class ToobitClient:
     def get_account_balance(self) -> Dict:
         """Get futures account balance"""
         try:
-            response = self._make_request('GET', '/account')
+            # Balance endpoint might not need additional parameters
+            response = self._make_request('GET', '/balance', params={})
             return response if response else {}
         except Exception as e:
             logging.error(f"Failed to get account balance: {e}")
@@ -158,25 +171,41 @@ class ToobitClient:
     
     def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
                    price: Optional[str] = None, stop_price: Optional[str] = None, **kwargs) -> Optional[Dict]:
-        """Place a new order"""
+        """Place a new order using Toobit API format"""
         try:
+            # Format order data according to Toobit documentation
             data = {
-                'symbol': symbol,
-                'side': side.lower(),  # buy, sell
-                'type': order_type.lower(),  # market, limit, stop, stop_limit
+                'symbol': symbol.upper(),  # e.g., BTCUSDT
+                'side': side.upper(),  # BUY, SELL (uppercase as per docs)
+                'type': order_type.upper(),  # MARKET, LIMIT, STOP_MARKET, etc.
                 'quantity': str(quantity)
             }
+            
+            # Add timeInForce for limit orders (required by Toobit)
+            if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+                data['timeInForce'] = kwargs.get('timeInForce', 'GTC')
             
             if price:
                 data['price'] = str(price)
             if stop_price:
                 data['stopPrice'] = str(stop_price)
                 
-            # Add additional parameters
-            data.update(kwargs)
+            # Add leverage if provided
+            if 'leverage' in kwargs:
+                # Note: Leverage might need to be set separately via margin/leverage API
+                pass
+                
+            # Add additional parameters (reduceOnly, etc.)
+            for key, value in kwargs.items():
+                if key not in ['leverage']:  # Skip leverage as it's handled separately
+                    data[key] = value
             
             response = self._make_request('POST', '/order', data=data)
-            return response.get('data') if response else None
+            
+            # Toobit might return different response format
+            if response:
+                return response
+            return None
         except Exception as e:
             logging.error(f"Failed to place order: {e}")
             return None
@@ -299,7 +328,7 @@ class ToobitClient:
     def test_connection(self) -> Tuple[bool, str]:
         """Test API connection and credentials"""
         try:
-            response = self._make_request('GET', '/account')
+            response = self._make_request('GET', '/balance')
             if response:
                 return True, "Connection successful"
             else:
