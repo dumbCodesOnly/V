@@ -240,10 +240,16 @@ class TradeConfiguration(db.Model):
         db_config.entry_price = config.entry_price
         db_config.take_profits = json.dumps(config.take_profits)
         db_config.stop_loss_percent = config.stop_loss_percent
-        # Convert breakeven_after - handle "disabled" string case
+        # Convert breakeven_after - handle string values
         if hasattr(config, 'breakeven_after'):
             if config.breakeven_after == "disabled" or config.breakeven_after == 0:
                 db_config.breakeven_after = 0.0
+            elif config.breakeven_after == "tp1":
+                db_config.breakeven_after = 1.0
+            elif config.breakeven_after == "tp2":
+                db_config.breakeven_after = 2.0
+            elif config.breakeven_after == "tp3":
+                db_config.breakeven_after = 3.0
             else:
                 try:
                     db_config.breakeven_after = float(config.breakeven_after)
