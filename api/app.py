@@ -2838,8 +2838,8 @@ def update_all_positions_with_live_data():
                         
                         bot_status['total_trades'] += 1
                 
-                # Recalculate P&L for active positions
-                if config.status == "active" and config.entry_price and config.current_price:
+                # Recalculate P&L for active positions and configured trades with entry prices
+                if (config.status in ["active", "configured"]) and config.entry_price and config.current_price:
                     config.unrealized_pnl = calculate_unrealized_pnl(
                         config.entry_price, config.current_price,
                         config.amount, config.leverage, config.side
