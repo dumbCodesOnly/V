@@ -36,6 +36,11 @@ The application automatically handles schema migrations on startup, but for fres
 ✅ On-demand sync service (no background processes)
 ✅ SSL connection handling
 ✅ Connection pooling for serverless
+✅ **Real Trading Integration**: Full Toobit exchange order placement
+✅ **Risk Management**: Automatic TP/SL order placement on exchange
+✅ **Position Management**: Real position closure and order cancellation
+✅ **Testnet/Mainnet Toggle**: Safe testing before real money trading
+✅ **Exchange Order Tracking**: Complete order lifecycle management
 
 ## Troubleshooting
 

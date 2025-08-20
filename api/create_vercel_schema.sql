@@ -1,5 +1,6 @@
 -- Vercel/Neon Database Schema Creation Script
 -- This ensures all required columns exist for the trading bot
+-- Updated for real trading integration with exchange order tracking
 
 -- Create user_credentials table
 CREATE TABLE IF NOT EXISTS user_credentials (
@@ -61,6 +62,9 @@ CREATE TABLE IF NOT EXISTS trade_configurations (
     realized_pnl FLOAT DEFAULT 0.0,
     final_pnl FLOAT DEFAULT 0.0,
     closed_at TIMESTAMP,
+    exchange_order_id VARCHAR(100),
+    exchange_client_order_id VARCHAR(100),
+    exchange_tp_sl_orders TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -68,6 +72,9 @@ CREATE TABLE IF NOT EXISTS trade_configurations (
 -- Add missing columns if they don't exist (for existing databases)
 ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS breakeven_sl_triggered BOOLEAN DEFAULT FALSE;
 ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS realized_pnl FLOAT DEFAULT 0.0;
+ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_order_id VARCHAR(100);
+ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_client_order_id VARCHAR(100);
+ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_tp_sl_orders TEXT;
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_credentials_telegram_user_id ON user_credentials(telegram_user_id);
