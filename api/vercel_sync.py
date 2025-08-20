@@ -187,6 +187,9 @@ class VercelSyncService:
                     # Calculate final P&L from filled orders
                     final_pnl = self._calculate_final_pnl_from_orders(filled_orders, trade)
                     
+                    # Include any realized P&L from partial take profits
+                    final_pnl += getattr(trade, 'realized_pnl', 0.0)
+                    
                     # Update trade status
                     trade.status = 'stopped'
                     trade.final_pnl = final_pnl
