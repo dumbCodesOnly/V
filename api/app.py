@@ -1768,9 +1768,9 @@ def save_credentials():
             return jsonify({'error': 'No JSON data provided'}), 400
         user_id = data.get('user_id', '123456789')
         exchange = data.get('exchange', 'toobit')
-        api_key = data.get('api_key', '').strip()
-        api_secret = data.get('api_secret', '').strip()
-        passphrase = data.get('passphrase', '').strip()
+        api_key = (data.get('api_key') or '').strip()
+        api_secret = (data.get('api_secret') or '').strip()
+        passphrase = (data.get('passphrase') or '').strip()
         
         if not api_key or not api_secret:
             return jsonify({'error': 'API key and secret are required'}), 400
