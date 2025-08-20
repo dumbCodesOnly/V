@@ -2970,15 +2970,16 @@ def update_all_positions_with_live_data():
                                     
                                     logging.info(f"Partial TP{i+1} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
                                     
-                                    # Auto move SL to break-even after first TP (TP1)
-                                    if i == 0:  # First TP triggered
-                                        # Move stop loss to entry price (break-even)
-                                        original_sl_percent = config.stop_loss_percent
-                                        # Set a special flag to indicate break-even stop loss
-                                        config.breakeven_sl_triggered = True
-                                        config.breakeven_sl_price = config.entry_price
-                                        logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
-                                        save_trade_to_db(user_id, config)
+                                    # Auto move SL to break-even after first TP (TP1) if enabled
+                                    if i == 0 and hasattr(config, 'breakeven_after') and config.breakeven_after > 0:  # First TP triggered and breakeven enabled
+                                        if not getattr(config, 'breakeven_sl_triggered', False):
+                                            # Move stop loss to entry price (break-even)
+                                            original_sl_percent = config.stop_loss_percent
+                                            # Set a special flag to indicate break-even stop loss
+                                            config.breakeven_sl_triggered = True
+                                            config.breakeven_sl_price = config.entry_price
+                                            logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
+                                            save_trade_to_db(user_id, config)
                                     
                                     break  # Only trigger one TP level at a time
                     
