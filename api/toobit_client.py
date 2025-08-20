@@ -71,6 +71,12 @@ class ToobitClient:
         
         url = self.base_url + request_path
         
+        # Enhanced logging for debugging API calls
+        api_mode = "TESTNET" if self.testnet else "LIVE"
+        logging.info(f"[{api_mode}] Toobit API Call: {method} {url}")
+        if data:
+            logging.info(f"[{api_mode}] Request data: {data}")
+        
         try:
             response = self.session.request(
                 method=method,
@@ -81,14 +87,19 @@ class ToobitClient:
                 timeout=30
             )
             
+            logging.info(f"[{api_mode}] Response status: {response.status_code}")
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            logging.info(f"[{api_mode}] Response: {result}")
+            return result
             
         except requests.exceptions.RequestException as e:
-            logging.error(f"Toobit API request failed: {e}")
+            logging.error(f"[{api_mode}] Toobit API request failed: {e}")
+            logging.error(f"[{api_mode}] Request details: {method} {url}")
             raise
         except json.JSONDecodeError as e:
-            logging.error(f"Toobit API response decode failed: {e}")
+            logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
+            logging.error(f"[{api_mode}] Raw response: {response.text if 'response' in locals() else 'N/A'}")
             raise
     
     def get_account_balance(self) -> Dict:
