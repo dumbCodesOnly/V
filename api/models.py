@@ -195,8 +195,23 @@ class TradeConfiguration(db.Model):
         config.entry_type = self.entry_type
         config.entry_price = self.entry_price
         config.stop_loss_percent = self.stop_loss_percent
-        # Convert breakeven_after back to expected format - preserve numeric value for comparisons
-        config.breakeven_after = self.breakeven_after or 0.0
+        # Convert breakeven_after back to expected format - handle both string and numeric values
+        if isinstance(self.breakeven_after, str):
+            if self.breakeven_after == "tp1":
+                config.breakeven_after = 1.0
+            elif self.breakeven_after == "tp2": 
+                config.breakeven_after = 2.0
+            elif self.breakeven_after == "tp3":
+                config.breakeven_after = 3.0
+            elif self.breakeven_after == "disabled":
+                config.breakeven_after = 0.0
+            else:
+                try:
+                    config.breakeven_after = float(self.breakeven_after)
+                except (ValueError, TypeError):
+                    config.breakeven_after = 0.0
+        else:
+            config.breakeven_after = float(self.breakeven_after) if self.breakeven_after else 0.0
         config.breakeven_sl_triggered = getattr(self, 'breakeven_sl_triggered', False)
         # Set breakeven SL price to entry price when breakeven is triggered
         config.breakeven_sl_price = self.entry_price if config.breakeven_sl_triggered else 0.0

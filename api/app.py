@@ -2972,7 +2972,19 @@ def update_all_positions_with_live_data():
                                     logging.info(f"Partial TP{i+1} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
                                     
                                     # Auto move SL to break-even after first TP (TP1) if enabled
-                                    if i == 0 and hasattr(config, 'breakeven_after') and config.breakeven_after > 0:  # First TP triggered and breakeven enabled
+                                    # Convert string breakeven values to numeric for comparison
+                                    breakeven_numeric = 0.0
+                                    if hasattr(config, 'breakeven_after'):
+                                        if config.breakeven_after == "tp1":
+                                            breakeven_numeric = 1.0
+                                        elif config.breakeven_after == "tp2":
+                                            breakeven_numeric = 2.0  
+                                        elif config.breakeven_after == "tp3":
+                                            breakeven_numeric = 3.0
+                                        elif isinstance(config.breakeven_after, (int, float)):
+                                            breakeven_numeric = float(config.breakeven_after)
+                                    
+                                    if i == 0 and breakeven_numeric > 0:  # First TP triggered and breakeven enabled
                                         if not getattr(config, 'breakeven_sl_triggered', False):
                                             # Move stop loss to entry price (break-even)
                                             original_sl_percent = config.stop_loss_percent
