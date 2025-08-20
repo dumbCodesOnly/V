@@ -1762,7 +1762,8 @@ def close_trade():
             return jsonify({'error': 'Trade is not active'}), 400
         
         # Simulate closing the trade
-        final_pnl = config.unrealized_pnl
+        # Include both unrealized and realized P&L in final calculation
+        final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
         config.status = "stopped"
         config.final_pnl = final_pnl  # Store final P&L in the config object too
         config.closed_at = get_iran_time().isoformat()  # Store closure timestamp
@@ -1825,7 +1826,8 @@ def close_all_trades():
         for trade_id, config in active_trades:
             try:
                 # Simulate closing the trade
-                final_pnl = config.unrealized_pnl
+                # Include both unrealized and realized P&L in final calculation
+                final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
                 config.status = "stopped"
                 config.final_pnl = final_pnl
                 config.closed_at = get_iran_time().isoformat()
