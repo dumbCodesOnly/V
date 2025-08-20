@@ -2870,7 +2870,8 @@ def update_all_positions_with_live_data():
                     if stop_loss_triggered:
                         # Close the position
                         config.status = "stopped"
-                        config.final_pnl = config.unrealized_pnl
+                        # Include both unrealized P&L and any realized P&L from partial TPs
+                        config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
                         config.closed_at = get_iran_time().isoformat()
                         config.unrealized_pnl = 0.0
                         
@@ -2909,7 +2910,8 @@ def update_all_positions_with_live_data():
                                 if allocation >= 100:
                                     # Full position close
                                     config.status = "stopped"
-                                    config.final_pnl = config.unrealized_pnl
+                                    # Include both unrealized P&L and any realized P&L from partial TPs
+                                    config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
                                     config.closed_at = get_iran_time().isoformat()
                                     config.unrealized_pnl = 0.0
                                     
