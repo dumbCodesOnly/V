@@ -22,7 +22,8 @@ class ToobitClient:
         self.testnet = testnet
         
         # Base URLs for Toobit API - Fixed URLs based on official documentation
-        self.base_url = "https://api.toobit.com" if not testnet else "https://testnet-api.toobit.com"
+        # Note: Toobit may not have separate testnet URL, using main API with testnet credentials
+        self.base_url = "https://api.toobit.com"
         self.futures_base = "/api/v1/futures"
         
         # Request session for connection pooling
@@ -106,8 +107,16 @@ class ToobitClient:
         except requests.exceptions.RequestException as e:
             logging.error(f"[{api_mode}] Toobit API request failed: {e}")
             logging.error(f"[{api_mode}] Request details: {method} {url}")
+            logging.error(f"[{api_mode}] Request headers: {headers}")
+            logging.error(f"[{api_mode}] Request params: {all_params}")
             if 'response' in locals():
                 logging.error(f"[{api_mode}] Response body: {response.text}")
+                # Try to decode error response for more details
+                try:
+                    error_data = response.json()
+                    logging.error(f"[{api_mode}] Error details: {error_data}")
+                except:
+                    pass
             raise
         except json.JSONDecodeError as e:
             logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
@@ -181,23 +190,19 @@ class ToobitClient:
                 'quantity': str(quantity)
             }
             
-            # Add timeInForce for limit orders (required by Toobit)
+            # Only add timeInForce for limit orders (not for market orders)
             if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
                 data['timeInForce'] = kwargs.get('timeInForce', 'GTC')
             
-            if price:
+            # Only add price for limit orders
+            if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
                 data['price'] = str(price)
             if stop_price:
                 data['stopPrice'] = str(stop_price)
                 
-            # Add leverage if provided
-            if 'leverage' in kwargs:
-                # Note: Leverage might need to be set separately via margin/leverage API
-                pass
-                
             # Add additional parameters (reduceOnly, etc.)
             for key, value in kwargs.items():
-                if key not in ['leverage']:  # Skip leverage as it's handled separately
+                if key not in ['leverage', 'timeInForce']:  # Skip these as they're handled above
                     data[key] = value
             
             response = self._make_request('POST', '/order', data=data)
