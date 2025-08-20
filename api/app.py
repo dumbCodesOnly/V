@@ -1571,27 +1571,120 @@ def execute_trade():
                     }
                 })
         
-        # Execute trade (market order or limit order conditions met)
+        # Execute trade on Toobit exchange (REAL TRADING)
+        execution_success = False
+        try:
+            # Get user credentials for exchange API
+            user_creds = UserCredentials.query.filter_by(
+                telegram_user_id=str(chat_id),
+                is_active=True
+            ).first()
+            
+            if not user_creds or not user_creds.has_credentials():
+                return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
+            
+            # Create Toobit client
+            client = ToobitClient(
+                api_key=user_creds.get_api_key(),
+                api_secret=user_creds.get_api_secret(),
+                passphrase=user_creds.get_passphrase(),
+                testnet=user_creds.testnet_mode
+            )
+            
+            # Test connection first
+            is_connected, message = client.test_connection()
+            if not is_connected:
+                return jsonify({'error': f'Exchange connection failed: {message}'}), 400
+            
+            # Calculate position size for order
+            position_value = config.amount * config.leverage
+            position_size = position_value / current_market_price
+            
+            # Determine order type and parameters
+            order_type = "market" if config.entry_type == "market" else "limit"
+            order_side = "buy" if config.side == "long" else "sell"
+            order_price = config.entry_price if config.entry_type == "limit" else None
+            
+            # Place the main position order on exchange
+            order_result = client.place_order(
+                symbol=config.symbol,
+                side=order_side,
+                order_type=order_type,
+                quantity=str(position_size),
+                price=str(order_price) if order_price else None,
+                timeInForce="GTC",
+                leverage=config.leverage
+            )
+            
+            if not order_result:
+                return jsonify({'error': 'Failed to place order on exchange. Please check your API keys and try again.'}), 500
+            
+            execution_success = True
+            logging.info(f"Order placed on Toobit: {order_result}")
+            
+            # Store exchange order ID
+            config.exchange_order_id = order_result.get('orderId')
+            config.exchange_client_order_id = order_result.get('clientOrderId')
+            
+        except Exception as e:
+            logging.error(f"Exchange order placement failed: {e}")
+            return jsonify({'error': f'Exchange order failed: {str(e)}'}), 500
+        
+        # Update trade configuration
         config.status = "active"
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
-        # Position value = margin * leverage (total value of position)
         config.position_value = config.amount * config.leverage
-        # Position size = position value / entry price (number of coins)
         config.position_size = config.position_value / current_market_price
         
         if config.entry_type == "market" or config.entry_price is None:
-            # Market order: use current price as entry and execution price
             config.current_price = current_market_price
             config.entry_price = current_market_price
         else:
-            # Limit order that met conditions: use limit price as entry, current price for display
             config.current_price = current_market_price
-            # entry_price already set to limit price
         
         config.unrealized_pnl = 0.0
         
         # Save to database
         save_trade_to_db(chat_id, config)
+        
+        # Place TP/SL orders on exchange after main position is filled
+        if execution_success:
+            try:
+                tp_sl_orders = []
+                
+                # Calculate TP/SL prices
+                tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+                
+                # Place multiple take profit orders
+                if config.take_profits and tp_sl_data.get('take_profits'):
+                    tp_orders_to_place = []
+                    for tp_data in tp_sl_data['take_profits']:
+                        tp_quantity = position_size * (tp_data['allocation'] / 100)
+                        tp_orders_to_place.append({
+                            'price': tp_data['price'],
+                            'quantity': tp_quantity,
+                            'percentage': tp_data['percentage'],
+                            'allocation': tp_data['allocation']
+                        })
+                    
+                    sl_price = None
+                    if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
+                        sl_price = str(tp_sl_data['stop_loss']['price'])
+                    
+                    tp_sl_orders = client.place_multiple_tp_sl_orders(
+                        symbol=config.symbol,
+                        side=order_side,
+                        total_quantity=str(position_size),
+                        take_profits=tp_orders_to_place,
+                        stop_loss_price=sl_price
+                    )
+                    
+                    config.exchange_tp_sl_orders = tp_sl_orders
+                    logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
+                
+            except Exception as e:
+                logging.error(f"Failed to place TP/SL orders: {e}")
+                # Continue execution - main position was successful
         
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
@@ -1701,6 +1794,10 @@ def save_credentials():
         user_creds.exchange_name = exchange
         user_creds.is_active = True
         
+        # Handle testnet mode setting
+        if 'testnet_mode' in data:
+            user_creds.testnet_mode = bool(data['testnet_mode'])
+        
         db.session.commit()
         
         return jsonify({
@@ -1741,6 +1838,40 @@ def delete_credentials():
         db.session.rollback()
         return jsonify({'error': 'Failed to delete credentials'}), 500
 
+@app.route('/api/toggle-testnet', methods=['POST'])
+def toggle_testnet():
+    """Toggle between testnet and mainnet modes"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        user_id = data.get('user_id', '123456789')
+        testnet_mode = bool(data.get('testnet_mode', True))
+        
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user_creds:
+            return jsonify({'error': 'No credentials found. Please set up API keys first.'}), 404
+        
+        user_creds.testnet_mode = testnet_mode
+        db.session.commit()
+        
+        mode_text = "testnet" if testnet_mode else "mainnet (REAL TRADING)"
+        warning = ""
+        if not testnet_mode:
+            warning = "⚠️ WARNING: You are now in MAINNET mode. Real money will be used for trades!"
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully switched to {mode_text}',
+            'testnet_mode': testnet_mode,
+            'warning': warning
+        })
+        
+    except Exception as e:
+        logging.error(f"Error toggling testnet mode: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to toggle testnet mode'}), 500
+
 @app.route('/api/close-trade', methods=['POST'])
 def close_trade():
     """Close an active trade"""
@@ -1762,12 +1893,60 @@ def close_trade():
         if config.status != "active":
             return jsonify({'error': 'Trade is not active'}), 400
         
-        # Simulate closing the trade
-        # Include both unrealized and realized P&L in final calculation
+        # Close position on Toobit exchange (REAL TRADING)
+        try:
+            # Get user credentials for exchange API
+            user_creds = UserCredentials.query.filter_by(
+                telegram_user_id=str(chat_id),
+                is_active=True
+            ).first()
+            
+            if not user_creds or not user_creds.has_credentials():
+                return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
+            
+            # Create Toobit client
+            client = ToobitClient(
+                api_key=user_creds.get_api_key(),
+                api_secret=user_creds.get_api_secret(),
+                passphrase=user_creds.get_passphrase(),
+                testnet=user_creds.testnet_mode
+            )
+            
+            # Close position on exchange
+            close_side = "sell" if config.side == "long" else "buy"
+            close_order = client.place_order(
+                symbol=config.symbol,
+                side=close_side,
+                order_type="market",
+                quantity=str(config.position_size),
+                reduceOnly=True
+            )
+            
+            if not close_order:
+                return jsonify({'error': 'Failed to close position on exchange. Please check your connection and try again.'}), 500
+            
+            logging.info(f"Position closed on Toobit: {close_order}")
+            
+            # Cancel any remaining TP/SL orders on exchange
+            if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                for tp_sl_order in config.exchange_tp_sl_orders:
+                    order_id = tp_sl_order.get('order', {}).get('orderId')
+                    if order_id:
+                        try:
+                            client.cancel_order(str(order_id))
+                            logging.info(f"Cancelled TP/SL order: {order_id}")
+                        except Exception as cancel_error:
+                            logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+            
+        except Exception as e:
+            logging.error(f"Exchange position closure failed: {e}")
+            return jsonify({'error': f'Exchange closure failed: {str(e)}'}), 500
+        
+        # Update trade configuration
         final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
         config.status = "stopped"
-        config.final_pnl = final_pnl  # Store final P&L in the config object too
-        config.closed_at = get_iran_time().isoformat()  # Store closure timestamp
+        config.final_pnl = final_pnl
+        config.closed_at = get_iran_time().isoformat()
         config.unrealized_pnl = 0.0
         
         # Save updated status to database
@@ -1823,11 +2002,50 @@ def close_all_trades():
         closed_count = 0
         total_final_pnl = 0.0
         
-        # Close each active trade
+        # Get user credentials for exchange API (once for all trades)
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(chat_id),
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
+        
+        # Create Toobit client
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        # Close each active trade on exchange
         for trade_id, config in active_trades:
             try:
-                # Simulate closing the trade
-                # Include both unrealized and realized P&L in final calculation
+                # Close position on exchange
+                close_side = "sell" if config.side == "long" else "buy"
+                close_order = client.place_order(
+                    symbol=config.symbol,
+                    side=close_side,
+                    order_type="market",
+                    quantity=str(config.position_size),
+                    reduceOnly=True
+                )
+                
+                if close_order:
+                    logging.info(f"Position closed on Toobit: {close_order}")
+                    
+                    # Cancel any remaining TP/SL orders on exchange
+                    if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                        for tp_sl_order in config.exchange_tp_sl_orders:
+                            order_id = tp_sl_order.get('order', {}).get('orderId')
+                            if order_id:
+                                try:
+                                    client.cancel_order(str(order_id))
+                                except Exception as cancel_error:
+                                    logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+                
+                # Update trade configuration
                 final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
                 config.status = "stopped"
                 config.final_pnl = final_pnl
