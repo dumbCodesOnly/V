@@ -2955,10 +2955,71 @@
             
             const summary = data.summary || {};
             
-            document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
-            document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
-            document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
-            document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+            // Check if user is in live trading mode and has credentials
+            const credsData = await apiCall(`/api/user-credentials?user_id=${currentUser?.id || '123456789'}`);
+            const isLiveMode = credsData && credsData.has_credentials && !credsData.testnet_mode;
+            
+            if (isLiveMode) {
+                // Fetch real exchange balance for live trading mode
+                try {
+                    const exchangeBalance = await apiCall(`/api/exchange/balance?user_id=${currentUser?.id || '123456789'}`);
+                    
+                    if (exchangeBalance && exchangeBalance.success && exchangeBalance.balance) {
+                        const balance = exchangeBalance.balance;
+                        
+                        // Display real exchange balance
+                        document.getElementById('account-balance').textContent = `$${balance.total_balance?.toFixed(2) || '0.00'}`;
+                        document.getElementById('margin-used').textContent = `$${balance.used_margin?.toFixed(2) || '0.00'}`;
+                        document.getElementById('free-margin').textContent = `$${balance.available_balance?.toFixed(2) || '0.00'}`;
+                        document.getElementById('margin-ratio').textContent = `${balance.margin_ratio?.toFixed(1) || '0'}%`;
+                        
+                        // Show live trading indicator in balance
+                        const balanceElement = document.getElementById('account-balance');
+                        const balanceParent = balanceElement.closest('.portfolio-stat');
+                        if (balanceParent) {
+                            const indicator = balanceParent.querySelector('.live-indicator') || document.createElement('div');
+                            indicator.className = 'live-indicator';
+                            indicator.innerHTML = '🟢 Live';
+                            indicator.style.cssText = 'font-size: 0.5rem; color: #28a745; font-weight: 600; margin-top: 2px;';
+                            if (!balanceParent.querySelector('.live-indicator')) {
+                                balanceParent.appendChild(indicator);
+                            }
+                        }
+                    } else {
+                        // Fallback to simulated data if exchange balance fails
+                        document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
+                        document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
+                        document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
+                        document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+                    }
+                } catch (error) {
+                    console.error('Error fetching exchange balance:', error);
+                    // Fallback to simulated data if API call fails
+                    document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
+                    document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
+                    document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
+                    document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+                }
+            } else {
+                // Use simulated balance for testnet mode
+                document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
+                document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
+                document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
+                document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
+                
+                // Show testnet indicator
+                const balanceElement = document.getElementById('account-balance');
+                const balanceParent = balanceElement.closest('.portfolio-stat');
+                if (balanceParent) {
+                    const indicator = balanceParent.querySelector('.live-indicator') || document.createElement('div');
+                    indicator.className = 'live-indicator';
+                    indicator.innerHTML = '🧪 Test';
+                    indicator.style.cssText = 'font-size: 0.5rem; color: #007bff; font-weight: 600; margin-top: 2px;';
+                    if (!balanceParent.querySelector('.live-indicator')) {
+                        balanceParent.appendChild(indicator);
+                    }
+                }
+            }
             
             // Update total P&L if elements exist
             const realizedPnlElement = document.getElementById('realized-pnl');
@@ -4466,6 +4527,11 @@
                         alert(response.message);
                     }
                     loadCredentialsStatus();
+                    
+                    // If user is on portfolio tab, refresh it to show the new balance data
+                    if (currentActiveTab === 'portfolio') {
+                        loadPortfolio();
+                    }
                 } else {
                     alert('Failed to toggle mode: ' + (response?.error || 'Unknown error'));
                 }

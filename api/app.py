@@ -719,6 +719,76 @@ def test_exchange_connection():
         logging.error(f"Error testing exchange connection: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/exchange/balance')
+def get_exchange_balance():
+    """Get real account balance from Toobit exchange"""
+    user_id = request.args.get('user_id', '123456789')
+    
+    try:
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'error': 'No API credentials found', 'testnet_mode': True}), 400
+        
+        # Create client and get balance
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        balance_data = client.get_account_balance()
+        
+        if balance_data and isinstance(balance_data, list) and len(balance_data) > 0:
+            # Extract USDT balance info from Toobit response
+            usdt_balance = balance_data[0]  # Toobit returns array with USDT info
+            
+            total_balance = float(usdt_balance.get('balance', '0'))
+            available_balance = float(usdt_balance.get('availableBalance', '0'))
+            position_margin = float(usdt_balance.get('positionMargin', '0'))
+            order_margin = float(usdt_balance.get('orderMargin', '0'))
+            unrealized_pnl = float(usdt_balance.get('crossUnRealizedPnl', '0'))
+            
+            # Calculate used margin and margin ratio
+            used_margin = position_margin + order_margin
+            margin_ratio = (used_margin / total_balance * 100) if total_balance > 0 else 0
+            
+            return jsonify({
+                'success': True,
+                'testnet_mode': user_creds.testnet_mode,
+                'balance': {
+                    'total_balance': total_balance,
+                    'available_balance': available_balance,
+                    'used_margin': used_margin,
+                    'position_margin': position_margin,
+                    'order_margin': order_margin,
+                    'unrealized_pnl': unrealized_pnl,
+                    'margin_ratio': round(margin_ratio, 2),
+                    'asset': usdt_balance.get('asset', 'USDT')
+                },
+                'raw_data': balance_data,
+                'timestamp': get_iran_time().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No balance data received from exchange',
+                'testnet_mode': user_creds.testnet_mode
+            }), 500
+        
+    except Exception as e:
+        logging.error(f"Error getting exchange balance: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'testnet_mode': True
+        }), 500
+
 @app.route('/api/exchange/positions')
 def get_exchange_positions():
     """Get positions directly from Toobit exchange"""
