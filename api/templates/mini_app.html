@@ -3052,8 +3052,59 @@
             `;
             
             if (closedPositions.length > 0) {
-                content += closedPositions.slice(-10).reverse().map(pos => `
-                    <div class="trade-card" style="opacity: 0.8; border-left: 3px solid #6c757d;">
+                content += closedPositions.slice(-10).reverse().map(pos => {
+                    // Parse take profits if available
+                    let takeProfits = [];
+                    try {
+                        takeProfits = pos.take_profits ? (typeof pos.take_profits === 'string' ? JSON.parse(pos.take_profits) : pos.take_profits) : [];
+                    } catch (e) {
+                        takeProfits = [];
+                    }
+                    
+                    // Calculate ROE for closed position
+                    const margin = pos.amount || 0;
+                    const finalROE = margin > 0 ? ((pos.final_pnl || 0) / margin) * 100 : 0;
+                    
+                    // Prepare TP display
+                    let tpDisplay = '';
+                    if (takeProfits.length > 0) {
+                        const tpInfo = takeProfits.map((tp, index) => 
+                            `TP${index + 1}: ${tp.percentage}% (${tp.allocation}%)`
+                        ).join(', ');
+                        tpDisplay = `
+                        <div class="mt-2 pt-2" style="border-top: 1px solid rgba(108, 117, 125, 0.2);">
+                            <small class="text-muted">Take Profits:</small><br>
+                            <small style="color: #17a2b8; font-family: monospace;">${tpInfo}</small>
+                        </div>`;
+                    }
+                    
+                    // Breakeven status display
+                    let breakevenDisplay = '';
+                    if (pos.breakeven_after && pos.breakeven_after !== 'disabled') {
+                        const breakevenStatus = pos.breakeven_sl_triggered ? '✓ Activated' : '○ Not triggered';
+                        const statusColor = pos.breakeven_sl_triggered ? '#28a745' : '#ffc107';
+                        breakevenDisplay = `
+                        <div class="mt-1">
+                            <small class="text-muted">Breakeven SL:</small>
+                            <small style="color: ${statusColor}; font-weight: 600;">${breakevenStatus}</small>
+                            <small class="text-muted">(after ${pos.breakeven_after})</small>
+                        </div>`;
+                    }
+                    
+                    // P&L breakdown display
+                    const realizedPnL = pos.realized_pnl || 0;
+                    const unrealizedPnL = (pos.final_pnl || 0) - realizedPnL;
+                    let pnlBreakdown = '';
+                    if (realizedPnL > 0) {
+                        pnlBreakdown = `
+                        <div class="mt-1">
+                            <small class="text-muted">Realized: </small><small style="color: #28a745;">$${realizedPnL.toFixed(2)}</small>
+                            <small class="text-muted"> | Final: </small><small style="color: ${unrealizedPnL >= 0 ? '#28a745' : '#dc3545'};">$${unrealizedPnL.toFixed(2)}</small>
+                        </div>`;
+                    }
+                    
+                    return `
+                    <div class="trade-card" style="opacity: 0.85; border-left: 3px solid ${(pos.final_pnl || 0) >= 0 ? '#28a745' : '#dc3545'};">
                         <div class="d-flex justify-content-between mb-2">
                             <div>
                                 <strong>${pos.symbol}</strong>
@@ -3064,26 +3115,33 @@
                                 <strong style="color: ${(pos.final_pnl || 0) >= 0 ? '#28a745' : '#dc3545'}">
                                     $${(pos.final_pnl || 0).toFixed(2)}
                                 </strong>
-                                <br><small class="text-muted">Final P&L</small>
+                                <br><small style="color: ${finalROE >= 0 ? '#28a745' : '#dc3545'}; font-weight: 600;">
+                                    ${finalROE.toFixed(2)}% ROE
+                                </small>
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-4">
-                                <small class="text-muted">Size</small><br>
+                                <small class="text-muted">Position Size</small><br>
                                 <strong>$${pos.position_size || (pos.amount * pos.leverage) || '0'}</strong>
                                 <br><small class="text-muted">Margin: $${pos.amount || '0'}</small>
                             </div>
                             <div class="col-4">
-                                <small class="text-muted">Entry</small><br>
+                                <small class="text-muted">Entry Price</small><br>
                                 <strong>$${pos.entry_price || 'Market'}</strong>
+                                <br><small class="text-muted">${pos.leverage || '1'}x Leverage</small>
                             </div>
                             <div class="col-4">
-                                <small class="text-muted">Leverage</small><br>
-                                <strong>${pos.leverage || '1'}x</strong>
+                                <small class="text-muted">Stop Loss</small><br>
+                                <strong>${pos.stop_loss_percent || '0'}%</strong>
+                                ${pos.breakeven_sl_triggered ? '<br><small style="color: #28a745;">+ Breakeven</small>' : ''}
                             </div>
                         </div>
+                        ${tpDisplay}
+                        ${breakevenDisplay}
+                        ${pnlBreakdown}
                         ${pos.closed_at ? `
-                        <div class="mt-2">
+                        <div class="mt-2 pt-2" style="border-top: 1px solid rgba(108, 117, 125, 0.2);">
                             <small class="text-muted">Closed: ${new Date(pos.closed_at).toLocaleString('en-US', {
                                 year: 'numeric',
                                 month: '2-digit', 
@@ -3095,7 +3153,8 @@
                         </div>
                         ` : ''}
                     </div>
-                `).join('');
+                `;
+                }).join('');
                 
                 if (closedPositions.length > 10) {
                     content += `<div class="text-center py-2">
