@@ -195,9 +195,11 @@ class TradeConfiguration(db.Model):
         config.entry_type = self.entry_type
         config.entry_price = self.entry_price
         config.stop_loss_percent = self.stop_loss_percent
-        # Convert breakeven_after back to expected format
-        config.breakeven_after = self.breakeven_after
+        # Convert breakeven_after back to expected format - preserve numeric value for comparisons
+        config.breakeven_after = self.breakeven_after or 0.0
         config.breakeven_sl_triggered = getattr(self, 'breakeven_sl_triggered', False)
+        # Set breakeven SL price to entry price when breakeven is triggered
+        config.breakeven_sl_price = self.entry_price if config.breakeven_sl_triggered else 0.0
         config.trailing_stop_enabled = self.trailing_stop_enabled
         config.trail_percentage = self.trail_percentage
         config.trail_activation_price = self.trail_activation_price

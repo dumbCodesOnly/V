@@ -293,6 +293,7 @@ class TradeConfig:
         self.stop_loss_percent = 0.0
         self.breakeven_after = 0.0
         self.breakeven_sl_triggered = False  # Track if breakeven stop loss has been triggered
+        self.breakeven_sl_price = 0.0  # Price at which break-even stop loss triggers
         # Trailing Stop System - Clean Implementation
         self.trailing_stop_enabled = False
         self.trail_percentage = 0.0  # Percentage for trailing stop
