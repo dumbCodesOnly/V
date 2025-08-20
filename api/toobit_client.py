@@ -99,7 +99,10 @@ class ToobitClient:
             raise
         except json.JSONDecodeError as e:
             logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
-            logging.error(f"[{api_mode}] Raw response: {response.text if 'response' in locals() else 'N/A'}")
+            if 'response' in locals():
+                logging.error(f"[{api_mode}] Raw response: {response.text}")
+            else:
+                logging.error(f"[{api_mode}] No response object available")
             raise
     
     def get_account_balance(self) -> Dict:
