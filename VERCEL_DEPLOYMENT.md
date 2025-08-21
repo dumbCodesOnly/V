@@ -41,6 +41,9 @@ The application automatically handles schema migrations on startup, but for fres
 ✅ **Position Management**: Real position closure and order cancellation
 ✅ **Testnet/Mainnet Toggle**: Safe testing before real money trading
 ✅ **Exchange Order Tracking**: Complete order lifecycle management
+✅ **Price Source Fix**: Exchange-accurate pricing with intelligent fallbacks
+✅ **Enhanced Error Handling**: Clear diagnostics for API issues
+✅ **Flask Context Management**: Resolved serverless context issues
 
 ## Troubleshooting
 
