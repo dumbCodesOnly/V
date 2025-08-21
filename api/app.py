@@ -2,7 +2,7 @@ import os
 import logging
 import hmac
 import hashlib
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, has_app_context
 from datetime import datetime, timedelta
 import urllib.request
 import urllib.parse
@@ -1668,10 +1668,13 @@ def execute_trade():
                 testnet=user_creds.testnet_mode
             )
             
-            # Test connection first
-            is_connected, message = client.test_connection()
-            if not is_connected:
-                return jsonify({'error': f'Exchange connection failed: {message}'}), 400
+            # Test connection first - balance endpoint works even if ticker endpoints don't
+            try:
+                balance_data = client.get_account_balance()
+                logging.info(f"Toobit connection test successful. Balance data: {balance_data}")
+            except Exception as conn_error:
+                logging.error(f"Toobit connection test failed: {conn_error}")
+                return jsonify({'error': f'Exchange connection failed: {str(conn_error)}'}), 400
             
             # Calculate position size for order
             position_value = config.amount * config.leverage
@@ -2970,6 +2973,11 @@ def fetch_cryptocompare_price(symbol):
 def get_toobit_price(symbol, user_id=None):
     """Get live price directly from Toobit exchange"""
     try:
+        # Ensure we're in Flask application context
+        if not has_app_context():
+            with app.app_context():
+                return get_toobit_price(symbol, user_id)
+        
         # Try to get user credentials to use their exchange connection
         if user_id:
             user_creds = UserCredentials.query.filter_by(

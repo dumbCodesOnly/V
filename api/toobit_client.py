@@ -54,22 +54,29 @@ class ToobitClient:
         if data:
             all_params.update(data)
         
-        # Only add authentication parameters for authenticated endpoints
+        # For authenticated requests, prepare signature
         if authenticated:
+            # Add timestamp to all parameters first
             all_params['timestamp'] = timestamp
-        
-        # Create parameter string for signature (sorted by key)
-        sorted_params = sorted(all_params.items())
-        params_string = "&".join([f"{k}={v}" for k, v in sorted_params])
-        
-        # Set headers 
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        
-        # Add authentication headers and signature for authenticated requests
-        if authenticated:
+            
+            # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
+            sorted_params = sorted(all_params.items())
+            params_string = "&".join([f"{k}={v}" for k, v in sorted_params])
+            
+            # Generate signature
             signature = self._generate_signature(params_string)
+            
+            # Add signature AFTER generating it
             all_params['signature'] = signature
-            headers['X-BB-APIKEY'] = self.api_key
+            
+            # Set authenticated headers
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-BB-APIKEY': self.api_key
+            }
+        else:
+            # Public endpoints - no signature
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         
         url = self.base_url + self.futures_base + endpoint
         
