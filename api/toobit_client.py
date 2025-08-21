@@ -109,7 +109,8 @@ class ToobitClient:
             logging.error(f"[{api_mode}] Request details: {method} {url}")
             logging.error(f"[{api_mode}] Request headers: {headers}")
             logging.error(f"[{api_mode}] Request params: {all_params}")
-            if 'response' in locals():
+            response = getattr(e, 'response', None)
+            if response is not None:
                 logging.error(f"[{api_mode}] Response body: {response.text}")
                 # Try to decode error response for more details
                 try:

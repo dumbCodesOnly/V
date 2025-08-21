@@ -9,10 +9,11 @@ import hashlib
 import hmac
 import time
 import json
+import os
 
-# Test API credentials (replace with actual ones)
-API_KEY = "CLsgiQbNKk2yTzMJGrC7oKPqVAmDDiemKXzwfhfMr3F9K"  
-API_SECRET = "your_secret_here"
+# Test API credentials - SECURITY: Load from environment variables
+API_KEY = os.environ.get("TOOBIT_API_KEY", "")
+API_SECRET = os.environ.get("TOOBIT_API_SECRET", "")
 
 def test_endpoint(endpoint):
     """Test a specific Toobit API endpoint"""
