@@ -267,34 +267,55 @@ class ToobitClient:
             return orders_placed
 
     def get_ticker_price(self, symbol: str) -> Optional[float]:
-        """Get current ticker price from Toobit exchange"""
+        """Get current ticker price from Toobit exchange - trying multiple endpoints"""
         try:
-            # Use public endpoint (no authentication required)
-            response = self._make_request('GET', '/ticker/price', params={'symbol': symbol}, authenticated=False)
+            # Try different endpoint patterns that might work for Toobit
+            endpoints_to_try = [
+                # Futures endpoints
+                ('/ticker/24hr', {'symbol': symbol}),
+                ('/ticker', {'symbol': symbol}),
+                # Spot endpoints (might work for price data)
+                ('/spot/ticker/24hr', {'symbol': symbol}),
+                ('/spot/ticker', {'symbol': symbol})
+            ]
             
-            if response and 'price' in response:
-                return float(response['price'])
-            elif response and isinstance(response, list) and len(response) > 0:
-                # Some exchanges return array format
-                return float(response[0].get('price', 0))
+            for endpoint, params in endpoints_to_try:
+                try:
+                    response = self._make_request('GET', endpoint, params=params, authenticated=False)
+                    
+                    if response and 'lastPrice' in response:
+                        return float(response['lastPrice'])
+                    elif response and 'price' in response:
+                        return float(response['price'])
+                    elif response and isinstance(response, list) and len(response) > 0:
+                        # Array format - get first item
+                        first_item = response[0]
+                        if 'lastPrice' in first_item:
+                            return float(first_item['lastPrice'])
+                        elif 'price' in first_item:
+                            return float(first_item['price'])
+                except Exception as e:
+                    logging.debug(f"Endpoint {endpoint} failed for {symbol}: {e}")
+                    continue
+            
             return None
         except Exception as e:
             logging.error(f"Failed to get ticker price for {symbol} from Toobit: {e}")
             return None
     
     def get_market_data(self, symbol: str) -> Optional[Dict]:
-        """Get comprehensive market data from Toobit"""
+        """Get comprehensive market data from Toobit using official endpoints"""
         try:
-            # Try multiple possible endpoints for market data
+            # Try official Toobit endpoints in order of preference
             endpoints_to_try = [
-                f'/ticker/24hr?symbol={symbol}',
-                f'/ticker?symbol={symbol}',
-                f'/depth?symbol={symbol}&limit=1'
+                ('/ticker/24hr', {'symbol': symbol}),
+                ('/depth', {'symbol': symbol, 'limit': 1}),
+                ('/trades', {'symbol': symbol, 'limit': 1})
             ]
             
-            for endpoint in endpoints_to_try:
+            for endpoint, params in endpoints_to_try:
                 try:
-                    response = self._make_request('GET', endpoint, authenticated=False)
+                    response = self._make_request('GET', endpoint, params=params, authenticated=False)
                     if response:
                         return response
                 except:
