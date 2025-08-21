@@ -1055,11 +1055,18 @@ def get_symbol_price(symbol):
             else:
                 cache_info = {'cached': False}
         
-        price = get_live_market_price(symbol)
+        price = get_live_market_price(symbol, prefer_exchange=True)
+        
+        # Get price source info from cache
+        price_source = 'unknown'
+        with cache_lock:
+            if symbol in price_cache:
+                price_source = price_cache[symbol].get('source', 'unknown')
         
         return jsonify({
             'symbol': symbol,
             'price': price,
+            'price_source': price_source,
             'timestamp': get_iran_time().isoformat(),
             'cache_info': cache_info
         })
@@ -1139,8 +1146,8 @@ def margin_data():
     # Initialize user environment (uses cache to prevent DB hits)
     initialize_user_environment(chat_id, force_reload=False)
     
-    # Update all positions with live market data before returning margin data
-    update_all_positions_with_live_data()
+    # Update all positions with live market data from Toobit exchange
+    update_all_positions_with_live_data(user_id=chat_id)
     
     # Get margin data for this specific user only
     margin_summary = get_margin_summary(chat_id)
@@ -1229,8 +1236,8 @@ def live_position_update():
             'update_type': 'live_prices'
         })
     
-    # Update all positions with live data (this only fetches prices, doesn't touch database)
-    update_all_positions_with_live_data()
+    # Update all positions with live data from Toobit exchange
+    update_all_positions_with_live_data(user_id=user_id)
     
     # Return only essential price and P&L data for fast updates
     live_data = {}
@@ -1589,8 +1596,8 @@ def execute_trade():
         if not config.is_complete():
             return jsonify({'error': 'Trade configuration is incomplete'}), 400
         
-        # Get current market price
-        current_market_price = get_live_market_price(config.symbol)
+        # Get current market price from Toobit exchange (where trade will be executed)
+        current_market_price = get_live_market_price(config.symbol, user_id=chat_id, prefer_exchange=True)
         
         # Handle limit orders - check if price condition is met
         if config.entry_type == "limit" and config.entry_price > 0:
@@ -2415,7 +2422,8 @@ Use the menu below to navigate:"""
         symbol = parts[1].upper()
         try:
             start_time = time.time()
-            price = get_live_market_price(symbol)
+            # For price commands, try Toobit first, then fallback to other sources
+            price = get_live_market_price(symbol, prefer_exchange=True)
             fetch_time = (time.time() - start_time) * 1000  # Convert to milliseconds
             
             # Get cache info
@@ -2959,9 +2967,42 @@ def fetch_cryptocompare_price(symbol):
         update_api_metrics('cryptocompare', False, response_time)
         raise e
 
-def get_live_market_price(symbol, use_cache=True):
+def get_toobit_price(symbol, user_id=None):
+    """Get live price directly from Toobit exchange"""
+    try:
+        # Try to get user credentials to use their exchange connection
+        if user_id:
+            user_creds = UserCredentials.query.filter_by(
+                telegram_user_id=str(user_id),
+                is_active=True
+            ).first()
+            
+            if user_creds and user_creds.has_credentials():
+                client = ToobitClient(
+                    api_key=user_creds.get_api_key(),
+                    api_secret=user_creds.get_api_secret(),
+                    passphrase=user_creds.get_passphrase(),
+                    testnet=user_creds.testnet_mode
+                )
+                
+                toobit_price = client.get_ticker_price(symbol)
+                if toobit_price:
+                    return toobit_price, 'toobit'
+        
+        # Fallback: Create anonymous client for public market data
+        anonymous_client = ToobitClient("", "", "", testnet=False)
+        toobit_price = anonymous_client.get_ticker_price(symbol)
+        if toobit_price:
+            return toobit_price, 'toobit'
+            
+        return None, None
+    except Exception as e:
+        logging.warning(f"Failed to get Toobit price for {symbol}: {e}")
+        return None, None
+
+def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=True):
     """
-    Optimized live market price fetching with caching, concurrent requests, and performance tracking
+    Enhanced price fetching that prioritizes the actual trading exchange (Toobit)
     """
     # Check cache first
     if use_cache:
@@ -2970,8 +3011,23 @@ def get_live_market_price(symbol, use_cache=True):
             if cache_key in price_cache:
                 cached_data = price_cache[cache_key]
                 if datetime.utcnow() - cached_data['timestamp'] < timedelta(seconds=cache_ttl):
-                    logging.debug(f"Using cached price for {symbol}: ${cached_data['price']}")
+                    logging.debug(f"Using cached price for {symbol}: ${cached_data['price']} from {cached_data.get('source', 'unknown')}")
                     return cached_data['price']
+    
+    # PRIORITY 1: Try Toobit exchange first (where trades are actually executed)
+    if prefer_exchange:
+        toobit_price, source = get_toobit_price(symbol, user_id)
+        if toobit_price:
+            # Cache the Toobit price
+            if use_cache:
+                with cache_lock:
+                    price_cache[symbol] = {
+                        'price': toobit_price,
+                        'timestamp': datetime.utcnow(),
+                        'source': 'toobit'
+                    }
+            logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
+            return toobit_price
     
     # Get optimal API order based on performance
     api_priority = get_api_priority()
@@ -3045,25 +3101,26 @@ def get_live_market_price(symbol, use_cache=True):
     logging.info(f"Retrieved live price for {symbol} from {success_source}: ${success_price}")
     return success_price
 
-def update_all_positions_with_live_data():
-    """Optimized batch update of only active positions with live market data"""
+def update_all_positions_with_live_data(user_id=None):
+    """Enhanced batch update using Toobit exchange prices for accurate trading data"""
     # Collect unique symbols for batch processing - ONLY for active positions
     symbols_to_update = set()
     position_configs = []
     
-    for user_id, trades in user_trade_configs.items():
+    for uid, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
             # Only update prices for active positions and configured trades that need live updates
             if config.symbol and (config.status == "active" or config.status == "configured"):
                 symbols_to_update.add(config.symbol)
-                position_configs.append((user_id, trade_id, config))
+                position_configs.append((uid, trade_id, config))
     
-    # Batch fetch prices for all symbols concurrently
+    # Batch fetch prices for all symbols concurrently from Toobit exchange
     symbol_prices = {}
     if symbols_to_update:
         futures = {}
         for symbol in symbols_to_update:
-            future = price_executor.submit(get_live_market_price, symbol, True)
+            # Prioritize Toobit exchange for accurate trading prices
+            future = price_executor.submit(get_live_market_price, symbol, True, user_id, True)
             futures[future] = symbol
         
         # Collect results with timeout

@@ -266,6 +266,45 @@ class ToobitClient:
             logging.error(f"Failed to place TP/SL orders: {e}")
             return orders_placed
 
+    def get_ticker_price(self, symbol: str) -> Optional[float]:
+        """Get current ticker price from Toobit exchange"""
+        try:
+            # Use public endpoint (no authentication required)
+            response = self._make_request('GET', '/ticker/price', params={'symbol': symbol}, authenticated=False)
+            
+            if response and 'price' in response:
+                return float(response['price'])
+            elif response and isinstance(response, list) and len(response) > 0:
+                # Some exchanges return array format
+                return float(response[0].get('price', 0))
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get ticker price for {symbol} from Toobit: {e}")
+            return None
+    
+    def get_market_data(self, symbol: str) -> Optional[Dict]:
+        """Get comprehensive market data from Toobit"""
+        try:
+            # Try multiple possible endpoints for market data
+            endpoints_to_try = [
+                f'/ticker/24hr?symbol={symbol}',
+                f'/ticker?symbol={symbol}',
+                f'/depth?symbol={symbol}&limit=1'
+            ]
+            
+            for endpoint in endpoints_to_try:
+                try:
+                    response = self._make_request('GET', endpoint, authenticated=False)
+                    if response:
+                        return response
+                except:
+                    continue
+            
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get market data for {symbol} from Toobit: {e}")
+            return None
+
     def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str,
                                    take_profits: Optional[List[Dict]] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:
         """Place multiple partial take profit orders and one stop loss order"""
