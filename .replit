@@ -1,4 +1,4 @@
-modules = ["python-3.11", "web", "postgresql-16"]
+modules = ["python-3.11", "web"]
 [agent]
 expertMode = true
 integrations = ["python_database==1.0.0"]
