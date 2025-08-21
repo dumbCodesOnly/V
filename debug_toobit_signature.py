@@ -21,7 +21,8 @@ def generate_toobit_signature(secret_key: str, params_string: str) -> str:
 
 def test_signature():
     """Test signature generation with Toobit documentation example"""
-    # Example from their docs
+    # SECURITY: Use example from documentation (safe - this is Toobit's official test key)
+    # This is the official test key from Toobit's API documentation for signature validation
     secret_key = "30lfjDT51iOG1kYZnDoLNynOyMdIcmQyO1XYfxzYOmQfx9tjiI98Pzio4uhZ0Uk2"
     
     # Parameters from their example (SELL order)
