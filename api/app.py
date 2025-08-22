@@ -39,18 +39,28 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database - PostgreSQL only (Neon for Vercel, Replit PostgreSQL for Replit)
+# Configure database - PostgreSQL preferred, SQLite fallback for development
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
-    raise ValueError("DATABASE_URL environment variable is required")
+    # Fallback to SQLite for development
+    import os
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance', 'trading_bot.db')
+    database_url = f"sqlite:///{db_path}"
+    logging.info(f"Using SQLite database for development at {db_path}")
 
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
-# Neon-optimized engine configuration
-if os.environ.get("VERCEL"):
+# Database engine configuration based on database type
+if database_url.startswith("sqlite"):
+    # SQLite configuration for development
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300
+    }
+elif os.environ.get("VERCEL"):
     # Neon PostgreSQL serverless configuration - optimized for connection handling
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_recycle": 1800,  # 30 minutes - shorter for serverless
@@ -97,15 +107,28 @@ def run_database_migrations():
             ]
             
             try:
+                # Check database type for proper column checking
+                is_sqlite = database_url.startswith("sqlite")
+                
                 for column_name, column_def in required_columns:
-                    result = db.session.execute(text("""
-                        SELECT column_name FROM information_schema.columns 
-                        WHERE table_name = 'trade_configurations' 
-                        AND column_name = :column_name
-                    """), {"column_name": column_name})
-                    
-                    if not result.fetchone():
-                        migrations_needed.append((column_name, column_def))
+                    if is_sqlite:
+                        # SQLite column checking
+                        result = db.session.execute(text("""
+                            PRAGMA table_info(trade_configurations)
+                        """))
+                        columns = [row[1] for row in result.fetchall()]  # row[1] is the column name
+                        if column_name not in columns:
+                            migrations_needed.append((column_name, column_def))
+                    else:
+                        # PostgreSQL column checking
+                        result = db.session.execute(text("""
+                            SELECT column_name FROM information_schema.columns 
+                            WHERE table_name = 'trade_configurations' 
+                            AND column_name = :column_name
+                        """), {"column_name": column_name})
+                        
+                        if not result.fetchone():
+                            migrations_needed.append((column_name, column_def))
                 
                 # Apply migrations
                 for column_name, column_def in migrations_needed:
