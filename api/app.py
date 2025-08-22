@@ -2,6 +2,7 @@ import os
 import logging
 import hmac
 import hashlib
+import uuid
 from flask import Flask, request, jsonify, render_template, has_app_context
 from datetime import datetime, timedelta
 import urllib.request
@@ -1745,73 +1746,93 @@ def execute_trade():
                     }
                 })
         
-        # Execute trade on Toobit exchange (REAL TRADING)
+        # Check if user is in mock trading mode
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(chat_id),
+            is_active=True
+        ).first()
+        
+        # Default to mock mode if no credentials exist
+        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
+        
         execution_success = False
-        try:
-            # Get user credentials for exchange API
-            user_creds = UserCredentials.query.filter_by(
-                telegram_user_id=str(chat_id),
-                is_active=True
-            ).first()
+        
+        if is_mock_mode:
+            # MOCK TRADING - Simulate execution without real API calls
+            logging.info(f"Executing mock trade for user {chat_id}: {config.symbol} {config.side}")
+            execution_success = True
             
+            # Simulate order placement
+            mock_order_id = f"mock_{uuid.uuid4().hex[:8]}"
+            config.exchange_order_id = mock_order_id
+            config.exchange_client_order_id = f"client_{mock_order_id}"
+            
+        else:
+            # REAL TRADING - Execute on Toobit exchange
             if not user_creds or not user_creds.has_credentials():
                 return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
             
-            # Create Toobit client
-            client = ToobitClient(
-                api_key=user_creds.get_api_key(),
-                api_secret=user_creds.get_api_secret(),
-                passphrase=user_creds.get_passphrase(),
-                testnet=user_creds.testnet_mode
-            )
-            
-            # Test connection first - balance endpoint works even if ticker endpoints don't
             try:
-                balance_data = client.get_account_balance()
-                logging.info(f"Toobit connection test successful. Balance data: {balance_data}")
-            except Exception as conn_error:
-                logging.error(f"Toobit connection test failed: {conn_error}")
-                return jsonify({'error': f'Exchange connection failed: {str(conn_error)}'}), 400
-            
-            # Calculate position size for order
-            position_value = config.amount * config.leverage
-            position_size = position_value / current_market_price
-            
-            # Determine order type and parameters
-            order_type = "market" if config.entry_type == "market" else "limit"
-            order_side = "buy" if config.side == "long" else "sell"
-            order_price = config.entry_price if config.entry_type == "limit" else None
-            
-            # Place the main position order on exchange
-            order_result = client.place_order(
-                symbol=config.symbol,
-                side=order_side,
-                order_type=order_type,
-                quantity=str(position_size),
-                price=str(order_price) if order_price else None,
-                timeInForce="GTC",
-                leverage=config.leverage
-            )
-            
-            if not order_result:
-                return jsonify({'error': 'Failed to place order on exchange. Please check your API keys and try again.'}), 500
-            
-            execution_success = True
-            logging.info(f"Order placed on Toobit: {order_result}")
-            
-            # Store exchange order ID
-            config.exchange_order_id = order_result.get('orderId')
-            config.exchange_client_order_id = order_result.get('clientOrderId')
-            
-        except Exception as e:
-            logging.error(f"Exchange order placement failed: {e}")
-            return jsonify({'error': f'Exchange order failed: {str(e)}'}), 500
+                # Create Toobit client
+                client = ToobitClient(
+                    api_key=user_creds.get_api_key(),
+                    api_secret=user_creds.get_api_secret(),
+                    passphrase=user_creds.get_passphrase(),
+                    testnet=user_creds.testnet_mode
+                )
+                
+                # Test connection first - balance endpoint works even if ticker endpoints don't
+                try:
+                    balance_data = client.get_account_balance()
+                    logging.info(f"Toobit connection test successful. Balance data: {balance_data}")
+                except Exception as conn_error:
+                    logging.error(f"Toobit connection test failed: {conn_error}")
+                    return jsonify({'error': f'Exchange connection failed: {str(conn_error)}'}), 400
+                
+                # Calculate position size for order
+                position_value = config.amount * config.leverage
+                position_size = position_value / current_market_price
+                
+                # Determine order type and parameters
+                order_type = "market" if config.entry_type == "market" else "limit"
+                order_side = "buy" if config.side == "long" else "sell"
+                order_price = config.entry_price if config.entry_type == "limit" else None
+                
+                # Place the main position order on exchange
+                order_result = client.place_order(
+                    symbol=config.symbol,
+                    side=order_side,
+                    order_type=order_type,
+                    quantity=str(position_size),
+                    price=str(order_price) if order_price else None,
+                    timeInForce="GTC",
+                    leverage=config.leverage
+                )
+                
+                if not order_result:
+                    return jsonify({'error': 'Failed to place order on exchange. Please check your API keys and try again.'}), 500
+                
+                execution_success = True
+                logging.info(f"Order placed on Toobit: {order_result}")
+                
+                # Store exchange order ID
+                config.exchange_order_id = order_result.get('orderId')
+                config.exchange_client_order_id = order_result.get('clientOrderId')
+                
+            except Exception as e:
+                logging.error(f"Exchange order placement failed: {e}")
+                return jsonify({'error': f'Exchange order failed: {str(e)}'}), 500
+        
+        # Calculate common values needed for both mock and real trading
+        position_value = config.amount * config.leverage
+        position_size = position_value / current_market_price
+        order_side = "buy" if config.side == "long" else "sell"
         
         # Update trade configuration
         config.status = "active"
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
-        config.position_value = config.amount * config.leverage
-        config.position_size = config.position_value / current_market_price
+        config.position_value = position_value
+        config.position_size = position_size
         
         if config.entry_type == "market" or config.entry_price is None:
             config.current_price = current_market_price
@@ -1824,7 +1845,7 @@ def execute_trade():
         # Save to database
         save_trade_to_db(chat_id, config)
         
-        # Place TP/SL orders on exchange after main position is filled
+        # Place TP/SL orders after main position is filled
         if execution_success:
             try:
                 tp_sl_orders = []
@@ -1832,32 +1853,46 @@ def execute_trade():
                 # Calculate TP/SL prices
                 tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
                 
-                # Place multiple take profit orders
-                if config.take_profits and tp_sl_data.get('take_profits'):
-                    tp_orders_to_place = []
-                    for tp_data in tp_sl_data['take_profits']:
-                        tp_quantity = position_size * (tp_data['allocation'] / 100)
-                        tp_orders_to_place.append({
-                            'price': tp_data['price'],
-                            'quantity': tp_quantity,
-                            'percentage': tp_data['percentage'],
-                            'allocation': tp_data['allocation']
-                        })
-                    
-                    sl_price = None
-                    if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
-                        sl_price = str(tp_sl_data['stop_loss']['price'])
-                    
-                    tp_sl_orders = client.place_multiple_tp_sl_orders(
-                        symbol=config.symbol,
-                        side=order_side,
-                        total_quantity=str(position_size),
-                        take_profits=tp_orders_to_place,
-                        stop_loss_price=sl_price
-                    )
-                    
-                    config.exchange_tp_sl_orders = tp_sl_orders
-                    logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
+                if is_mock_mode:
+                    # Mock TP/SL orders - just simulate
+                    if config.take_profits and tp_sl_data.get('take_profits'):
+                        mock_tp_sl_orders = []
+                        for i, tp_data in enumerate(tp_sl_data['take_profits']):
+                            mock_tp_sl_orders.append(f"mock_tp_{i+1}_{uuid.uuid4().hex[:6]}")
+                        if config.stop_loss_percent > 0:
+                            mock_tp_sl_orders.append(f"mock_sl_{uuid.uuid4().hex[:6]}")
+                        config.exchange_tp_sl_orders = mock_tp_sl_orders
+                        logging.info(f"Simulated {len(mock_tp_sl_orders)} TP/SL orders in mock mode")
+                else:
+                    # Real TP/SL orders on exchange
+                    # Place multiple take profit orders
+                    if config.take_profits and tp_sl_data.get('take_profits'):
+                        tp_orders_to_place = []
+                        for tp_data in tp_sl_data['take_profits']:
+                            tp_quantity = position_size * (tp_data['allocation'] / 100)
+                            tp_orders_to_place.append({
+                                'price': tp_data['price'],
+                                'quantity': tp_quantity,
+                                'percentage': tp_data['percentage'],
+                                'allocation': tp_data['allocation']
+                            })
+                        
+                        sl_price = None
+                        if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
+                            sl_price = str(tp_sl_data['stop_loss']['price'])
+                        
+                        # Only place real orders if we have a valid client from the real trading branch
+                        if not is_mock_mode and 'client' in locals():
+                            tp_sl_orders = client.place_multiple_tp_sl_orders(
+                                symbol=config.symbol,
+                                side=order_side,
+                                total_quantity=str(position_size),
+                                take_profits=tp_orders_to_place,
+                                stop_loss_price=sl_price
+                            )
+                            
+                            config.exchange_tp_sl_orders = tp_sl_orders
+                            logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
                 
             except Exception as e:
                 logging.error(f"Failed to place TP/SL orders: {e}")
@@ -1881,16 +1916,26 @@ def execute_trade():
         
         bot_status['total_trades'] += 1
         
+        trade_mode = "Mock Trade" if is_mock_mode else "Live Trade"
+        
         return jsonify({
             'success': True,
-            'message': 'Trade executed successfully',
+            'message': f'{trade_mode} executed successfully: {config.symbol} {config.side.upper()}',
+            'mock_mode': is_mock_mode,
             'trade': {
                 'trade_id': trade_id,
                 'symbol': config.symbol,
                 'side': config.side,
                 'amount': config.amount,
+                'leverage': config.leverage,
                 'entry_price': config.entry_price,
-                'status': config.status
+                'current_price': config.current_price,
+                'position_margin': config.position_margin,
+                'position_size': config.position_size,
+                'status': config.status,
+                'exchange_order_id': getattr(config, 'exchange_order_id', None),
+                'take_profits': config.take_profits,
+                'stop_loss_percent': config.stop_loss_percent
             }
         })
         
