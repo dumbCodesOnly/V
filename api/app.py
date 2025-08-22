@@ -60,7 +60,7 @@ if database_url.startswith("sqlite"):
         "pool_pre_ping": True,
         "pool_recycle": 300
     }
-elif os.environ.get("VERCEL"):
+elif database_url.startswith("postgresql") and (os.environ.get("VERCEL") or "neon" in database_url.lower()):
     # Neon PostgreSQL serverless configuration - optimized for connection handling
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_recycle": 1800,  # 30 minutes - shorter for serverless
@@ -78,13 +78,19 @@ elif os.environ.get("VERCEL"):
             "keepalives_count": "3"  # 3 failed checks before disconnect
         }
     }
-else:
-    # Replit PostgreSQL configuration
+elif database_url.startswith("postgresql"):
+    # Standard PostgreSQL configuration (Replit or other)
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_recycle": 300,
         "pool_pre_ping": True,
         "pool_size": 5,
         "max_overflow": 10
+    }
+else:
+    # Fallback configuration
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300
     }
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
