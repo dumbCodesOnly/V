@@ -1762,6 +1762,10 @@
                         </div>
                     </div>
                     <div class="hamburger-dropdown" id="hamburger-dropdown">
+                        <a href="#" class="dropdown-item" onclick="toggleMockTrading()">
+                            <i data-feather="play-circle"></i>
+                            <span id="mock-trading-text">Mock Trading: Off</span>
+                        </a>
                         <a href="#" class="dropdown-item" onclick="openApiKeysSettings()">
                             <i data-feather="key"></i>
                             API Keys
@@ -3996,6 +4000,7 @@
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
+            loadMockTradingStatus(); // Load mock trading status first
             loadPositions(); // Start with positions tab
         });
 
@@ -4005,6 +4010,21 @@
             // Don't reload positions - live price updates handle that
             if (activeTab === '#portfolio') loadPortfolio();
         }, 30000);
+
+        async function loadMockTradingStatus() {
+            try {
+                const response = await apiCall(`/api/mock-trading-status?user_id=${currentUser?.id}`);
+                if (response.success) {
+                    const mockText = document.getElementById('mock-trading-text');
+                    mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
+                }
+            } catch (error) {
+                console.error('Error loading mock trading status:', error);
+                // Default to mock trading on for safety
+                const mockText = document.getElementById('mock-trading-text');
+                mockText.textContent = 'Mock Trading: On';
+            }
+        }
 
         // Mobile-specific enhancements
         function initializeMobileEnhancements() {
@@ -4361,6 +4381,38 @@
             
             // Load current credentials status
             loadCredentialsStatus();
+        }
+
+        async function toggleMockTrading() {
+            // Hide hamburger menu
+            document.getElementById('hamburger-dropdown').classList.remove('show');
+            
+            try {
+                const response = await apiCall('/api/toggle-mock-trading', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: currentUser?.id
+                    })
+                });
+                
+                if (response.success) {
+                    // Update the UI text
+                    const mockText = document.getElementById('mock-trading-text');
+                    mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
+                    
+                    // Show success notification
+                    showNotification('info', `${response.mock_mode ? 'Enabled' : 'Disabled'} mock trading mode`);
+                    
+                    // Refresh the portfolio and active positions since the mode changed
+                    await loadActivePositions();
+                    await loadPortfolio();
+                } else {
+                    showNotification('error', response.message || 'Failed to toggle mock trading mode');
+                }
+            } catch (error) {
+                console.error('Error toggling mock trading:', error);
+                showNotification('error', 'Failed to toggle mock trading mode');
+            }
         }
 
         // Close hamburger menu when clicking outside

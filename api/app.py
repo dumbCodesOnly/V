@@ -1025,6 +1025,74 @@ def handle_balance_update_webhook(data):
 
 
 
+@app.route('/api/toggle-mock-trading', methods=['POST'])
+def toggle_mock_trading():
+    """Toggle mock trading mode for a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        if not user_id:
+            return jsonify({'success': False, 'message': 'User ID required'}), 400
+        
+        # Get or create user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(user_id),
+            is_active=True
+        ).first()
+        
+        if not user_creds:
+            # Create new user credentials record with mock trading enabled
+            user_creds = UserCredentials()
+            user_creds.telegram_user_id = str(user_id)
+            user_creds.testnet_mode = True  # Start with mock trading enabled
+            user_creds.is_active = True
+            db.session.add(user_creds)
+        else:
+            # Toggle the current testnet/mock mode
+            user_creds.testnet_mode = not user_creds.testnet_mode
+            user_creds.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'mock_mode': user_creds.testnet_mode,
+            'message': f'Mock trading {"enabled" if user_creds.testnet_mode else "disabled"}'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error toggling mock trading: {e}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/mock-trading-status')
+def get_mock_trading_status():
+    """Get current mock trading status for a user"""
+    try:
+        user_id = request.args.get('user_id')
+        
+        if not user_id:
+            return jsonify({'success': False, 'message': 'User ID required'}), 400
+        
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(user_id),
+            is_active=True
+        ).first()
+        
+        # Default to mock trading enabled for new users
+        mock_mode = user_creds.testnet_mode if user_creds else True
+        
+        return jsonify({
+            'success': True,
+            'mock_mode': mock_mode,
+            'has_credentials': user_creds.has_credentials() if user_creds else False
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting mock trading status: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/status')
 def get_bot_status():
     """Get bot status with API performance metrics"""
