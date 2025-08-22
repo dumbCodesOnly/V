@@ -9,7 +9,10 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
-**Latest Updates (August 21, 2025):**
+**Latest Updates (August 22, 2025):**
+- Implemented mock trading mode for development and testing without API credentials
+- Fixed trade execution system to properly simulate trades in mock mode
+- Enhanced testnet/mock mode toggle functionality for both Replit and Vercel deployments
 - Fixed critical price source issue - system now prioritizes Toobit exchange prices with intelligent fallbacks
 - Resolved Flask application context errors for serverless compatibility
 - Enhanced Toobit API integration with improved signature validation and error handling
@@ -52,6 +55,8 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Corrected partial take profit allocation calculations for accurate position closure and profit calculation.
 - Implemented real Toobit exchange integration for order execution, position management, and risk management.
 - Added testnet/mainnet toggle functionality with real-time exchange balance display.
+- Added mock trading mode for development testing without requiring API credentials.
+- Enhanced trade execution to properly handle both mock and live trading modes seamlessly.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
