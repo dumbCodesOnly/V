@@ -2006,7 +2006,18 @@ def get_user_credentials():
         user_id = '123456789'  # Demo user
     
     try:
-        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        # Check enhanced cache first for user credentials
+        cached_result = enhanced_cache.get_user_credentials(str(user_id))
+        if cached_result:
+            user_creds, cache_info = cached_result
+            logging.debug(f"Retrieved user {user_id} credentials from cache (age: {cache_info['age_seconds']:.1f}s)")
+        else:
+            # Cache miss - load from database
+            user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+            # Update cache with fresh data
+            if user_creds:
+                enhanced_cache.set_user_credentials(str(user_id), user_creds)
+                logging.debug(f"Cached user {user_id} credentials from database")
         
         if user_creds:
             api_key = user_creds.get_api_key()
@@ -2076,6 +2087,10 @@ def save_credentials():
         
         db.session.commit()
         
+        # Invalidate cache to ensure fresh data on next request
+        enhanced_cache.set_user_credentials(str(user_id), user_creds)
+        logging.debug(f"Updated user {user_id} credentials cache after save")
+        
         return jsonify({
             'success': True,
             'message': 'Credentials saved successfully',
@@ -2104,6 +2119,10 @@ def delete_credentials():
         db.session.delete(user_creds)
         db.session.commit()
         
+        # Invalidate cache after deletion
+        enhanced_cache.invalidate_user_data(str(user_id))
+        logging.debug(f"Invalidated user {user_id} cache after credentials deletion")
+        
         return jsonify({
             'success': True,
             'message': 'Credentials deleted successfully'
@@ -2130,6 +2149,10 @@ def toggle_testnet():
         
         user_creds.testnet_mode = testnet_mode
         db.session.commit()
+        
+        # Update cache with modified credentials
+        enhanced_cache.set_user_credentials(str(user_id), user_creds)
+        logging.debug(f"Updated user {user_id} credentials cache after testnet toggle")
         
         mode_text = "testnet" if testnet_mode else "mainnet (REAL TRADING)"
         warning = ""
