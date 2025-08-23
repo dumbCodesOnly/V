@@ -8,9 +8,13 @@ import os
 # API ENDPOINTS AND URLS
 # =============================================================================
 class APIConfig:
-    # Toobit Exchange
+    # Toobit Exchange - Updated for correct API structure
     TOOBIT_BASE_URL = "https://api.toobit.com"
     TOOBIT_API_VERSION = "v1"
+    # Quote API path for public market data (e.g., /quote/v1/ticker/24hr)
+    TOOBIT_QUOTE_PATH = "/quote/v1"
+    # Futures API path for authenticated trading (e.g., /api/v1/futures)
+    TOOBIT_FUTURES_PATH = "/api/v1/futures"
     
     # Fallback Price APIs  
     BINANCE_BASE_URL = "https://api.binance.com"

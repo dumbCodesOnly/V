@@ -25,8 +25,8 @@ class ToobitClient:
         # Base URLs for Toobit API using centralized config
         # Note: Toobit may not have separate testnet URL, using main API with testnet credentials
         self.base_url = APIConfig.TOOBIT_BASE_URL
-        self.quote_base = f"/quote/{APIConfig.TOOBIT_API_VERSION}"
-        self.futures_base = f"/api/{APIConfig.TOOBIT_API_VERSION}/futures"
+        self.quote_base = APIConfig.TOOBIT_QUOTE_PATH
+        self.futures_base = APIConfig.TOOBIT_FUTURES_PATH
         
         # Request session for connection pooling
         self.session = requests.Session()
