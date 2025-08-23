@@ -284,31 +284,32 @@ class ToobitClient:
         """Get current ticker price from Toobit exchange using the correct public API"""
         try:
             # Use the correct Toobit public API endpoint from quote/v1/ticker/24hr
+            # Only use the working endpoint to avoid unnecessary 404 errors
             endpoints_to_try = [
-                # Primary endpoint - Toobit public quote API 
+                # Primary and working endpoint - Toobit public quote API 
                 ('/ticker/24hr', {'symbol': symbol}),
-                # Fallback endpoints in case of changes
-                ('/ticker', {'symbol': symbol}),
-                # Legacy spot endpoints (backup)
-                ('/spot/ticker/24hr', {'symbol': symbol}),
-                ('/spot/ticker', {'symbol': symbol})
             ]
             
             for endpoint, params in endpoints_to_try:
                 try:
                     response = self._make_request('GET', endpoint, params=params, authenticated=False)
                     
-                    if response and 'lastPrice' in response:
-                        return float(response['lastPrice'])
-                    elif response and 'price' in response:
-                        return float(response['price'])
-                    elif response and isinstance(response, list) and len(response) > 0:
-                        # Array format - get first item
+                    if response and isinstance(response, list) and len(response) > 0:
+                        # Toobit returns array format - get first item
                         first_item = response[0]
-                        if 'lastPrice' in first_item:
+                        # Check for Toobit's actual field names
+                        if 'c' in first_item:  # 'c' is close/current price in Toobit API
+                            return float(first_item['c'])
+                        elif 'lastPrice' in first_item:
                             return float(first_item['lastPrice'])
                         elif 'price' in first_item:
                             return float(first_item['price'])
+                    elif response and 'c' in response:
+                        return float(response['c'])
+                    elif response and 'lastPrice' in response:
+                        return float(response['lastPrice'])
+                    elif response and 'price' in response:
+                        return float(response['price'])
                 except Exception as e:
                     logging.debug(f"Endpoint {endpoint} failed for {symbol}: {e}")
                     continue
@@ -324,8 +325,6 @@ class ToobitClient:
             # Try official Toobit quote API endpoints in order of preference
             endpoints_to_try = [
                 ('/ticker/24hr', {'symbol': symbol}),
-                ('/depth', {'symbol': symbol, 'limit': 1}),
-                ('/trades', {'symbol': symbol, 'limit': 1})
             ]
             
             for endpoint, params in endpoints_to_try:
