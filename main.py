@@ -13,5 +13,6 @@ if not app.secret_key or app.secret_key == "dev-secret-key":
     app.secret_key = os.environ.get("SESSION_SECRET", "replit-default-secret-key-12345")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    from config import Environment
+    port = int(os.environ.get("PORT", Environment.DEFAULT_PORT))
     app.run(host="0.0.0.0", port=port, debug=True)

@@ -88,6 +88,10 @@ class TradingConfig:
     MIN_POSITION_SIZE = 10     # USDT minimum position size
     MAX_LEVERAGE = 100         # Maximum allowed leverage
     
+    # API Limits
+    MAX_SYMBOLS_BATCH = 20     # Maximum symbols in batch price requests
+    DEFAULT_TRADE_HISTORY_LIMIT = 100  # Default limit for trade history queries
+    
     # Trading Symbols
     DEFAULT_SYMBOL = "BTCUSDT"
     SUPPORTED_SYMBOLS = [
@@ -118,6 +122,7 @@ class SecurityConfig:
     
     # Webhook Security
     WEBHOOK_TIMEOUT = 30  # seconds
+    WEBHOOK_SETUP_TIMEOUT = 10  # seconds for webhook setup calls
     
     # Rate Limiting
     MAX_REQUESTS_PER_MINUTE = 100
@@ -133,8 +138,25 @@ class Environment:
     IS_REPLIT = not IS_VERCEL
     IS_DEVELOPMENT = os.environ.get("FLASK_ENV") == "development"
     
+    # Server Configuration
+    DEFAULT_PORT = 5000
+    DEFAULT_TEST_USER_ID = "123456789"  # For development/testing
+    
     # Timezone
     DEFAULT_TIMEZONE = "Asia/Tehran"  # GMT+3:30 (Iran Standard Time)
+
+
+# =============================================================================
+# APPLICATION DEFAULTS  
+# =============================================================================
+class AppDefaults:
+    # Bot Status Initial Values
+    BOT_INITIAL_MESSAGES = 5
+    BOT_INITIAL_TRADES = 2
+    BOT_INITIAL_ERROR_COUNT = 0
+    
+    # Default Take Profit Allocation
+    DEFAULT_TP_ALLOCATION = 100  # 100% allocation for single TP
 
 
 # =============================================================================

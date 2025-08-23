@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from config import APIConfig, TimeConfig, get_api_timeout
+from config import APIConfig, TimeConfig, TradingConfig, get_api_timeout
 
 class ToobitClient:
     """Toobit Exchange API Client for futures trading"""
@@ -392,8 +392,10 @@ class ToobitClient:
             logging.error(f"Failed to place multiple TP/SL orders: {e}")
             return orders_placed
     
-    def get_trade_history(self, symbol: Optional[str] = None, limit: int = 100) -> List[Dict]:
-        """Get trade history"""
+    def get_trade_history(self, symbol: Optional[str] = None, limit: Optional[int] = None) -> List[Dict]:
+        """Get trade history with configurable limit"""
+        if limit is None:
+            limit = TradingConfig.DEFAULT_TRADE_HISTORY_LIMIT
         try:
             params = {'limit': str(limit)}
             if symbol:

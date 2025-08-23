@@ -247,7 +247,7 @@ def setup_webhook_on_deployment():
             webhook_data_encoded = urllib.parse.urlencode(webhook_data).encode('utf-8')
             
             webhook_req = urllib.request.Request(webhook_api_url, data=webhook_data_encoded, method='POST')
-            webhook_response = urllib.request.urlopen(webhook_req, timeout=10)
+            webhook_response = urllib.request.urlopen(webhook_req, timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT)
             
             if webhook_response.getcode() == 200:
                 result = json.loads(webhook_response.read().decode('utf-8'))
@@ -1240,8 +1240,8 @@ def get_multiple_prices():
             return jsonify({'error': 'Symbols array required'}), 400
         
         # Limit to prevent abuse
-        if len(symbols) > 20:
-            return jsonify({'error': 'Maximum 20 symbols allowed'}), 400
+        if len(symbols) > TradingConfig.MAX_SYMBOLS_BATCH:
+            return jsonify({'error': f'Maximum {TradingConfig.MAX_SYMBOLS_BATCH} symbols allowed'}), 400
         
         symbols = [s.upper() for s in symbols]
         
