@@ -2116,54 +2116,64 @@ def close_trade():
         if config.status != "active":
             return jsonify({'error': 'Trade is not active'}), 400
         
-        # Close position on Toobit exchange (REAL TRADING)
-        try:
-            # Get user credentials for exchange API
-            user_creds = UserCredentials.query.filter_by(
-                telegram_user_id=str(chat_id),
-                is_active=True
-            ).first()
+        # Get user credentials to determine if we're in mock mode or real trading
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(chat_id),
+            is_active=True
+        ).first()
+        
+        # Default to mock mode if no credentials exist
+        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
+        
+        if is_mock_mode:
+            # MOCK TRADING - Simulate closing the position
+            logging.info(f"Closing mock trade for user {chat_id}: {config.symbol} {config.side}")
             
-            if not user_creds or not user_creds.has_credentials():
-                return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
-            
-            # Create Toobit client
-            client = ToobitClient(
-                api_key=user_creds.get_api_key(),
-                api_secret=user_creds.get_api_secret(),
-                passphrase=user_creds.get_passphrase(),
-                testnet=user_creds.testnet_mode
-            )
-            
-            # Close position on exchange
-            close_side = "sell" if config.side == "long" else "buy"
-            close_order = client.place_order(
-                symbol=config.symbol,
-                side=close_side,
-                order_type="market",
-                quantity=str(config.position_size),
-                reduceOnly=True
-            )
-            
-            if not close_order:
-                return jsonify({'error': 'Failed to close position on exchange. Please check your connection and try again.'}), 500
-            
-            logging.info(f"Position closed on Toobit: {close_order}")
-            
-            # Cancel any remaining TP/SL orders on exchange
+            # Simulate cancelling mock TP/SL orders
             if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                for tp_sl_order in config.exchange_tp_sl_orders:
-                    order_id = tp_sl_order.get('order', {}).get('orderId')
-                    if order_id:
-                        try:
-                            client.cancel_order(str(order_id))
-                            logging.info(f"Cancelled TP/SL order: {order_id}")
-                        except Exception as cancel_error:
-                            logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
-            
-        except Exception as e:
-            logging.error(f"Exchange position closure failed: {e}")
-            return jsonify({'error': f'Exchange closure failed: {str(e)}'}), 500
+                mock_cancelled_orders = len(config.exchange_tp_sl_orders)
+                logging.info(f"Simulated cancellation of {mock_cancelled_orders} TP/SL orders in mock mode")
+                
+        else:
+            # REAL TRADING - Close position on Toobit exchange
+            try:
+                # Create Toobit client
+                client = ToobitClient(
+                    api_key=user_creds.get_api_key(),
+                    api_secret=user_creds.get_api_secret(),
+                    passphrase=user_creds.get_passphrase(),
+                    testnet=user_creds.testnet_mode
+                )
+                
+                # Close position on exchange
+                close_side = "sell" if config.side == "long" else "buy"
+                close_order = client.place_order(
+                    symbol=config.symbol,
+                    side=close_side,
+                    order_type="market",
+                    quantity=str(config.position_size),
+                    reduceOnly=True
+                )
+                
+                if not close_order:
+                    return jsonify({'error': 'Failed to close position on exchange. Please check your connection and try again.'}), 500
+                
+                logging.info(f"Position closed on Toobit: {close_order}")
+                
+                # Cancel any remaining TP/SL orders on exchange
+                if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                    for tp_sl_order in config.exchange_tp_sl_orders:
+                        order_id = tp_sl_order.get('order', {}).get('orderId')
+                        if order_id:
+                            try:
+                                client.cancel_order(str(order_id))
+                                logging.info(f"Cancelled TP/SL order: {order_id}")
+                            except Exception as cancel_error:
+                                logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+                
+            except Exception as e:
+                logging.error(f"Exchange position closure failed: {e}")
+                return jsonify({'error': f'Exchange closure failed: {str(e)}'}), 500
         
         # Update trade configuration
         final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
@@ -2225,48 +2235,62 @@ def close_all_trades():
         closed_count = 0
         total_final_pnl = 0.0
         
-        # Get user credentials for exchange API (once for all trades)
+        # Get user credentials to determine if we're in mock mode or real trading
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(chat_id),
             is_active=True
         ).first()
         
-        if not user_creds or not user_creds.has_credentials():
-            return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
+        # Default to mock mode if no credentials exist
+        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
         
-        # Create Toobit client
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=user_creds.testnet_mode
-        )
+        client = None
+        if not is_mock_mode:
+            # Create Toobit client for real trading
+            client = ToobitClient(
+                api_key=user_creds.get_api_key(),
+                api_secret=user_creds.get_api_secret(),
+                passphrase=user_creds.get_passphrase(),
+                testnet=user_creds.testnet_mode
+            )
         
-        # Close each active trade on exchange
+        # Close each active trade
         for trade_id, config in active_trades:
             try:
-                # Close position on exchange
-                close_side = "sell" if config.side == "long" else "buy"
-                close_order = client.place_order(
-                    symbol=config.symbol,
-                    side=close_side,
-                    order_type="market",
-                    quantity=str(config.position_size),
-                    reduceOnly=True
-                )
-                
-                if close_order:
-                    logging.info(f"Position closed on Toobit: {close_order}")
+                if is_mock_mode:
+                    # MOCK TRADING - Simulate closing the position
+                    logging.info(f"Closing mock trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
                     
-                    # Cancel any remaining TP/SL orders on exchange
+                    # Simulate cancelling mock TP/SL orders
                     if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                        for tp_sl_order in config.exchange_tp_sl_orders:
-                            order_id = tp_sl_order.get('order', {}).get('orderId')
-                            if order_id:
-                                try:
-                                    client.cancel_order(str(order_id))
-                                except Exception as cancel_error:
-                                    logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+                        mock_cancelled_orders = len(config.exchange_tp_sl_orders)
+                        logging.info(f"Simulated cancellation of {mock_cancelled_orders} TP/SL orders for trade {trade_id} in mock mode")
+                else:
+                    # REAL TRADING - Close position on exchange
+                    close_side = "sell" if config.side == "long" else "buy"
+                    close_order = client.place_order(
+                        symbol=config.symbol,
+                        side=close_side,
+                        order_type="market",
+                        quantity=str(config.position_size),
+                        reduceOnly=True
+                    )
+                    
+                    if close_order:
+                        logging.info(f"Position closed on Toobit: {close_order}")
+                        
+                        # Cancel any remaining TP/SL orders on exchange
+                        if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                            for tp_sl_order in config.exchange_tp_sl_orders:
+                                order_id = tp_sl_order.get('order', {}).get('orderId')
+                                if order_id:
+                                    try:
+                                        client.cancel_order(str(order_id))
+                                    except Exception as cancel_error:
+                                        logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+                    else:
+                        logging.warning(f"Failed to close position for trade {trade_id} - exchange order failed")
+                        continue
                 
                 # Update trade configuration
                 final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
