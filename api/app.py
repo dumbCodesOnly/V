@@ -24,6 +24,7 @@ try:
     from .exchange_sync import initialize_sync_service, get_sync_service
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .toobit_client import ToobitClient
+    from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 except ImportError:
     # Fall back to absolute import (for direct execution - Replit)
     import sys
@@ -35,6 +36,7 @@ except ImportError:
     from api.exchange_sync import initialize_sync_service, get_sync_service
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from api.toobit_client import ToobitClient
+    from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 
 # Configure logging using centralized config
 logging.basicConfig(level=getattr(logging, get_log_level()))
@@ -98,6 +100,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Initialize database
 db.init_app(app)
+
+# Initialize enhanced caching system
+start_cache_cleanup_worker()
+logging.info("Enhanced caching system initialized with smart volatility-based TTL")
 
 # Database migration helper
 def run_database_migrations():
@@ -282,18 +288,16 @@ def initialize_user_environment(user_id, force_reload=False):
     user_id = int(user_id)
     user_id_str = str(user_id)
     
-    # For serverless (Vercel): Check cache first since in-memory dict resets
-    if os.environ.get("VERCEL") and not force_reload and user_id_str in user_data_cache:
-        import time
-        cache_entry = user_data_cache[user_id_str]
-        cache_age = time.time() - cache_entry['timestamp']
-        if cache_age < cache_ttl:
-            # Use cached data instead of hitting DB
-            user_trade_configs[user_id] = cache_entry['data']
-            # Initialize user's selected trade if not exists
-            if user_id not in user_selected_trade:
-                user_selected_trade[user_id] = None
-            return
+    # Check enhanced cache first for user trade configurations
+    cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
+    if not force_reload and cached_result:
+        trade_configs, cache_info = cached_result
+        user_trade_configs[user_id] = trade_configs
+        # Initialize user's selected trade if not exists
+        if user_id not in user_selected_trade:
+            user_selected_trade[user_id] = None
+        logging.debug(f"Loaded user {user_id} trade configs from cache (age: {cache_info['age_seconds']:.1f}s)")
+        return
     
     # Only load from database if user has no data in memory or force_reload is True
     # This prevents unnecessary database calls during frequent price updates
@@ -481,20 +485,16 @@ class TradeConfig:
 
 # Database helper functions for trade persistence
 def load_user_trades_from_db(user_id, force_reload=False):
-    """Load all trade configurations for a user from database with intelligent caching"""
-    import time
-    
-    current_time = time.time()
+    """Load all trade configurations for a user from database with enhanced caching"""
     user_id_str = str(user_id)
     
-    # Check cache for Vercel optimization (avoid constant DB hits)
-    if not force_reload and user_id_str in user_data_cache:
-        cache_entry = user_data_cache[user_id_str]
-        cache_age = current_time - cache_entry['timestamp']
-        
-        # Use cached data if still valid (TTL not exceeded)
-        if cache_age < cache_ttl:
-            return cache_entry['data']
+    # Check enhanced cache first
+    if not force_reload:
+        cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
+        if cached_result:
+            trade_configs, cache_info = cached_result
+            logging.debug(f"Retrieved {len(trade_configs)} trades for user {user_id} from enhanced cache (age: {cache_info['age_seconds']:.1f}s)")
+            return trade_configs
     
     max_retries = 2
     retry_delay = 0.3
@@ -516,12 +516,8 @@ def load_user_trades_from_db(user_id, force_reload=False):
                     trade_config = db_trade.to_trade_config()
                     user_trades[db_trade.trade_id] = trade_config
                 
-                # Update cache with fresh data
-                user_data_cache[user_id_str] = {
-                    'data': user_trades,
-                    'timestamp': current_time,
-                    'version': len(user_trades)  # Simple version tracking
-                }
+                # Update enhanced cache with fresh data
+                enhanced_cache.set_user_trade_configs(user_id_str, user_trades)
                 
                 # Only log when debugging or significant cache operations
                 debug_mode = os.environ.get("DEBUG") or os.environ.get("FLASK_DEBUG")
@@ -536,9 +532,11 @@ def load_user_trades_from_db(user_id, force_reload=False):
             else:
                 logging.error(f"Failed to load trades for user {user_id} after {max_retries} attempts: {e}")
                 # Return cached data if available, even if stale
-                if user_id_str in user_data_cache:
-                    logging.info(f"Returning stale cached data for user {user_id}")
-                    return user_data_cache[user_id_str]['data']
+                cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
+                if cached_result:
+                    trade_configs, _ = cached_result
+                    logging.info(f"Returning cached data for user {user_id} after DB failure")
+                    return trade_configs
                 return {}
     
     return {}
@@ -1128,14 +1126,37 @@ def get_bot_status():
                 'last_success': None
             }
     
-    # Add cache statistics
-    with cache_lock:
-        bot_status['cache_stats'] = {
-            'cached_symbols': len(price_cache),
-            'cache_ttl_seconds': cache_ttl
-        }
+    # Add enhanced cache statistics
+    cache_stats = enhanced_cache.get_cache_stats()
+    bot_status['cache_stats'] = cache_stats
     
     return jsonify(bot_status)
+
+@app.route('/api/cache/stats')
+def cache_statistics():
+    """Get comprehensive cache statistics and performance metrics"""
+    return jsonify(enhanced_cache.get_cache_stats())
+
+@app.route('/api/cache/invalidate', methods=['POST'])
+def invalidate_cache():
+    """Invalidate cache entries based on parameters"""
+    try:
+        data = request.get_json() or {}
+        cache_type = data.get('type', 'all')  # 'price', 'user', or 'all'
+        symbol = data.get('symbol')
+        user_id = data.get('user_id')
+        
+        if cache_type == 'price':
+            enhanced_cache.invalidate_price(symbol)
+        elif cache_type == 'user':
+            enhanced_cache.invalidate_user_data(user_id)
+        else:
+            enhanced_cache.invalidate_price()
+            enhanced_cache.invalidate_user_data()
+        
+        return jsonify({'success': True, 'message': f'Cache invalidated for type: {cache_type}'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/price/<symbol>')
 def get_symbol_price(symbol):
@@ -1143,27 +1164,19 @@ def get_symbol_price(symbol):
     try:
         symbol = symbol.upper()
         
-        # Check if price is cached
-        cache_info = {}
-        with cache_lock:
-            if symbol in price_cache:
-                cached_data = price_cache[symbol]
-                age_seconds = (get_iran_time().replace(tzinfo=None) - cached_data['timestamp']).total_seconds()
-                cache_info = {
-                    'cached': True,
-                    'age_seconds': round(age_seconds, 2),
-                    'source': cached_data.get('source', 'unknown')
-                }
+        # Check enhanced cache for existing data
+        cached_result = enhanced_cache.get_price(symbol)
+        if cached_result:
+            price, price_source, cache_info = cached_result
+        else:
+            price = get_live_market_price(symbol, prefer_exchange=True)
+            # Get fresh cache info after fetching
+            fresh_cached_result = enhanced_cache.get_price(symbol)
+            if fresh_cached_result:
+                _, price_source, cache_info = fresh_cached_result
             else:
+                price_source = 'unknown'
                 cache_info = {'cached': False}
-        
-        price = get_live_market_price(symbol, prefer_exchange=True)
-        
-        # Get price source info from cache
-        price_source = 'unknown'
-        with cache_lock:
-            if symbol in price_cache:
-                price_source = price_cache[symbol].get('source', 'unknown')
         
         return jsonify({
             'symbol': symbol,
@@ -2608,19 +2621,17 @@ Use the menu below to navigate:"""
             price = get_live_market_price(symbol, prefer_exchange=True)
             fetch_time = (time.time() - start_time) * 1000  # Convert to milliseconds
             
-            # Get cache info
+            # Get enhanced cache info
             cache_info = ""
-            with cache_lock:
-                if symbol in price_cache:
-                    cached_data = price_cache[symbol]
-                    age_seconds = (get_iran_time().replace(tzinfo=None) - cached_data['timestamp']).total_seconds()
-                    source = cached_data.get('source', 'unknown')
-                    if age_seconds < cache_ttl:
-                        cache_info = f" (cached, {source})"
-                    else:
-                        cache_info = f" ({source})"
+            cached_result = enhanced_cache.get_price(symbol)
+            if cached_result:
+                _, source, cache_meta = cached_result
+                if cache_meta.get('cached', False):
+                    cache_info = f" (cached, {source})"
                 else:
-                    cache_info = " (live)"
+                    cache_info = f" ({source})"
+            else:
+                cache_info = " (live)"
             
             return f"💰 {symbol}: ${price:.4f}{cache_info}\n⚡ Fetched in {fetch_time:.0f}ms", None
         except Exception as e:
@@ -3021,10 +3032,8 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
         logging.error(f"Error deleting credentials: {str(e)}")
         return "❌ Error deleting credentials. Please try again.", get_main_menu()
 
-# Price caching and optimization system
-price_cache = {}
-cache_lock = threading.Lock()
-cache_ttl = get_cache_ttl("price")  # Cache for price data
+# Enhanced caching system replaces basic price cache
+# price_cache, cache_lock, and cache_ttl now handled by enhanced_cache
 api_performance_metrics = {
     'binance': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
     'coingecko': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
@@ -3191,28 +3200,21 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
     """
     Enhanced price fetching that prioritizes the actual trading exchange (Toobit)
     """
-    # Check cache first
+    # Check enhanced cache first
     if use_cache:
-        with cache_lock:
-            cache_key = symbol
-            if cache_key in price_cache:
-                cached_data = price_cache[cache_key]
-                if datetime.utcnow() - cached_data['timestamp'] < timedelta(seconds=cache_ttl):
-                    logging.debug(f"Using cached price for {symbol}: ${cached_data['price']} from {cached_data.get('source', 'unknown')}")
-                    return cached_data['price']
+        cached_result = enhanced_cache.get_price(symbol)
+        if cached_result:
+            price, source, cache_info = cached_result
+            logging.debug(f"Using cached price for {symbol}: ${price} from {source} (age: {cache_info['age_seconds']:.1f}s, volatility: {cache_info.get('volatility', 0):.2f}%)")
+            return price
     
     # PRIORITY 1: Try Toobit exchange first (where trades are actually executed)
     if prefer_exchange:
         toobit_price, source = get_toobit_price(symbol, user_id)
         if toobit_price:
-            # Cache the Toobit price
+            # Cache the Toobit price using enhanced cache
             if use_cache:
-                with cache_lock:
-                    price_cache[symbol] = {
-                        'price': toobit_price,
-                        'timestamp': datetime.utcnow(),
-                        'source': 'toobit'
-                    }
+                enhanced_cache.set_price(symbol, toobit_price, 'toobit')
             logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
             return toobit_price
     
@@ -3257,33 +3259,21 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
         for api_name in api_priority[2:]:
             if api_name in api_functions:
                 try:
-                    success_price, success_source = api_functions[api_name](symbol)
-                    break
+                    price_result = api_functions[api_name](symbol)
+                    if price_result and len(price_result) == 2:
+                        success_price, success_source = price_result
+                        break
                 except Exception as e:
                     logging.warning(f"{api_name} API failed for {symbol}: {str(e)}")
                     continue
     
     if success_price is None:
-        # Check if we have stale cached data as emergency fallback
-        with cache_lock:
-            cache_key = symbol
-            if cache_key in price_cache:
-                cached_data = price_cache[cache_key]
-                age_minutes = (datetime.utcnow() - cached_data['timestamp']).total_seconds() / 60
-                if age_minutes < 30:  # Use data up to 30 minutes old in emergency
-                    logging.warning(f"Using stale cache for {symbol} (age: {age_minutes:.1f}min): ${cached_data['price']}")
-                    return cached_data['price']
-        
+        # No emergency fallback needed - enhanced cache handles stale data automatically
         raise Exception(f"Unable to fetch live market price for {symbol} from any source")
     
-    # Cache the successful result
-    if use_cache:
-        with cache_lock:
-            price_cache[symbol] = {
-                'price': success_price,
-                'timestamp': datetime.utcnow(),
-                'source': success_source
-            }
+    # Cache the successful result using enhanced cache
+    if use_cache and success_source:
+        enhanced_cache.set_price(symbol, success_price, success_source)
     
     logging.info(f"Retrieved live price for {symbol} from {success_source}: ${success_price}")
     return success_price
@@ -3318,10 +3308,10 @@ def update_all_positions_with_live_data(user_id=None):
                 symbol_prices[symbol] = price
             except Exception as e:
                 logging.warning(f"Failed to update price for {symbol}: {e}")
-                # Use cached price if available
-                with cache_lock:
-                    if symbol in price_cache:
-                        symbol_prices[symbol] = price_cache[symbol]['price']
+                # Use cached price if available from enhanced cache
+                cached_result = enhanced_cache.get_price(symbol)
+                if cached_result:
+                    symbol_prices[symbol] = cached_result[0]  # Get price from cache result
     
     # Update all positions with fetched prices
     for user_id, trade_id, config in position_configs:
