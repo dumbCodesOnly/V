@@ -173,7 +173,7 @@ class SmartCache:
             )
             self.price_cache[symbol] = cache_entry
             
-            logging.debug(f"Cached price for {symbol}: ${price} (TTL: {dynamic_ttl}s, volatility: {cache_entry['metadata']['volatility']:.2f}%)")
+# Price cached - removed debug log for cleaner output
     
     def invalidate_price(self, symbol: Optional[str] = None) -> None:
         """Invalidate price cache for symbol or all symbols"""
@@ -220,7 +220,7 @@ class SmartCache:
             )
             self.user_trade_configs_cache[user_id] = cache_entry
             
-            logging.debug(f"Cached trade configs for user {user_id} ({len(trade_configs)} trades)")
+# Trade configs cached - removed debug log for cleaner output
     
     def get_user_credentials(self, user_id: str) -> Optional[Tuple[Any, Dict]]:
         """Get cached user credentials"""
@@ -328,7 +328,8 @@ class SmartCache:
                     removed_count += 1
         
         if removed_count > 0:
-            logging.debug(f"Cleaned up {removed_count} expired cache entries")
+            # Cleaned up expired cache entries - removed debug log for cleaner output
+            pass
         
         return removed_count
     

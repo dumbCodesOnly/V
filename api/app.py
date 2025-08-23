@@ -41,6 +41,11 @@ from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBr
 from api.error_handler import handle_error, handle_api_error, create_validation_error, create_success_response
 from api.error_demo import error_demo_bp
 
+# Helper function to get user_id from request - streamlines repetitive code
+def get_user_id_from_request(default_user_id=None):
+    """Get user_id from request args with fallback to default"""
+    return request.args.get('user_id', default_user_id or Environment.DEFAULT_TEST_USER_ID)
+
 # Configure logging using centralized config
 logging.basicConfig(level=getattr(logging, get_log_level()))
 
@@ -302,7 +307,7 @@ def initialize_user_environment(user_id, force_reload=False):
         # Initialize user's selected trade if not exists
         if user_id not in user_selected_trade:
             user_selected_trade[user_id] = None
-        logging.debug(f"Loaded user {user_id} trade configs from cache (age: {cache_info['age_seconds']:.1f}s)")
+# Cache hit - removed excessive debug logging for cleaner output
         return
     
     # Only load from database if user has no data in memory or force_reload is True
@@ -499,7 +504,7 @@ def load_user_trades_from_db(user_id, force_reload=False):
         cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
         if cached_result:
             trade_configs, cache_info = cached_result
-            logging.debug(f"Retrieved {len(trade_configs)} trades for user {user_id} from enhanced cache (age: {cache_info['age_seconds']:.1f}s)")
+# Retrieved trades from cache - removed debug log for cleaner output
             return trade_configs
     
     max_retries = 2
@@ -684,7 +689,7 @@ def api_health_check():
 @app.route('/api/exchange/sync-status')
 def exchange_sync_status():
     """Get exchange synchronization status"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     # Use appropriate sync service based on environment
     if os.environ.get("VERCEL"):
@@ -701,7 +706,7 @@ def exchange_sync_status():
 @app.route('/api/exchange/force-sync', methods=['POST'])
 def force_exchange_sync():
     """Force immediate synchronization with Toobit exchange"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     # Use appropriate sync service based on environment
     if os.environ.get("VERCEL"):
@@ -725,7 +730,7 @@ def force_exchange_sync():
 @app.route('/api/exchange/test-connection', methods=['POST'])
 def test_exchange_connection():
     """Test connection to Toobit exchange"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     try:
         # Get user credentials
@@ -760,7 +765,7 @@ def test_exchange_connection():
 @app.route('/api/exchange/balance')
 def get_exchange_balance():
     """Get real account balance from Toobit exchange"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     try:
         # Get user credentials
@@ -830,7 +835,7 @@ def get_exchange_balance():
 @app.route('/api/exchange/positions')
 def get_exchange_positions():
     """Get positions directly from Toobit exchange"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     try:
         # Get user credentials
@@ -865,7 +870,7 @@ def get_exchange_positions():
 @app.route('/api/exchange/orders')  
 def get_exchange_orders():
     """Get orders directly from Toobit exchange"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     symbol = request.args.get('symbol')
     status = request.args.get('status')
     
@@ -1459,7 +1464,7 @@ def live_position_update():
 @app.route('/api/trading/new')
 def api_trading_new():
     """Create new trading configuration"""
-    user_id = request.args.get('user_id', '123456789')
+    user_id = get_user_id_from_request()
     
     try:
         chat_id = int(user_id)
@@ -2065,14 +2070,14 @@ def get_user_credentials():
         cached_result = enhanced_cache.get_user_credentials(str(user_id))
         if cached_result:
             user_creds, cache_info = cached_result
-            logging.debug(f"Retrieved user {user_id} credentials from cache (age: {cache_info['age_seconds']:.1f}s)")
+# Retrieved credentials from cache - removed debug log for cleaner output
         else:
             # Cache miss - load from database
             user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
             # Update cache with fresh data
             if user_creds:
                 enhanced_cache.set_user_credentials(str(user_id), user_creds)
-                logging.debug(f"Cached user {user_id} credentials from database")
+                    # Credentials cached - removed debug log for cleaner output
         
         if user_creds:
             api_key = user_creds.get_api_key()
@@ -2152,7 +2157,7 @@ def save_credentials():
         
         # Invalidate cache to ensure fresh data on next request
         enhanced_cache.set_user_credentials(str(user_id), user_creds)
-        logging.debug(f"Updated user {user_id} credentials cache after save")
+        # Credentials cache updated - removed debug log for cleaner output
         
         return jsonify(create_success_response(
             'Credentials saved successfully',
@@ -2185,7 +2190,7 @@ def delete_credentials():
         
         # Invalidate cache after deletion
         enhanced_cache.invalidate_user_data(str(user_id))
-        logging.debug(f"Invalidated user {user_id} cache after credentials deletion")
+        # Cache invalidated - removed debug log for cleaner output
         
         return jsonify({
             'success': True,
@@ -2216,7 +2221,7 @@ def toggle_testnet():
         
         # Update cache with modified credentials
         enhanced_cache.set_user_credentials(str(user_id), user_creds)
-        logging.debug(f"Updated user {user_id} credentials cache after testnet toggle")
+        # Updated credentials cache after testnet toggle - removed debug log for cleaner output
         
         mode_text = "testnet" if testnet_mode else "mainnet (REAL TRADING)"
         warning = ""
@@ -3365,7 +3370,7 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
         cached_result = enhanced_cache.get_price(symbol)
         if cached_result:
             price, source, cache_info = cached_result
-            logging.debug(f"Using cached price for {symbol}: ${price} from {source} (age: {cache_info['age_seconds']:.1f}s, volatility: {cache_info.get('volatility', 0):.2f}%)")
+# Using cached price - removed debug log for cleaner output
             return price
     
     # PRIORITY 1: Try Toobit exchange first (where trades are actually executed)
