@@ -94,16 +94,31 @@
             animation: pulse 2s infinite;
         }
 
-        /* Dedicated live indicator dot styling */
+        /* Dedicated live indicator dot styling with connectivity states */
         .live-indicator-dot {
             width: 8px;
             height: 8px;
-            background: #52c41a;
+            background: #52c41a; /* Default green */
             border-radius: 50%;
             opacity: 0.7;
             animation: pulse 2s infinite;
             position: relative;
             z-index: 10;
+            transition: background-color 0.3s ease;
+        }
+
+        /* Connectivity status colors */
+        .live-indicator-dot.connected {
+            background: #52c41a; /* Green - good connectivity */
+        }
+
+        .live-indicator-dot.slow {
+            background: #faad14; /* Orange - slow connectivity */
+        }
+
+        .live-indicator-dot.error {
+            background: #ff4d4f; /* Red - error or no connectivity */
+            animation: pulse 1s infinite; /* Faster pulse for errors */
         }
 
         /* Enhanced Loading Indicators */
@@ -2494,14 +2509,52 @@
         let livePriceInterval = null;
         let isLivePriceUpdateActive = false;
         const PRICE_UPDATE_INTERVAL = 10000; // 10 seconds - from centralized config
+        const SLOW_RESPONSE_THRESHOLD = 3000; // 3 seconds - threshold for slow response
+        const ERROR_RESPONSE_THRESHOLD = 8000; // 8 seconds - threshold for error status
 
-        // Live price update function
+        // Update live indicator status with tooltips
+        function updateLiveIndicatorStatus(status) {
+            const indicators = document.querySelectorAll('.live-indicator-dot');
+            const statusMessages = {
+                'connected': 'Connected - Fast API response',
+                'slow': 'Slow connection - API response delayed',
+                'error': 'Connection error - API not responding'
+            };
+            
+            indicators.forEach(indicator => {
+                // Remove all status classes
+                indicator.classList.remove('connected', 'slow', 'error');
+                // Add new status class
+                indicator.classList.add(status);
+                // Update tooltip
+                indicator.title = statusMessages[status] || 'Unknown status';
+            });
+        }
+
+        // Live price update function with connectivity monitoring
         async function updateLivePrices() {
             if (!isLivePriceUpdateActive) return;
             
+            const startTime = Date.now();
+            
             try {
+                // Set indicator to show we're making a request
+                const currentStatus = document.querySelector('.live-indicator-dot')?.classList.contains('error') ? 'error' : 'connected';
+                
                 const data = await apiCall(`/api/positions/live-update?user_id=${currentUser?.id}`);
-                if (!data || !data.positions) return;
+                const responseTime = Date.now() - startTime;
+                
+                // Update indicator based on response time and data validity
+                if (!data || !data.positions) {
+                    updateLiveIndicatorStatus('error');
+                    return;
+                } else if (responseTime > ERROR_RESPONSE_THRESHOLD) {
+                    updateLiveIndicatorStatus('error');
+                } else if (responseTime > SLOW_RESPONSE_THRESHOLD) {
+                    updateLiveIndicatorStatus('slow');
+                } else {
+                    updateLiveIndicatorStatus('connected');
+                }
                 
                 // Update active position prices and P&L
                 Object.entries(data.positions).forEach(([tradeId, positionData]) => {
@@ -2569,9 +2622,11 @@
                     }
                 }
                 
-                console.log('Live prices updated:', data.timestamp);
+                console.log('Live prices updated:', data.timestamp, `(${Date.now() - startTime}ms)`);
             } catch (error) {
                 console.error('Error updating live prices:', error);
+                // Set indicator to error state on API failure
+                updateLiveIndicatorStatus('error');
             }
         }
 
@@ -4580,13 +4635,13 @@
             }
         }
 
-        // Add live price indicator to header
+        // Add live price indicator to header with connectivity status
         function addLivePriceIndicator() {
             const header = document.querySelector('.header h5');
             if (header && !header.querySelector('.live-indicator')) {
                 const indicator = document.createElement('span');
                 indicator.className = 'live-indicator';
-                indicator.innerHTML = ' <small style="color: #28a745; animation: pulse 2s infinite;">● LIVE</small>';
+                indicator.innerHTML = ' <div class="live-indicator-dot connected" title="Connected - Fast API response"></div><small style="margin-left: 4px; color: var(--tg-theme-hint-color);">LIVE</small>';
                 header.appendChild(indicator);
             }
         }
@@ -4603,11 +4658,15 @@
         startLivePriceUpdates = function() {
             originalStartLivePriceUpdates();
             addLivePriceIndicator();
+            // Initialize with connecting status
+            setTimeout(() => updateLiveIndicatorStatus('connected'), 100);
         };
         
         stopLivePriceUpdates = function() {
             originalStopLivePriceUpdates();
-            removeLivePriceIndicator();
+            // Set to error status before removing to show disconnection
+            updateLiveIndicatorStatus('error');
+            setTimeout(() => removeLivePriceIndicator(), 300);
         };
 
         // Reset History Functions
