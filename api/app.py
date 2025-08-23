@@ -37,6 +37,7 @@ except ImportError:
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from api.toobit_client import ToobitClient
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
+from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
 
 # Configure logging using centralized config
 logging.basicConfig(level=getattr(logging, get_log_level()))
@@ -1157,6 +1158,41 @@ def invalidate_cache():
         return jsonify({'success': True, 'message': f'Cache invalidated for type: {cache_type}'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/circuit-breakers/stats')
+def circuit_breaker_stats():
+    """Get statistics for all circuit breakers"""
+    return jsonify(circuit_manager.get_all_stats())
+
+@app.route('/api/circuit-breakers/reset', methods=['POST'])
+def reset_circuit_breakers():
+    """Reset circuit breakers (all or specific service)"""
+    try:
+        data = request.get_json() or {}
+        service = data.get('service')
+        
+        if service:
+            breaker = circuit_manager.get_breaker(service)
+            breaker.reset()
+            return jsonify({'success': True, 'message': f'Circuit breaker for {service} reset'})
+        else:
+            circuit_manager.reset_all()
+            return jsonify({'success': True, 'message': 'All circuit breakers reset'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/circuit-breakers/health')
+def circuit_breaker_health():
+    """Get health status of all services"""
+    healthy = circuit_manager.get_healthy_services()
+    unhealthy = circuit_manager.get_unhealthy_services()
+    
+    return jsonify({
+        'healthy_services': healthy,
+        'unhealthy_services': unhealthy,
+        'total_services': len(healthy) + len(unhealthy),
+        'health_percentage': (len(healthy) / max(1, len(healthy) + len(unhealthy))) * 100
+    })
 
 @app.route('/api/price/<symbol>')
 def get_symbol_price(symbol):
@@ -3071,8 +3107,9 @@ def get_api_priority():
     apis.sort(key=lambda x: x[1], reverse=True)
     return [api[0] for api in apis]
 
+@with_circuit_breaker('binance_api', failure_threshold=3, recovery_timeout=30)
 def fetch_binance_price(symbol):
-    """Fetch price from Binance API with metrics tracking"""
+    """Fetch price from Binance API with circuit breaker protection"""
     start_time = time.time()
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
@@ -3093,8 +3130,9 @@ def fetch_binance_price(symbol):
         update_api_metrics('binance', False, response_time)
         raise e
 
+@with_circuit_breaker('coingecko_api', failure_threshold=4, recovery_timeout=45)
 def fetch_coingecko_price(symbol):
-    """Fetch price from CoinGecko API with metrics tracking"""
+    """Fetch price from CoinGecko API with circuit breaker protection"""
     start_time = time.time()
     try:
         # Extended symbol mapping with more pairs
@@ -3131,8 +3169,9 @@ def fetch_coingecko_price(symbol):
         update_api_metrics('coingecko', False, response_time)
         raise e
 
+@with_circuit_breaker('cryptocompare_api', failure_threshold=4, recovery_timeout=45)
 def fetch_cryptocompare_price(symbol):
-    """Fetch price from CryptoCompare API with metrics tracking"""
+    """Fetch price from CryptoCompare API with circuit breaker protection"""
     start_time = time.time()
     try:
         base_symbol = symbol.replace('USDT', '').replace('BUSD', '').replace('USDC', '')
@@ -3158,8 +3197,9 @@ def fetch_cryptocompare_price(symbol):
         update_api_metrics('cryptocompare', False, response_time)
         raise e
 
+@with_circuit_breaker('toobit_api', failure_threshold=3, recovery_timeout=60)
 def get_toobit_price(symbol, user_id=None):
-    """Get live price directly from Toobit exchange"""
+    """Get live price directly from Toobit exchange with circuit breaker protection"""
     try:
         # Ensure we're in Flask application context
         if not has_app_context():
@@ -3248,6 +3288,9 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
                 success_price = price
                 success_source = source
                 break
+            except CircuitBreakerError as e:
+                logging.warning(f"{futures[future]} circuit breaker is open: {str(e)}")
+                continue
             except Exception as e:
                 logging.warning(f"{futures[future]} API failed for {symbol}: {str(e)}")
                 continue
@@ -3263,6 +3306,9 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
                     if price_result and len(price_result) == 2:
                         success_price, success_source = price_result
                         break
+                except CircuitBreakerError as e:
+                    logging.warning(f"{api_name} circuit breaker is open: {str(e)}")
+                    continue
                 except Exception as e:
                     logging.warning(f"{api_name} API failed for {symbol}: {str(e)}")
                     continue
