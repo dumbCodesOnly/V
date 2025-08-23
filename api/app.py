@@ -38,6 +38,8 @@ except ImportError:
     from api.toobit_client import ToobitClient
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
+from api.error_handler import handle_error, handle_api_error, create_validation_error, create_success_response
+from api.error_demo import error_demo_bp
 
 # Configure logging using centralized config
 logging.basicConfig(level=getattr(logging, get_log_level()))
@@ -173,6 +175,9 @@ def init_database():
             run_database_migrations()
     except Exception as e:
         logging.error(f"Database initialization error: {e}")
+
+# Register error demo blueprint
+app.register_blueprint(error_demo_bp)
 
 # Initialize database conditionally
 if not os.environ.get("VERCEL"):
@@ -1733,19 +1738,47 @@ def execute_trade():
         user_id = data.get('user_id')
         trade_id = data.get('trade_id')
         
-        if not user_id or not trade_id:
-            return jsonify({'error': 'User ID and trade ID required'}), 400
+        if not user_id:
+            return jsonify(create_validation_error("User ID", None, "A valid user ID is required")), 400
+        
+        if not trade_id:
+            return jsonify(create_validation_error("Trade ID", None, "A valid trade ID is required")), 400
         
         chat_id = int(user_id)
         
         if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-            return jsonify({'error': 'Trade configuration not found'}), 404
+            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+            error = TradingError(
+                category=ErrorCategory.VALIDATION_ERROR,
+                severity=ErrorSeverity.MEDIUM,
+                technical_message=f"Trade {trade_id} not found for user {chat_id}",
+                user_message="The trade configuration you're trying to execute was not found.",
+                suggestions=[
+                    "Check that the trade ID is correct",
+                    "Refresh the page to reload your trades",
+                    "Create a new trade configuration if needed"
+                ]
+            )
+            return jsonify(error.to_dict()), 404
         
         config = user_trade_configs[chat_id][trade_id]
         
         # Validate configuration
         if not config.is_complete():
-            return jsonify({'error': 'Trade configuration is incomplete'}), 400
+            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+            error = TradingError(
+                category=ErrorCategory.VALIDATION_ERROR,
+                severity=ErrorSeverity.HIGH,
+                technical_message=f"Incomplete trade configuration for {config.symbol}",
+                user_message="Your trade setup is missing some important information.",
+                suggestions=[
+                    "Check that you've set the trading symbol",
+                    "Verify you've selected long or short direction",
+                    "Make sure you've set the trade amount",
+                    "Ensure take profit and stop loss are configured"
+                ]
+            )
+            return jsonify(error.to_dict()), 400
         
         # Get current market price from Toobit exchange (where trade will be executed)
         current_market_price = get_live_market_price(config.symbol, user_id=chat_id, prefer_exchange=True)
@@ -1994,8 +2027,54 @@ def execute_trade():
         })
         
     except Exception as e:
-        logging.error(f"Error executing trade: {str(e)}")
-        return jsonify({'error': 'Failed to execute trade'}), 500
+        # Handle specific error types with user-friendly messages
+        error_str = str(e).lower()
+        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        
+        if "insufficient balance" in error_str or "not enough funds" in error_str:
+            error = TradingError(
+                category=ErrorCategory.TRADING_ERROR,
+                severity=ErrorSeverity.HIGH,
+                technical_message=str(e),
+                user_message="You don't have enough balance to place this trade.",
+                suggestions=[
+                    "Check your account balance",
+                    "Reduce the trade amount or leverage",
+                    "Deposit more funds to your account",
+                    "Close other positions to free up margin"
+                ]
+            )
+            return jsonify(error.to_dict()), 400
+        elif "api key" in error_str or "unauthorized" in error_str or "authentication" in error_str:
+            error = TradingError(
+                category=ErrorCategory.AUTHENTICATION_ERROR,
+                severity=ErrorSeverity.HIGH,
+                technical_message=str(e),
+                user_message="Your API credentials are invalid or have expired.",
+                suggestions=[
+                    "Check your API key and secret in Settings",
+                    "Verify your credentials are still active",
+                    "Make sure you're using the correct exchange",
+                    "Contact your exchange if the problem persists"
+                ]
+            )
+            return jsonify(error.to_dict()), 401
+        elif "symbol" in error_str and ("not found" in error_str or "invalid" in error_str):
+            error = TradingError(
+                category=ErrorCategory.MARKET_ERROR,
+                severity=ErrorSeverity.MEDIUM,
+                technical_message=str(e),
+                user_message="The trading symbol is not available or invalid.",
+                suggestions=[
+                    "Check the symbol name (e.g., BTCUSDT, ETHUSDT)",
+                    "Make sure the symbol is supported on your exchange",
+                    "Try a different trading pair",
+                    "Refresh the symbol list"
+                ]
+            )
+            return jsonify(error.to_dict()), 400
+        else:
+            return jsonify(handle_error(e, "executing trade")), 500
 
 @app.route('/api/user-credentials')
 @app.route('/api/credentials-status')
@@ -2044,7 +2123,7 @@ def get_user_credentials():
             })
     except Exception as e:
         logging.error(f"Error getting user credentials: {str(e)}")
-        return jsonify({'error': 'Failed to get credentials status'}), 500
+        return jsonify(handle_error(e, "getting user credentials")), 500
 
 @app.route('/api/save-credentials', methods=['POST'])
 def save_credentials():
@@ -2060,10 +2139,18 @@ def save_credentials():
         passphrase = (data.get('passphrase') or '').strip()
         
         if not api_key or not api_secret:
-            return jsonify({'error': 'API key and secret are required'}), 400
+            return jsonify(create_validation_error(
+                "API credentials", 
+                "Both API key and secret are required",
+                "Valid API key and secret from your exchange"
+            )), 400
         
         if len(api_key) < 10 or len(api_secret) < 10:
-            return jsonify({'error': 'API key and secret seem too short'}), 400
+            return jsonify(create_validation_error(
+                "API credentials",
+                "API credentials seem too short", 
+                "API key and secret should be at least 10 characters"
+            )), 400
         
         # Get or create user credentials
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
@@ -2091,17 +2178,18 @@ def save_credentials():
         enhanced_cache.set_user_credentials(str(user_id), user_creds)
         logging.debug(f"Updated user {user_id} credentials cache after save")
         
-        return jsonify({
-            'success': True,
-            'message': 'Credentials saved successfully',
-            'exchange': exchange,
-            'testnet_mode': user_creds.testnet_mode
-        })
+        return jsonify(create_success_response(
+            'Credentials saved successfully',
+            {
+                'exchange': exchange,
+                'testnet_mode': user_creds.testnet_mode
+            }
+        ))
         
     except Exception as e:
         logging.error(f"Error saving credentials: {str(e)}")
         db.session.rollback()
-        return jsonify({'error': 'Failed to save credentials'}), 500
+        return jsonify(handle_error(e, "saving credentials")), 500
 
 @app.route('/api/delete-credentials', methods=['POST'])
 def delete_credentials():
@@ -2425,13 +2513,28 @@ def delete_trade():
         user_id = data.get('user_id')
         trade_id = data.get('trade_id')
         
-        if not user_id or not trade_id:
-            return jsonify({'error': 'User ID and trade ID required'}), 400
+        if not user_id:
+            return jsonify(create_validation_error("User ID", None, "A valid user ID is required")), 400
+        
+        if not trade_id:
+            return jsonify(create_validation_error("Trade ID", None, "A valid trade ID is required")), 400
         
         chat_id = int(user_id)
         
         if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-            return jsonify({'error': 'Trade not found'}), 404
+            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+            error = TradingError(
+                category=ErrorCategory.VALIDATION_ERROR,
+                severity=ErrorSeverity.MEDIUM,
+                technical_message=f"Trade {trade_id} not found for user {chat_id}",
+                user_message="The trade you're trying to delete was not found.",
+                suggestions=[
+                    "Check that the trade ID is correct",
+                    "The trade may have already been deleted",
+                    "Refresh the page to see current trades"
+                ]
+            )
+            return jsonify(error.to_dict()), 404
         
         config = user_trade_configs[chat_id][trade_id]
         trade_name = config.get_display_name() if hasattr(config, 'get_display_name') else config.name
@@ -2447,14 +2550,32 @@ def delete_trade():
             if chat_id in user_selected_trade:
                 del user_selected_trade[chat_id]
         
-        return jsonify({
-            'success': True,
-            'message': f'Trade configuration "{trade_name}" deleted successfully'
-        })
+        return jsonify(create_success_response(
+            f'Trade configuration "{trade_name}" deleted successfully',
+            {'trade_id': trade_id, 'trade_name': trade_name}
+        ))
         
     except Exception as e:
-        logging.error(f"Error deleting trade: {str(e)}")
-        return jsonify({'error': 'Failed to delete trade'}), 500
+        # Handle specific database errors
+        error_str = str(e).lower()
+        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        
+        if "database" in error_str or "connection" in error_str:
+            error = TradingError(
+                category=ErrorCategory.DATABASE_ERROR,
+                severity=ErrorSeverity.HIGH,
+                technical_message=str(e),
+                user_message="There was an issue accessing the database while deleting your trade.",
+                suggestions=[
+                    "Try again in a moment",
+                    "Refresh the page to check if the trade was deleted",
+                    "Contact support if this persists"
+                ],
+                retry_after=30
+            )
+            return jsonify(error.to_dict()), 500
+        else:
+            return jsonify(handle_error(e, "deleting trade")), 500
 
 @app.route('/api/reset-history', methods=['POST'])
 def reset_trade_history():
