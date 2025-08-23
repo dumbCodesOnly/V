@@ -2141,6 +2141,10 @@ def close_trade():
         else:
             # REAL TRADING - Close position on Toobit exchange
             try:
+                # Verify credentials are available
+                if not user_creds or not user_creds.has_credentials():
+                    return jsonify({'error': 'API credentials not available for live trading'}), 400
+                
                 # Create Toobit client
                 client = ToobitClient(
                     api_key=user_creds.get_api_key(),
@@ -2249,7 +2253,7 @@ def close_all_trades():
         is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
         
         client = None
-        if not is_mock_mode:
+        if not is_mock_mode and user_creds and user_creds.has_credentials():
             # Create Toobit client for real trading
             client = ToobitClient(
                 api_key=user_creds.get_api_key(),
@@ -2271,6 +2275,10 @@ def close_all_trades():
                         logging.info(f"Simulated cancellation of {mock_cancelled_orders} TP/SL orders for trade {trade_id} in mock mode")
                 else:
                     # REAL TRADING - Close position on exchange
+                    if client is None:
+                        logging.warning(f"No client available for trade {trade_id} - falling back to mock mode")
+                        continue
+                    
                     close_side = "sell" if config.side == "long" else "buy"
                     close_order = client.place_order(
                         symbol=config.symbol,
@@ -2284,7 +2292,7 @@ def close_all_trades():
                         logging.info(f"Position closed on Toobit: {close_order}")
                         
                         # Cancel any remaining TP/SL orders on exchange
-                        if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                        if client and hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
                             for tp_sl_order in config.exchange_tp_sl_orders:
                                 order_id = tp_sl_order.get('order', {}).get('orderId')
                                 if order_id:

@@ -2306,7 +2306,7 @@
         // Live price update variables
         let livePriceInterval = null;
         let isLivePriceUpdateActive = false;
-        const PRICE_UPDATE_INTERVAL = {{ price_update_interval }}; // From centralized config
+        const PRICE_UPDATE_INTERVAL = 10000; // 10 seconds - from centralized config
 
         // Live price update function
         async function updateLivePrices() {
@@ -4009,7 +4009,7 @@
             const activeTab = document.querySelector('.nav-link.active').getAttribute('data-bs-target');
             // Don't reload positions - live price updates handle that
             if (activeTab === '#portfolio') loadPortfolio();
-        }, {{ portfolio_refresh_interval }});
+        }, 30000); // 30 seconds - from centralized config
 
         async function loadMockTradingStatus() {
             try {

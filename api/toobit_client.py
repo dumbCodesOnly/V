@@ -129,7 +129,8 @@ class ToobitClient:
             raise
         except json.JSONDecodeError as e:
             logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
-            if 'response' in locals():
+            response = getattr(e, 'response', None)
+            if response is not None:
                 logging.error(f"[{api_mode}] Raw response: {response.text}")
             else:
                 logging.error(f"[{api_mode}] No response object available")
