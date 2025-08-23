@@ -25,6 +25,7 @@ class ToobitClient:
         # Base URLs for Toobit API using centralized config
         # Note: Toobit may not have separate testnet URL, using main API with testnet credentials
         self.base_url = APIConfig.TOOBIT_BASE_URL
+        self.quote_base = f"/quote/{APIConfig.TOOBIT_API_VERSION}"
         self.futures_base = f"/api/{APIConfig.TOOBIT_API_VERSION}/futures"
         
         # Request session for connection pooling
@@ -79,7 +80,11 @@ class ToobitClient:
             # Public endpoints - no signature
             headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         
-        url = self.base_url + self.futures_base + endpoint
+        # Use quote API for public endpoints, futures API for authenticated endpoints
+        if not authenticated and endpoint.startswith('/ticker'):
+            url = self.base_url + self.quote_base + endpoint
+        else:
+            url = self.base_url + self.futures_base + endpoint
         
         # Enhanced logging for debugging API calls
         api_mode = "TESTNET" if self.testnet else "LIVE"
@@ -276,14 +281,15 @@ class ToobitClient:
             return orders_placed
 
     def get_ticker_price(self, symbol: str) -> Optional[float]:
-        """Get current ticker price from Toobit exchange - trying multiple endpoints"""
+        """Get current ticker price from Toobit exchange using the correct public API"""
         try:
-            # Try different endpoint patterns that might work for Toobit
+            # Use the correct Toobit public API endpoint from quote/v1/ticker/24hr
             endpoints_to_try = [
-                # Futures endpoints
+                # Primary endpoint - Toobit public quote API 
                 ('/ticker/24hr', {'symbol': symbol}),
+                # Fallback endpoints in case of changes
                 ('/ticker', {'symbol': symbol}),
-                # Spot endpoints (might work for price data)
+                # Legacy spot endpoints (backup)
                 ('/spot/ticker/24hr', {'symbol': symbol}),
                 ('/spot/ticker', {'symbol': symbol})
             ]
@@ -313,9 +319,9 @@ class ToobitClient:
             return None
     
     def get_market_data(self, symbol: str) -> Optional[Dict]:
-        """Get comprehensive market data from Toobit using official endpoints"""
+        """Get comprehensive market data from Toobit using correct quote API endpoints"""
         try:
-            # Try official Toobit endpoints in order of preference
+            # Try official Toobit quote API endpoints in order of preference
             endpoints_to_try = [
                 ('/ticker/24hr', {'symbol': symbol}),
                 ('/depth', {'symbol': symbol, 'limit': 1}),
