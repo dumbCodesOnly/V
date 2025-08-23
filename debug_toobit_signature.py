@@ -9,6 +9,7 @@ import hmac
 import time
 import requests
 import json
+import os
 
 def generate_toobit_signature(secret_key: str, params_string: str) -> str:
     """Generate HMAC SHA256 signature exactly as Toobit documentation shows"""
@@ -21,9 +22,8 @@ def generate_toobit_signature(secret_key: str, params_string: str) -> str:
 
 def test_signature():
     """Test signature generation with Toobit documentation example"""
-    # SECURITY: Use example from documentation (safe - this is Toobit's official test key)
-    # This is the official test key from Toobit's API documentation for signature validation
-    secret_key = "30lfjDT51iOG1kYZnDoLNynOyMdIcmQyO1XYfxzYOmQfx9tjiI98Pzio4uhZ0Uk2"
+    # Use environment variable for API secret or fallback to documentation example for testing
+    secret_key = os.environ.get('TOOBIT_TEST_SECRET', '30lfjDT51iOG1kYZnDoLNynOyMdIcmQyO1XYfxzYOmQfx9tjiI98Pzio4uhZ0Uk2')
     
     # Parameters from their example (SELL order)
     params_string = "symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307"
@@ -85,6 +85,12 @@ def test_market_order_signature(api_key: str, secret_key: str):
 
 if __name__ == "__main__":
     print("Testing Toobit signature generation...")
+    
+    # Check if using environment variable or fallback
+    if os.environ.get('TOOBIT_TEST_SECRET'):
+        print("Using TOOBIT_TEST_SECRET environment variable")
+    else:
+        print("Using Toobit documentation example key (fallback)")
     
     # Test with documentation example
     doc_test_passed = test_signature()
