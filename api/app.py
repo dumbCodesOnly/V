@@ -1783,54 +1783,8 @@ def execute_trade():
         # Get current market price from Toobit exchange (where trade will be executed)
         current_market_price = get_live_market_price(config.symbol, user_id=chat_id, prefer_exchange=True)
         
-        # Handle limit orders - check if price condition is met
-        if config.entry_type == "limit" and config.entry_price > 0:
-            # No validation restrictions - allow all limit order types:
-            # - Long below market (traditional buy limit)
-            # - Long above market (buy stop for breakouts)
-            # - Short above market (traditional sell limit)  
-            # - Short below market (sell stop for breakdowns)
-            
-            # Check if limit order should execute
-            should_execute = False
-            if config.side == "long":
-                if config.entry_price <= current_market_price:
-                    # Long limit (buy limit): executes when market drops to or below limit price
-                    should_execute = current_market_price <= config.entry_price
-                else:
-                    # Long stop (buy stop): executes when market rises to or above stop price  
-                    should_execute = current_market_price >= config.entry_price
-            elif config.side == "short":
-                if config.entry_price >= current_market_price:
-                    # Short limit (sell limit): executes when market rises to or above limit price
-                    should_execute = current_market_price >= config.entry_price
-                else:
-                    # Short stop (sell stop): executes when market drops to or below stop price
-                    should_execute = current_market_price <= config.entry_price
-            
-            if not should_execute:
-                # Set as pending order, waiting for price to reach limit
-                config.status = "pending"
-                config.current_price = current_market_price
-                # Save to database
-                save_trade_to_db(chat_id, config)
-                config.unrealized_pnl = 0.0
-                
-                logging.info(f"Limit order placed: {config.symbol} {config.side} at ${config.entry_price} (current market: ${current_market_price})")
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'Limit order placed successfully. Waiting for market price to reach ${config.entry_price:.4f}',
-                    'trade': {
-                        'trade_id': trade_id,
-                        'symbol': config.symbol,
-                        'side': config.side,
-                        'amount': config.amount,
-                        'entry_price': config.entry_price,
-                        'current_price': current_market_price,
-                        'status': config.status
-                    }
-                })
+        # For limit orders, we'll place them directly on the exchange and let the exchange handle execution
+        # No need to monitor prices manually - the exchange will execute when price is reached
         
         # Check if user is in mock trading mode
         user_creds = UserCredentials.query.filter_by(
@@ -1915,8 +1869,14 @@ def execute_trade():
         position_size = position_value / current_market_price
         order_side = "buy" if config.side == "long" else "sell"
         
-        # Update trade configuration
-        config.status = "active"
+        # Update trade configuration - status depends on order type
+        if config.entry_type == "limit":
+            # Limit orders start as pending until filled by exchange
+            config.status = "pending"
+        else:
+            # Market orders are immediately active
+            config.status = "active"
+            
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
         config.position_value = position_value
         config.position_size = position_size
@@ -1932,7 +1892,7 @@ def execute_trade():
         # Save to database
         save_trade_to_db(chat_id, config)
         
-        # Place TP/SL orders after main position is filled
+        # Place TP/SL orders - handle differently for market vs limit orders
         if execution_success:
             try:
                 tp_sl_orders = []
@@ -1952,7 +1912,6 @@ def execute_trade():
                         logging.info(f"Simulated {len(mock_tp_sl_orders)} TP/SL orders in mock mode")
                 else:
                     # Real TP/SL orders on exchange
-                    # Place multiple take profit orders
                     if config.take_profits and tp_sl_data.get('take_profits'):
                         tp_orders_to_place = []
                         for tp_data in tp_sl_data['take_profits']:
@@ -1968,18 +1927,29 @@ def execute_trade():
                         if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
                             sl_price = str(tp_sl_data['stop_loss']['price'])
                         
-                        # Only place real orders if we have a valid client from the real trading branch
+                        # For limit orders, place TP/SL as conditional orders that activate when main order fills
+                        # For market orders, place TP/SL immediately since position is already open
                         if not is_mock_mode and client is not None:
-                            tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                symbol=config.symbol,
-                                side=order_side,
-                                total_quantity=str(position_size),
-                                take_profits=tp_orders_to_place,
-                                stop_loss_price=sl_price
-                            )
-                            
-                            config.exchange_tp_sl_orders = tp_sl_orders
-                            logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
+                            if config.entry_type == "limit":
+                                # For limit orders, TP/SL will be placed once the main order is filled
+                                # Store the TP/SL data to place later when order fills
+                                config.pending_tp_sl_data = {
+                                    'take_profits': tp_orders_to_place,
+                                    'stop_loss_price': sl_price
+                                }
+                                logging.info(f"TP/SL orders configured to place when limit order fills")
+                            else:
+                                # For market orders, place TP/SL immediately
+                                tp_sl_orders = client.place_multiple_tp_sl_orders(
+                                    symbol=config.symbol,
+                                    side=order_side,
+                                    total_quantity=str(position_size),
+                                    take_profits=tp_orders_to_place,
+                                    stop_loss_price=sl_price
+                                )
+                                
+                                config.exchange_tp_sl_orders = tp_sl_orders
+                                logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
                 
             except Exception as e:
                 logging.error(f"Failed to place TP/SL orders: {e}")
@@ -2005,9 +1975,15 @@ def execute_trade():
         
         trade_mode = "Mock Trade" if is_mock_mode else "Live Trade"
         
+        # Create appropriate message based on order type
+        if config.entry_type == "limit":
+            message = f'{trade_mode} limit order placed successfully: {config.symbol} {config.side.upper()} at ${config.entry_price:.4f}. Will execute when market reaches this price.'
+        else:
+            message = f'{trade_mode} executed successfully: {config.symbol} {config.side.upper()}'
+        
         return jsonify({
             'success': True,
-            'message': f'{trade_mode} executed successfully: {config.symbol} {config.side.upper()}',
+            'message': message,
             'mock_mode': is_mock_mode,
             'trade': {
                 'trade_id': trade_id,
