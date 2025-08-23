@@ -106,6 +106,193 @@
             z-index: 10;
         }
 
+        /* Enhanced Loading Indicators */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 20, 25, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .loading-spinner {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--tg-theme-text-color);
+            font-size: 0.9rem;
+        }
+
+        .spinner-ring {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(107, 139, 179, 0.3);
+            border-top: 3px solid var(--tg-theme-button-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        .loading-dot {
+            width: 4px;
+            height: 4px;
+            background: var(--tg-theme-button-color);
+            border-radius: 50%;
+            animation: loadingDots 1.4s infinite ease-in-out both;
+        }
+
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes loadingDots {
+            0%, 80%, 100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Button loading states */
+        .btn-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            margin: -8px 0 0 -8px;
+            border: 2px solid transparent;
+            border-top: 2px solid currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        /* Inline loading for small components */
+        .inline-loading {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--tg-theme-hint-color);
+            font-size: 0.85rem;
+        }
+
+        .inline-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(139, 157, 195, 0.3);
+            border-top: 2px solid var(--tg-theme-hint-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        /* Card loading state */
+        .card-loading {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-loading::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.1),
+                transparent
+            );
+            animation: shimmer 1.5s infinite;
+            z-index: 1;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        /* Price update loading */
+        .price-loading {
+            position: relative;
+        }
+
+        .price-loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -20px;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(82, 196, 26, 0.3);
+            border-top: 2px solid #52c41a;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        /* Tab loading indicator */
+        .tab-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* Skeleton loading for lists */
+        .skeleton {
+            background: linear-gradient(
+                90deg,
+                var(--tg-theme-border-color),
+                rgba(58, 70, 88, 0.6),
+                var(--tg-theme-border-color)
+            );
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .skeleton-line {
+            height: 16px;
+            margin-bottom: 8px;
+        }
+
+        .skeleton-line.short { width: 60%; }
+        .skeleton-line.medium { width: 80%; }
+        .skeleton-line.long { width: 100%; }
+
         .header h5 {
             font-weight: 700;
             font-size: 1.25rem;
@@ -2508,6 +2695,9 @@
 
         // Load data functions
         async function loadPositions() {
+            // Show loading state
+            showTabLoading('positions-list', 'Loading positions...');
+            
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
             if (!data) return;
             
@@ -2697,6 +2887,9 @@
 
         async function loadTradeConfigs() {
             console.log('Loading trade configs...');
+            // Show loading state
+            showTabLoading('trade-configs-list', 'Loading trading configurations...');
+            
             const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
             if (!data) {
                 console.log('No data received from API');
@@ -2953,6 +3146,11 @@
         }
 
         async function loadPortfolio() {
+            // Show loading state for all portfolio sections
+            showTabLoading('portfolio-summary', 'Loading account balance...');
+            showTabLoading('portfolio-positions', 'Loading active positions...');
+            showInlineLoading('closed-positions-container', 'Loading trade history...');
+            
             const data = await apiCall(`/api/margin-data?user_id=${currentUser?.id || '123456789'}`);
             const tradesData = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
             if (!data) return;
@@ -3939,6 +4137,9 @@
                 return;
             }
 
+            // Show loading indicator
+            showGlobalLoading('Saving API credentials...');
+
             try {
                 const response = await fetch('/api/save-credentials', {
                     method: 'POST',
@@ -4214,6 +4415,129 @@
 
         // Track current active tab to prevent conflicts
         let currentActiveTab = 'positions';
+        
+        // ============================================================================
+        // LOADING INDICATORS SYSTEM
+        // ============================================================================
+        
+        // Global loading overlay
+        function showGlobalLoading(message = 'Loading...') {
+            const overlay = document.getElementById('global-loading-overlay') || createGlobalLoadingOverlay();
+            const messageElement = overlay.querySelector('.loading-message');
+            if (messageElement) {
+                messageElement.textContent = message;
+            }
+            overlay.style.display = 'flex';
+        }
+        
+        function hideGlobalLoading() {
+            const overlay = document.getElementById('global-loading-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }
+        
+        function createGlobalLoadingOverlay() {
+            const overlay = document.createElement('div');
+            overlay.id = 'global-loading-overlay';
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner">
+                    <div class="spinner-ring"></div>
+                    <div class="loading-message">Loading...</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            return overlay;
+        }
+        
+        // Button loading state
+        function setButtonLoading(buttonId, loading = true) {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            
+            if (loading) {
+                button.dataset.originalText = button.textContent;
+                button.classList.add('btn-loading');
+                button.disabled = true;
+            } else {
+                button.classList.remove('btn-loading');
+                button.disabled = false;
+                if (button.dataset.originalText) {
+                    button.textContent = button.dataset.originalText;
+                }
+            }
+        }
+        
+        // Inline loading for components
+        function showInlineLoading(containerId, message = 'Loading...') {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            container.innerHTML = `
+                <div class="inline-loading">
+                    <div class="inline-spinner"></div>
+                    <span>${message}</span>
+                </div>
+            `;
+        }
+        
+        // Tab loading state
+        function showTabLoading(containerId, message = 'Loading data...') {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            container.innerHTML = `
+                <div class="tab-loading">
+                    <div class="spinner-ring"></div>
+                    <div>${message}</div>
+                </div>
+            `;
+        }
+        
+        // Skeleton loading for lists
+        function showSkeletonLoading(containerId, itemCount = 3) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            let skeletonHTML = '';
+            for (let i = 0; i < itemCount; i++) {
+                skeletonHTML += `
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <div class="skeleton skeleton-line medium"></div>
+                            <div class="skeleton skeleton-line short"></div>
+                            <div class="skeleton skeleton-line long"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = skeletonHTML;
+        }
+        
+        // Price loading indicator
+        function setPriceLoading(elementId, loading = true) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            if (loading) {
+                element.classList.add('price-loading');
+            } else {
+                element.classList.remove('price-loading');
+            }
+        }
+        
+        // Card shimmer loading
+        function setCardLoading(cardId, loading = true) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+            
+            if (loading) {
+                card.classList.add('card-loading');
+            } else {
+                card.classList.remove('card-loading');
+            }
+        }
         
         // Tab switching management for live price updates
         function handleTabSwitch(tabName) {
