@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from .toobit_client import ToobitClient
 from .models import UserCredentials, TradeConfiguration, get_iran_time, utc_to_iran_time
+from config import TimeConfig
 
 class ExchangeSyncService:
     """Background service for synchronizing with Toobit exchange"""
@@ -19,7 +20,7 @@ class ExchangeSyncService:
         self.db = db
         self.running = False
         self.sync_thread = None
-        self.sync_interval = 60  # Sync every 60 seconds
+        self.sync_interval = TimeConfig.EXCHANGE_SYNC_INTERVAL
         self.last_sync = {}  # {user_id: timestamp}
         
     def start(self):
@@ -45,7 +46,7 @@ class ExchangeSyncService:
                 time.sleep(self.sync_interval)
             except Exception as e:
                 logging.error(f"Error in sync loop: {e}")
-                time.sleep(30)  # Wait longer on error
+                time.sleep(TimeConfig.VERCEL_SYNC_COOLDOWN)  # Wait longer on error
     
     def _sync_all_users(self):
         """Synchronize all users with active positions"""

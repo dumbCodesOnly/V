@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from config import APIConfig, TimeConfig, get_api_timeout
 
 class ToobitClient:
     """Toobit Exchange API Client for futures trading"""
@@ -21,10 +22,10 @@ class ToobitClient:
         self.passphrase = passphrase
         self.testnet = testnet
         
-        # Base URLs for Toobit API - Fixed URLs based on official documentation
+        # Base URLs for Toobit API using centralized config
         # Note: Toobit may not have separate testnet URL, using main API with testnet credentials
-        self.base_url = "https://api.toobit.com"
-        self.futures_base = "/api/v1/futures"
+        self.base_url = APIConfig.TOOBIT_BASE_URL
+        self.futures_base = f"/api/{APIConfig.TOOBIT_API_VERSION}/futures"
         
         # Request session for connection pooling
         self.session = requests.Session()
@@ -93,7 +94,7 @@ class ToobitClient:
                     url=url,
                     headers=headers,
                     params=all_params,  # Query parameters for GET
-                    timeout=30
+                    timeout=get_api_timeout("default")
                 )
             else:
                 # For POST requests, use form-encoded data 
@@ -102,7 +103,7 @@ class ToobitClient:
                     url=url,
                     headers=headers,
                     data=all_params if all_params else None,  # Form-encoded data
-                    timeout=30
+                    timeout=get_api_timeout("default")
                 )
             
             logging.info(f"[{api_mode}] Response status: {response.status_code}")

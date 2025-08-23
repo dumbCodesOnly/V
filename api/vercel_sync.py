@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from .toobit_client import ToobitClient
 from .models import UserCredentials, TradeConfiguration, get_iran_time
+from config import TimeConfig
 
 class VercelSyncService:
     """Serverless-optimized exchange synchronization for Vercel"""
@@ -17,7 +18,7 @@ class VercelSyncService:
         self.app = app
         self.db = db
         self.last_sync_cache = {}  # {user_id: timestamp}
-        self.sync_cooldown = 30  # Minimum seconds between syncs per user
+        self.sync_cooldown = TimeConfig.VERCEL_SYNC_COOLDOWN
         
     def should_sync_user(self, user_id: str) -> bool:
         """Check if user should be synced based on cooldown"""

@@ -13,6 +13,11 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.middleware.proxy_fix import ProxyFix
+from config import (
+    APIConfig, TimeConfig, DatabaseConfig, TradingConfig, 
+    LoggingConfig, SecurityConfig, Environment,
+    get_cache_ttl, get_log_level, get_database_url
+)
 try:
     # Try relative import first (for module import - Vercel/main.py)
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
@@ -31,26 +36,21 @@ except ImportError:
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from api.toobit_client import ToobitClient
 
-# Configure logging - reduce verbosity for serverless
-log_level = logging.INFO if os.environ.get("VERCEL") else logging.DEBUG
-logging.basicConfig(level=log_level)
+# Configure logging using centralized config
+logging.basicConfig(level=getattr(logging, get_log_level()))
 
 # Create the Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key")
+app.secret_key = os.environ.get("SESSION_SECRET", SecurityConfig.DEFAULT_SESSION_SECRET)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database - PostgreSQL preferred, SQLite fallback for development
-database_url = os.environ.get("DATABASE_URL")
+# Configure database using centralized config
+database_url = get_database_url()
 if not database_url:
     # Fallback to SQLite for development
-    import os
     db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance', 'trading_bot.db')
     database_url = f"sqlite:///{db_path}"
     logging.info(f"Using SQLite database for development at {db_path}")
-
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
@@ -61,22 +61,22 @@ if database_url.startswith("sqlite"):
         "pool_pre_ping": True,
         "pool_recycle": 300
     }
-elif database_url.startswith("postgresql") and (os.environ.get("VERCEL") or "neon" in database_url.lower()):
+elif database_url.startswith("postgresql") and (Environment.IS_VERCEL or "neon" in database_url.lower()):
     # Neon PostgreSQL serverless configuration - optimized for connection handling
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 1800,  # 30 minutes - shorter for serverless
-        "pool_pre_ping": True,  # Essential for Neon connection validation
-        "pool_size": 5,  # Allow more connections for concurrent requests
-        "max_overflow": 10,  # Allow overflow for peak loads
-        "pool_timeout": 60,  # Longer timeout for connection acquisition
-        "pool_reset_on_return": "commit",  # Clean state for each request
+        "pool_recycle": DatabaseConfig.POOL_RECYCLE,
+        "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout": 60,
+        "pool_reset_on_return": "commit",
         "connect_args": {
-            "sslmode": "require",  # Neon requires SSL
-            "connect_timeout": 30,  # Longer connection timeout
-            "application_name": "trading_bot_vercel",  # Identify your app in Neon logs
-            "keepalives_idle": "30",  # Keep connections alive
-            "keepalives_interval": "5",  # Check every 5 seconds
-            "keepalives_count": "3"  # 3 failed checks before disconnect
+            "sslmode": DatabaseConfig.SSL_MODE,
+            "connect_timeout": TimeConfig.DEFAULT_API_TIMEOUT,
+            "application_name": DatabaseConfig.APPLICATION_NAME,
+            "keepalives_idle": DatabaseConfig.KEEPALIVES_IDLE,
+            "keepalives_interval": DatabaseConfig.KEEPALIVES_INTERVAL,
+            "keepalives_count": DatabaseConfig.KEEPALIVES_COUNT
         }
     }
 elif database_url.startswith("postgresql"):
@@ -273,7 +273,7 @@ user_selected_trade = {}  # {user_id: trade_id}
 
 # Cache for database loads to prevent frequent database hits
 user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
-cache_ttl = 30  # Cache TTL in seconds for Vercel optimization
+cache_ttl = get_cache_ttl("user")  # Cache TTL in seconds for Vercel optimization
 trade_counter = 0
 
 # Initialize clean user environment
@@ -313,7 +313,7 @@ class TradeConfig:
         self.symbol = ""
         self.side = ""  # 'long' or 'short'
         self.amount = 0.0
-        self.leverage = 1
+        self.leverage = TradingConfig.DEFAULT_LEVERAGE
         self.entry_price = 0.0
         self.entry_type = ""  # 'market' or 'limit'
         self.waiting_for_limit_price = False  # Track if waiting for limit price input
@@ -648,12 +648,16 @@ def delete_trade_from_db(user_id, trade_id):
 @app.route('/')
 def mini_app():
     """Telegram Mini App interface - Main route"""
-    return render_template('mini_app.html')
+    return render_template('mini_app.html', 
+                         price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
+                         portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL)
 
 @app.route('/miniapp')
 def mini_app_alias():
     """Telegram Mini App interface - Alias route"""
-    return render_template('mini_app.html')
+    return render_template('mini_app.html', 
+                         price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
+                         portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL)
 
 @app.route('/health')
 def health_check():
@@ -3012,7 +3016,7 @@ You can add new credentials anytime using the setup option.""", get_api_manageme
 # Price caching and optimization system
 price_cache = {}
 cache_lock = threading.Lock()
-cache_ttl = 10  # Cache for 10 seconds
+cache_ttl = get_cache_ttl("price")  # Cache for price data
 api_performance_metrics = {
     'binance': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
     'coingecko': {'requests': 0, 'successes': 0, 'avg_response_time': 0, 'last_success': None},
