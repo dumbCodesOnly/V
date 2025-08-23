@@ -1756,6 +1756,7 @@ def execute_trade():
         is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
         
         execution_success = False
+        client = None  # Initialize client variable
         
         if is_mock_mode:
             # MOCK TRADING - Simulate execution without real API calls
@@ -1882,7 +1883,7 @@ def execute_trade():
                             sl_price = str(tp_sl_data['stop_loss']['price'])
                         
                         # Only place real orders if we have a valid client from the real trading branch
-                        if not is_mock_mode and 'client' in locals():
+                        if not is_mock_mode and client is not None:
                             tp_sl_orders = client.place_multiple_tp_sl_orders(
                                 symbol=config.symbol,
                                 side=order_side,
