@@ -2069,7 +2069,9 @@ def get_user_credentials():
         # Check enhanced cache first for user credentials
         cached_result = enhanced_cache.get_user_credentials(str(user_id))
         if cached_result:
-            user_creds, cache_info = cached_result
+            cached_creds, cache_info = cached_result
+            # Re-attach the cached object to current session to prevent session binding errors
+            user_creds = db.session.merge(cached_creds)
 # Retrieved credentials from cache - removed debug log for cleaner output
         else:
             # Cache miss - load from database
