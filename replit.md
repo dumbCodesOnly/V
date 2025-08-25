@@ -11,6 +11,7 @@ The application uses Flask for its web framework, serving as the Telegram Mini-A
 
 **Latest Updates (August 25, 2025):**
 - **Migration Completed**: Successfully migrated from Replit Agent to standard Replit environment with full functionality
+- **Auto-trades Visibility Fix**: Fixed critical issue where auto-trades weren't appearing in trading tab due to user ID type mismatch (string vs integer keys)
 - **Break-even Monitoring Fix**: Fixed issue where break-even at TP1 settings weren't being properly monitored by changing storage format from display names to internal codes
 
 **Previous Updates (August 23, 2025):**

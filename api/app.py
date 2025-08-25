@@ -1436,11 +1436,12 @@ def create_auto_trade_from_smc():
                            f"Signal Strength: {signal.signal_strength.value} | " + \
                            f"R:R = 1:{signal.risk_reward_ratio:.1f}"
         
-        # Store the trade configuration
-        if str(user_id) not in user_trade_configs:
-            user_trade_configs[str(user_id)] = {}
+        # Store the trade configuration (use integer user_id for consistency)
+        user_id_int = int(user_id)
+        if user_id_int not in user_trade_configs:
+            user_trade_configs[user_id_int] = {}
         
-        user_trade_configs[str(user_id)][trade_id] = trade_config
+        user_trade_configs[user_id_int][trade_id] = trade_config
         
         # Save to database
         save_trade_to_db(user_id, trade_config)
