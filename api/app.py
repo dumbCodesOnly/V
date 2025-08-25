@@ -5214,7 +5214,8 @@ def update_positions_lightweight():
         for trade_id, config in trades.items():
             # Only monitor active positions with break-even enabled and not yet triggered
             if (config.status == "active" and config.symbol and 
-                hasattr(config, 'breakeven_after') and config.breakeven_after > 0 and
+                hasattr(config, 'breakeven_after') and 
+                isinstance(config.breakeven_after, (int, float)) and config.breakeven_after > 0 and
                 not getattr(config, 'breakeven_sl_triggered', False)):
                 symbols_needed.add(config.symbol)
                 breakeven_positions.append((user_id, trade_id, config))
@@ -5258,7 +5259,9 @@ def update_positions_lightweight():
                     if config.unrealized_pnl > 0:
                         profit_percentage = (config.unrealized_pnl / config.amount) * 100
                         
-                        if profit_percentage >= config.breakeven_after:
+                        # Ensure breakeven_after is numeric before comparison
+                        if (isinstance(config.breakeven_after, (int, float)) and 
+                            profit_percentage >= config.breakeven_after):
                             logging.info(f"BREAK-EVEN TRIGGERED: {config.symbol} {config.side} - Moving SL to entry price")
                             
                             # Mark as triggered to stop monitoring
