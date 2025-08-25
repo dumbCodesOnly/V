@@ -5691,10 +5691,19 @@
                 if (result.success) {
                     alert(`✅ Auto-trade created for ${symbol}!`);
                     
-                    // Switch to trading tab and refresh
+                    // Switch to trading tab and explicitly refresh
                     const tradingTab = document.getElementById('trading-tab');
                     if (tradingTab) {
                         tradingTab.click();
+                        // Wait a moment for tab switch, then reload
+                        setTimeout(() => {
+                            loadTradeConfigs();
+                        }, 200);
+                    } else {
+                        // If tab button not found, just reload current view if on trading tab
+                        if (currentActiveTab === 'trading') {
+                            loadTradeConfigs();
+                        }
                     }
                 } else {
                     alert(`❌ ${result.error || 'Failed to create auto-trade'}`);
