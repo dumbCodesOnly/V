@@ -352,6 +352,7 @@ class TradeConfig:
         self.realized_pnl = 0.0     # Realized P&L from triggered take profits
         self.final_pnl = 0.0        # Final P&L when position is closed
         self.closed_at = ""         # Timestamp when position was closed
+        self.notes = ""             # Additional notes for the trade
         
     def get_display_name(self):
         if self.symbol and self.side:
@@ -1276,6 +1277,198 @@ def get_multiple_prices():
             'successful': len([r for r in results.values() if r['status'] == 'success'])
         })
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/smc-analysis/<symbol>')
+def get_smc_analysis(symbol):
+    """Get Smart Money Concepts analysis for a specific symbol"""
+    try:
+        from .smc_analyzer import SMCAnalyzer
+        
+        analyzer = SMCAnalyzer()
+        signal = analyzer.generate_trade_signal(symbol.upper())
+        
+        if signal:
+            return jsonify({
+                'symbol': signal.symbol,
+                'direction': signal.direction,
+                'entry_price': signal.entry_price,
+                'stop_loss': signal.stop_loss,
+                'take_profit_levels': signal.take_profit_levels,
+                'confidence': signal.confidence,
+                'reasoning': signal.reasoning,
+                'signal_strength': signal.signal_strength.value,
+                'risk_reward_ratio': signal.risk_reward_ratio,
+                'timestamp': signal.timestamp.isoformat(),
+                'status': 'signal_generated'
+            })
+        else:
+            return jsonify({
+                'symbol': symbol.upper(),
+                'status': 'no_signal',
+                'message': 'No strong SMC signal detected at this time',
+                'timestamp': get_iran_time().isoformat()
+            })
+            
+    except Exception as e:
+        logging.error(f"Error in SMC analysis for {symbol}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/smc-signals')
+def get_multiple_smc_signals():
+    """Get SMC signals for multiple popular trading symbols"""
+    try:
+        from .smc_analyzer import SMCAnalyzer
+        
+        # Analyze popular trading pairs
+        symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'SOLUSDT']
+        analyzer = SMCAnalyzer()
+        
+        signals = {}
+        for symbol in symbols:
+            try:
+                signal = analyzer.generate_trade_signal(symbol)
+                if signal:
+                    signals[symbol] = {
+                        'direction': signal.direction,
+                        'entry_price': signal.entry_price,
+                        'stop_loss': signal.stop_loss,
+                        'take_profit_levels': signal.take_profit_levels,
+                        'confidence': signal.confidence,
+                        'reasoning': signal.reasoning[:3],  # Limit reasoning for summary
+                        'signal_strength': signal.signal_strength.value,
+                        'risk_reward_ratio': signal.risk_reward_ratio,
+                        'timestamp': signal.timestamp.isoformat()
+                    }
+                else:
+                    signals[symbol] = {
+                        'status': 'no_signal',
+                        'message': 'No strong signal detected'
+                    }
+            except Exception as e:
+                signals[symbol] = {
+                    'status': 'error',
+                    'message': str(e)
+                }
+        
+        return jsonify({
+            'signals': signals,
+            'timestamp': get_iran_time().isoformat(),
+            'total_analyzed': len(symbols),
+            'signals_found': len([s for s in signals.values() if 'direction' in s])
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting multiple SMC signals: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/smc-auto-trade', methods=['POST'])
+def create_auto_trade_from_smc():
+    """Create a trade configuration automatically based on SMC analysis"""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', '').upper()
+        user_id = data.get('user_id')
+        margin_amount = float(data.get('margin_amount', 100))
+        
+        if not symbol or not user_id:
+            return jsonify({'error': 'Symbol and user_id required'}), 400
+        
+        from .smc_analyzer import SMCAnalyzer
+        
+        analyzer = SMCAnalyzer()
+        signal = analyzer.generate_trade_signal(symbol)
+        
+        if not signal:
+            return jsonify({
+                'error': 'No SMC signal available for this symbol',
+                'symbol': symbol
+            }), 400
+        
+        # Only proceed with strong signals
+        if signal.confidence < 0.7:
+            return jsonify({
+                'error': 'SMC signal confidence too low for auto-trading',
+                'confidence': signal.confidence,
+                'minimum_required': 0.7
+            }), 400
+        
+        # Generate trade ID
+        trade_id = f"smc_{symbol}_{int(datetime.now().timestamp())}"
+        
+        # Create trade configuration
+        trade_config = TradeConfig(trade_id, f"SMC Auto-Trade {symbol}")
+        trade_config.symbol = symbol
+        trade_config.side = signal.direction
+        trade_config.amount = margin_amount
+        trade_config.leverage = 5  # Conservative leverage for auto-trades
+        trade_config.entry_type = "market"  # Market entry for immediate execution
+        trade_config.entry_price = signal.entry_price
+        
+        # Calculate stop loss percentage
+        if signal.direction == 'long':
+            sl_percent = ((signal.entry_price - signal.stop_loss) / signal.entry_price) * 100
+        else:
+            sl_percent = ((signal.stop_loss - signal.entry_price) / signal.entry_price) * 100
+        
+        trade_config.stop_loss_percent = min(sl_percent, 5.0)  # Cap at 5% for safety
+        
+        # Set up take profit levels
+        tp_levels = []
+        for i, tp_price in enumerate(signal.take_profit_levels[:3]):
+            if signal.direction == 'long':
+                tp_percent = ((tp_price - signal.entry_price) / signal.entry_price) * 100
+            else:
+                tp_percent = ((signal.entry_price - tp_price) / signal.entry_price) * 100
+            
+            allocation = [50, 30, 20][i] if i < 3 else 10  # Decreasing allocations
+            
+            tp_levels.append({
+                'percentage': tp_percent,
+                'allocation': allocation,
+                'triggered': False
+            })
+        
+        trade_config.take_profits = tp_levels
+        
+        # Add SMC analysis details to notes
+        trade_config.notes = f"SMC Auto-Trade | Confidence: {signal.confidence:.1%} | " + \
+                           f"Signal Strength: {signal.signal_strength.value} | " + \
+                           f"R:R = 1:{signal.risk_reward_ratio:.1f}"
+        
+        # Store the trade configuration
+        if str(user_id) not in user_trade_configs:
+            user_trade_configs[str(user_id)] = {}
+        
+        user_trade_configs[str(user_id)][trade_id] = trade_config
+        
+        # Save to database
+        save_trade_to_db(user_id, trade_config)
+        
+        return jsonify({
+            'success': True,
+            'trade_id': trade_id,
+            'trade_config': {
+                'symbol': trade_config.symbol,
+                'side': trade_config.side,
+                'amount': trade_config.amount,
+                'leverage': trade_config.leverage,
+                'entry_price': trade_config.entry_price,
+                'stop_loss_percent': trade_config.stop_loss_percent,
+                'take_profits': trade_config.take_profits,
+                'smc_analysis': {
+                    'confidence': signal.confidence,
+                    'signal_strength': signal.signal_strength.value,
+                    'reasoning': signal.reasoning,
+                    'risk_reward_ratio': signal.risk_reward_ratio
+                }
+            },
+            'message': f'SMC-based trade configuration created for {symbol}',
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error creating auto-trade from SMC: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/recent-messages')
