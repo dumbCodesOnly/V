@@ -5084,7 +5084,8 @@ def handle_set_breakeven(chat_id, mode):
             if config.status in ['active', 'pending']:
                 logging.info(f"Updated break-even setting for active trade {trade_id}: {mode_map.get(mode, 'After TP1')}")
             
-            config.breakeven_after = mode_map.get(mode, "After TP1")
+            # Store the internal code (tp1, tp2, tp3, off) not the display name
+            config.breakeven_after = mode if mode != "off" else "disabled"
             header = config.get_trade_header("Break-even Set")
             return f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}", get_trading_menu(chat_id)
     
