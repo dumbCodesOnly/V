@@ -59,7 +59,7 @@
 - ✅ `api/create_vercel_schema.sql` - Database schema
 
 ### Documentation
-- ✅ `VERCEL_DEPLOYMENT.md` - Complete deployment guide
+- ✅ `docs/VERCEL_DEPLOYMENT.md` - Complete deployment guide
 - ✅ Database migration scripts included
 
 ## 🚀 Deployment Instructions

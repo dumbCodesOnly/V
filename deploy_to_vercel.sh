@@ -97,7 +97,7 @@ if [[ $? -eq 0 ]]; then
     echo "   • Verify price accuracy with fallback sources"
     echo "   • Test mock trading mode functionality"
     echo ""
-    echo "📖 Documentation: See VERCEL_DEPLOYMENT_STATUS.md for details"
+    echo "📖 Documentation: See docs/VERCEL_DEPLOYMENT_STATUS.md for details"
 else
     echo "❌ Deployment failed. Check Vercel logs for details."
     exit 1

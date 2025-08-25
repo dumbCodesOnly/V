@@ -103,7 +103,7 @@ Vercel Serverless
 
 ### Current Configuration Files
 - `vercel.json`: Production deployment with 60s timeout and optimized routing
-- `DEPLOYMENT_GUIDE.md`: Complete deployment instructions for both environments
+- `docs/DEPLOYMENT_GUIDE.md`: Complete deployment instructions for both environments
 - `replit.md`: Updated with all architectural changes and feature implementations
 
 ## Ready for Production Deployment ✅
@@ -115,4 +115,4 @@ The system is fully production-ready with:
 - Real-time position tracking and P&L calculation
 - Dual-environment architecture supporting both development and production needs
 
-**Next Steps**: Deploy to Vercel with proper environment variables and webhook configuration as outlined in DEPLOYMENT_GUIDE.md.
+**Next Steps**: Deploy to Vercel with proper environment variables and webhook configuration as outlined in docs/DEPLOYMENT_GUIDE.md.
