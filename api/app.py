@@ -5211,8 +5211,22 @@ def update_positions_lightweight():
     breakeven_positions = []
     symbols_needed = set()
     
+    # Debug: Log all positions for troubleshooting
+    total_positions = 0
+    active_positions = 0
+    
     for user_id, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
+            total_positions += 1
+            
+            # Debug logging for breakeven analysis
+            logging.debug(f"Checking position {trade_id}: status={config.status}, symbol={config.symbol}, "
+                         f"breakeven_after={config.breakeven_after} (type: {type(config.breakeven_after)}), "
+                         f"breakeven_sl_triggered={getattr(config, 'breakeven_sl_triggered', 'not_set')}")
+            
+            if config.status == "active":
+                active_positions += 1
+                
             # Only monitor active positions with break-even enabled and not yet triggered
             if (config.status == "active" and config.symbol and 
                 hasattr(config, 'breakeven_after') and 
@@ -5220,6 +5234,9 @@ def update_positions_lightweight():
                 not getattr(config, 'breakeven_sl_triggered', False)):
                 symbols_needed.add(config.symbol)
                 breakeven_positions.append((user_id, trade_id, config))
+    
+    # Enhanced debug logging
+    logging.debug(f"Monitoring scan: {total_positions} total positions, {active_positions} active, {len(breakeven_positions)} need break-even monitoring")
     
     # If no positions need break-even monitoring, skip entirely
     if not breakeven_positions:
