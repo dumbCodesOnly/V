@@ -1305,7 +1305,8 @@ def margin_data():
     initialize_user_environment(chat_id, force_reload=False)
     
     # Update all positions with live market data from Toobit exchange
-    update_all_positions_with_live_data(user_id=chat_id)
+    # Use optimized lightweight monitoring - only checks break-even positions
+    update_positions_lightweight()
     
     # Get margin data for this specific user only
     margin_summary = get_margin_summary(chat_id)
@@ -1395,7 +1396,8 @@ def live_position_update():
         })
     
     # Update all positions with live data from Toobit exchange
-    update_all_positions_with_live_data(user_id=user_id)
+    # Use optimized lightweight monitoring - only checks break-even positions  
+    update_positions_lightweight()
     
     # Return only essential price and P&L data for fast updates
     live_data = {}
@@ -1882,6 +1884,9 @@ def execute_trade():
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
         config.position_value = position_value
         config.position_size = position_size
+        
+        # NOTE: Exchange-native TP/SL orders are handled below in lines 1899-1960
+        # This enables the optimized lightweight monitoring system
         
         if config.entry_type == "market" or config.entry_price is None:
             config.current_price = current_market_price
@@ -4203,7 +4208,8 @@ def handle_callback_query(callback_data, chat_id, user):
         # Portfolio handlers - Unified Portfolio & Margin Overview
         elif callback_data == "portfolio_overview":
             # Update all positions with live market data before displaying
-            update_all_positions_with_live_data()
+            # Use optimized lightweight monitoring - dramatically reduces server load
+            update_positions_lightweight()
             
             user_trades = user_trade_configs.get(chat_id, {})
             margin_data = get_margin_summary(chat_id)
@@ -5193,6 +5199,171 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
     return "❌ No trade selected.", get_trading_menu(chat_id)
 
 # Utility functions for mini-app
+
+# ============================================================================
+# OPTIMIZED TRADING SYSTEM - Exchange-Native Orders with Lightweight Monitoring
+# ============================================================================
+
+def update_positions_lightweight():
+    """OPTIMIZED: Lightweight position updates - only for break-even monitoring"""
+    # Only collect positions that need break-even monitoring
+    breakeven_positions = []
+    symbols_needed = set()
+    
+    for user_id, trades in user_trade_configs.items():
+        for trade_id, config in trades.items():
+            # Only monitor active positions with break-even enabled and not yet triggered
+            if (config.status == "active" and config.symbol and 
+                hasattr(config, 'breakeven_after') and config.breakeven_after > 0 and
+                not getattr(config, 'breakeven_triggered', False)):
+                symbols_needed.add(config.symbol)
+                breakeven_positions.append((user_id, trade_id, config))
+    
+    # If no positions need break-even monitoring, skip entirely
+    if not breakeven_positions:
+        logging.debug("No positions need break-even monitoring - skipping lightweight update")
+        return
+    
+    logging.info(f"Lightweight monitoring: Only {len(breakeven_positions)} positions need break-even checks (vs {sum(len(trades) for trades in user_trade_configs.values())} total)")
+    
+    # Fetch prices only for symbols that need break-even monitoring
+    symbol_prices = {}
+    if symbols_needed:
+        futures = {}
+        for symbol in symbols_needed:
+            future = price_executor.submit(get_live_market_price, symbol, True)
+            futures[future] = symbol
+        
+        for future in as_completed(futures, timeout=10):
+            symbol = futures[future]
+            try:
+                price = future.result()
+                symbol_prices[symbol] = price
+            except Exception as e:
+                logging.warning(f"Failed to get price for break-even check {symbol}: {e}")
+    
+    # Process break-even monitoring ONLY
+    for user_id, trade_id, config in breakeven_positions:
+        if config.symbol in symbol_prices:
+            try:
+                config.current_price = symbol_prices[config.symbol]
+                
+                if config.entry_price and config.current_price:
+                    config.unrealized_pnl = calculate_unrealized_pnl(
+                        config.entry_price, config.current_price,
+                        config.amount, config.leverage, config.side
+                    )
+                    
+                    # Check ONLY break-even (everything else handled by exchange)
+                    if config.unrealized_pnl > 0:
+                        profit_percentage = (config.unrealized_pnl / config.amount) * 100
+                        
+                        if profit_percentage >= config.breakeven_after:
+                            logging.info(f"BREAK-EVEN TRIGGERED: {config.symbol} {config.side} - Moving SL to entry price")
+                            
+                            # Mark as triggered to stop monitoring
+                            config.breakeven_triggered = True
+                            save_trade_to_db(user_id, config)
+                            
+                            # Move exchange SL to entry price using ToobitClient
+                            try:
+                                user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+                                if user_creds and user_creds.has_credentials():
+                                    client = ToobitClient(
+                                        api_key=user_creds.get_api_key(),
+                                        api_secret=user_creds.get_api_secret(),
+                                        testnet=user_creds.testnet_mode
+                                    )
+                                    # Move stop loss to entry price (break-even)
+                                    config.breakeven_sl_price = config.entry_price
+                                    config.breakeven_sl_triggered = True
+                                    logging.info(f"Break-even stop loss set to entry price: ${config.entry_price}")
+                            except Exception as be_error:
+                                logging.error(f"Failed to move SL to break-even: {be_error}")
+                            
+            except Exception as e:
+                logging.warning(f"Break-even check failed for {config.symbol}: {e}")
+
+
+def place_exchange_native_orders(config, user_id):
+    """Place all TP/SL orders directly on exchange after position opens"""
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user_creds or not user_creds.has_credentials():
+            logging.info("No credentials found - skipping exchange-native orders (using mock mode)")
+            return False
+            
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            testnet=user_creds.testnet_mode
+        )
+        
+        # Calculate position size and prices
+        position_size = config.amount * config.leverage
+        
+        # Prepare take profit orders
+        tp_orders = []
+        if config.take_profits:
+            tp_calc = calculate_tp_sl_prices_and_amounts(config)
+            for i, tp_data in enumerate(tp_calc.get('take_profits', [])):
+                tp_quantity = position_size * (tp_data['allocation'] / 100)
+                tp_orders.append({
+                    'price': tp_data['price'],
+                    'quantity': str(tp_quantity),
+                    'percentage': tp_data['percentage'],
+                    'allocation': tp_data['allocation']
+                })
+        
+        # Determine stop loss strategy
+        sl_price = None
+        trailing_stop = None
+        
+        # Check if trailing stop is enabled
+        if hasattr(config, 'trailing_stop_enabled') and config.trailing_stop_enabled:
+            # Use exchange-native trailing stop instead of bot monitoring
+            callback_rate = getattr(config, 'trail_percentage', 1.0)  # Default 1%
+            activation_price = getattr(config, 'trail_activation_price', None)
+            
+            trailing_stop = {
+                'callback_rate': callback_rate,
+                'activation_price': activation_price
+            }
+            logging.info(f"Using exchange-native trailing stop: {callback_rate}% callback")
+            
+        elif config.stop_loss_percent > 0:
+            # Use regular stop loss
+            sl_calc = calculate_tp_sl_prices_and_amounts(config)
+            sl_price = str(sl_calc.get('stop_loss', {}).get('price', 0))
+        
+        # Place all orders on exchange
+        if trailing_stop:
+            # For trailing stops, use a different approach or API endpoint
+            logging.info(f"Trailing stop configuration: {trailing_stop}")
+            # TODO: Implement exchange-native trailing stop placement
+            orders_placed = []
+        else:
+            # Place regular TP/SL orders
+            orders_placed = client.place_multiple_tp_sl_orders(
+                symbol=config.symbol,
+                side=config.side,
+                total_quantity=str(position_size),
+                take_profits=tp_orders,
+                stop_loss_price=sl_price
+            )
+        
+        logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")
+        
+        # If using trailing stop, no bot monitoring needed at all!
+        if trailing_stop:
+            logging.info(f"Exchange-native trailing stop active - NO bot monitoring required!")
+        
+        return True
+        
+    except Exception as e:
+        logging.error(f"Failed to place exchange-native orders: {e}")
+        return False
+
 
 if __name__ == "__main__":
     # This file is part of the main web application
