@@ -8,8 +8,8 @@ import time
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from .toobit_client import ToobitClient
-from .models import UserCredentials, TradeConfiguration, get_iran_time, utc_to_iran_time
+from api.toobit_client import ToobitClient
+from api.models import UserCredentials, TradeConfiguration, get_iran_time, utc_to_iran_time
 from config import TimeConfig
 
 class ExchangeSyncService:
