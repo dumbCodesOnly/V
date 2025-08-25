@@ -5035,7 +5035,7 @@
         // Reset History Functions
         async function confirmResetHistory() {
             if (!currentUser?.id) {
-                showToast('Please set up your Telegram user first', 'error');
+                alert('⚠️ Please set up your Telegram user first');
                 return;
             }
             
@@ -5074,7 +5074,7 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    showToast('Trade history reset successfully', 'success');
+                    alert('✅ Trade history reset successfully');
                     
                     // Reset UI elements to zero
                     document.getElementById('account-balance').textContent = '$1000.00';
@@ -5098,11 +5098,11 @@
                         await loadTradeConfigs();
                     }
                 } else {
-                    showToast(result.error || 'Failed to reset history', 'error');
+                    alert(`❌ ${result.error || 'Failed to reset history'}`);
                 }
             } catch (error) {
                 console.error('Reset history error:', error);
-                showToast('Failed to reset history', 'error');
+                alert('❌ Failed to reset history');
             } finally {
                 // Restore button state
                 resetBtn.innerHTML = '🗑️ Reset History';
@@ -5559,7 +5559,7 @@
 
         async function refreshSmcSignals() {
             await loadSmcSignals();
-            showToast('SMC signals refreshed', 'success');
+            alert('✅ SMC signals refreshed');
         }
 
         async function viewSignalDetails(symbol) {
@@ -5659,11 +5659,11 @@
                     const modal = new bootstrap.Modal(document.getElementById('smcDetailsModal'));
                     modal.show();
                 } else {
-                    showToast(`No detailed analysis available for ${symbol}`, 'warning');
+                    alert(`⚠️ No detailed analysis available for ${symbol}`);
                 }
             } catch (error) {
                 console.error('Error fetching signal details:', error);
-                showToast('Error loading signal details', 'error');
+                alert('❌ Error loading signal details');
             }
         }
 
@@ -5689,7 +5689,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast(`Auto-trade created for ${symbol}!`, 'success');
+                    alert(`✅ Auto-trade created for ${symbol}!`);
                     
                     // Switch to trading tab and refresh
                     const tradingTab = document.getElementById('trading-tab');
@@ -5697,11 +5697,11 @@
                         tradingTab.click();
                     }
                 } else {
-                    showToast(result.error || 'Failed to create auto-trade', 'error');
+                    alert(`❌ ${result.error || 'Failed to create auto-trade'}`);
                 }
             } catch (error) {
                 console.error('Error creating auto-trade:', error);
-                showToast('Error creating auto-trade', 'error');
+                alert('❌ Error creating auto-trade');
             }
         }
 
