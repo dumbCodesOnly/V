@@ -1938,6 +1938,292 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
         }
+
+        /* SMC Signals Styling */
+        .smc-signal-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--tg-theme-border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .smc-signal-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            border-color: var(--tg-theme-button-color);
+        }
+
+        .smc-signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .smc-signal-symbol {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--tg-theme-text-color);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .smc-signal-direction {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .smc-signal-direction.long {
+            background: rgba(82, 196, 26, 0.2);
+            color: #52c41a;
+            border: 1px solid rgba(82, 196, 26, 0.3);
+        }
+
+        .smc-signal-direction.short {
+            background: rgba(255, 77, 79, 0.2);
+            color: #ff4d4f;
+            border: 1px solid rgba(255, 77, 79, 0.3);
+        }
+
+        .smc-confidence-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.75rem 0;
+        }
+
+        .smc-confidence-progress {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .smc-confidence-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s ease;
+            background: linear-gradient(90deg, #ff4d4f 0%, #faad14 50%, #52c41a 100%);
+        }
+
+        .smc-confidence-text {
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 45px;
+            text-align: right;
+        }
+
+        .smc-signal-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin: 0.75rem 0;
+        }
+
+        .smc-detail-item {
+            text-align: center;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(107, 139, 179, 0.1);
+        }
+
+        .smc-detail-label {
+            font-size: 0.7rem;
+            color: var(--tg-theme-hint-color);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 0.25rem;
+        }
+
+        .smc-detail-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--tg-theme-text-color);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .smc-reasoning {
+            margin: 0.75rem 0;
+            padding: 0.75rem;
+            background: rgba(107, 139, 179, 0.05);
+            border-radius: 8px;
+            border-left: 3px solid var(--tg-theme-button-color);
+        }
+
+        .smc-reasoning-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--tg-theme-button-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .smc-reasoning-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .smc-reasoning-list li {
+            font-size: 0.75rem;
+            color: var(--tg-theme-hint-color);
+            margin-bottom: 0.25rem;
+            padding-left: 1rem;
+            position: relative;
+        }
+
+        .smc-reasoning-list li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--tg-theme-button-color);
+        }
+
+        .smc-signal-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .smc-signal-actions .btn {
+            flex: 1;
+            font-size: 0.8rem;
+            padding: 0.5rem;
+        }
+
+        .smc-auto-trade-btn {
+            background: linear-gradient(135deg, #52c41a, #73d13d);
+            border: none;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .smc-auto-trade-btn:hover {
+            background: linear-gradient(135deg, #73d13d, #95de64);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(82, 196, 26, 0.4);
+        }
+
+        .smc-auto-trade-btn::after {
+            content: '⚡';
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .smc-signal-strength {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .smc-signal-strength.weak {
+            background: rgba(250, 173, 20, 0.2);
+            color: #faad14;
+            border: 1px solid rgba(250, 173, 20, 0.3);
+        }
+
+        .smc-signal-strength.moderate {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .smc-signal-strength.strong {
+            background: rgba(82, 196, 26, 0.2);
+            color: #52c41a;
+            border: 1px solid rgba(82, 196, 26, 0.3);
+        }
+
+        .smc-signal-strength.very_strong {
+            background: rgba(24, 144, 255, 0.2);
+            color: #1890ff;
+            border: 1px solid rgba(24, 144, 255, 0.3);
+        }
+
+        .smc-no-signals {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--tg-theme-hint-color);
+        }
+
+        .smc-no-signals-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .smc-no-signals-text {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .smc-no-signals-subtitle {
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+
+        /* Auto-refresh indicator */
+        .smc-auto-refresh {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(24, 144, 255, 0.1);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(24, 144, 255, 0.2);
+        }
+
+        .smc-auto-refresh-text {
+            font-size: 0.8rem;
+            color: #1890ff;
+        }
+
+        .smc-auto-refresh-dot {
+            width: 6px;
+            height: 6px;
+            background: #1890ff;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @media (max-width: 576px) {
+            .smc-signal-details {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+            
+            .smc-signal-actions {
+                flex-direction: column;
+            }
+            
+            .smc-signal-actions .btn {
+                width: 100%;
+                margin: 0.25rem 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1993,6 +2279,11 @@
             <li class="nav-item">
                 <button class="nav-link" id="portfolio-tab" data-bs-toggle="tab" data-bs-target="#portfolio" type="button">
                     ◈ Portfolio
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="smc-tab" data-bs-toggle="tab" data-bs-target="#smc-signals" type="button">
+                    ⚡ SMC
                 </button>
             </li>
         </ul>
@@ -2095,6 +2386,78 @@
                     <button class="btn btn-outline-warning" onclick="confirmResetHistory()" id="reset-history-btn">
                         🗑️ Reset History
                     </button>
+                </div>
+            </div>
+
+            <!-- SMC Signals Tab -->
+            <div class="tab-pane fade" id="smc-signals" role="tabpanel">
+                <!-- SMC Controls -->
+                <div class="smc-controls mb-3">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <button class="btn btn-primary btn-sm w-100" onclick="refreshSmcSignals()">
+                                <i data-feather="refresh-cw"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button class="btn btn-outline-primary btn-sm w-100" onclick="openSymbolAnalysis()">
+                                <i data-feather="search"></i> Analyze
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMC Status -->
+                <div class="smc-status mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted">Smart Money Analysis</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="live-indicator-dot" id="smc-indicator"></div>
+                            <span class="text-muted" id="smc-last-update">Never</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signals Summary -->
+                <div class="smc-summary mb-3">
+                    <div class="portfolio-grid">
+                        <div class="portfolio-stat">
+                            <div class="stat-value" id="smc-total-signals">0</div>
+                            <div class="stat-label">Total Signals</div>
+                        </div>
+                        <div class="portfolio-stat">
+                            <div class="stat-value" id="smc-strong-signals">0</div>
+                            <div class="stat-label">Strong</div>
+                        </div>
+                        <div class="portfolio-stat">
+                            <div class="stat-value" id="smc-bullish-signals">0</div>
+                            <div class="stat-label">Bullish</div>
+                        </div>
+                        <div class="portfolio-stat">
+                            <div class="stat-value" id="smc-bearish-signals">0</div>
+                            <div class="stat-label">Bearish</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signal Strength Filter -->
+                <div class="smc-filter mb-3">
+                    <label class="form-label text-muted">Minimum Confidence</label>
+                    <select class="form-control form-control-sm" id="confidence-filter" onchange="filterSignals()">
+                        <option value="0">All Signals</option>
+                        <option value="0.5">50%+ Confidence</option>
+                        <option value="0.7" selected>70%+ Confidence</option>
+                        <option value="0.8">80%+ Confidence</option>
+                        <option value="0.9">90%+ Confidence</option>
+                    </select>
+                </div>
+
+                <!-- Signals List -->
+                <div id="smc-signals-list">
+                    <div class="loading">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Loading SMC signals...
+                    </div>
                 </div>
             </div>
 
@@ -5033,6 +5396,356 @@
                 handleTabSwitch('positions');
             }
         });
+
+        // SMC Signal Functions
+        let smcSignalsData = [];
+        let smcAutoRefreshInterval = null;
+
+        async function loadSmcSignals() {
+            const container = document.getElementById('smc-signals-list');
+            const indicator = document.getElementById('smc-indicator');
+            const lastUpdate = document.getElementById('smc-last-update');
+            
+            try {
+                // Update status to connecting
+                if (indicator) {
+                    indicator.className = 'live-indicator-dot slow';
+                }
+                
+                container.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        Analyzing Smart Money Concepts...
+                    </div>
+                `;
+
+                const response = await fetch('/api/smc-signals');
+                const data = await response.json();
+
+                if (data.signals) {
+                    smcSignalsData = Object.entries(data.signals).map(([symbol, signal]) => ({
+                        symbol,
+                        ...signal
+                    }));
+                    
+                    updateSmcSummary();
+                    renderSmcSignals();
+                    
+                    // Update status to connected
+                    if (indicator) {
+                        indicator.className = 'live-indicator-dot connected';
+                    }
+                    if (lastUpdate) {
+                        lastUpdate.textContent = new Date().toLocaleTimeString();
+                    }
+                } else {
+                    throw new Error('Invalid response format');
+                }
+            } catch (error) {
+                console.error('Error loading SMC signals:', error);
+                container.innerHTML = `
+                    <div class="smc-no-signals">
+                        <div class="smc-no-signals-icon">⚠️</div>
+                        <div class="smc-no-signals-text">Error Loading Signals</div>
+                        <div class="smc-no-signals-subtitle">Please try refreshing or check your connection</div>
+                    </div>
+                `;
+                
+                // Update status to error
+                if (indicator) {
+                    indicator.className = 'live-indicator-dot error';
+                }
+            }
+        }
+
+        function updateSmcSummary() {
+            const totalSignals = smcSignalsData.filter(s => s.direction).length;
+            const strongSignals = smcSignalsData.filter(s => s.confidence >= 0.7).length;
+            const bullishSignals = smcSignalsData.filter(s => s.direction === 'long').length;
+            const bearishSignals = smcSignalsData.filter(s => s.direction === 'short').length;
+
+            document.getElementById('smc-total-signals').textContent = totalSignals;
+            document.getElementById('smc-strong-signals').textContent = strongSignals;
+            document.getElementById('smc-bullish-signals').textContent = bullishSignals;
+            document.getElementById('smc-bearish-signals').textContent = bearishSignals;
+        }
+
+        function renderSmcSignals() {
+            const container = document.getElementById('smc-signals-list');
+            const minConfidence = parseFloat(document.getElementById('confidence-filter').value);
+            
+            const filteredSignals = smcSignalsData.filter(signal => 
+                signal.direction && signal.confidence >= minConfidence
+            );
+
+            if (filteredSignals.length === 0) {
+                container.innerHTML = `
+                    <div class="smc-no-signals">
+                        <div class="smc-no-signals-icon">🔍</div>
+                        <div class="smc-no-signals-text">No Signals Found</div>
+                        <div class="smc-no-signals-subtitle">Try lowering the confidence filter or check back later</div>
+                    </div>
+                `;
+                return;
+            }
+
+            const signalsHtml = filteredSignals.map(signal => `
+                <div class="smc-signal-item">
+                    <div class="smc-signal-header">
+                        <div class="smc-signal-symbol">${signal.symbol}</div>
+                        <div class="smc-signal-direction ${signal.direction}">${signal.direction}</div>
+                    </div>
+                    
+                    <div class="smc-confidence-bar">
+                        <div class="smc-confidence-progress">
+                            <div class="smc-confidence-fill" style="width: ${(signal.confidence * 100)}%"></div>
+                        </div>
+                        <div class="smc-confidence-text">${(signal.confidence * 100).toFixed(0)}%</div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="smc-signal-strength ${signal.signal_strength.toLowerCase()}">
+                            ${signal.signal_strength.replace('_', ' ')}
+                        </div>
+                        <div class="text-muted" style="font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;">
+                            R:R 1:${signal.risk_reward_ratio?.toFixed(1) || 'N/A'}
+                        </div>
+                    </div>
+                    
+                    <div class="smc-signal-details">
+                        <div class="smc-detail-item">
+                            <div class="smc-detail-label">Entry</div>
+                            <div class="smc-detail-value">$${signal.entry_price?.toFixed(4) || 'N/A'}</div>
+                        </div>
+                        <div class="smc-detail-item">
+                            <div class="smc-detail-label">Stop Loss</div>
+                            <div class="smc-detail-value">$${signal.stop_loss?.toFixed(4) || 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    ${signal.reasoning && signal.reasoning.length > 0 ? `
+                        <div class="smc-reasoning">
+                            <div class="smc-reasoning-title">Analysis</div>
+                            <ul class="smc-reasoning-list">
+                                ${signal.reasoning.slice(0, 3).map(reason => `<li>${reason}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="smc-signal-actions">
+                        <button class="btn btn-outline-primary btn-sm" onclick="viewSignalDetails('${signal.symbol}')">
+                            <i data-feather="eye"></i> Details
+                        </button>
+                        ${signal.confidence >= 0.7 ? `
+                            <button class="btn smc-auto-trade-btn btn-sm" onclick="createAutoTrade('${signal.symbol}')">
+                                Auto Trade
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = signalsHtml;
+            
+            // Re-initialize feather icons
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+        }
+
+        function filterSignals() {
+            renderSmcSignals();
+        }
+
+        async function refreshSmcSignals() {
+            await loadSmcSignals();
+            showToast('SMC signals refreshed', 'success');
+        }
+
+        async function viewSignalDetails(symbol) {
+            try {
+                const response = await fetch(`/api/smc-analysis/${symbol}`);
+                const data = await response.json();
+                
+                if (data.status === 'signal_generated') {
+                    // Create detailed analysis modal
+                    const modalHtml = `
+                        <div class="modal fade" id="smcDetailsModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h6 class="modal-title">SMC Analysis - ${symbol}</h6>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row mb-3">
+                                            <div class="col-6">
+                                                <div class="smc-detail-item">
+                                                    <div class="smc-detail-label">Direction</div>
+                                                    <div class="smc-detail-value">${data.direction}</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <div class="smc-detail-item">
+                                                    <div class="smc-detail-label">Confidence</div>
+                                                    <div class="smc-detail-value">${(data.confidence * 100).toFixed(1)}%</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row mb-3">
+                                            <div class="col-4">
+                                                <div class="smc-detail-item">
+                                                    <div class="smc-detail-label">Entry Price</div>
+                                                    <div class="smc-detail-value">$${data.entry_price?.toFixed(4)}</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="smc-detail-item">
+                                                    <div class="smc-detail-label">Stop Loss</div>
+                                                    <div class="smc-detail-value">$${data.stop_loss?.toFixed(4)}</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="smc-detail-item">
+                                                    <div class="smc-detail-label">Risk:Reward</div>
+                                                    <div class="smc-detail-value">1:${data.risk_reward_ratio?.toFixed(1)}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        ${data.take_profit_levels && data.take_profit_levels.length > 0 ? `
+                                            <h6 class="mb-2">Take Profit Levels</h6>
+                                            <div class="row mb-3">
+                                                ${data.take_profit_levels.map((tp, index) => `
+                                                    <div class="col-4">
+                                                        <div class="smc-detail-item">
+                                                            <div class="smc-detail-label">TP ${index + 1}</div>
+                                                            <div class="smc-detail-value">$${tp?.toFixed(4)}</div>
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        ` : ''}
+                                        
+                                        <h6 class="mb-2">Analysis Reasoning</h6>
+                                        <ul class="smc-reasoning-list">
+                                            ${data.reasoning.map(reason => `<li>${reason}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                                        ${data.confidence >= 0.7 ? `
+                                            <button type="button" class="btn smc-auto-trade-btn" onclick="createAutoTrade('${symbol}'); bootstrap.Modal.getInstance(document.getElementById('smcDetailsModal')).hide();">
+                                                Create Auto Trade
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Remove existing modal if any
+                    const existingModal = document.getElementById('smcDetailsModal');
+                    if (existingModal) {
+                        existingModal.remove();
+                    }
+                    
+                    // Add new modal to body
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    
+                    // Show modal
+                    const modal = new bootstrap.Modal(document.getElementById('smcDetailsModal'));
+                    modal.show();
+                } else {
+                    showToast(`No detailed analysis available for ${symbol}`, 'warning');
+                }
+            } catch (error) {
+                console.error('Error fetching signal details:', error);
+                showToast('Error loading signal details', 'error');
+            }
+        }
+
+        async function createAutoTrade(symbol) {
+            try {
+                const marginAmount = prompt(`Enter margin amount for ${symbol} trade:`, '100');
+                if (!marginAmount || isNaN(marginAmount) || parseFloat(marginAmount) <= 0) {
+                    return;
+                }
+
+                const response = await fetch('/api/smc-auto-trade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        user_id: currentUser?.id || '123456789',
+                        margin_amount: parseFloat(marginAmount)
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`Auto-trade created for ${symbol}!`, 'success');
+                    
+                    // Switch to trading tab and refresh
+                    const tradingTab = document.getElementById('trading-tab');
+                    if (tradingTab) {
+                        tradingTab.click();
+                    }
+                } else {
+                    showToast(result.error || 'Failed to create auto-trade', 'error');
+                }
+            } catch (error) {
+                console.error('Error creating auto-trade:', error);
+                showToast('Error creating auto-trade', 'error');
+            }
+        }
+
+        function openSymbolAnalysis() {
+            const symbol = prompt('Enter symbol to analyze (e.g., BTCUSDT):');
+            if (symbol) {
+                viewSignalDetails(symbol.toUpperCase());
+            }
+        }
+
+        function startSmcAutoRefresh() {
+            if (smcAutoRefreshInterval) {
+                clearInterval(smcAutoRefreshInterval);
+            }
+            
+            // Refresh every 2 minutes
+            smcAutoRefreshInterval = setInterval(() => {
+                const currentTab = document.querySelector('.nav-link.active')?.getAttribute('data-bs-target')?.replace('#', '');
+                if (currentTab === 'smc-signals') {
+                    loadSmcSignals();
+                }
+            }, 120000);
+        }
+
+        function stopSmcAutoRefresh() {
+            if (smcAutoRefreshInterval) {
+                clearInterval(smcAutoRefreshInterval);
+                smcAutoRefreshInterval = null;
+            }
+        }
+
+        // Update handleTabSwitch to include SMC signals
+        const originalHandleTabSwitch = handleTabSwitch;
+        handleTabSwitch = function(tabName) {
+            originalHandleTabSwitch(tabName);
+            
+            if (tabName === 'smc-signals') {
+                stopLivePriceUpdates();
+                loadSmcSignals();
+                startSmcAutoRefresh();
+            } else {
+                stopSmcAutoRefresh();
+            }
+        };
     </script>
 
     <!-- API Keys Settings Modal -->
