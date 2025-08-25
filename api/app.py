@@ -39,7 +39,6 @@ except ImportError:
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
 from api.error_handler import handle_error, handle_api_error, create_validation_error, create_success_response
-from api.error_demo import error_demo_bp
 
 # Helper function to get user_id from request - streamlines repetitive code
 def get_user_id_from_request(default_user_id=None):
@@ -181,8 +180,6 @@ def init_database():
     except Exception as e:
         logging.error(f"Database initialization error: {e}")
 
-# Register error demo blueprint
-app.register_blueprint(error_demo_bp)
 
 # Initialize database conditionally
 if not os.environ.get("VERCEL"):
