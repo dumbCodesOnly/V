@@ -5228,9 +5228,15 @@ def update_positions_lightweight():
                 active_positions += 1
                 
             # Only monitor active positions with break-even enabled and not yet triggered
-            if (config.status == "active" and config.symbol and 
-                hasattr(config, 'breakeven_after') and 
-                isinstance(config.breakeven_after, (int, float)) and config.breakeven_after > 0 and
+            breakeven_enabled = False
+            if hasattr(config, 'breakeven_after') and config.breakeven_after:
+                # Handle both string values (tp1, tp2, tp3) and numeric values (1.0, 2.0, 3.0)
+                if isinstance(config.breakeven_after, str):
+                    breakeven_enabled = config.breakeven_after in ["tp1", "tp2", "tp3"]
+                elif isinstance(config.breakeven_after, (int, float)):
+                    breakeven_enabled = config.breakeven_after > 0
+            
+            if (config.status == "active" and config.symbol and breakeven_enabled and
                 not getattr(config, 'breakeven_sl_triggered', False)):
                 symbols_needed.add(config.symbol)
                 breakeven_positions.append((user_id, trade_id, config))
