@@ -5215,7 +5215,7 @@ def update_positions_lightweight():
             # Only monitor active positions with break-even enabled and not yet triggered
             if (config.status == "active" and config.symbol and 
                 hasattr(config, 'breakeven_after') and config.breakeven_after > 0 and
-                not getattr(config, 'breakeven_triggered', False)):
+                not getattr(config, 'breakeven_sl_triggered', False)):
                 symbols_needed.add(config.symbol)
                 breakeven_positions.append((user_id, trade_id, config))
     
@@ -5262,7 +5262,7 @@ def update_positions_lightweight():
                             logging.info(f"BREAK-EVEN TRIGGERED: {config.symbol} {config.side} - Moving SL to entry price")
                             
                             # Mark as triggered to stop monitoring
-                            config.breakeven_triggered = True
+                            config.breakeven_sl_triggered = True
                             save_trade_to_db(user_id, config)
                             
                             # Move exchange SL to entry price using ToobitClient
