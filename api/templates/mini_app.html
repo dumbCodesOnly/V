@@ -2751,13 +2751,18 @@
         tg.MainButton.setText("Execute Trade");
         tg.MainButton.hide();
 
+        // Helper function to get consistent user ID
+        function getUserId() {
+            return currentUser?.id || '123456789';
+        }
+
         // API Functions
         async function apiCall(endpoint, options = {}) {
             try {
                 const response = await fetch(endpoint, {
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Telegram-User-ID': currentUser?.id || 'anonymous'
+                        'X-Telegram-User-ID': getUserId()
                     },
                     ...options
                 });
@@ -2904,7 +2909,7 @@
                 // Set indicator to show we're making a request
                 const currentStatus = document.querySelector('.live-indicator-dot')?.classList.contains('error') ? 'error' : 'connected';
                 
-                const data = await apiCall(`/api/positions/live-update?user_id=${currentUser?.id}`);
+                const data = await apiCall(`/api/positions/live-update?user_id=${getUserId()}`);
                 const responseTime = Date.now() - startTime;
                 
                 // Update indicator based on response time and data validity
@@ -2961,7 +2966,7 @@
                 // Update portfolio tab totals if on portfolio tab
                 if (currentActiveTab === 'portfolio') {
                     // Refresh portfolio summary data
-                    const portfolioData = await apiCall(`/api/positions?user_id=${currentUser?.id}`);
+                    const portfolioData = await apiCall(`/api/positions?user_id=${getUserId()}`);
                     if (portfolioData && portfolioData.summary) {
                         const summary = portfolioData.summary;
                         document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
@@ -2996,7 +3001,7 @@
         // Update initial totals when loading positions
         async function updateInitialTotals() {
             try {
-                const data = await apiCall(`/api/positions/live-update?user_id=${currentUser?.id}`);
+                const data = await apiCall(`/api/positions/live-update?user_id=${getUserId()}`);
                 if (!data) return;
                 
                 // Update total unrealized P&L
@@ -3116,7 +3121,7 @@
             // Show loading state
             showTabLoading('positions-list', 'Loading positions...');
             
-            const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
+            const data = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
             if (!data) return;
             
             const container = document.getElementById('positions-list');
@@ -3308,7 +3313,7 @@
             // Show loading state
             showTabLoading('trade-configs-list', 'Loading trading configurations...');
             
-            const data = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
+            const data = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
             if (!data) {
                 console.log('No data received from API');
                 return;
@@ -3569,20 +3574,20 @@
             showTabLoading('portfolio-positions', 'Loading active positions...');
             showInlineLoading('closed-positions-container', 'Loading trade history...');
             
-            const data = await apiCall(`/api/margin-data?user_id=${currentUser?.id || '123456789'}`);
-            const tradesData = await apiCall(`/api/user-trades?user_id=${currentUser?.id}`);
+            const data = await apiCall(`/api/margin-data?user_id=${getUserId() || '123456789'}`);
+            const tradesData = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
             if (!data) return;
             
             const summary = data.summary || {};
             
             // Check if user is in live trading mode and has credentials
-            const credsData = await apiCall(`/api/user-credentials?user_id=${currentUser?.id || '123456789'}`);
+            const credsData = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
             const isLiveMode = credsData && credsData.has_credentials && !credsData.testnet_mode;
             
             if (isLiveMode) {
                 // Fetch real exchange balance for live trading mode
                 try {
-                    const exchangeBalance = await apiCall(`/api/exchange/balance?user_id=${currentUser?.id || '123456789'}`);
+                    const exchangeBalance = await apiCall(`/api/exchange/balance?user_id=${getUserId() || '123456789'}`);
                     
                     if (exchangeBalance && exchangeBalance.success && exchangeBalance.balance) {
                         const balance = exchangeBalance.balance;
@@ -3891,7 +3896,7 @@
             const result = await apiCall('/api/close-trade', {
                 method: 'POST',
                 body: JSON.stringify({
-                    user_id: currentUser?.id,
+                    user_id: getUserId(),
                     trade_id: tradeId
                 })
             });
@@ -3922,7 +3927,7 @@
                 const result = await apiCall('/api/close-all-trades', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id
+                        user_id: getUserId()
                     })
                 });
                 
@@ -3957,7 +3962,7 @@
             const result = await apiCall('/api/delete-trade', {
                 method: 'POST',
                 body: JSON.stringify({
-                    user_id: currentUser?.id,
+                    user_id: getUserId(),
                     trade_id: tradeId
                 })
             });
@@ -3984,7 +3989,7 @@
             const result = await apiCall('/api/delete-trade', {
                 method: 'POST',
                 body: JSON.stringify({
-                    user_id: currentUser?.id,
+                    user_id: getUserId(),
                     trade_id: tradeId
                 })
             });
@@ -4151,7 +4156,7 @@
                 const result = await apiCall('/api/execute-trade', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id,
+                        user_id: getUserId(),
                         trade_id: tradeId
                     })
                 });
@@ -4414,7 +4419,7 @@
             const result = await apiCall('/api/save-trade', {
                 method: 'POST',
                 body: JSON.stringify({
-                    user_id: currentUser?.id,
+                    user_id: getUserId(),
                     trade: tradeDataToSave
                 })
             });
@@ -4479,7 +4484,7 @@
 
         // API Credentials Management Functions
         async function loadCredentialsStatus() {
-            const data = await apiCall(`/api/user-credentials?user_id=${currentUser?.id || '123456789'}`);
+            const data = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
             const statusContainer = document.getElementById('credentials-status');
             const setupContainer = document.getElementById('credentials-setup');
             
@@ -4563,7 +4568,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_id: currentUser?.id || '123456789',
+                        user_id: getUserId() || '123456789',
                         exchange: exchange,
                         api_key: apiKey,
                         api_secret: apiSecret,
@@ -4595,7 +4600,7 @@
                 const response = await fetch('/api/delete-credentials', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: currentUser?.id || '123456789' })
+                    body: JSON.stringify({ user_id: getUserId() || '123456789' })
                 });
 
                 if (response.ok) {
@@ -4632,7 +4637,7 @@
 
         async function loadMockTradingStatus() {
             try {
-                const response = await apiCall(`/api/mock-trading-status?user_id=${currentUser?.id}`);
+                const response = await apiCall(`/api/mock-trading-status?user_id=${getUserId()}`);
                 if (response.success) {
                     const mockText = document.getElementById('mock-trading-text');
                     mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
@@ -5034,7 +5039,7 @@
 
         // Reset History Functions
         async function confirmResetHistory() {
-            if (!currentUser?.id) {
+            if (!getUserId()) {
                 alert('⚠️ Please set up your Telegram user first');
                 return;
             }
@@ -5137,7 +5142,7 @@
                 const response = await apiCall('/api/toggle-mock-trading', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id
+                        user_id: getUserId()
                     })
                 });
                 
@@ -5177,7 +5182,7 @@
             const setupContainer = document.getElementById('api-credentials-setup');
             
             try {
-                const data = await apiCall(`/api/user-credentials?user_id=${currentUser?.id}`);
+                const data = await apiCall(`/api/user-credentials?user_id=${getUserId()}`);
                 
                 if (data && data.has_credentials) {
                     const modeText = data.testnet_mode ? '🧪 Testnet Mode' : '🚀 Live Trading';
@@ -5279,7 +5284,7 @@
                 const response = await apiCall('/api/save-credentials', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id,
+                        user_id: getUserId(),
                         exchange: exchange,
                         api_key: apiKey,
                         api_secret: apiSecret,
@@ -5313,7 +5318,7 @@
                 const response = await apiCall('/api/toggle-testnet', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id,
+                        user_id: getUserId(),
                         testnet_mode: newTestnetMode
                     })
                 });
@@ -5348,7 +5353,7 @@
                 const response = await apiCall('/api/delete-credentials', {
                     method: 'POST',
                     body: JSON.stringify({
-                        user_id: currentUser?.id
+                        user_id: getUserId()
                     })
                 });
 
@@ -5681,7 +5686,7 @@
                     },
                     body: JSON.stringify({
                         symbol: symbol,
-                        user_id: currentUser?.id || '123456789',
+                        user_id: getUserId() || '123456789',
                         margin_amount: parseFloat(marginAmount)
                     })
                 });
