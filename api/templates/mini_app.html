@@ -5199,75 +5199,7 @@
             }
         });
 
-        // API Keys modal functions (reusing existing functionality)
-        async function loadCredentialsStatus() {
-            const statusContainer = document.getElementById('api-credentials-status');
-            const setupContainer = document.getElementById('api-credentials-setup');
-            
-            try {
-                const data = await apiCall(`/api/user-credentials?user_id=${getUserId()}`);
-                
-                if (data && data.has_credentials) {
-                    const modeText = data.testnet_mode ? '🧪 Testnet Mode' : '🚀 Live Trading';
-                    const modeClass = data.testnet_mode ? 'text-info' : 'text-warning';
-                    const toggleText = data.testnet_mode ? 'Switch to Live Trading' : 'Switch to Testnet';
-                    const toggleClass = data.testnet_mode ? 'btn-warning' : 'btn-info';
-                    
-                    statusContainer.innerHTML = `
-                        <div class="card">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div>
-                                        <h6 class="mb-1">✅ ${data.exchange} Credentials</h6>
-                                        <small class="text-muted">API Key: ${data.api_key_preview}</small>
-                                    </div>
-                                    <div>
-                                        <button class="btn btn-outline-danger btn-sm" onclick="deleteApiCredentials()">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="border-top pt-3">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="mb-1 ${modeClass}">${modeText}</h6>
-                                            <small class="text-muted">${data.testnet_mode ? 'Safe for testing with virtual funds' : '⚠️ Real money trading mode'}</small>
-                                        </div>
-                                        <div>
-                                            <button class="btn ${toggleClass} btn-sm" onclick="toggleTestnetMode(${!data.testnet_mode})">
-                                                ${toggleText}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    setupContainer.classList.add('hidden');
-                } else {
-                    statusContainer.innerHTML = `
-                        <div class="text-center">
-                            <h6 class="text-muted">No API credentials configured</h6>
-                            <button class="btn btn-primary" onclick="showApiCredentialsSetup()">
-                                Add API Credentials
-                            </button>
-                        </div>
-                    `;
-                    setupContainer.classList.add('hidden');
-                }
-            } catch (error) {
-                console.error('Failed to load credentials status:', error);
-                statusContainer.innerHTML = `
-                    <div class="text-center">
-                        <div class="text-danger">Failed to load credentials status</div>
-                        <button class="btn btn-primary mt-2" onclick="loadCredentialsStatus()">
-                            Retry
-                        </button>
-                    </div>
-                `;
-            }
-        }
-
+        // API Keys modal functions
         function showApiCredentialsSetup() {
             document.getElementById('api-credentials-setup').classList.remove('hidden');
             
