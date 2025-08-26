@@ -4213,8 +4213,8 @@ def get_margin_summary(chat_id):
     """Get comprehensive margin summary for a user"""
     user_trades = user_trade_configs.get(chat_id, {})
     
-    # Account totals - each user gets 1000 USDT trial fund
-    initial_balance = 1000.0  # Individual trial fund per user
+    # Account totals - use paper trading balance
+    initial_balance = user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE)
     total_position_margin = 0.0
     total_unrealized_pnl = 0.0
     total_realized_pnl = 0.0
