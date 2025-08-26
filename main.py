@@ -10,7 +10,8 @@ application = app
 
 # Ensure the app has the proper secret key for Replit
 if not app.secret_key or app.secret_key == "dev-secret-key":
-    app.secret_key = os.environ.get("SESSION_SECRET", "replit-default-secret-key-12345")
+    from config import SecurityConfig
+    app.secret_key = os.environ.get("SESSION_SECRET", SecurityConfig.DEFAULT_SESSION_SECRET)
 
 if __name__ == "__main__":
     from config import Environment

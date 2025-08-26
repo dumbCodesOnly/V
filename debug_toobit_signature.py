@@ -26,7 +26,9 @@ def test_signature():
     secret_key = os.environ.get('TOOBIT_TEST_SECRET', '30lfjDT51iOG1kYZnDoLNynOyMdIcmQyO1XYfxzYOmQfx9tjiI98Pzio4uhZ0Uk2')
     
     # Parameters from their example (SELL order)
-    params_string = "symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307"
+    from config import TradingConfig
+    symbol = TradingConfig.DEFAULT_SYMBOL
+    params_string = f"symbol={symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307"
     
     # Expected signature from their documentation
     expected = "8420e499e71cce4a00946db16543198b6bcae01791bdb75a06b5a7098b156468"
@@ -46,8 +48,9 @@ def test_market_order_signature(api_key: str, secret_key: str):
     timestamp = str(int(time.time() * 1000))
     
     # Market order parameters (no timeInForce for market orders)
+    from config import TradingConfig
     params = {
-        'symbol': 'BTCUSDT',
+        'symbol': TradingConfig.DEFAULT_SYMBOL,
         'side': 'BUY', 
         'type': 'MARKET',
         'quantity': '0.001',

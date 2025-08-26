@@ -32,7 +32,11 @@ class APIConfig:
 class TimeConfig:
     # API Request Timeouts
     DEFAULT_API_TIMEOUT = 30  # seconds
+    BATCH_API_TIMEOUT = 20    # seconds for batch operations
     PRICE_API_TIMEOUT = 15    # seconds for price fetching
+    QUICK_API_TIMEOUT = 10    # seconds for quick operations
+    FAST_API_TIMEOUT = 5      # seconds for very fast operations
+    EXTENDED_API_TIMEOUT = 8  # seconds for extended operations
     
     # Cache TTL
     PRICE_CACHE_TTL = 10      # seconds - how long to cache price data
@@ -59,7 +63,16 @@ class TimeConfig:
 class DatabaseConfig:
     # PostgreSQL Connection Pool Settings
     POOL_RECYCLE = 1800  # seconds (30 minutes) - connection recycling for serverless
+    STANDARD_POOL_RECYCLE = 300  # seconds (5 minutes) - standard pool recycle
     POOL_PRE_PING = True
+    
+    # Connection Pool Size Settings
+    SERVERLESS_POOL_SIZE = 5     # Pool size for serverless environments (Vercel/Neon)
+    SERVERLESS_MAX_OVERFLOW = 10  # Max overflow for serverless
+    SERVERLESS_POOL_TIMEOUT = 60  # Pool timeout for serverless (seconds)
+    
+    STANDARD_POOL_SIZE = 5       # Standard pool size for Replit
+    STANDARD_MAX_OVERFLOW = 10   # Standard max overflow
     
     # PostgreSQL Keep-Alive Settings (for Neon/Vercel)
     KEEPALIVES_IDLE = "30"     # seconds - keep connections alive
@@ -118,7 +131,7 @@ class LoggingConfig:
 # =============================================================================
 class SecurityConfig:
     # Session Configuration
-    DEFAULT_SESSION_SECRET = "dev-secret-key"  # Only used in development
+    DEFAULT_SESSION_SECRET = "replit-default-secret-key-12345"  # Only used in development
     
     # Webhook Security
     WEBHOOK_TIMEOUT = 30  # seconds

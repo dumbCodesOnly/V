@@ -67,17 +67,17 @@ app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 if database_url.startswith("sqlite"):
     # SQLite configuration for development
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 300
+        "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
+        "pool_recycle": DatabaseConfig.STANDARD_POOL_RECYCLE
     }
 elif database_url.startswith("postgresql") and (Environment.IS_VERCEL or "neon" in database_url.lower()):
     # Neon PostgreSQL serverless configuration - optimized for connection handling
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_recycle": DatabaseConfig.POOL_RECYCLE,
         "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_timeout": 60,
+        "pool_size": DatabaseConfig.SERVERLESS_POOL_SIZE,
+        "max_overflow": DatabaseConfig.SERVERLESS_MAX_OVERFLOW,
+        "pool_timeout": DatabaseConfig.SERVERLESS_POOL_TIMEOUT,
         "pool_reset_on_return": "commit",
         "connect_args": {
             "sslmode": DatabaseConfig.SSL_MODE,
@@ -91,16 +91,16 @@ elif database_url.startswith("postgresql") and (Environment.IS_VERCEL or "neon" 
 elif database_url.startswith("postgresql"):
     # Standard PostgreSQL configuration (Replit or other)
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-        "pool_size": 5,
-        "max_overflow": 10
+        "pool_recycle": DatabaseConfig.STANDARD_POOL_RECYCLE,
+        "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
+        "pool_size": DatabaseConfig.STANDARD_POOL_SIZE,
+        "max_overflow": DatabaseConfig.STANDARD_MAX_OVERFLOW
     }
 else:
     # Fallback configuration
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 300
+        "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
+        "pool_recycle": DatabaseConfig.STANDARD_POOL_RECYCLE
     }
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -1159,7 +1159,7 @@ def get_bot_status():
         current_time = get_iran_time().replace(tzinfo=None)  # Remove timezone for comparison
         last_heartbeat = datetime.fromisoformat(bot_status['last_heartbeat']).replace(tzinfo=None)
         time_diff = current_time - last_heartbeat
-        is_active = time_diff.total_seconds() < 300  # 5 minutes
+        is_active = time_diff.total_seconds() < TimeConfig.BOT_HEARTBEAT_TIMEOUT
         bot_status['status'] = 'active' if is_active else 'inactive'
     
     # Add API performance metrics
@@ -1301,7 +1301,7 @@ def get_multiple_prices():
             futures[future] = symbol
         
         results = {}
-        for future in as_completed(futures, timeout=20):
+        for future in as_completed(futures, timeout=TimeConfig.DEFAULT_API_TIMEOUT):
             symbol = futures[future]
             try:
                 price = future.result()
@@ -1545,7 +1545,7 @@ def margin_data():
     user_id = request.args.get('user_id')
     if not user_id or user_id == 'undefined':
         # For testing outside Telegram, use a demo user
-        user_id = '123456789'
+        user_id = Environment.DEFAULT_TEST_USER_ID
     
     try:
         chat_id = int(user_id)
@@ -1619,7 +1619,7 @@ def live_position_update():
     """Get only current prices and P&L for active positions (lightweight update)"""
     user_id = request.args.get('user_id')
     if not user_id or user_id == 'undefined':
-        user_id = '123456789'
+        user_id = Environment.DEFAULT_TEST_USER_ID
     
     try:
         chat_id = int(user_id)
@@ -1760,7 +1760,7 @@ def user_trades():
     user_id = request.args.get('user_id')
     if not user_id or user_id == 'undefined':
         # For testing outside Telegram, use a demo user
-        user_id = '123456789'
+        user_id = Environment.DEFAULT_TEST_USER_ID
     
     try:
         chat_id = int(user_id)
@@ -2387,7 +2387,7 @@ def get_user_credentials():
     """Get user API credentials status"""
     user_id = request.args.get('user_id')
     if not user_id or user_id == 'undefined':
-        user_id = '123456789'  # Demo user
+        user_id = Environment.DEFAULT_TEST_USER_ID  # Demo user
     
     try:
         # Check enhanced cache first for user credentials
@@ -2439,7 +2439,7 @@ def save_credentials():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
-        user_id = data.get('user_id', '123456789')
+        user_id = data.get('user_id', Environment.DEFAULT_TEST_USER_ID)
         exchange = data.get('exchange', 'toobit')
         api_key = (data.get('api_key') or '').strip()
         api_secret = (data.get('api_secret') or '').strip()
@@ -2505,7 +2505,7 @@ def delete_credentials():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
-        user_id = data.get('user_id', '123456789')
+        user_id = data.get('user_id', Environment.DEFAULT_TEST_USER_ID)
         
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         if not user_creds:
@@ -2535,7 +2535,7 @@ def toggle_testnet():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
-        user_id = data.get('user_id', '123456789')
+        user_id = data.get('user_id', Environment.DEFAULT_TEST_USER_ID)
         testnet_mode = bool(data.get('testnet_mode', True))
         
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
