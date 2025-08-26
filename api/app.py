@@ -1047,6 +1047,7 @@ def handle_balance_update_webhook(data):
 @app.route('/api/toggle-paper-trading', methods=['POST'])
 def toggle_paper_trading():
     """Toggle paper trading mode for a user"""
+    user_id = None
     try:
         data = request.get_json()
         user_id = data.get('user_id')
@@ -1089,7 +1090,7 @@ def toggle_paper_trading():
         return jsonify(response_data)
         
     except Exception as e:
-        logging.error(f"Error toggling paper trading for user {user_id}: {str(e)}", exc_info=True)
+        logging.error(f"Error toggling paper trading for user {user_id or 'unknown'}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
