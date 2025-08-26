@@ -176,7 +176,24 @@ class ExchangeSyncService:
         user_id = user_creds.telegram_user_id
         
         try:
-            # Create Toobit client
+            chat_id = int(user_id)
+            
+            # Import here to avoid circular imports
+            from api.app import user_paper_trading_preferences
+            
+            # Check if user is in paper trading mode - skip live API calls if so
+            manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
+            is_paper_mode = (manual_paper_mode or 
+                           not user_creds or 
+                           user_creds.testnet_mode or 
+                           not user_creds.has_credentials())
+            
+            # Skip live API calls for users in paper trading mode
+            if is_paper_mode:
+                logging.debug(f"Skipping live sync for user {user_id} - in paper trading mode")
+                return
+            
+            # Create Toobit client for live trading only
             client = ToobitClient(
                 api_key=user_creds.get_api_key(),
                 api_secret=user_creds.get_api_secret(),

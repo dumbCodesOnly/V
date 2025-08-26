@@ -781,18 +781,49 @@ def test_exchange_connection():
 
 @app.route('/api/exchange/balance')
 def get_exchange_balance():
-    """Get real account balance from Toobit exchange"""
+    """Get account balance - returns paper balance in paper mode, live balance in live mode"""
     user_id = get_user_id_from_request()
     
     try:
+        chat_id = int(user_id)
+        
         # Get user credentials
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=user_id,
             is_active=True
         ).first()
         
+        # Check if user is in paper trading mode
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
+        is_paper_mode = (manual_paper_mode or 
+                        not user_creds or 
+                        user_creds.testnet_mode if user_creds else True or 
+                        not user_creds.has_credentials() if user_creds else True)
+        
+        # If in paper trading mode, return virtual paper balance
+        if is_paper_mode:
+            paper_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
+            return jsonify({
+                'success': True,
+                'paper_trading_mode': True,
+                'testnet_mode': False,
+                'balance': {
+                    'total_balance': paper_balance,
+                    'available_balance': paper_balance,
+                    'used_margin': 0.0,
+                    'position_margin': 0.0,
+                    'order_margin': 0.0,
+                    'unrealized_pnl': 0.0,
+                    'margin_ratio': 0.0,
+                    'asset': 'USDT'
+                },
+                'message': 'Paper trading balance (virtual funds)',
+                'timestamp': get_iran_time().isoformat()
+            })
+        
+        # Live trading mode - make actual API calls
         if not user_creds or not user_creds.has_credentials():
-            return jsonify({'error': 'No API credentials found', 'testnet_mode': True}), 400
+            return jsonify({'error': 'No API credentials found for live trading', 'testnet_mode': False}), 400
         
         # Create client and get balance
         client = ToobitClient(
