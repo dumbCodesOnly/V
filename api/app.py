@@ -2157,6 +2157,13 @@ def execute_trade():
                 initialize_paper_trading_monitoring(config)
             logging.info(f"Paper Trading: Position opened for {config.symbol} {config.side} - Real-time monitoring enabled")
             
+        # CRITICAL FIX: Store original amounts when trade is first executed
+        # This ensures TP profit calculations remain accurate even after partial closures
+        if not hasattr(config, 'original_amount'):
+            config.original_amount = config.amount
+        if not hasattr(config, 'original_margin'):
+            config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+            
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
         config.position_value = position_value
         config.position_size = position_size
@@ -4022,8 +4029,30 @@ def update_all_positions_with_live_data(user_id=None):
                                     logging.info(f"Position auto-closed at TP{i+1}: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
                                     break  # Position closed, no need to check other TPs
                                 else:
-                                    # Partial close - simulate reducing position by allocation percentage
-                                    partial_pnl = config.unrealized_pnl * (allocation / 100)
+                                    # Partial close - CRITICAL FIX: Store original amounts before any TP triggers
+                                    if not hasattr(config, 'original_amount'):
+                                        config.original_amount = config.amount
+                                    if not hasattr(config, 'original_margin'):
+                                        config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+                                        
+                                    # FIXED: Calculate partial profit based on original position and correct allocation
+                                    # The old logic was: partial_pnl = config.unrealized_pnl * (allocation / 100)
+                                    # This was wrong because unrealized_pnl changes after each TP trigger
+                                    # 
+                                    # Correct calculation: Use the profit amount from TP calculations based on original position
+                                    tp_calculations = calculate_tp_sl_prices_and_amounts(config)
+                                    current_tp_data = None
+                                    for tp_calc in tp_calculations.get('take_profits', []):
+                                        if tp_calc['level'] == i + 1:
+                                            current_tp_data = tp_calc
+                                            break
+                                    
+                                    if current_tp_data:
+                                        partial_pnl = current_tp_data['profit_amount']
+                                    else:
+                                        # Fallback to old calculation if TP data not found
+                                        partial_pnl = config.unrealized_pnl * (allocation / 100)
+                                        
                                     remaining_amount = config.amount * ((100 - allocation) / 100)
                                     
                                     # Log partial closure
