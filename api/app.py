@@ -3978,7 +3978,7 @@ def update_all_positions_with_live_data(user_id=None):
                         # Check each TP level
                         for i, tp in enumerate(config.take_profits):
                             tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
-                            allocation = tp.get('allocation', 25) if isinstance(tp, dict) else 25
+                            allocation = tp.get('allocation', 0) if isinstance(tp, dict) else 0
                             
                             if tp_percentage > 0 and profit_percentage >= tp_percentage:
                                 # Take profit target hit!
