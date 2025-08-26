@@ -3408,9 +3408,13 @@
                                 <small class="text-muted">Take Profits:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.take_profits && trade.tp_sl_calculations.take_profits.length > 0 ? 
-                                        trade.tp_sl_calculations.take_profits.map(tp => 
-                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
-                                        ).join('') : 
+                                        (() => {
+                                            let cumulativeAllocation = 0;
+                                            return trade.tp_sl_calculations.take_profits.map(tp => {
+                                                cumulativeAllocation += tp.allocation || 0;
+                                                return `<div><strong>TP${tp.level} ${tp.percentage?.toFixed(1)}%(${cumulativeAllocation}%):</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`;
+                                            }).join('');
+                                        })() : 
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
