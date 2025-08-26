@@ -289,6 +289,9 @@ user_selected_trade = {}  # {user_id: trade_id}
 user_paper_balances = {}  # {user_id: balance_amount}
 PAPER_TRADING_INITIAL_BALANCE = 10000.0  # $10,000 starting balance for paper trading
 
+# Manual paper trading mode preferences
+user_paper_trading_preferences = {}  # {user_id: True/False}
+
 # Cache for database loads to prevent frequent database hits
 user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
 cache_ttl = get_cache_ttl("user")  # Cache TTL in seconds for Vercel optimization
@@ -1084,25 +1087,40 @@ def toggle_mock_trading():
 
 @app.route('/api/mock-trading-status')
 def get_mock_trading_status():
-    """Get current mock trading status for a user"""
+    """Get current mock trading status for a user (includes manual paper trading preference)"""
     try:
         user_id = request.args.get('user_id')
         
         if not user_id:
             return jsonify({'success': False, 'message': 'User ID required'}), 400
         
+        try:
+            chat_id = int(user_id)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
+        
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(user_id),
             is_active=True
         ).first()
         
-        # Default to mock trading enabled for new users
-        mock_mode = user_creds.testnet_mode if user_creds else True
+        # Check for manual paper trading preference
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        
+        # Determine if paper trading is active
+        is_paper_mode = (manual_paper_mode or 
+                        not user_creds or 
+                        user_creds.testnet_mode or 
+                        not user_creds.has_credentials())
         
         return jsonify({
             'success': True,
-            'mock_mode': mock_mode,
-            'has_credentials': user_creds.has_credentials() if user_creds else False
+            'mock_mode': is_paper_mode,  # Legacy field name for compatibility
+            'paper_trading_active': is_paper_mode,
+            'manual_paper_mode': manual_paper_mode,
+            'testnet_mode': user_creds.testnet_mode if user_creds else False,
+            'has_credentials': user_creds.has_credentials() if user_creds else False,
+            'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode
         })
         
     except Exception as e:
@@ -1995,7 +2013,13 @@ def execute_trade():
         ).first()
         
         # Default to mock mode if no credentials exist
-        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
+        # Check for manual paper trading preference
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        
+        is_mock_mode = (manual_paper_mode or 
+                       not user_creds or 
+                       user_creds.testnet_mode or 
+                       not user_creds.has_credentials())
         
         execution_success = False
         client = None  # Initialize client variable
@@ -2518,7 +2542,13 @@ def close_trade():
         ).first()
         
         # Default to mock mode if no credentials exist
-        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
+        # Check for manual paper trading preference
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        
+        is_mock_mode = (manual_paper_mode or 
+                       not user_creds or 
+                       user_creds.testnet_mode or 
+                       not user_creds.has_credentials())
         
         if is_mock_mode:
             # MOCK TRADING - Simulate closing the position
@@ -2641,7 +2671,13 @@ def close_all_trades():
         ).first()
         
         # Default to mock mode if no credentials exist
-        is_mock_mode = not user_creds or user_creds.testnet_mode or not user_creds.has_credentials()
+        # Check for manual paper trading preference
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        
+        is_mock_mode = (manual_paper_mode or 
+                       not user_creds or 
+                       user_creds.testnet_mode or 
+                       not user_creds.has_credentials())
         
         client = None
         if not is_mock_mode and user_creds and user_creds.has_credentials():
@@ -2957,6 +2993,77 @@ def reset_paper_balance():
         'success': True,
         'paper_balance': user_paper_balances[chat_id],
         'message': f'Paper trading balance reset to ${PAPER_TRADING_INITIAL_BALANCE:,.2f}',
+        'timestamp': get_iran_time().isoformat()
+    })
+
+@app.route('/toggle-paper-trading', methods=['POST'])
+def toggle_paper_trading():
+    """Toggle manual paper trading mode on/off"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Get current preference and toggle it
+    current_preference = user_paper_trading_preferences.get(chat_id, False)
+    new_preference = not current_preference
+    user_paper_trading_preferences[chat_id] = new_preference
+    
+    # Initialize paper balance if switching to paper mode
+    if new_preference and chat_id not in user_paper_balances:
+        user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+    
+    mode_text = "Paper Trading" if new_preference else "Live Trading"
+    
+    return jsonify({
+        'success': True,
+        'paper_trading_enabled': new_preference,
+        'mode': mode_text,
+        'message': f'Switched to {mode_text} mode',
+        'paper_balance': user_paper_balances.get(chat_id, 0) if new_preference else None,
+        'timestamp': get_iran_time().isoformat()
+    })
+
+@app.route('/paper-trading-status', methods=['GET'])
+def get_paper_trading_status():
+    """Get current paper trading mode status"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Check all conditions that determine paper trading mode
+    manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+    user_creds = UserCredentials.query.filter_by(
+        telegram_user_id=str(chat_id),
+        is_active=True
+    ).first()
+    
+    is_paper_mode = (manual_paper_mode or 
+                    not user_creds or 
+                    user_creds.testnet_mode or 
+                    not user_creds.has_credentials())
+    
+    # Determine the reason for paper trading mode
+    if manual_paper_mode:
+        reason = "Manual paper trading enabled"
+    elif not user_creds or not user_creds.has_credentials():
+        reason = "No API credentials configured"
+    elif user_creds.testnet_mode:
+        reason = "Testnet mode enabled"
+    else:
+        reason = "Live trading mode"
+    
+    return jsonify({
+        'paper_trading_active': is_paper_mode,
+        'manual_paper_mode': manual_paper_mode,
+        'reason': reason,
+        'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if is_paper_mode else None,
+        'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode,
         'timestamp': get_iran_time().isoformat()
     })
 
