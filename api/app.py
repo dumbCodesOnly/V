@@ -126,6 +126,19 @@ def run_database_migrations():
                 ('realized_pnl', 'FLOAT DEFAULT 0.0')
             ]
             
+            # Fix Toobit testnet issue for existing data
+            try:
+                db.session.execute(text("""
+                    UPDATE user_credentials 
+                    SET testnet_mode = false 
+                    WHERE exchange_name = 'toobit' AND testnet_mode = true
+                """))
+                db.session.commit()
+                logging.info("Fixed Toobit testnet mode for existing credentials")
+            except Exception as toobit_fix_error:
+                logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
+                db.session.rollback()
+            
             try:
                 # Check database type for proper column checking
                 is_sqlite = database_url.startswith("sqlite")

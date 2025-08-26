@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user_credentials (
     api_key_encrypted TEXT,
     api_secret_encrypted TEXT,
     passphrase_encrypted TEXT,
-    testnet_mode BOOLEAN DEFAULT TRUE,
+    testnet_mode BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +75,9 @@ ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS realized_pnl FLOAT DEF
 ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_order_id VARCHAR(100);
 ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_client_order_id VARCHAR(100);
 ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_tp_sl_orders TEXT;
+
+-- Fix Toobit testnet mode issue - Toobit doesn't support testnet
+UPDATE user_credentials SET testnet_mode = false WHERE exchange_name = 'toobit' AND testnet_mode = true;
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_credentials_telegram_user_id ON user_credentials(telegram_user_id);
