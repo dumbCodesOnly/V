@@ -150,6 +150,8 @@ class CircuitBreakerConfig:
     DEFAULT_FAILURE_THRESHOLD = 5     # Number of failures before opening circuit
     DEFAULT_RECOVERY_TIMEOUT = 60     # Seconds to wait in OPEN state before trying HALF_OPEN
     DEFAULT_SUCCESS_THRESHOLD = 2     # Successful calls needed to close circuit from half-open
+    MAX_STATE_CHANGES = 10             # Maximum state changes to keep in history
+    LAST_STATE_CHANGES_DISPLAY = 5     # Number of recent state changes to show in stats
     
     # API-Specific Circuit Breaker Settings
     BINANCE_FAILURE_THRESHOLD = 3     # More sensitive for critical price data
@@ -231,6 +233,13 @@ class ErrorConfig:
     RATE_LIMIT_RETRY_TIMEOUT = 300       # Retry timeout for rate limiting (5 minutes)
     NETWORK_RETRY_TIMEOUT = 30           # Retry timeout for network errors
     SERVER_ERROR_RETRY_TIMEOUT = 120     # Retry timeout for server errors (2 minutes)
+    
+    # HTTP Status Codes
+    HTTP_UNAUTHORIZED = 401              # Unauthorized access
+    HTTP_RATE_LIMITED = 429              # Rate limit exceeded
+    HTTP_INTERNAL_ERROR = 500            # Internal server error
+    HTTP_SERVICE_UNAVAILABLE = 503       # Service unavailable
+    HTTP_SERVER_ERROR_MIN = 500          # Minimum server error code
 
 
 # =============================================================================

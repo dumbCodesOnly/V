@@ -181,9 +181,9 @@ class CircuitBreaker:
             'total_requests': self.total_requests
         })
         
-        # Keep only last 10 state changes
-        if len(self.state_changes) > 10:
-            self.state_changes = self.state_changes[-10:]
+        # Keep only last state changes
+        if len(self.state_changes) > CircuitBreakerConfig.MAX_STATE_CHANGES:
+            self.state_changes = self.state_changes[-CircuitBreakerConfig.MAX_STATE_CHANGES:]
     
     def get_stats(self) -> Dict[str, Any]:
         """Get circuit breaker statistics"""
@@ -202,7 +202,7 @@ class CircuitBreaker:
                 'last_failure_time': self.last_failure_time,
                 'last_success_time': self.last_success_time,
                 'time_since_last_failure': time.time() - self.last_failure_time if self.last_failure_time else None,
-                'state_changes': self.state_changes[-5:],  # Last 5 state changes
+                'state_changes': self.state_changes[-CircuitBreakerConfig.LAST_STATE_CHANGES_DISPLAY:],  # Last state changes
                 'configuration': {
                     'failure_threshold': self.failure_threshold,
                     'recovery_timeout': self.recovery_timeout,

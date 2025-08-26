@@ -118,17 +118,17 @@ class ErrorClassifier:
         return {
             # API Errors
             'api_key_invalid': {
-                'patterns': ['invalid api key', 'authentication failed', 'api key not found', 'unauthorized', '401'],
+                'patterns': ['invalid api key', 'authentication failed', 'api key not found', 'unauthorized', f'{ErrorConfig.HTTP_UNAUTHORIZED}'],
                 'category': ErrorCategory.AUTHENTICATION_ERROR,
                 'severity': ErrorSeverity.HIGH
             },
             'api_rate_limit': {
-                'patterns': ['rate limit', 'too many requests', 'quota exceeded', '429'],
+                'patterns': ['rate limit', 'too many requests', 'quota exceeded', f'{ErrorConfig.HTTP_RATE_LIMITED}'],
                 'category': ErrorCategory.RATE_LIMIT_ERROR,
                 'severity': ErrorSeverity.MEDIUM
             },
             'api_server_error': {
-                'patterns': ['internal server error', '500', 'service unavailable', '503'],
+                'patterns': ['internal server error', f'{ErrorConfig.HTTP_INTERNAL_ERROR}', 'service unavailable', f'{ErrorConfig.HTTP_SERVICE_UNAVAILABLE}'],
                 'category': ErrorCategory.API_ERROR,
                 'severity': ErrorSeverity.HIGH
             },
@@ -370,11 +370,11 @@ class ErrorClassifier:
         error_code = response_data.get('code', status_code)
         
         # Specific API error handling
-        if status_code == 401 or 'unauthorized' in error_msg.lower():
+        if status_code == ErrorConfig.HTTP_UNAUTHORIZED or 'unauthorized' in error_msg.lower():
             return self._create_trading_error('api_key_invalid', Exception(error_msg), error_msg)
-        elif status_code == 429 or 'rate limit' in error_msg.lower():
+        elif status_code == ErrorConfig.HTTP_RATE_LIMITED or 'rate limit' in error_msg.lower():
             return self._create_trading_error('api_rate_limit', Exception(error_msg), error_msg)
-        elif status_code and status_code >= 500:
+        elif status_code and status_code >= ErrorConfig.HTTP_SERVER_ERROR_MIN:
             return self._create_trading_error('api_server_error', Exception(error_msg), error_msg)
         
         # Fallback to pattern matching

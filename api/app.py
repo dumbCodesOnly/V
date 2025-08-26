@@ -3623,7 +3623,7 @@ def fetch_binance_price(symbol):
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         req.add_header('Accept', 'application/json')
         
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=TimeConfig.FAST_API_TIMEOUT) as response:
             data = json.loads(response.read().decode())
         
         response_time = time.time() - start_time
@@ -3662,7 +3662,7 @@ def fetch_coingecko_price(symbol):
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         req.add_header('Accept', 'application/json')
         
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=TimeConfig.EXTENDED_API_TIMEOUT) as response:
             data = json.loads(response.read().decode())
         
         response_time = time.time() - start_time
@@ -3686,7 +3686,7 @@ def fetch_cryptocompare_price(symbol):
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         req.add_header('Accept', 'application/json')
         
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=TimeConfig.EXTENDED_API_TIMEOUT) as response:
             data = json.loads(response.read().decode())
         
         response_time = time.time() - start_time
@@ -3788,7 +3788,7 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
     success_source = None
     
     try:
-        for future in as_completed(futures, timeout=10):
+        for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
             try:
                 price, source = future.result()
                 success_price = price
@@ -3858,7 +3858,7 @@ def update_all_positions_with_live_data(user_id=None):
             futures[future] = symbol
         
         # Collect results with timeout
-        for future in as_completed(futures, timeout=15):
+        for future in as_completed(futures, timeout=TimeConfig.PRICE_API_TIMEOUT):
             symbol = futures[future]
             try:
                 price = future.result()
@@ -4323,7 +4323,7 @@ def send_telegram_message(chat_id, text, keyboard=None):
         
         data_encoded = urllib.parse.urlencode(data).encode('utf-8')
         req = urllib.request.Request(url, data=data_encoded, method='POST')
-        response = urllib.request.urlopen(req, timeout=10)
+        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
         return response.getcode() == 200
     except Exception as e:
         logging.error(f"Error sending Telegram message: {e}")
@@ -4349,7 +4349,7 @@ def edit_telegram_message(chat_id, message_id, text, keyboard=None):
         
         data_encoded = urllib.parse.urlencode(data).encode('utf-8')
         req = urllib.request.Request(url, data=data_encoded, method='POST')
-        response = urllib.request.urlopen(req, timeout=10)
+        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
         return response.getcode() == 200
     except Exception as e:
         logging.error(f"Error editing Telegram message: {e}")
@@ -4368,7 +4368,7 @@ def answer_callback_query(callback_query_id, text=""):
         }
         data_encoded = urllib.parse.urlencode(data).encode('utf-8')
         req = urllib.request.Request(url, data=data_encoded, method='POST')
-        response = urllib.request.urlopen(req, timeout=10)
+        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
         return response.getcode() == 200
     except Exception as e:
         logging.error(f"Error answering callback query: {e}")
@@ -4385,7 +4385,7 @@ def setup_webhook():
                 data=data,
                 method='POST'
             )
-            response = urllib.request.urlopen(req, timeout=10)
+            response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
             if response.getcode() == 200:
                 logging.info(f"Webhook set successfully to {webhook_url}")
                 bot_status['status'] = 'active'
@@ -5913,7 +5913,7 @@ def update_positions_lightweight():
             future = price_executor.submit(get_live_market_price, symbol, True)
             futures[future] = symbol
         
-        for future in as_completed(futures, timeout=10):
+        for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
             symbol = futures[future]
             try:
                 price = future.result()
