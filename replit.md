@@ -66,8 +66,8 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Corrected partial take profit allocation calculations for accurate position closure and profit calculation.
 - Implemented real Toobit exchange integration for order execution, position management, and risk management.
 - Added testnet/mainnet toggle functionality with real-time exchange balance display.
-- Added mock trading mode for development testing without requiring API credentials.
-- Enhanced trade execution to properly handle both mock and live trading modes seamlessly.
+- Added paper trading mode for development testing without requiring API credentials.
+- Enhanced trade execution to properly handle both paper and live trading modes seamlessly.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.

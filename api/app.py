@@ -2052,13 +2052,13 @@ def execute_trade():
         # For limit orders, we'll place them directly on the exchange and let the exchange handle execution
         # No need to monitor prices manually - the exchange will execute when price is reached
         
-        # Check if user is in mock trading mode
+        # Check if user is in paper trading mode
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(chat_id),
             is_active=True
         ).first()
         
-        # Default to mock mode if no credentials exist
+        # Default to paper mode if no credentials exist
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
@@ -2136,7 +2136,7 @@ def execute_trade():
                 logging.error(f"Exchange order placement failed: {e}")
                 return jsonify({'error': f'Exchange order failed: {str(e)}'}), 500
         
-        # Calculate common values needed for both mock and real trading
+        # Calculate common values needed for both paper and real trading
         position_value = config.amount * config.leverage
         position_size = position_value / current_market_price
         order_side = "buy" if config.side == "long" else "sell"
@@ -2149,7 +2149,7 @@ def execute_trade():
             # Market orders are immediately active
             config.status = "active"
         
-        # Mark as paper trading if in mock mode and initialize monitoring
+        # Mark as paper trading if in paper mode and initialize monitoring
         if is_paper_mode:
             config.paper_trading_mode = True
             # Initialize paper trading monitoring for market orders immediately
@@ -2307,7 +2307,7 @@ def execute_trade():
         return jsonify({
             'success': True,
             'message': message,
-            'mock_mode': is_paper_mode,
+            'paper_mode': is_paper_mode,
             'trade': {
                 'trade_id': trade_id,
                 'symbol': config.symbol,
@@ -2581,13 +2581,13 @@ def close_trade():
         if config.status != "active":
             return jsonify({'error': 'Trade is not active'}), 400
         
-        # Get user credentials to determine if we're in mock mode or real trading
+        # Get user credentials to determine if we're in paper mode or real trading
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(chat_id),
             is_active=True
         ).first()
         
-        # Default to mock mode if no credentials exist
+        # Default to paper mode if no credentials exist
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
@@ -2597,13 +2597,13 @@ def close_trade():
                        not user_creds.has_credentials())
         
         if is_paper_mode:
-            # MOCK TRADING - Simulate closing the position
-            logging.info(f"Closing mock trade for user {chat_id}: {config.symbol} {config.side}")
+            # PAPER TRADING - Simulate closing the position
+            logging.info(f"Closing paper trade for user {chat_id}: {config.symbol} {config.side}")
             
-            # Simulate cancelling mock TP/SL orders
+            # Simulate cancelling paper TP/SL orders
             if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                mock_cancelled_orders = len(config.exchange_tp_sl_orders)
-                logging.info(f"Simulated cancellation of {mock_cancelled_orders} TP/SL orders in mock mode")
+                cancelled_orders = len(config.exchange_tp_sl_orders)
+                logging.info(f"Simulated cancellation of {cancelled_orders} TP/SL orders in paper mode")
                 
         else:
             # REAL TRADING - Close position on Toobit exchange
@@ -2710,13 +2710,13 @@ def close_all_trades():
         closed_count = 0
         total_final_pnl = 0.0
         
-        # Get user credentials to determine if we're in mock mode or real trading
+        # Get user credentials to determine if we're in paper mode or real trading
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(chat_id),
             is_active=True
         ).first()
         
-        # Default to mock mode if no credentials exist
+        # Default to paper mode if no credentials exist
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
@@ -2739,17 +2739,17 @@ def close_all_trades():
         for trade_id, config in active_trades:
             try:
                 if is_paper_mode:
-                    # MOCK TRADING - Simulate closing the position
-                    logging.info(f"Closing mock trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
+                    # PAPER TRADING - Simulate closing the position
+                    logging.info(f"Closing paper trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
                     
-                    # Simulate cancelling mock TP/SL orders
+                    # Simulate cancelling paper TP/SL orders
                     if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                        mock_cancelled_orders = len(config.exchange_tp_sl_orders)
-                        logging.info(f"Simulated cancellation of {mock_cancelled_orders} TP/SL orders for trade {trade_id} in mock mode")
+                        cancelled_orders = len(config.exchange_tp_sl_orders)
+                        logging.info(f"Simulated cancellation of {cancelled_orders} TP/SL orders for trade {trade_id} in paper mode")
                 else:
                     # REAL TRADING - Close position on exchange
                     if client is None:
-                        logging.warning(f"No client available for trade {trade_id} - falling back to mock mode")
+                        logging.warning(f"No client available for trade {trade_id} - falling back to paper mode")
                         continue
                     
                     close_side = "sell" if config.side == "long" else "buy"
@@ -5923,7 +5923,7 @@ def place_exchange_native_orders(config, user_id):
     try:
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         if not user_creds or not user_creds.has_credentials():
-            logging.info("No credentials found - skipping exchange-native orders (using mock mode)")
+            logging.info("No credentials found - skipping exchange-native orders (using paper mode)")
             return False
             
         client = ToobitClient(

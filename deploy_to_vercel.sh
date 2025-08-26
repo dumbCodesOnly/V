@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Vercel Deployment Script - Toobit Trading Bot v2.4
-# Latest Updates: Mock trading mode, price source fix, Flask context improvements, enhanced error handling
+# Latest Updates: Paper trading mode, price source fix, Flask context improvements, enhanced error handling
 
 echo "🚀 Deploying Toobit Trading Bot to Vercel/Neon..."
-echo "📅 Version: v2.4 - Mock Trading Mode & Exchange Integration"
+echo "📅 Version: v2.4 - Paper Trading Mode & Exchange Integration"
 echo "==============================================="
 
 # Check if required files exist
@@ -57,8 +57,8 @@ echo "✅ Vercel CLI found"
 # Display latest updates
 echo ""
 echo "📋 Latest Updates in This Deployment:"
-echo "   ✅ NEW: Mock trading mode for development and testing"
-echo "   ✅ Fixed trade execution in mock mode without API credentials"
+echo "   ✅ NEW: Paper trading mode for development and testing"
+echo "   ✅ Fixed trade execution in paper mode without API credentials"
 echo "   ✅ Fixed price source issue - now uses Toobit exchange prices first"
 echo "   ✅ Enhanced fallback system (CoinGecko, Binance, CryptoCompare)"
 echo "   ✅ Resolved Flask application context errors"
@@ -85,7 +85,7 @@ if [[ $? -eq 0 ]]; then
     echo ""
     echo "📋 Post-deployment checklist:"
     echo "   □ Verify Telegram WebView loads correctly"
-    echo "   □ Test mock trading mode without API credentials"
+    echo "   □ Test paper trading mode without API credentials"
     echo "   □ Test price data displays (should use fallback APIs)"
     echo "   □ Validate API key setup works (for live trading)"
     echo "   □ Check database connections in Vercel logs"
@@ -95,7 +95,7 @@ if [[ $? -eq 0 ]]; then
     echo "   • Check Vercel function logs for any Toobit API issues"
     echo "   • Monitor Neon database connection usage"
     echo "   • Verify price accuracy with fallback sources"
-    echo "   • Test mock trading mode functionality"
+    echo "   • Test paper trading mode functionality"
     echo ""
     echo "📖 Documentation: See docs/VERCEL_DEPLOYMENT_STATUS.md for details"
 else
