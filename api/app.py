@@ -1044,9 +1044,9 @@ def handle_balance_update_webhook(data):
 
 
 
-@app.route('/api/toggle-mock-trading', methods=['POST'])
-def toggle_mock_trading():
-    """Toggle paper trading mode for a user (supports manual override)"""
+@app.route('/api/toggle-paper-trading', methods=['POST'])
+def toggle_paper_trading():
+    """Toggle paper trading mode for a user"""
     try:
         data = request.get_json()
         user_id = data.get('user_id')
@@ -1059,71 +1059,24 @@ def toggle_mock_trading():
         except ValueError:
             return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
         
-        # Get user credentials (optional for paper trading)
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(user_id),
-            is_active=True
-        ).first()
+        # Simple toggle for paper trading preference
+        current_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
+        new_paper_mode = not current_paper_mode
+        user_paper_trading_preferences[chat_id] = new_paper_mode
         
-        # Check current paper trading status
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
-        
-        # Determine current paper trading state
-        is_currently_paper = (manual_paper_mode or 
-                             not user_creds or 
-                             (user_creds and user_creds.testnet_mode) or 
-                             (user_creds and not user_creds.has_credentials()))
-        
-        # Toggle logic: prefer manual override if user has credentials
-        if user_creds and user_creds.has_credentials():
-            # User has credentials - use manual paper trading preference
-            new_manual_preference = not manual_paper_mode
-            user_paper_trading_preferences[chat_id] = new_manual_preference
-            
-            # Initialize paper balance if switching to paper mode
-            if new_manual_preference and chat_id not in user_paper_balances:
-                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
-            
-            final_paper_mode = new_manual_preference
-            mode_reason = "Manual paper trading" if new_manual_preference else "Live trading with credentials"
-            
-        else:
-            # User doesn't have credentials - toggle testnet mode in database
-            if not user_creds:
-                # Create new user credentials record
-                user_creds = UserCredentials()
-                user_creds.telegram_user_id = str(user_id)
-                user_creds.testnet_mode = not is_currently_paper  # Toggle current state
-                user_creds.is_active = True
-                db.session.add(user_creds)
-            else:
-                # Toggle existing testnet mode
-                user_creds.testnet_mode = not user_creds.testnet_mode
-                user_creds.updated_at = datetime.utcnow()
-            
-            db.session.commit()
-            
-            # Initialize paper balance if switching to paper mode
-            if user_creds.testnet_mode and chat_id not in user_paper_balances:
-                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
-            
-            final_paper_mode = user_creds.testnet_mode
-            mode_reason = "Testnet mode" if user_creds.testnet_mode else "Live mode (no credentials)"
+        # Initialize paper balance if switching to paper mode
+        if new_paper_mode and chat_id not in user_paper_balances:
+            user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
         
         return jsonify({
             'success': True,
-            'mock_mode': final_paper_mode,  # Legacy field name for compatibility
-            'paper_trading_active': final_paper_mode,
-            'manual_paper_mode': user_paper_trading_preferences.get(chat_id, False),
-            'mode_reason': mode_reason,
-            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if final_paper_mode else None,
-            'message': f'Paper trading {"enabled" if final_paper_mode else "disabled"}'
+            'paper_trading_active': new_paper_mode,
+            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if new_paper_mode else None,
+            'message': f'Paper trading {"enabled" if new_paper_mode else "disabled"}'
         })
         
     except Exception as e:
-        logging.error(f"Error toggling mock trading: {e}")
-        if 'db.session' in locals():
-            db.session.rollback()
+        logging.error(f"Error toggling paper trading: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/mock-trading-status')
@@ -3037,40 +2990,13 @@ def reset_paper_balance():
         'timestamp': get_iran_time().isoformat()
     })
 
-@app.route('/toggle-paper-trading', methods=['POST'])
-def toggle_paper_trading():
-    """Toggle manual paper trading mode on/off"""
-    user_id = get_user_id_from_request()
-    
-    try:
-        chat_id = int(user_id)
-    except ValueError:
-        return jsonify({'error': 'Invalid user ID format'}), 400
-    
-    # Get current preference and toggle it
-    current_preference = user_paper_trading_preferences.get(chat_id, False)
-    new_preference = not current_preference
-    user_paper_trading_preferences[chat_id] = new_preference
-    
-    # Initialize paper balance if switching to paper mode
-    if new_preference and chat_id not in user_paper_balances:
-        user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
-    
-    mode_text = "Paper Trading" if new_preference else "Live Trading"
-    
-    return jsonify({
-        'success': True,
-        'paper_trading_enabled': new_preference,
-        'mode': mode_text,
-        'message': f'Switched to {mode_text} mode',
-        'paper_balance': user_paper_balances.get(chat_id, 0) if new_preference else None,
-        'timestamp': get_iran_time().isoformat()
-    })
 
-@app.route('/paper-trading-status', methods=['GET'])
+@app.route('/api/paper-trading-status', methods=['GET'])
 def get_paper_trading_status():
     """Get current paper trading mode status"""
-    user_id = get_user_id_from_request()
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'User ID required'}), 400
     
     try:
         chat_id = int(user_id)

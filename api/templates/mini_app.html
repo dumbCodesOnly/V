@@ -2250,9 +2250,9 @@
                         </div>
                     </div>
                     <div class="hamburger-dropdown" id="hamburger-dropdown">
-                        <a href="#" class="dropdown-item" onclick="toggleMockTrading()">
-                            <i data-feather="play-circle"></i>
-                            <span id="mock-trading-text">Mock Trading: Off</span>
+                        <a href="#" class="dropdown-item" onclick="togglePaperTrading()">
+                            <i data-feather="shield"></i>
+                            <span id="paper-trading-text">Paper Trading: On</span>
                         </a>
                         <a href="#" class="dropdown-item" onclick="openApiKeysSettings()">
                             <i data-feather="key"></i>
@@ -4619,7 +4619,7 @@
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
-            loadMockTradingStatus(); // Load mock trading status first
+            loadPaperTradingStatus(); // Load paper trading status first
             loadPositions(); // Start with positions tab
         });
 
@@ -4630,18 +4630,18 @@
             if (activeTab === '#portfolio') loadPortfolio();
         }, 30000); // 30 seconds - from centralized config
 
-        async function loadMockTradingStatus() {
+        async function loadPaperTradingStatus() {
             try {
-                const response = await apiCall(`/api/mock-trading-status?user_id=${getUserId()}`);
-                if (response.success) {
-                    const mockText = document.getElementById('mock-trading-text');
-                    mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
+                const response = await apiCall(`/api/paper-trading-status?user_id=${getUserId()}`);
+                if (response.paper_trading_active !== undefined) {
+                    const paperText = document.getElementById('paper-trading-text');
+                    paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
                 }
             } catch (error) {
-                console.error('Error loading mock trading status:', error);
-                // Default to mock trading on for safety
-                const mockText = document.getElementById('mock-trading-text');
-                mockText.textContent = 'Mock Trading: On';
+                console.error('Error loading paper trading status:', error);
+                // Default to paper trading on for safety
+                const paperText = document.getElementById('paper-trading-text');
+                paperText.textContent = 'Paper Trading: On';
             }
         }
 
@@ -5129,40 +5129,35 @@
             loadCredentialsStatus();
         }
 
-        async function toggleMockTrading() {
+        async function togglePaperTrading() {
             // Hide hamburger menu
             document.getElementById('hamburger-dropdown').classList.remove('show');
             
             try {
-                console.log('Toggling mock trading for user:', getUserId());
-                const response = await apiCall('/api/toggle-mock-trading', {
+                const response = await apiCall('/api/toggle-paper-trading', {
                     method: 'POST',
                     body: JSON.stringify({
                         user_id: getUserId()
                     })
                 });
                 
-                console.log('Toggle response:', response);
-                
                 if (response && response.success) {
                     // Update the UI text
-                    const mockText = document.getElementById('mock-trading-text');
-                    mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
+                    const paperText = document.getElementById('paper-trading-text');
+                    paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
                     
                     // Show success notification
-                    showNotification('info', `${response.mock_mode ? 'Enabled' : 'Disabled'} mock trading mode`);
+                    showNotification('info', `Paper trading ${response.paper_trading_active ? 'enabled' : 'disabled'}`);
                     
                     // Refresh the portfolio and active positions since the mode changed
                     await loadActivePositions();
                     await loadPortfolio();
                 } else {
-                    console.error('API response error:', response);
-                    showNotification('error', response?.message || 'Failed to toggle mock trading mode');
+                    showNotification('error', response?.message || 'Failed to toggle paper trading mode');
                 }
             } catch (error) {
-                console.error('Error toggling mock trading:', error);
-                console.error('Error details:', error.message, error.stack);
-                showNotification('error', `Failed to toggle mock trading mode: ${error.message || 'Unknown error'}`);
+                console.error('Error toggling paper trading:', error);
+                showNotification('error', 'Failed to toggle paper trading mode');
             }
         }
 
