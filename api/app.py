@@ -1079,47 +1079,6 @@ def toggle_paper_trading():
         logging.error(f"Error toggling paper trading: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/mock-trading-status')
-def get_mock_trading_status():
-    """Get current mock trading status for a user (includes manual paper trading preference)"""
-    try:
-        user_id = request.args.get('user_id')
-        
-        if not user_id:
-            return jsonify({'success': False, 'message': 'User ID required'}), 400
-        
-        try:
-            chat_id = int(user_id)
-        except ValueError:
-            return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
-        
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(user_id),
-            is_active=True
-        ).first()
-        
-        # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
-        
-        # Determine if paper trading is active
-        is_paper_mode = (manual_paper_mode or 
-                        not user_creds or 
-                        user_creds.testnet_mode or 
-                        not user_creds.has_credentials())
-        
-        return jsonify({
-            'success': True,
-            'mock_mode': is_paper_mode,  # Legacy field name for compatibility
-            'paper_trading_active': is_paper_mode,
-            'manual_paper_mode': manual_paper_mode,
-            'testnet_mode': user_creds.testnet_mode if user_creds else False,
-            'has_credentials': user_creds.has_credentials() if user_creds else False,
-            'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode
-        })
-        
-    except Exception as e:
-        logging.error(f"Error getting mock trading status: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/status')
 def get_bot_status():
@@ -2010,7 +1969,7 @@ def execute_trade():
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
-        is_mock_mode = (manual_paper_mode or 
+        is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
                        user_creds.testnet_mode or 
                        not user_creds.has_credentials())
@@ -2018,7 +1977,7 @@ def execute_trade():
         execution_success = False
         client = None  # Initialize client variable
         
-        if is_mock_mode:
+        if is_paper_mode:
             # PAPER TRADING MODE - Simulate execution with real price monitoring
             logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
             execution_success = True
@@ -2098,7 +2057,7 @@ def execute_trade():
             config.status = "active"
         
         # Mark as paper trading if in mock mode and initialize monitoring
-        if is_mock_mode:
+        if is_paper_mode:
             config.paper_trading_mode = True
             # Initialize paper trading monitoring for market orders immediately
             if config.entry_type == "market":
@@ -2131,7 +2090,7 @@ def execute_trade():
                 # Calculate TP/SL prices
                 tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
                 
-                if is_mock_mode:
+                if is_paper_mode:
                     # PAPER TRADING MODE - Simulate TP/SL orders with real price monitoring
                     if config.take_profits and tp_sl_data.get('take_profits'):
                         mock_tp_sl_orders = []
@@ -2183,7 +2142,7 @@ def execute_trade():
                         
                         # For limit orders, place TP/SL as conditional orders that activate when main order fills
                         # For market orders, place TP/SL immediately since position is already open
-                        if not is_mock_mode and client is not None:
+                        if not is_paper_mode and client is not None:
                             if config.entry_type == "limit":
                                 # For limit orders, TP/SL will be placed once the main order is filled
                                 # Store the TP/SL data to place later when order fills
@@ -2212,7 +2171,7 @@ def execute_trade():
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
         # Initialize paper trading balance if needed
-        if is_mock_mode:
+        if is_paper_mode:
             if chat_id not in user_paper_balances:
                 user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
                 logging.info(f"Paper Trading: Initialized balance of ${PAPER_TRADING_INITIAL_BALANCE:,.2f} for user {chat_id}")
@@ -2238,13 +2197,13 @@ def execute_trade():
             'leverage': config.leverage,
             'entry_price': config.entry_price,
             'timestamp': get_iran_time().isoformat(),
-            'status': f'executed_{"paper" if is_mock_mode else "live"}',
-            'trading_mode': 'paper' if is_mock_mode else 'live'
+            'status': f'executed_{"paper" if is_paper_mode else "live"}',
+            'trading_mode': 'paper' if is_paper_mode else 'live'
         })
         
         bot_status['total_trades'] += 1
         
-        trade_mode = "Mock Trade" if is_mock_mode else "Live Trade"
+        trade_mode = "Paper Trade" if is_paper_mode else "Live Trade"
         
         # Create appropriate message based on order type
         if config.entry_type == "limit":
@@ -2255,7 +2214,7 @@ def execute_trade():
         return jsonify({
             'success': True,
             'message': message,
-            'mock_mode': is_mock_mode,
+            'mock_mode': is_paper_mode,
             'trade': {
                 'trade_id': trade_id,
                 'symbol': config.symbol,
@@ -2539,12 +2498,12 @@ def close_trade():
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
-        is_mock_mode = (manual_paper_mode or 
+        is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
                        user_creds.testnet_mode or 
                        not user_creds.has_credentials())
         
-        if is_mock_mode:
+        if is_paper_mode:
             # MOCK TRADING - Simulate closing the position
             logging.info(f"Closing mock trade for user {chat_id}: {config.symbol} {config.side}")
             
@@ -2668,13 +2627,13 @@ def close_all_trades():
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
-        is_mock_mode = (manual_paper_mode or 
+        is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
                        user_creds.testnet_mode or 
                        not user_creds.has_credentials())
         
         client = None
-        if not is_mock_mode and user_creds and user_creds.has_credentials():
+        if not is_paper_mode and user_creds and user_creds.has_credentials():
             # Create Toobit client for real trading
             client = ToobitClient(
                 api_key=user_creds.get_api_key(),
@@ -2686,7 +2645,7 @@ def close_all_trades():
         # Close each active trade
         for trade_id, config in active_trades:
             try:
-                if is_mock_mode:
+                if is_paper_mode:
                     # MOCK TRADING - Simulate closing the position
                     logging.info(f"Closing mock trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
                     

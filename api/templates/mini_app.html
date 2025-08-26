@@ -5150,7 +5150,7 @@
                     showNotification('info', `Paper trading ${response.paper_trading_active ? 'enabled' : 'disabled'}`);
                     
                     // Refresh the portfolio and active positions since the mode changed
-                    await loadActivePositions();
+                    await loadPositions();
                     await loadPortfolio();
                 } else {
                     showNotification('error', response?.message || 'Failed to toggle paper trading mode');
