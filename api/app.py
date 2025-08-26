@@ -2011,10 +2011,13 @@ def save_trade():
 @app.route('/api/execute-trade', methods=['POST'])
 def execute_trade():
     """Execute a trade configuration"""
+    user_id = None
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         user_id = data.get('user_id')
         trade_id = data.get('trade_id')
+        
+        logging.info(f"Execute trade request: user_id={user_id}, trade_id={trade_id}")
         
         if not user_id:
             return jsonify(create_validation_error("User ID", None, "A valid user ID is required")), 400
@@ -2070,9 +2073,9 @@ def execute_trade():
             is_active=True
         ).first()
         
-        # Default to paper mode if no credentials exist
-        # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        # Default to paper mode for safety - only use live trading when explicitly disabled
+        # Check for manual paper trading preference (default to True for safety)
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
         
         is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
