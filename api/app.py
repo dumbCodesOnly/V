@@ -2396,14 +2396,14 @@ def get_user_credentials():
             cached_creds, cache_info = cached_result
             # Re-attach the cached object to current session to prevent session binding errors
             user_creds = db.session.merge(cached_creds)
-# Retrieved credentials from cache - removed debug log for cleaner output
+            # Retrieved credentials from cache - removed debug log for cleaner output
         else:
             # Cache miss - load from database
             user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
             # Update cache with fresh data
             if user_creds:
                 enhanced_cache.set_user_credentials(str(user_id), user_creds)
-                    # Credentials cached - removed debug log for cleaner output
+                # Credentials cached - removed debug log for cleaner output
         
         if user_creds:
             api_key = user_creds.get_api_key()
