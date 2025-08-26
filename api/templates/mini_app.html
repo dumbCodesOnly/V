@@ -4550,11 +4550,26 @@
 
         // API Credentials Management Functions
         async function loadCredentialsStatus() {
-            const data = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
             const statusContainer = document.getElementById('credentials-status');
             const setupContainer = document.getElementById('credentials-setup');
             
-            if (!data) return;
+            try {
+                const data = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
+                
+                if (!data) {
+                    statusContainer.innerHTML = `
+                        <div class="card border-danger">
+                            <div class="card-header bg-danger text-white">
+                                <h6 class="mb-0">✕ Error Loading Credentials</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-2">Unable to load credentials status. Please try again.</p>
+                                <button class="btn btn-outline-primary" onclick="loadCredentialsStatus()">⟲ Retry</button>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
             
             if (data.has_credentials) {
                 statusContainer.innerHTML = `
@@ -4596,6 +4611,20 @@
                     </div>
                 `;
                 setupContainer.classList.add('hidden');
+            }
+            } catch (error) {
+                console.error('Error loading credentials status:', error);
+                statusContainer.innerHTML = `
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h6 class="mb-0">✕ Error Loading Credentials</h6>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-2">Failed to load credentials status. Please check your connection and try again.</p>
+                            <button class="btn btn-outline-primary" onclick="loadCredentialsStatus()">⟲ Retry</button>
+                        </div>
+                    </div>
+                `;
             }
         }
 
