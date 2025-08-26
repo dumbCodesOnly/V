@@ -32,7 +32,7 @@ class ToobitClient:
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/x-www-form-urlencoded',  # Toobit expects form-encoded data
-            'User-Agent': 'TradingExpert/1.0'
+            'User-Agent': APIConfig.USER_AGENT
         })
         
     def _generate_signature(self, params_string: str) -> str:

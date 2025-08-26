@@ -24,6 +24,9 @@ class APIConfig:
     BINANCE_BASE_URL = "https://api.binance.com"
     COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
     CRYPTOCOMPARE_BASE_URL = "https://min-api.cryptocompare.com/data"
+    
+    # HTTP Headers
+    USER_AGENT = "TradingExpert/1.0"
 
 
 # =============================================================================
@@ -55,6 +58,8 @@ class TimeConfig:
     
     # Emergency Data Age Threshold
     EMERGENCY_DATA_AGE_LIMIT = 1800  # seconds (30 minutes) - use stale data in emergencies
+
+
 
 
 # =============================================================================
@@ -136,6 +141,15 @@ class SecurityConfig:
     # Webhook Security
     WEBHOOK_TIMEOUT = 30  # seconds
     WEBHOOK_SETUP_TIMEOUT = 10  # seconds for webhook setup calls
+    
+    # Telegram webhook IP ranges for validation
+    TELEGRAM_IP_RANGES = [
+        "149.154.160.0/20",
+        "91.108.4.0/22",
+        "149.154.164.0/22", 
+        "149.154.168.0/22",
+        "149.154.172.0/22"
+    ]
     
     # Rate Limiting
     MAX_REQUESTS_PER_MINUTE = 100

@@ -2965,13 +2965,8 @@ def verify_telegram_webhook(data):
         logging.info(f"Webhook request from IP: {client_ip}")
         
         # Telegram IP ranges for validation (optional strict checking)
-        telegram_ip_ranges = [
-            "149.154.160.0/20",
-            "91.108.4.0/22",
-            "149.154.164.0/22", 
-            "149.154.168.0/22",
-            "149.154.172.0/22"
-        ]
+        from config import SecurityConfig
+        telegram_ip_ranges = SecurityConfig.TELEGRAM_IP_RANGES
         
         # Check for secret token if configured
         secret_token = os.environ.get('WEBHOOK_SECRET_TOKEN')
