@@ -4141,7 +4141,7 @@ def calculate_tp_sl_prices_and_amounts(config):
     # Calculate Take Profit levels
     for i, tp in enumerate(config.take_profits or []):
         tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
-        allocation = tp.get('allocation', 25) if isinstance(tp, dict) else 25
+        allocation = tp.get('allocation', 0) if isinstance(tp, dict) else 0
         
         if tp_percentage > 0:
             # TP percentage is the desired profit on margin (what user risks), not price movement

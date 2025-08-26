@@ -77,7 +77,7 @@ class DatabaseConfig:
 class TradingConfig:
     # Default Trading Values
     DEFAULT_LEVERAGE = 1          # 1x leverage
-    DEFAULT_TRIAL_BALANCE = 1000  # USDT - initial mock trading balance
+    DEFAULT_TRIAL_BALANCE = 10000  # USDT - initial mock trading balance
     
     # Risk Management Defaults
     DEFAULT_STOP_LOSS_PERCENT = 5.0    # 5% stop loss
