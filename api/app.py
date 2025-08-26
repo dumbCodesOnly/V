@@ -1051,12 +1051,16 @@ def toggle_paper_trading():
         data = request.get_json()
         user_id = data.get('user_id')
         
+        logging.info(f"Toggle paper trading request received for user: {user_id}")
+        
         if not user_id:
+            logging.error("Toggle paper trading failed: No user ID provided")
             return jsonify({'success': False, 'message': 'User ID required'}), 400
         
         try:
             chat_id = int(user_id)
         except ValueError:
+            logging.error(f"Toggle paper trading failed: Invalid user ID format: {user_id}")
             return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
         
         # Simple toggle for paper trading preference
@@ -1067,18 +1071,85 @@ def toggle_paper_trading():
         # Initialize paper balance if switching to paper mode
         if new_paper_mode and chat_id not in user_paper_balances:
             user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+            logging.info(f"Initialized paper balance for user {chat_id}: ${PAPER_TRADING_INITIAL_BALANCE:,.2f}")
         
-        return jsonify({
+        # Log the mode change
+        mode_text = "ENABLED" if new_paper_mode else "DISABLED"
+        logging.info(f"🔄 Paper Trading {mode_text} for user {chat_id}")
+        logging.info(f"📊 Current paper balance: ${user_paper_balances.get(chat_id, 0):,.2f}")
+        
+        response_data = {
             'success': True,
             'paper_trading_active': new_paper_mode,
             'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if new_paper_mode else None,
             'message': f'Paper trading {"enabled" if new_paper_mode else "disabled"}'
-        })
+        }
+        
+        logging.info(f"Toggle paper trading successful: {response_data}")
+        return jsonify(response_data)
         
     except Exception as e:
-        logging.error(f"Error toggling paper trading: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logging.error(f"Error toggling paper trading for user {user_id}: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
+
+@app.route('/api/paper-trading-status')
+def get_paper_trading_status():
+    """Get current paper trading status for a user"""
+    try:
+        user_id = request.args.get('user_id')
+        
+        if not user_id:
+            return jsonify({'success': False, 'message': 'User ID required'}), 400
+        
+        try:
+            chat_id = int(user_id)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
+        
+        # Get user credentials (optional for paper trading)
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(user_id),
+            is_active=True
+        ).first()
+        
+        # Check for manual paper trading preference
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
+        
+        # Determine if paper trading is active (same logic as toggle endpoint)
+        is_paper_mode = (manual_paper_mode or 
+                        not user_creds or 
+                        (user_creds and user_creds.testnet_mode) or 
+                        (user_creds and not user_creds.has_credentials()))
+        
+        # Determine the reason for the current mode
+        if manual_paper_mode:
+            mode_reason = "Manual paper trading enabled"
+        elif not user_creds or not user_creds.has_credentials():
+            mode_reason = "No API credentials configured"
+        elif user_creds and user_creds.testnet_mode:
+            mode_reason = "Testnet mode enabled"
+        else:
+            mode_reason = "Live trading with credentials"
+        
+        response_data = {
+            'success': True,
+            'paper_trading_active': is_paper_mode,
+            'manual_paper_mode': manual_paper_mode,
+            'mode_reason': mode_reason,
+            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if is_paper_mode else None,
+            'testnet_mode': user_creds.testnet_mode if user_creds else False,
+            'has_credentials': user_creds.has_credentials() if user_creds else False,
+            'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode,
+            'message': f'Paper trading {"active" if is_paper_mode else "inactive"}'
+        }
+        
+        logging.info(f"Paper trading status for user {chat_id}: {response_data}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logging.error(f"Error getting paper trading status: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/status')
 def get_bot_status():
@@ -2950,48 +3021,6 @@ def reset_paper_balance():
     })
 
 
-@app.route('/api/paper-trading-status', methods=['GET'])
-def get_paper_trading_status():
-    """Get current paper trading mode status"""
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({'success': False, 'message': 'User ID required'}), 400
-    
-    try:
-        chat_id = int(user_id)
-    except ValueError:
-        return jsonify({'error': 'Invalid user ID format'}), 400
-    
-    # Check all conditions that determine paper trading mode
-    manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
-    user_creds = UserCredentials.query.filter_by(
-        telegram_user_id=str(chat_id),
-        is_active=True
-    ).first()
-    
-    is_paper_mode = (manual_paper_mode or 
-                    not user_creds or 
-                    user_creds.testnet_mode or 
-                    not user_creds.has_credentials())
-    
-    # Determine the reason for paper trading mode
-    if manual_paper_mode:
-        reason = "Manual paper trading enabled"
-    elif not user_creds or not user_creds.has_credentials():
-        reason = "No API credentials configured"
-    elif user_creds.testnet_mode:
-        reason = "Testnet mode enabled"
-    else:
-        reason = "Live trading mode"
-    
-    return jsonify({
-        'paper_trading_active': is_paper_mode,
-        'manual_paper_mode': manual_paper_mode,
-        'reason': reason,
-        'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if is_paper_mode else None,
-        'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode,
-        'timestamp': get_iran_time().isoformat()
-    })
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
