@@ -285,6 +285,10 @@ user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase',
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
 
+# Paper trading balance tracking
+user_paper_balances = {}  # {user_id: balance_amount}
+PAPER_TRADING_INITIAL_BALANCE = 10000.0  # $10,000 starting balance for paper trading
+
 # Cache for database loads to prevent frequent database hits
 user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
 cache_ttl = get_cache_ttl("user")  # Cache TTL in seconds for Vercel optimization
@@ -1997,14 +2001,14 @@ def execute_trade():
         client = None  # Initialize client variable
         
         if is_mock_mode:
-            # MOCK TRADING - Simulate execution without real API calls
-            logging.info(f"Executing mock trade for user {chat_id}: {config.symbol} {config.side}")
+            # PAPER TRADING MODE - Simulate execution with real price monitoring
+            logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
             execution_success = True
             
-            # Simulate order placement
-            mock_order_id = f"mock_{uuid.uuid4().hex[:8]}"
+            # Simulate order placement with paper trading IDs
+            mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"
             config.exchange_order_id = mock_order_id
-            config.exchange_client_order_id = f"client_{mock_order_id}"
+            config.exchange_client_order_id = f"paper_client_{mock_order_id}"
             
         else:
             # REAL TRADING - Execute on Toobit exchange
@@ -2074,6 +2078,14 @@ def execute_trade():
         else:
             # Market orders are immediately active
             config.status = "active"
+        
+        # Mark as paper trading if in mock mode and initialize monitoring
+        if is_mock_mode:
+            config.paper_trading_mode = True
+            # Initialize paper trading monitoring for market orders immediately
+            if config.entry_type == "market":
+                initialize_paper_trading_monitoring(config)
+            logging.info(f"Paper Trading: Position opened for {config.symbol} {config.side} - Real-time monitoring enabled")
             
         config.position_margin = calculate_position_margin(config.amount, config.leverage)
         config.position_value = position_value
@@ -2102,15 +2114,38 @@ def execute_trade():
                 tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
                 
                 if is_mock_mode:
-                    # Mock TP/SL orders - just simulate
+                    # PAPER TRADING MODE - Simulate TP/SL orders with real price monitoring
                     if config.take_profits and tp_sl_data.get('take_profits'):
                         mock_tp_sl_orders = []
+                        # Store detailed TP/SL data for paper trading monitoring
+                        config.paper_tp_levels = []
                         for i, tp_data in enumerate(tp_sl_data['take_profits']):
-                            mock_tp_sl_orders.append(f"mock_tp_{i+1}_{uuid.uuid4().hex[:6]}")
+                            mock_order_id = f"paper_tp_{i+1}_{uuid.uuid4().hex[:6]}"
+                            mock_tp_sl_orders.append(mock_order_id)
+                            # Store TP level details for monitoring
+                            config.paper_tp_levels.append({
+                                'order_id': mock_order_id,
+                                'level': i + 1,
+                                'price': tp_data['price'],
+                                'percentage': tp_data['percentage'],
+                                'allocation': tp_data['allocation'],
+                                'triggered': False
+                            })
+                        
                         if config.stop_loss_percent > 0:
-                            mock_tp_sl_orders.append(f"mock_sl_{uuid.uuid4().hex[:6]}")
+                            sl_order_id = f"paper_sl_{uuid.uuid4().hex[:6]}"
+                            mock_tp_sl_orders.append(sl_order_id)
+                            # Store SL details for monitoring
+                            config.paper_sl_data = {
+                                'order_id': sl_order_id,
+                                'price': tp_sl_data['stop_loss']['price'],
+                                'percentage': config.stop_loss_percent,
+                                'triggered': False
+                            }
+                        
                         config.exchange_tp_sl_orders = mock_tp_sl_orders
-                        logging.info(f"Simulated {len(mock_tp_sl_orders)} TP/SL orders in mock mode")
+                        config.paper_trading_mode = True  # Flag for paper trading monitoring
+                        logging.info(f"Paper Trading: Simulated {len(mock_tp_sl_orders)} TP/SL orders with real-time monitoring")
                 else:
                     # Real TP/SL orders on exchange
                     if config.take_profits and tp_sl_data.get('take_profits'):
@@ -2158,6 +2193,22 @@ def execute_trade():
         
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
+        # Initialize paper trading balance if needed
+        if is_mock_mode:
+            if chat_id not in user_paper_balances:
+                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+                logging.info(f"Paper Trading: Initialized balance of ${PAPER_TRADING_INITIAL_BALANCE:,.2f} for user {chat_id}")
+            
+            # Check if user has sufficient paper balance
+            if user_paper_balances[chat_id] < config.amount:
+                return jsonify({
+                    'error': f'Insufficient paper trading balance. Available: ${user_paper_balances[chat_id]:,.2f}, Required: ${config.amount:,.2f}'
+                }), 400
+            
+            # Deduct margin from paper balance
+            user_paper_balances[chat_id] -= config.amount
+            logging.info(f"Paper Trading: Deducted ${config.amount:,.2f} margin. Remaining balance: ${user_paper_balances[chat_id]:,.2f}")
+        
         # Log trade execution
         bot_trades.append({
             'id': len(bot_trades) + 1,
@@ -2169,7 +2220,8 @@ def execute_trade():
             'leverage': config.leverage,
             'entry_price': config.entry_price,
             'timestamp': get_iran_time().isoformat(),
-            'status': 'executed'
+            'status': f'executed_{"paper" if is_mock_mode else "live"}',
+            'trading_mode': 'paper' if is_mock_mode else 'live'
         })
         
         bot_status['total_trades'] += 1
@@ -2866,6 +2918,47 @@ def verify_telegram_webhook(data):
     except Exception as e:
         logging.error(f"Webhook verification error: {e}")
         return False
+
+@app.route('/paper-balance', methods=['GET'])
+def get_paper_balance():
+    """Get current paper trading balance for user"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Initialize balance if not exists
+    if chat_id not in user_paper_balances:
+        user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+    
+    return jsonify({
+        'paper_balance': user_paper_balances[chat_id],
+        'initial_balance': PAPER_TRADING_INITIAL_BALANCE,
+        'currency': 'USDT',
+        'timestamp': get_iran_time().isoformat()
+    })
+
+@app.route('/reset-paper-balance', methods=['POST'])
+def reset_paper_balance():
+    """Reset paper trading balance to initial amount"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid user ID format'}), 400
+    
+    # Reset to initial balance
+    user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+    
+    return jsonify({
+        'success': True,
+        'paper_balance': user_paper_balances[chat_id],
+        'message': f'Paper trading balance reset to ${PAPER_TRADING_INITIAL_BALANCE:,.2f}',
+        'timestamp': get_iran_time().isoformat()
+    })
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -3652,13 +3745,18 @@ def update_all_positions_with_live_data(user_id=None):
     # Collect unique symbols for batch processing - ONLY for active positions
     symbols_to_update = set()
     position_configs = []
+    paper_trading_configs = []  # Separate tracking for paper trades
     
     for uid, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
-            # Only update prices for active positions and configured trades that need live updates
-            if config.symbol and (config.status == "active" or config.status == "configured"):
+            # Include both real and paper trading positions for monitoring
+            if config.symbol and (config.status == "active" or config.status == "configured" or config.status == "pending"):
                 symbols_to_update.add(config.symbol)
                 position_configs.append((uid, trade_id, config))
+                
+                # Track paper trading positions separately for enhanced monitoring
+                if getattr(config, 'paper_trading_mode', False):
+                    paper_trading_configs.append((uid, trade_id, config))
     
     # Batch fetch prices for all symbols concurrently from Toobit exchange
     symbol_prices = {}
@@ -3688,7 +3786,11 @@ def update_all_positions_with_live_data(user_id=None):
             try:
                 config.current_price = symbol_prices[config.symbol]
                 
-                # Check pending limit orders for execution
+                # PAPER TRADING: Enhanced monitoring for simulated trades
+                if getattr(config, 'paper_trading_mode', False):
+                    process_paper_trading_position(user_id, trade_id, config)
+                
+                # Check pending limit orders for execution (both real and paper)
                 if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
                     should_execute = False
                     if config.side == "long":
@@ -3714,7 +3816,12 @@ def update_all_positions_with_live_data(user_id=None):
                         config.position_size = config.position_value / config.entry_price
                         config.unrealized_pnl = 0.0
                         
-                        logging.info(f"Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
+                        trading_mode = "Paper" if getattr(config, 'paper_trading_mode', False) else "Live"
+                        logging.info(f"{trading_mode} Trading: Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
+                        
+                        # For paper trading, initialize TP/SL monitoring after limit order execution
+                        if getattr(config, 'paper_trading_mode', False):
+                            initialize_paper_trading_monitoring(config)
                         
                         # Log trade execution
                         bot_trades.append({
@@ -3727,13 +3834,16 @@ def update_all_positions_with_live_data(user_id=None):
                             'leverage': config.leverage,
                             'entry_price': config.entry_price,
                             'timestamp': get_iran_time().isoformat(),
-                            'status': 'executed'
+                            'status': f'executed_{"paper" if getattr(config, "paper_trading_mode", False) else "live"}',
+                            'trading_mode': trading_mode.lower()
                         })
                         
                         bot_status['total_trades'] += 1
                 
                 # Recalculate P&L for active positions and configured trades with entry prices
-                if (config.status in ["active", "configured"]) and config.entry_price and config.current_price:
+                # Skip comprehensive monitoring for paper trades as they have dedicated processing
+                if ((config.status in ["active", "configured"]) and config.entry_price and config.current_price and 
+                    not getattr(config, 'paper_trading_mode', False)):
                     config.unrealized_pnl = calculate_unrealized_pnl(
                         config.entry_price, config.current_price,
                         config.amount, config.leverage, config.side
@@ -5398,6 +5508,216 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
 # ============================================================================
 # OPTIMIZED TRADING SYSTEM - Exchange-Native Orders with Lightweight Monitoring
 # ============================================================================
+
+def process_paper_trading_position(user_id, trade_id, config):
+    """Enhanced paper trading monitoring with real price-based TP/SL simulation"""
+    try:
+        if not config.entry_price or not config.current_price:
+            return
+        
+        # Calculate unrealized P&L
+        config.unrealized_pnl = calculate_unrealized_pnl(
+            config.entry_price, config.current_price,
+            config.amount, config.leverage, config.side
+        )
+        
+        # Check paper trading stop loss
+        if hasattr(config, 'paper_sl_data') and not config.paper_sl_data.get('triggered', False):
+            stop_loss_triggered = False
+            
+            # Check break-even stop loss first
+            if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
+                if config.side == "long" and config.current_price <= config.entry_price:
+                    stop_loss_triggered = True
+                elif config.side == "short" and config.current_price >= config.entry_price:
+                    stop_loss_triggered = True
+            # Check regular stop loss
+            elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
+                loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
+                if loss_percentage >= config.stop_loss_percent:
+                    stop_loss_triggered = True
+            
+            if stop_loss_triggered:
+                execute_paper_stop_loss(user_id, trade_id, config)
+                return  # Position closed, no further processing
+        
+        # Check paper trading take profits
+        if hasattr(config, 'paper_tp_levels') and config.unrealized_pnl > 0:
+            profit_percentage = (config.unrealized_pnl / config.amount) * 100
+            
+            # Check each TP level (in order)
+            for i, tp_level in enumerate(config.paper_tp_levels):
+                if not tp_level.get('triggered', False) and profit_percentage >= tp_level['percentage']:
+                    execute_paper_take_profit(user_id, trade_id, config, i, tp_level)
+                    break  # Only trigger one TP at a time
+        
+        # Check break-even trigger for paper trades
+        if (hasattr(config, 'breakeven_after') and config.breakeven_after and 
+            not getattr(config, 'breakeven_sl_triggered', False) and config.unrealized_pnl > 0):
+            
+            profit_percentage = (config.unrealized_pnl / config.amount) * 100
+            breakeven_threshold = 0
+            
+            if isinstance(config.breakeven_after, (int, float)):
+                breakeven_threshold = config.breakeven_after
+            elif config.breakeven_after == "tp1":
+                breakeven_threshold = config.take_profits[0].get('percentage', 0) if config.take_profits else 0
+            
+            if breakeven_threshold > 0 and profit_percentage >= breakeven_threshold:
+                config.breakeven_sl_triggered = True
+                config.breakeven_sl_price = config.entry_price
+                save_trade_to_db(user_id, config)
+                logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} - SL moved to entry price")
+        
+    except Exception as e:
+        logging.error(f"Paper trading position processing failed for {config.symbol}: {e}")
+
+def execute_paper_stop_loss(user_id, trade_id, config):
+    """Execute paper trading stop loss"""
+    config.status = "stopped"
+    config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+    config.closed_at = get_iran_time().isoformat()
+    config.unrealized_pnl = 0.0
+    
+    # Mark SL as triggered
+    if hasattr(config, 'paper_sl_data'):
+        config.paper_sl_data['triggered'] = True
+    
+    # Update paper trading balance
+    if user_id in user_paper_balances:
+        # Return margin plus final P&L to balance
+        balance_change = config.amount + config.final_pnl
+        user_paper_balances[user_id] += balance_change
+        logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+    
+    save_trade_to_db(user_id, config)
+    
+    # Log paper trade closure
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(user_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': config.amount,
+        'final_pnl': config.final_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': 'paper_stop_loss_triggered',
+        'trading_mode': 'paper'
+    })
+    
+    logging.info(f"Paper Trading: Stop loss triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
+
+def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
+    """Execute paper trading take profit"""
+    allocation = tp_level['allocation']
+    
+    if allocation >= 100:
+        # Full position close
+        config.status = "stopped"
+        config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+        config.closed_at = get_iran_time().isoformat()
+        config.unrealized_pnl = 0.0
+        
+        # Mark TP as triggered
+        tp_level['triggered'] = True
+        
+        save_trade_to_db(user_id, config)
+        
+        # Update paper trading balance
+        if user_id in user_paper_balances:
+            # Return margin plus final P&L to balance
+            balance_change = config.amount + config.final_pnl
+            user_paper_balances[user_id] += balance_change
+            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+        
+        # Log paper trade closure
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(user_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'final_pnl': config.final_pnl,
+            'timestamp': get_iran_time().isoformat(),
+            'status': f'paper_take_profit_{tp_level["level"]}_triggered',
+            'trading_mode': 'paper'
+        })
+        
+        logging.info(f"Paper Trading: TP{tp_level['level']} triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
+    else:
+        # Partial close
+        partial_pnl = config.unrealized_pnl * (allocation / 100)
+        remaining_amount = config.amount * ((100 - allocation) / 100)
+        
+        # Update realized P&L
+        if not hasattr(config, 'realized_pnl'):
+            config.realized_pnl = 0.0
+        config.realized_pnl += partial_pnl
+        
+        # Update position with remaining amount
+        config.amount = remaining_amount
+        config.unrealized_pnl -= partial_pnl
+        
+        # Mark TP as triggered
+        tp_level['triggered'] = True
+        
+        # Remove triggered TP from list and reindex remaining TPs
+        config.take_profits.pop(tp_index)
+        
+        save_trade_to_db(user_id, config)
+        
+        # Update paper trading balance for partial closure
+        if user_id in user_paper_balances:
+            # Return partial margin plus partial P&L to balance
+            partial_margin_return = (config.amount / (100 - allocation)) * allocation  # Original partial margin
+            balance_change = partial_margin_return + partial_pnl
+            user_paper_balances[user_id] += balance_change
+            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+        
+        # Log partial closure
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(user_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount * (allocation / 100),
+            'final_pnl': partial_pnl,
+            'timestamp': get_iran_time().isoformat(),
+            'status': f'paper_partial_take_profit_{tp_level["level"]}',
+            'trading_mode': 'paper'
+        })
+        
+        logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% for ${partial_pnl:.2f}")
+        
+        # Auto-trigger break-even after first TP if configured
+        if tp_level['level'] == 1 and hasattr(config, 'breakeven_after') and config.breakeven_after == "tp1":
+            if not getattr(config, 'breakeven_sl_triggered', False):
+                config.breakeven_sl_triggered = True
+                config.breakeven_sl_price = config.entry_price
+                save_trade_to_db(user_id, config)
+                logging.info(f"Paper Trading: Auto break-even triggered after TP1 - SL moved to entry price")
+
+def initialize_paper_trading_monitoring(config):
+    """Initialize paper trading monitoring after position opens"""
+    if not getattr(config, 'paper_trading_mode', False):
+        return
+    
+    # Recalculate TP/SL data with actual entry price
+    tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+    
+    # Update paper TP levels with actual prices
+    if hasattr(config, 'paper_tp_levels') and tp_sl_data.get('take_profits'):
+        for i, (paper_tp, calc_tp) in enumerate(zip(config.paper_tp_levels, tp_sl_data['take_profits'])):
+            paper_tp['price'] = calc_tp['price']
+    
+    # Update paper SL with actual price
+    if hasattr(config, 'paper_sl_data') and tp_sl_data.get('stop_loss'):
+        config.paper_sl_data['price'] = tp_sl_data['stop_loss']['price']
+    
+    logging.info(f"Paper Trading: Monitoring initialized for {config.symbol} {config.side} with {len(getattr(config, 'paper_tp_levels', []))} TP levels")
 
 def update_positions_lightweight():
     """OPTIMIZED: Lightweight position updates - only for break-even monitoring"""
