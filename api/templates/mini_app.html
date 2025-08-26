@@ -4552,12 +4552,15 @@
         async function loadCredentialsStatus() {
             const statusContainer = document.getElementById('credentials-status');
             const setupContainer = document.getElementById('credentials-setup');
+            // Also handle modal elements
+            const modalStatusContainer = document.getElementById('api-credentials-status');
+            const modalSetupContainer = document.getElementById('api-credentials-setup');
             
             try {
                 const data = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
                 
                 if (!data) {
-                    statusContainer.innerHTML = `
+                    const errorHTML = `
                         <div class="card border-danger">
                             <div class="card-header bg-danger text-white">
                                 <h6 class="mb-0">✕ Error Loading Credentials</h6>
@@ -4568,11 +4571,13 @@
                             </div>
                         </div>
                     `;
+                    if (statusContainer) statusContainer.innerHTML = errorHTML;
+                    if (modalStatusContainer) modalStatusContainer.innerHTML = errorHTML;
                     return;
                 }
             
             if (data.has_credentials) {
-                statusContainer.innerHTML = `
+                const successHTML = `
                     <div class="card border-success">
                         <div class="card-header bg-success text-white">
                             <h6 class="mb-0">● API Credentials Active</h6>
@@ -4597,9 +4602,12 @@
                         </div>
                     </div>
                 `;
-                setupContainer.classList.add('hidden');
+                if (statusContainer) statusContainer.innerHTML = successHTML;
+                if (modalStatusContainer) modalStatusContainer.innerHTML = successHTML;
+                if (setupContainer) setupContainer.classList.add('hidden');
+                if (modalSetupContainer) modalSetupContainer.classList.add('hidden');
             } else {
-                statusContainer.innerHTML = `
+                const noCredsHTML = `
                     <div class="card border-warning">
                         <div class="card-header bg-warning text-dark">
                             <h6 class="mb-0">○ No API Credentials</h6>
@@ -4610,11 +4618,14 @@
                         </div>
                     </div>
                 `;
-                setupContainer.classList.add('hidden');
+                if (statusContainer) statusContainer.innerHTML = noCredsHTML;
+                if (modalStatusContainer) modalStatusContainer.innerHTML = noCredsHTML;
+                if (setupContainer) setupContainer.classList.add('hidden');
+                if (modalSetupContainer) modalSetupContainer.classList.add('hidden');
             }
             } catch (error) {
                 console.error('Error loading credentials status:', error);
-                statusContainer.innerHTML = `
+                const errorHTML = `
                     <div class="card border-danger">
                         <div class="card-header bg-danger text-white">
                             <h6 class="mb-0">✕ Error Loading Credentials</h6>
@@ -4625,15 +4636,23 @@
                         </div>
                     </div>
                 `;
+                if (statusContainer) statusContainer.innerHTML = errorHTML;
+                if (modalStatusContainer) modalStatusContainer.innerHTML = errorHTML;
             }
         }
 
         function showCredentialsSetup() {
-            document.getElementById('credentials-setup').classList.remove('hidden');
+            const setupContainer = document.getElementById('credentials-setup');
+            const modalSetupContainer = document.getElementById('api-credentials-setup');
+            if (setupContainer) setupContainer.classList.remove('hidden');
+            if (modalSetupContainer) modalSetupContainer.classList.remove('hidden');
         }
 
         function cancelCredentialsSetup() {
-            document.getElementById('credentials-setup').classList.add('hidden');
+            const setupContainer = document.getElementById('credentials-setup');
+            const modalSetupContainer = document.getElementById('api-credentials-setup');
+            if (setupContainer) setupContainer.classList.add('hidden');
+            if (modalSetupContainer) modalSetupContainer.classList.add('hidden');
             clearCredentialsForm();
         }
 
