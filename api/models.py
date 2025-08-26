@@ -7,7 +7,12 @@ import base64
 import hashlib
 
 # GMT+3:30 timezone (Iran Standard Time)
-IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+try:
+    from config import TimezoneConfig
+    IRAN_TZ = timezone(timedelta(hours=TimezoneConfig.IRAN_TIMEZONE_HOURS, minutes=TimezoneConfig.IRAN_TIMEZONE_MINUTES))
+except ImportError:
+    # Fallback to hardcoded values if config not available
+    IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
 def get_iran_time():
     """Get current time in GMT+3:30 timezone"""

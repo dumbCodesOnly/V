@@ -179,6 +179,58 @@ class SMCConfig:
 
 
 # =============================================================================
+# CACHE CONFIGURATION
+# =============================================================================
+class CacheConfig:
+    # Volatility Tracker Settings
+    VOLATILITY_WINDOW_SIZE = 10          # Number of price points for volatility calculation
+    VOLATILITY_CALCULATION_MULTIPLIER = 100  # Multiplier for volatility percentage calculation
+    HIGH_VOLATILITY_THRESHOLD = 2.0     # Threshold for high volatility detection
+    
+    # Cache TTL Settings (seconds)
+    BASE_PRICE_TTL = 10                  # Base TTL for price data
+    MIN_PRICE_TTL = 2                    # Minimum TTL for high volatility assets
+    MAX_PRICE_TTL = 30                   # Maximum TTL for stable assets
+    USER_DATA_TTL = 300                  # User data cache TTL (5 minutes)
+    CREDENTIALS_TTL = 1800               # API credentials TTL (30 minutes)
+    PREFERENCES_TTL = 3600               # User preferences TTL (1 hour)
+    
+    # TTL Multiplier Calculations
+    MIN_TTL_MULTIPLIER = 0.2             # Minimum multiplier for high volatility
+    MAX_TTL_MULTIPLIER = 3.0             # Maximum multiplier for low volatility
+    VOLATILITY_DIVISOR = 10.0            # Divisor for volatility-based TTL calculation
+    STABILITY_MULTIPLIER = 2.0           # Multiplier for stability calculation
+    MIN_VOLATILITY_THRESHOLD = 0.1       # Minimum volatility threshold to prevent division by zero
+    
+    # Cleanup Settings
+    CLEANUP_INTERVAL = 60                # Cache cleanup interval in seconds
+    
+    # Hit Rate Calculation
+    HIT_RATE_PERCENTAGE_MULTIPLIER = 100 # Multiplier for hit rate percentage calculation
+
+
+# =============================================================================
+# ERROR HANDLER CONFIGURATION
+# =============================================================================
+class ErrorConfig:
+    # Retry Timeouts (seconds)
+    API_KEY_RETRY_TIMEOUT = 60           # Retry timeout for API key errors
+    RATE_LIMIT_RETRY_TIMEOUT = 300       # Retry timeout for rate limiting (5 minutes)
+    NETWORK_RETRY_TIMEOUT = 30           # Retry timeout for network errors
+    SERVER_ERROR_RETRY_TIMEOUT = 120     # Retry timeout for server errors (2 minutes)
+
+
+# =============================================================================
+# TIMEZONE CONFIGURATION
+# =============================================================================
+class TimezoneConfig:
+    # GMT+3:30 (Iran Standard Time)
+    DEFAULT_TIMEZONE = "Asia/Tehran"
+    IRAN_TIMEZONE_HOURS = 3          # GMT+3:30 timezone hours offset
+    IRAN_TIMEZONE_MINUTES = 30       # GMT+3:30 timezone minutes offset
+
+
+# =============================================================================
 # ENVIRONMENT-SPECIFIC SETTINGS
 # =============================================================================
 class Environment:
@@ -193,6 +245,8 @@ class Environment:
     
     # Timezone
     DEFAULT_TIMEZONE = "Asia/Tehran"  # GMT+3:30 (Iran Standard Time)
+    IRAN_TIMEZONE_HOURS = 3          # GMT+3:30 timezone hours offset
+    IRAN_TIMEZONE_MINUTES = 30       # GMT+3:30 timezone minutes offset
 
 
 # =============================================================================

@@ -11,11 +11,20 @@ from typing import Dict, Any, Optional, Tuple
 from collections import defaultdict
 import statistics
 
+# Import configuration constants
+try:
+    from config import CacheConfig
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config import CacheConfig
+
 class VolatilityTracker:
     """Track price volatility for smart cache invalidation"""
     
-    def __init__(self, window_size=10):
-        self.window_size = window_size
+    def __init__(self, window_size=None):
+        self.window_size = window_size or CacheConfig.VOLATILITY_WINDOW_SIZE
         self.price_history = defaultdict(list)  # {symbol: [prices]}
         self.volatility_cache = {}  # {symbol: volatility_score}
         self.lock = threading.Lock()
@@ -41,7 +50,7 @@ class VolatilityTracker:
                 
                 # Calculate standard deviation as volatility measure
                 try:
-                    volatility = statistics.stdev(prices) / statistics.mean(prices) * 100
+                    volatility = statistics.stdev(prices) / statistics.mean(prices) * CacheConfig.VOLATILITY_CALCULATION_MULTIPLIER
                     self.volatility_cache[symbol] = volatility
                 except (statistics.StatisticsError, ZeroDivisionError):
                     self.volatility_cache[symbol] = 0.0
@@ -51,8 +60,9 @@ class VolatilityTracker:
         with self.lock:
             return self.volatility_cache.get(symbol, 0.0)
     
-    def is_high_volatility(self, symbol: str, threshold: float = 2.0) -> bool:
+    def is_high_volatility(self, symbol: str, threshold: Optional[float] = None) -> bool:
         """Check if symbol is experiencing high volatility"""
+        threshold = threshold or CacheConfig.HIGH_VOLATILITY_THRESHOLD
         return self.get_volatility(symbol) > threshold
 
 class SmartCache:
@@ -82,13 +92,13 @@ class SmartCache:
         
         # Cache configurations
         self.config = {
-            'base_price_ttl': 10,      # Base TTL for prices (seconds)
-            'min_price_ttl': 2,        # Minimum TTL for high volatility
-            'max_price_ttl': 30,       # Maximum TTL for stable assets
-            'user_data_ttl': 300,      # User data TTL (5 minutes)
-            'credentials_ttl': 1800,   # Credentials TTL (30 minutes)
-            'preferences_ttl': 3600,   # Preferences TTL (1 hour)
-            'volatility_threshold': 2.0  # Volatility threshold for cache invalidation
+            'base_price_ttl': CacheConfig.BASE_PRICE_TTL,
+            'min_price_ttl': CacheConfig.MIN_PRICE_TTL,
+            'max_price_ttl': CacheConfig.MAX_PRICE_TTL,
+            'user_data_ttl': CacheConfig.USER_DATA_TTL,
+            'credentials_ttl': CacheConfig.CREDENTIALS_TTL,
+            'preferences_ttl': CacheConfig.PREFERENCES_TTL,
+            'volatility_threshold': CacheConfig.HIGH_VOLATILITY_THRESHOLD
         }
     
     def _create_cache_entry(self, data: Any, ttl_seconds: int, metadata: Optional[Dict] = None) -> Dict:
@@ -115,12 +125,12 @@ class SmartCache:
         
         if volatility > self.config['volatility_threshold']:
             # High volatility = shorter cache time
-            ttl_multiplier = max(0.2, 1.0 - (volatility / 10.0))
+            ttl_multiplier = max(CacheConfig.MIN_TTL_MULTIPLIER, 1.0 - (volatility / CacheConfig.VOLATILITY_DIVISOR))
             dynamic_ttl = int(base_ttl * ttl_multiplier)
             return max(self.config['min_price_ttl'], dynamic_ttl)
         else:
             # Low volatility = longer cache time
-            ttl_multiplier = min(3.0, 1.0 + (2.0 / max(volatility, 0.1)))
+            ttl_multiplier = min(CacheConfig.MAX_TTL_MULTIPLIER, 1.0 + (CacheConfig.STABILITY_MULTIPLIER / max(volatility, CacheConfig.MIN_VOLATILITY_THRESHOLD)))
             dynamic_ttl = int(base_ttl * ttl_multiplier)
             return min(self.config['max_price_ttl'], dynamic_ttl)
     
@@ -338,7 +348,7 @@ class SmartCache:
         with self.lock:
             total_hits = self.cache_stats['price_hits'] + self.cache_stats['user_data_hits']
             total_misses = self.cache_stats['price_misses'] + self.cache_stats['user_data_misses']
-            hit_rate = (total_hits / (total_hits + total_misses)) * 100 if (total_hits + total_misses) > 0 else 0
+            hit_rate = (total_hits / (total_hits + total_misses)) * CacheConfig.HIT_RATE_PERCENTAGE_MULTIPLIER if (total_hits + total_misses) > 0 else 0
             
             return {
                 'hit_rate': round(hit_rate, 2),
@@ -380,10 +390,10 @@ def start_cache_cleanup_worker():
         while True:
             try:
                 enhanced_cache.cleanup_expired()
-                time.sleep(60)  # Clean up every minute
+                time.sleep(CacheConfig.CLEANUP_INTERVAL)  # Clean up every minute
             except Exception as e:
                 logging.error(f"Cache cleanup worker error: {e}")
-                time.sleep(60)
+                time.sleep(CacheConfig.CLEANUP_INTERVAL)
     
     import threading
     cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)

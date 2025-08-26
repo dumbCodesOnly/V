@@ -9,6 +9,15 @@ from typing import Dict, Optional, Tuple, Any
 import json
 from datetime import datetime
 
+# Import configuration constants
+try:
+    from config import ErrorConfig
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config import ErrorConfig
+
 
 class ErrorCategory(Enum):
     """Main error categories for classification"""
@@ -202,7 +211,7 @@ class ErrorClassifier:
                     "Reduce the frequency of your trades",
                     "Contact support if this happens frequently"
                 ],
-                'retry_after': 60
+                'retry_after': ErrorConfig.API_KEY_RETRY_TIMEOUT
             },
             'api_server_error': {
                 'message': "The exchange is experiencing technical issues. This is temporary.",
@@ -211,7 +220,7 @@ class ErrorClassifier:
                     "Check the exchange status page",
                     "Use testnet mode while mainnet is unavailable"
                 ],
-                'retry_after': 300
+                'retry_after': ErrorConfig.RATE_LIMIT_RETRY_TIMEOUT
             },
             'api_timeout': {
                 'message': "Connection to the exchange timed out. Please check your internet connection.",
@@ -220,7 +229,7 @@ class ErrorClassifier:
                     "Try again in a few moments",
                     "Contact support if this persists"
                 ],
-                'retry_after': 30
+                'retry_after': ErrorConfig.NETWORK_RETRY_TIMEOUT
             },
             'insufficient_balance': {
                 'message': "You don't have enough balance to place this trade.",
@@ -302,7 +311,7 @@ class ErrorClassifier:
                     "Try using a different exchange if available",
                     "Contact support if this persists"
                 ],
-                'retry_after': 120
+                'retry_after': ErrorConfig.SERVER_ERROR_RETRY_TIMEOUT
             },
             'generic_error': {
                 'message': "An unexpected error occurred. Our team has been notified.",
