@@ -2774,13 +2774,8 @@
                 return await response.json();
             } catch (error) {
                 console.error('API call failed:', error);
-                // Use fallback alert instead of tg.showAlert for compatibility
-                if (typeof tg !== 'undefined' && tg.showAlert) {
-                    tg.showAlert(`Error: ${error.message}`);
-                } else {
-                    console.error(`Error: ${error.message}`);
-                }
-                return null;
+                // Re-throw the error so calling functions can handle it properly
+                throw error;
             }
         }
 
