@@ -1460,15 +1460,26 @@ def create_auto_trade_from_smc():
         
         trade_config.stop_loss_percent = min(sl_percent, 5.0)  # Cap at 5% for safety
         
-        # Set up take profit levels
+        # Set up take profit levels with proper allocation logic
         tp_levels = []
+        num_tp_levels = min(len(signal.take_profit_levels), 3)  # Max 3 TP levels
+        
+        # Define allocation strategies based on number of TP levels
+        allocation_strategies = {
+            1: [100],           # Single TP: close full position
+            2: [60, 40],        # Two TPs: 60% then 40%
+            3: [50, 30, 20]     # Three TPs: 50%, 30%, 20%
+        }
+        
+        allocations = allocation_strategies.get(num_tp_levels, [100])
+        
         for i, tp_price in enumerate(signal.take_profit_levels[:3]):
             if signal.direction == 'long':
                 tp_percent = ((tp_price - signal.entry_price) / signal.entry_price) * 100
             else:
                 tp_percent = ((signal.entry_price - tp_price) / signal.entry_price) * 100
             
-            allocation = [50, 30, 20][i] if i < 3 else 10  # Decreasing allocations
+            allocation = allocations[i] if i < len(allocations) else 10
             
             tp_levels.append({
                 'percentage': tp_percent,
