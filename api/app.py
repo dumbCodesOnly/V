@@ -1046,7 +1046,7 @@ def handle_balance_update_webhook(data):
 
 @app.route('/api/toggle-mock-trading', methods=['POST'])
 def toggle_mock_trading():
-    """Toggle mock trading mode for a user"""
+    """Toggle paper trading mode for a user (supports manual override)"""
     try:
         data = request.get_json()
         user_id = data.get('user_id')
@@ -1054,35 +1054,76 @@ def toggle_mock_trading():
         if not user_id:
             return jsonify({'success': False, 'message': 'User ID required'}), 400
         
-        # Get or create user credentials
+        try:
+            chat_id = int(user_id)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
+        
+        # Get user credentials (optional for paper trading)
         user_creds = UserCredentials.query.filter_by(
             telegram_user_id=str(user_id),
             is_active=True
         ).first()
         
-        if not user_creds:
-            # Create new user credentials record with mock trading enabled
-            user_creds = UserCredentials()
-            user_creds.telegram_user_id = str(user_id)
-            user_creds.testnet_mode = True  # Start with mock trading enabled
-            user_creds.is_active = True
-            db.session.add(user_creds)
-        else:
-            # Toggle the current testnet/mock mode
-            user_creds.testnet_mode = not user_creds.testnet_mode
-            user_creds.updated_at = datetime.utcnow()
+        # Check current paper trading status
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
-        db.session.commit()
+        # Determine current paper trading state
+        is_currently_paper = (manual_paper_mode or 
+                             not user_creds or 
+                             (user_creds and user_creds.testnet_mode) or 
+                             (user_creds and not user_creds.has_credentials()))
+        
+        # Toggle logic: prefer manual override if user has credentials
+        if user_creds and user_creds.has_credentials():
+            # User has credentials - use manual paper trading preference
+            new_manual_preference = not manual_paper_mode
+            user_paper_trading_preferences[chat_id] = new_manual_preference
+            
+            # Initialize paper balance if switching to paper mode
+            if new_manual_preference and chat_id not in user_paper_balances:
+                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+            
+            final_paper_mode = new_manual_preference
+            mode_reason = "Manual paper trading" if new_manual_preference else "Live trading with credentials"
+            
+        else:
+            # User doesn't have credentials - toggle testnet mode in database
+            if not user_creds:
+                # Create new user credentials record
+                user_creds = UserCredentials()
+                user_creds.telegram_user_id = str(user_id)
+                user_creds.testnet_mode = not is_currently_paper  # Toggle current state
+                user_creds.is_active = True
+                db.session.add(user_creds)
+            else:
+                # Toggle existing testnet mode
+                user_creds.testnet_mode = not user_creds.testnet_mode
+                user_creds.updated_at = datetime.utcnow()
+            
+            db.session.commit()
+            
+            # Initialize paper balance if switching to paper mode
+            if user_creds.testnet_mode and chat_id not in user_paper_balances:
+                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+            
+            final_paper_mode = user_creds.testnet_mode
+            mode_reason = "Testnet mode" if user_creds.testnet_mode else "Live mode (no credentials)"
         
         return jsonify({
             'success': True,
-            'mock_mode': user_creds.testnet_mode,
-            'message': f'Mock trading {"enabled" if user_creds.testnet_mode else "disabled"}'
+            'mock_mode': final_paper_mode,  # Legacy field name for compatibility
+            'paper_trading_active': final_paper_mode,
+            'manual_paper_mode': user_paper_trading_preferences.get(chat_id, False),
+            'mode_reason': mode_reason,
+            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if final_paper_mode else None,
+            'message': f'Paper trading {"enabled" if final_paper_mode else "disabled"}'
         })
         
     except Exception as e:
         logging.error(f"Error toggling mock trading: {e}")
-        db.session.rollback()
+        if 'db.session' in locals():
+            db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/mock-trading-status')
