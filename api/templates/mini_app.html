@@ -3210,9 +3210,13 @@
                                 <small class="text-muted">Take Profits:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${pos.tp_sl_calculations && pos.tp_sl_calculations.take_profits && pos.tp_sl_calculations.take_profits.length > 0 ? 
-                                        pos.tp_sl_calculations.take_profits.map(tp => 
-                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span><br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`
-                                        ).join('') : 
+                                        (() => {
+                                            let cumulativeAllocation = 0;
+                                            return pos.tp_sl_calculations.take_profits.map(tp => {
+                                                cumulativeAllocation += tp.allocation || 25;
+                                                return `<div><strong>TP${tp.level} ${tp.percentage?.toFixed(1)}%(${cumulativeAllocation}%):</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`;
+                                            }).join('');
+                                        })() : 
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
@@ -3481,11 +3485,21 @@
                                 <small class="text-muted">Take Profits:</small><br>
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.take_profits && trade.tp_sl_calculations.take_profits.length > 0 ? 
-                                        trade.tp_sl_calculations.take_profits.map(tp => 
-                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span><br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`
-                                        ).join('') : 
+                                        (() => {
+                                            let cumulativeAllocation = 0;
+                                            return trade.tp_sl_calculations.take_profits.map(tp => {
+                                                cumulativeAllocation += tp.allocation || 25;
+                                                return `<div><strong>TP${tp.level} ${tp.percentage?.toFixed(1)}%(${cumulativeAllocation}%):</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`;
+                                            }).join('');
+                                        })() : 
                                         trade.take_profits && trade.take_profits.length > 0 ? 
-                                            trade.take_profits.map((tp, idx) => `<div><strong>TP${idx+1}:</strong> ${tp.percentage || tp}% <br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`).join('') :
+                                            (() => {
+                                                let cumulativeAllocation = 0;
+                                                return trade.take_profits.map((tp, idx) => {
+                                                    cumulativeAllocation += tp.allocation || 25;
+                                                    return `<div><strong>TP${idx+1} ${tp.percentage || tp}%(${cumulativeAllocation}%):</strong></div>`;
+                                                }).join('');
+                                            })() :
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
