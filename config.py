@@ -43,7 +43,7 @@ class TimeConfig:
     USER_DATA_CACHE_TTL = 30  # seconds - how long to cache user data
     
     # Sync Intervals
-    EXCHANGE_SYNC_INTERVAL = 60    # seconds - background sync for Replit
+    EXCHANGE_SYNC_INTERVAL = 15    # seconds - background sync for Replit (faster for paper trading TP/SL)
     VERCEL_SYNC_COOLDOWN = 30      # seconds - cooldown between syncs for Vercel
     
     # UI Update Intervals

@@ -52,7 +52,7 @@ class ExchangeSyncService:
         """Synchronize all users with active positions"""
         with self.app.app_context():
             try:
-                # Get all users with credentials
+                # Get all users with credentials for real trading
                 users_with_creds = UserCredentials.query.filter_by(is_active=True).all()
                 
                 for user_creds in users_with_creds:
@@ -66,9 +66,110 @@ class ExchangeSyncService:
                     
                     if active_trades:
                         self._sync_user_positions(user_creds)
+                
+                # CRITICAL FIX: Also monitor paper trading positions
+                self._sync_paper_trading_positions()
                         
             except Exception as e:
                 logging.error(f"Error syncing all users: {e}")
+    
+    def _sync_paper_trading_positions(self):
+        """Monitor and process paper trading positions for TP/SL triggers"""
+        try:
+            # Import the necessary functions from app.py
+            from api.app import user_trade_configs, process_paper_trading_position, get_live_market_price
+            
+            # Get all paper trading positions
+            paper_positions_processed = 0
+            
+            for user_id, trades in user_trade_configs.items():
+                for trade_id, config in trades.items():
+                    # Debug logging for ALL active positions to diagnose the issue
+                    if config.status == "active":
+                        paper_mode_flag = getattr(config, 'paper_trading_mode', None)
+                        has_tp = hasattr(config, 'take_profits') and config.take_profits
+                        has_paper_tp = hasattr(config, 'paper_tp_levels')
+                        has_paper_sl = hasattr(config, 'paper_sl_data')
+                        order_id = getattr(config, 'exchange_order_id', '')
+                        is_paper_order = str(order_id).startswith('paper_')
+                        
+                        logging.info(f"DEBUGGING Position {trade_id}: paper_mode={paper_mode_flag}, "
+                                   f"has_tp={has_tp}, has_paper_tp={has_paper_tp}, has_paper_sl={has_paper_sl}, "
+                                   f"order_id='{order_id}', is_paper_order={is_paper_order}, "
+                                   f"symbol={config.symbol}, status={config.status}")
+                    
+                    # Process paper trading positions - detect and fix missing paper mode
+                    # Check if this position should be in paper mode (user is in paper mode)
+                    from api.app import user_paper_trading_preferences, user_trade_configs
+                    
+                    user_is_paper_mode = user_paper_trading_preferences.get(int(user_id), True)  # Default paper mode
+                    
+                    should_monitor = (
+                        config.status == "active" and 
+                        hasattr(config, 'take_profits') and 
+                        config.take_profits and
+                        (
+                            getattr(config, 'paper_trading_mode', False) or  # Explicit paper flag
+                            hasattr(config, 'paper_tp_levels') or            # Has paper TP data  
+                            hasattr(config, 'paper_sl_data') or              # Has paper SL data
+                            str(getattr(config, 'exchange_order_id', '')).startswith('paper_') or  # Paper order ID
+                            user_is_paper_mode  # CRITICAL FIX: User is in paper mode, so position should be paper trading
+                        )
+                    )
+                        
+                    if should_monitor:
+                        try:
+                            # Ensure paper_trading_mode flag is set for monitoring
+                            if not getattr(config, 'paper_trading_mode', False):
+                                config.paper_trading_mode = True
+                                logging.info(f"FIXED: Set paper_trading_mode=True for position {trade_id}")
+                            
+                            # CRITICAL FIX: Initialize missing paper trading monitoring structures
+                            if not hasattr(config, 'paper_tp_levels') and config.take_profits:
+                                from api.app import calculate_tp_sl_prices_and_amounts
+                                import uuid
+                                
+                                tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+                                if tp_sl_data.get('take_profits'):
+                                    config.paper_tp_levels = []
+                                    for i, tp_data in enumerate(tp_sl_data['take_profits']):
+                                        mock_order_id = f"paper_tp_{i+1}_{uuid.uuid4().hex[:6]}"
+                                        config.paper_tp_levels.append({
+                                            'order_id': mock_order_id,
+                                            'level': i + 1,
+                                            'price': tp_data['price'],
+                                            'percentage': tp_data['percentage'],
+                                            'allocation': tp_data['allocation'],
+                                            'triggered': False
+                                        })
+                                    logging.info(f"FIXED: Initialized {len(config.paper_tp_levels)} paper TP levels for position {trade_id}")
+                                
+                                if tp_sl_data.get('stop_loss') and config.stop_loss_percent > 0:
+                                    sl_order_id = f"paper_sl_{uuid.uuid4().hex[:6]}"
+                                    config.paper_sl_data = {
+                                        'order_id': sl_order_id,
+                                        'price': tp_sl_data['stop_loss']['price'],
+                                        'percentage': config.stop_loss_percent,
+                                        'triggered': False
+                                    }
+                                    logging.info(f"FIXED: Initialized paper SL data for position {trade_id}")
+                            
+                            # Get current market price for the symbol
+                            current_price = get_live_market_price(config.symbol)
+                            if current_price and current_price > 0:
+                                config.current_price = current_price
+                                
+                                # Process paper trading position for TP/SL triggers
+                                process_paper_trading_position(user_id, trade_id, config)
+                                paper_positions_processed += 1
+                        except Exception as position_error:
+                            logging.error(f"Error processing paper position {trade_id}: {position_error}")
+            
+            if paper_positions_processed > 0:
+                logging.info(f"PAPER TRADING MONITORING: Processed {paper_positions_processed} paper trading positions")
+                
+        except Exception as e:
+            logging.error(f"Error syncing paper trading positions: {e}")
     
     def _sync_user_positions(self, user_creds: UserCredentials):
         """Synchronize positions for a specific user"""
