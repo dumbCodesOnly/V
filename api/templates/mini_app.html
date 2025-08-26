@@ -2771,14 +2771,14 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    console.error(`HTTP error! status: ${response.status} for ${endpoint}`);
+                    return null; // Return null instead of throwing for HTTP errors
                 }
                 
                 return await response.json();
             } catch (error) {
                 console.error('API call failed:', error);
-                // Re-throw the error so calling functions can handle it properly
-                throw error;
+                return null; // Return null instead of throwing for network errors
             }
         }
 
@@ -3615,14 +3615,24 @@
         }
 
         async function loadPortfolio() {
-            // Show loading state for all portfolio sections
-            showTabLoading('portfolio-summary', 'Loading account balance...');
-            showTabLoading('portfolio-positions', 'Loading active positions...');
-            showInlineLoading('closed-positions-container', 'Loading trade history...');
-            
-            const data = await apiCall(`/api/margin-data?user_id=${getUserId() || '123456789'}`);
-            const tradesData = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
-            if (!data) return;
+            try {
+                // Show loading state for all portfolio sections
+                showTabLoading('portfolio-summary', 'Loading account balance...');
+                showTabLoading('portfolio-positions', 'Loading active positions...');
+                showInlineLoading('closed-positions-container', 'Loading trade history...');
+                
+                const data = await apiCall(`/api/margin-data?user_id=${getUserId() || '123456789'}`);
+                if (!data) {
+                    hideTabLoading('portfolio-summary', 'Unable to load account data');
+                    hideTabLoading('portfolio-positions', 'Unable to load positions');
+                    hideInlineLoading('closed-positions-container', 'Unable to load trade history');
+                    return;
+                }
+                
+                const tradesData = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
+                if (!tradesData) {
+                    hideInlineLoading('closed-positions-container', 'Unable to load trade history');
+                }
             
             const summary = data.summary || {};
             
@@ -3913,8 +3923,19 @@
             
             container.innerHTML = content;
             
+            // Hide loading states successfully
+            hideTabLoading('portfolio-summary');
+            hideTabLoading('portfolio-positions');
+            hideInlineLoading('closed-positions-container');
+            
             // Note: Removed auto-expansion behavior to keep sections collapsed by default
             // Users can manually expand sections as needed
+            } catch (error) {
+                console.error('Error in loadPortfolio:', error);
+                hideTabLoading('portfolio-summary', 'Failed to load portfolio data');
+                hideTabLoading('portfolio-positions', 'Failed to load positions');
+                hideInlineLoading('closed-positions-container', 'Failed to load trade history');
+            }
         }
 
         // Trade configuration functions
@@ -5053,6 +5074,40 @@
             `;
         }
         
+        // Hide tab loading state with error fallback
+        function hideTabLoading(containerId, errorMessage = null) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            if (errorMessage) {
+                container.innerHTML = `
+                    <div class="text-center text-muted p-3">
+                        <i data-feather="alert-circle" class="mb-2"></i>
+                        <div>${errorMessage}</div>
+                    </div>
+                `;
+                feather.replace();
+            } else {
+                container.innerHTML = '';
+            }
+        }
+        
+        // Hide inline loading state with error fallback  
+        function hideInlineLoading(containerId, errorMessage = null) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            if (errorMessage) {
+                container.innerHTML = `
+                    <div class="text-center text-muted p-2">
+                        <small>${errorMessage}</small>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '';
+            }
+        }
+        
         // Skeleton loading for lists
         function showSkeletonLoading(containerId, itemCount = 3) {
             const container = document.getElementById(containerId);
@@ -5295,32 +5350,28 @@
             // Hide hamburger menu
             document.getElementById('hamburger-dropdown').classList.remove('show');
             
-            try {
-                const response = await apiCall('/api/toggle-paper-trading', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        user_id: getUserId()
-                    })
-                });
+            const response = await apiCall('/api/toggle-paper-trading', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: getUserId()
+                })
+            });
+            
+            if (response && response.success) {
+                // Update the UI text and cached status
+                const paperText = document.getElementById('paper-trading-text');
+                paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
+                window.currentPaperTradingStatus = response.paper_trading_active;
                 
-                if (response && response.success) {
-                    // Update the UI text and cached status
-                    const paperText = document.getElementById('paper-trading-text');
-                    paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
-                    window.currentPaperTradingStatus = response.paper_trading_active;
-                    
-                    // Show success notification
-                    showNotification('info', `Paper trading ${response.paper_trading_active ? 'enabled' : 'disabled'}`);
-                    
-                    // Refresh the portfolio and active positions since the mode changed
-                    await loadPositions();
-                    await loadPortfolio();
-                } else {
-                    showNotification('error', response?.message || 'Failed to toggle paper trading mode');
-                }
-            } catch (error) {
-                console.error('Error toggling paper trading:', error);
-                showNotification('error', 'Failed to toggle paper trading mode');
+                // Show success notification
+                showNotification('info', `Paper trading ${response.paper_trading_active ? 'enabled' : 'disabled'}`);
+                
+                // Refresh the portfolio and active positions since the mode changed
+                await loadPositions();
+                await loadPortfolio();
+            } else {
+                console.error('Error toggling paper trading:', response);
+                showNotification('error', response?.message || 'Failed to toggle paper trading mode');
             }
         }
 
