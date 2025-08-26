@@ -287,7 +287,6 @@ user_selected_trade = {}  # {user_id: trade_id}
 
 # Paper trading balance tracking
 user_paper_balances = {}  # {user_id: balance_amount}
-PAPER_TRADING_INITIAL_BALANCE = 10000.0  # $10,000 starting balance for paper trading
 
 # Manual paper trading mode preferences
 user_paper_trading_preferences = {}  # {user_id: True/False}
@@ -1071,8 +1070,8 @@ def toggle_paper_trading():
         
         # Initialize paper balance if switching to paper mode
         if new_paper_mode and chat_id not in user_paper_balances:
-            user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
-            logging.info(f"Initialized paper balance for user {chat_id}: ${PAPER_TRADING_INITIAL_BALANCE:,.2f}")
+            user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+            logging.info(f"Initialized paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
         
         # Log the mode change
         mode_text = "ENABLED" if new_paper_mode else "DISABLED"
@@ -1082,7 +1081,7 @@ def toggle_paper_trading():
         response_data = {
             'success': True,
             'paper_trading_active': new_paper_mode,
-            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if new_paper_mode else None,
+            'paper_balance': user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE) if new_paper_mode else None,
             'message': f'Paper trading {"enabled" if new_paper_mode else "disabled"}'
         }
         
@@ -1138,7 +1137,7 @@ def get_paper_trading_status():
             'paper_trading_active': is_paper_mode,
             'manual_paper_mode': manual_paper_mode,
             'mode_reason': mode_reason,
-            'paper_balance': user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE) if is_paper_mode else None,
+            'paper_balance': user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE) if is_paper_mode else None,
             'testnet_mode': user_creds.testnet_mode if user_creds else False,
             'has_credentials': user_creds.has_credentials() if user_creds else False,
             'can_toggle_manual': user_creds and user_creds.has_credentials() and not user_creds.testnet_mode,
@@ -2273,8 +2272,8 @@ def execute_trade():
         # Initialize paper trading balance if needed
         if is_paper_mode:
             if chat_id not in user_paper_balances:
-                user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
-                logging.info(f"Paper Trading: Initialized balance of ${PAPER_TRADING_INITIAL_BALANCE:,.2f} for user {chat_id}")
+                user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+                logging.info(f"Paper Trading: Initialized balance of ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f} for user {chat_id}")
             
             # Check if user has sufficient paper balance
             if user_paper_balances[chat_id] < config.amount:
@@ -3020,11 +3019,11 @@ def get_paper_balance():
     
     # Initialize balance if not exists
     if chat_id not in user_paper_balances:
-        user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+        user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
     
     return jsonify({
         'paper_balance': user_paper_balances[chat_id],
-        'initial_balance': PAPER_TRADING_INITIAL_BALANCE,
+        'initial_balance': TradingConfig.DEFAULT_TRIAL_BALANCE,
         'currency': 'USDT',
         'timestamp': get_iran_time().isoformat()
     })
@@ -3040,12 +3039,12 @@ def reset_paper_balance():
         return jsonify({'error': 'Invalid user ID format'}), 400
     
     # Reset to initial balance
-    user_paper_balances[chat_id] = PAPER_TRADING_INITIAL_BALANCE
+    user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
     
     return jsonify({
         'success': True,
         'paper_balance': user_paper_balances[chat_id],
-        'message': f'Paper trading balance reset to ${PAPER_TRADING_INITIAL_BALANCE:,.2f}',
+        'message': f'Paper trading balance reset to ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}',
         'timestamp': get_iran_time().isoformat()
     })
 
@@ -4257,7 +4256,7 @@ def get_margin_summary(chat_id):
     user_trades = user_trade_configs.get(chat_id, {})
     
     # Account totals - use paper trading balance
-    initial_balance = user_paper_balances.get(chat_id, PAPER_TRADING_INITIAL_BALANCE)
+    initial_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
     total_position_margin = 0.0
     total_unrealized_pnl = 0.0
     total_realized_pnl = 0.0

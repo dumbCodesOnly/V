@@ -130,6 +130,55 @@ class SecurityConfig:
 
 
 # =============================================================================
+# CIRCUIT BREAKER CONFIGURATION
+# =============================================================================
+class CircuitBreakerConfig:
+    # Default Circuit Breaker Settings
+    DEFAULT_FAILURE_THRESHOLD = 5     # Number of failures before opening circuit
+    DEFAULT_RECOVERY_TIMEOUT = 60     # Seconds to wait in OPEN state before trying HALF_OPEN
+    DEFAULT_SUCCESS_THRESHOLD = 2     # Successful calls needed to close circuit from half-open
+    
+    # API-Specific Circuit Breaker Settings
+    BINANCE_FAILURE_THRESHOLD = 3     # More sensitive for critical price data
+    BINANCE_RECOVERY_TIMEOUT = 30     # Faster recovery for price APIs
+    
+    TOOBIT_FAILURE_THRESHOLD = 3      # More sensitive for exchange operations
+    TOOBIT_RECOVERY_TIMEOUT = 60      # Longer recovery for exchange APIs
+    
+    COINGECKO_FAILURE_THRESHOLD = 4   # Less sensitive for fallback APIs
+    COINGECKO_RECOVERY_TIMEOUT = 45   # Moderate recovery time
+    
+    CRYPTOCOMPARE_FAILURE_THRESHOLD = 4  # Less sensitive for fallback APIs
+    CRYPTOCOMPARE_RECOVERY_TIMEOUT = 45  # Moderate recovery time
+
+
+# =============================================================================
+# SMC ANALYSIS CONFIGURATION
+# =============================================================================
+class SMCConfig:
+    # Market Structure Analysis
+    MIN_CANDLESTICKS_FOR_STRUCTURE = 20  # Minimum candles needed for market structure analysis
+    MIN_SWING_POINTS = 2                 # Minimum swing highs/lows needed for consolidation check
+    
+    # Swing Point Detection
+    DEFAULT_LOOKBACK_PERIOD = 5          # Default lookback period for swing highs/lows
+    CONTINUATION_LOOKAHEAD = 4           # Candles to look ahead for continuation strength
+    
+    # Fair Value Gap (FVG) Detection
+    MIN_CANDLESTICKS_FOR_FVG = 3         # Minimum candles needed for FVG detection
+    
+    # Liquidity Pool Analysis
+    RECENT_SWING_LOOKBACK = 5            # Number of recent swing points to analyze for liquidity
+    
+    # Volume and Range Analysis
+    VOLUME_RANGE_LOOKBACK = 10           # Candles to look back for volume/range calculations
+    AVG_RANGE_PERIOD = 20                # Period for calculating average price range
+    
+    # Trend Analysis
+    MIN_PRICES_FOR_TREND = 2             # Minimum price points needed for trend analysis
+
+
+# =============================================================================
 # ENVIRONMENT-SPECIFIC SETTINGS
 # =============================================================================
 class Environment:

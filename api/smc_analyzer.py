@@ -11,6 +11,16 @@ import requests
 from dataclasses import dataclass
 from enum import Enum
 
+# Import configuration constants
+try:
+    from config import SMCConfig
+except ImportError:
+    # Fallback if running from different directory
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config import SMCConfig
+
 class MarketStructure(Enum):
     BULLISH_BOS = "bullish_break_of_structure"
     BEARISH_BOS = "bearish_break_of_structure"
@@ -114,14 +124,14 @@ class SMCAnalyzer:
     
     def detect_market_structure(self, candlesticks: List[Dict]) -> MarketStructure:
         """Detect current market structure using SMC principles"""
-        if len(candlesticks) < 20:
+        if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_STRUCTURE:
             return MarketStructure.CONSOLIDATION
         
         # Get recent swing highs and lows
         swing_highs = self._find_swing_highs(candlesticks)
         swing_lows = self._find_swing_lows(candlesticks)
         
-        if len(swing_highs) < 2 or len(swing_lows) < 2:
+        if len(swing_highs) < SMCConfig.MIN_SWING_POINTS or len(swing_lows) < SMCConfig.MIN_SWING_POINTS:
             return MarketStructure.CONSOLIDATION
         
         # Analyze the pattern of highs and lows
@@ -172,7 +182,7 @@ class SMCAnalyzer:
                 
                 # Check if next few candles continue the move
                 continuation_strength = 0
-                for j in range(i+1, min(i+4, len(candlesticks))):
+                for j in range(i+1, min(i+SMCConfig.CONTINUATION_LOOKAHEAD, len(candlesticks))):
                     if candlesticks[j]['close'] > current['high']:
                         continuation_strength += 1
                 
@@ -191,7 +201,7 @@ class SMCAnalyzer:
                   current['high'] - current['low'] > (prev['close'] - current['open']) * 2):
                 
                 continuation_strength = 0
-                for j in range(i+1, min(i+4, len(candlesticks))):
+                for j in range(i+1, min(i+SMCConfig.CONTINUATION_LOOKAHEAD, len(candlesticks))):
                     if candlesticks[j]['close'] < current['low']:
                         continuation_strength += 1
                 
@@ -211,7 +221,7 @@ class SMCAnalyzer:
         """Identify Fair Value Gaps (FVGs) - inefficient price movements"""
         fvgs = []
         
-        if len(candlesticks) < 3:
+        if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_FVG:
             return fvgs
         
         for i in range(1, len(candlesticks) - 1):
@@ -254,7 +264,7 @@ class SMCAnalyzer:
         swing_lows = self._find_swing_lows(candlesticks)
         
         # Recent highs likely have sell-side liquidity above them
-        for high in swing_highs[-5:]:
+        for high in swing_highs[-SMCConfig.RECENT_SWING_LOOKBACK:]:
             pool = LiquidityPool(
                 price=high['high'],
                 type='sell_side',
@@ -505,7 +515,7 @@ class SMCAnalyzer:
             logging.error(f"Error generating SMC signal for {symbol}: {e}")
             return None
     
-    def _find_swing_highs(self, candlesticks: List[Dict], lookback: int = 5) -> List[Dict]:
+    def _find_swing_highs(self, candlesticks: List[Dict], lookback: int = SMCConfig.DEFAULT_LOOKBACK_PERIOD) -> List[Dict]:
         """Find swing highs in price data"""
         swing_highs = []
         
@@ -529,7 +539,7 @@ class SMCAnalyzer:
         
         return swing_highs
     
-    def _find_swing_lows(self, candlesticks: List[Dict], lookback: int = 5) -> List[Dict]:
+    def _find_swing_lows(self, candlesticks: List[Dict], lookback: int = SMCConfig.DEFAULT_LOOKBACK_PERIOD) -> List[Dict]:
         """Find swing lows in price data"""
         swing_lows = []
         
@@ -559,11 +569,11 @@ class SMCAnalyzer:
             return 1.0
         
         current = candlesticks[index]
-        volume_strength = current['volume'] / max([c['volume'] for c in candlesticks[max(0, index-10):index+10]], default=1)
+        volume_strength = current['volume'] / max([c['volume'] for c in candlesticks[max(0, index-SMCConfig.VOLUME_RANGE_LOOKBACK):index+SMCConfig.VOLUME_RANGE_LOOKBACK]], default=1)
         
         # Price range strength
         price_range = current['high'] - current['low']
-        avg_range = sum([c['high'] - c['low'] for c in candlesticks[max(0, index-10):index+10]]) / min(20, len(candlesticks))
+        avg_range = sum([c['high'] - c['low'] for c in candlesticks[max(0, index-SMCConfig.VOLUME_RANGE_LOOKBACK):index+SMCConfig.VOLUME_RANGE_LOOKBACK]]) / min(SMCConfig.AVG_RANGE_PERIOD, len(candlesticks))
         range_strength = price_range / avg_range if avg_range > 0 else 1.0
         
         return min(volume_strength * range_strength, 3.0)
@@ -575,7 +585,7 @@ class SMCAnalyzer:
         
         recent_prices = [point[price_key] for point in swing_points[-3:]]
         
-        if len(recent_prices) >= 2:
+        if len(recent_prices) >= SMCConfig.MIN_PRICES_FOR_TREND:
             if all(recent_prices[i] > recent_prices[i-1] for i in range(1, len(recent_prices))):
                 return 'up'
             elif all(recent_prices[i] < recent_prices[i-1] for i in range(1, len(recent_prices))):

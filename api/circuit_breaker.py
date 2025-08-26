@@ -18,6 +18,12 @@ from typing import Callable, Any, Optional, Dict
 import logging
 from datetime import datetime, timedelta
 
+# Import configuration constants for circuit breaker defaults
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import CircuitBreakerConfig
+
 class CircuitState(Enum):
     CLOSED = "closed"
     OPEN = "open"
@@ -35,10 +41,10 @@ class CircuitBreaker:
     def __init__(
         self,
         name: str,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 60,
+        failure_threshold: int = CircuitBreakerConfig.DEFAULT_FAILURE_THRESHOLD,
+        recovery_timeout: int = CircuitBreakerConfig.DEFAULT_RECOVERY_TIMEOUT,
         expected_exception: tuple = (Exception,),
-        success_threshold: int = 2
+        success_threshold: int = CircuitBreakerConfig.DEFAULT_SUCCESS_THRESHOLD
     ):
         """
         Initialize circuit breaker
@@ -234,10 +240,10 @@ class CircuitBreakerManager:
     def get_breaker(
         self,
         name: str,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 60,
+        failure_threshold: int = CircuitBreakerConfig.DEFAULT_FAILURE_THRESHOLD,
+        recovery_timeout: int = CircuitBreakerConfig.DEFAULT_RECOVERY_TIMEOUT,
         expected_exception: tuple = (Exception,),
-        success_threshold: int = 2
+        success_threshold: int = CircuitBreakerConfig.DEFAULT_SUCCESS_THRESHOLD
     ) -> CircuitBreaker:
         """Get or create a circuit breaker for a service"""
         with self._lock:
@@ -280,10 +286,10 @@ circuit_manager = CircuitBreakerManager()
 
 def with_circuit_breaker(
     name: str,
-    failure_threshold: int = 5,
-    recovery_timeout: int = 60,
+    failure_threshold: int = CircuitBreakerConfig.DEFAULT_FAILURE_THRESHOLD,
+    recovery_timeout: int = CircuitBreakerConfig.DEFAULT_RECOVERY_TIMEOUT,
     expected_exception: tuple = (Exception,),
-    success_threshold: int = 2
+    success_threshold: int = CircuitBreakerConfig.DEFAULT_SUCCESS_THRESHOLD
 ):
     """
     Decorator to add circuit breaker protection to functions
