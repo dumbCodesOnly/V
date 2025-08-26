@@ -3144,6 +3144,11 @@
             // Show loading state
             showTabLoading('positions-list', 'Loading positions...');
             
+            // Ensure paper trading status is loaded before loading positions
+            if (window.currentPaperTradingStatus === undefined) {
+                await loadPaperTradingStatus();
+            }
+            
             const data = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
             if (!data) return;
             
@@ -3621,9 +3626,15 @@
             
             const summary = data.summary || {};
             
-            // Check paper trading status to determine the mode
-            const paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
-            const isPaperMode = paperTradingStatus && paperTradingStatus.paper_trading_active;
+            // Use cached paper trading status if available, otherwise fetch it
+            let isPaperMode;
+            if (window.currentPaperTradingStatus !== undefined) {
+                isPaperMode = window.currentPaperTradingStatus;
+            } else {
+                const paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
+                isPaperMode = paperTradingStatus && paperTradingStatus.paper_trading_active;
+                window.currentPaperTradingStatus = isPaperMode;
+            }
             const isLiveMode = !isPaperMode;
             
             if (isLiveMode) {
@@ -4737,9 +4748,11 @@
         // Tab switching managed by handleTabSwitch function below
 
         // Initialize app
-        document.addEventListener('DOMContentLoaded', function() {
-            loadPaperTradingStatus(); // Load paper trading status first
-            loadPositions(); // Start with positions tab
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Load paper trading status first and wait for it to complete
+            await loadPaperTradingStatus();
+            // Only then load positions to avoid race condition
+            await loadPositions(); 
         });
 
         // Auto-refresh for portfolio (configured interval) - positions use live price updates
@@ -4751,16 +4764,24 @@
 
         async function loadPaperTradingStatus() {
             try {
+                // Set loading state first
+                const paperText = document.getElementById('paper-trading-text');
+                paperText.textContent = 'Paper Trading: Loading...';
+                
                 const response = await apiCall(`/api/paper-trading-status?user_id=${getUserId()}`);
                 if (response.paper_trading_active !== undefined) {
-                    const paperText = document.getElementById('paper-trading-text');
                     paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
+                    // Store the status for use in other functions
+                    window.currentPaperTradingStatus = response.paper_trading_active;
+                } else {
+                    throw new Error('Invalid response format');
                 }
             } catch (error) {
                 console.error('Error loading paper trading status:', error);
                 // Default to paper trading on for safety
                 const paperText = document.getElementById('paper-trading-text');
                 paperText.textContent = 'Paper Trading: On';
+                window.currentPaperTradingStatus = true;
             }
         }
 
@@ -5283,9 +5304,10 @@
                 });
                 
                 if (response && response.success) {
-                    // Update the UI text
+                    // Update the UI text and cached status
                     const paperText = document.getElementById('paper-trading-text');
                     paperText.textContent = response.paper_trading_active ? 'Paper Trading: On' : 'Paper Trading: Off';
+                    window.currentPaperTradingStatus = response.paper_trading_active;
                     
                     // Show success notification
                     showNotification('info', `Paper trading ${response.paper_trading_active ? 'enabled' : 'disabled'}`);
