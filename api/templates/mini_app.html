@@ -5134,6 +5134,7 @@
             document.getElementById('hamburger-dropdown').classList.remove('show');
             
             try {
+                console.log('Toggling mock trading for user:', getUserId());
                 const response = await apiCall('/api/toggle-mock-trading', {
                     method: 'POST',
                     body: JSON.stringify({
@@ -5141,7 +5142,9 @@
                     })
                 });
                 
-                if (response.success) {
+                console.log('Toggle response:', response);
+                
+                if (response && response.success) {
                     // Update the UI text
                     const mockText = document.getElementById('mock-trading-text');
                     mockText.textContent = response.mock_mode ? 'Mock Trading: On' : 'Mock Trading: Off';
@@ -5153,11 +5156,13 @@
                     await loadActivePositions();
                     await loadPortfolio();
                 } else {
-                    showNotification('error', response.message || 'Failed to toggle mock trading mode');
+                    console.error('API response error:', response);
+                    showNotification('error', response?.message || 'Failed to toggle mock trading mode');
                 }
             } catch (error) {
                 console.error('Error toggling mock trading:', error);
-                showNotification('error', 'Failed to toggle mock trading mode');
+                console.error('Error details:', error.message, error.stack);
+                showNotification('error', `Failed to toggle mock trading mode: ${error.message || 'Unknown error'}`);
             }
         }
 
