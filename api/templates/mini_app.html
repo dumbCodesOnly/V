@@ -3062,6 +3062,31 @@
                 floatingPnlElement.style.color = positionData.unrealized_pnl >= 0 ? '#28a745' : '#dc3545';
             }
             
+            // Update realized P&L (detailed position view)
+            const tradeCard = document.querySelector(`[data-trade-id="${tradeId}"]`);
+            if (tradeCard && positionData.realized_pnl !== undefined) {
+                // Find elements by traversing through small labels looking for "Realized P&L:"
+                const smallElements = tradeCard.querySelectorAll('small.text-muted');
+                smallElements.forEach(smallEl => {
+                    if (smallEl.textContent && smallEl.textContent.includes('Realized P&L:')) {
+                        // Find the next sibling strong element
+                        let nextEl = smallEl.nextSibling;
+                        while (nextEl) {
+                            if (nextEl.nodeName === 'BR') {
+                                nextEl = nextEl.nextSibling;
+                                continue;
+                            }
+                            if (nextEl.nodeName === 'STRONG') {
+                                nextEl.textContent = `$${positionData.realized_pnl.toFixed(2)}`;
+                                nextEl.style.color = positionData.realized_pnl >= 0 ? '#28a745' : '#dc3545';
+                                break;
+                            }
+                            nextEl = nextEl.nextSibling;
+                        }
+                    }
+                });
+            }
+            
             // Update total P&L (header view) - use total_pnl from API response
             const totalPnlElement = document.querySelector(`[data-trade-id="${tradeId}"] .total-pnl`);
             if (totalPnlElement && positionData.total_pnl !== undefined) {

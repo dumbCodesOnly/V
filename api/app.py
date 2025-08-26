@@ -4037,8 +4037,12 @@ def update_all_positions_with_live_data(user_id=None):
                                     config.amount = remaining_amount
                                     config.unrealized_pnl -= partial_pnl
                                     
-                                    # Remove triggered TP from list
-                                    config.take_profits.pop(i)
+                                    # Remove triggered TP from list safely
+                                    if i < len(config.take_profits):
+                                        config.take_profits.pop(i)
+                                    else:
+                                        # TP already removed or index out of bounds
+                                        logging.warning(f"TP index {i} out of bounds for {config.symbol}, skipping removal")
                                     
                                     # Save partial closure to database
                                     save_trade_to_db(user_id, config)
@@ -5736,8 +5740,12 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         # Mark TP as triggered
         tp_level['triggered'] = True
         
-        # Remove triggered TP from list and reindex remaining TPs
-        config.take_profits.pop(tp_index)
+        # Remove triggered TP from list safely
+        if tp_index < len(config.take_profits):
+            config.take_profits.pop(tp_index)
+        else:
+            # TP already removed, find and remove by level instead
+            config.take_profits = [tp for tp in config.take_profits if not (isinstance(tp, dict) and tp.get('level') == tp_level.get('level'))]
         
         save_trade_to_db(user_id, config)
         
