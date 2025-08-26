@@ -1636,9 +1636,19 @@ def live_position_update():
             'update_type': 'live_prices'
         })
     
-    # Update all positions with live data from Toobit exchange
-    # Use optimized lightweight monitoring - only checks break-even positions  
-    update_positions_lightweight()
+    # Check if user has paper trading positions that need full monitoring for TP/SL triggers
+    has_paper_trades = False
+    for trade_id, config in user_trade_configs.get(chat_id, {}).items():
+        if config.status == "active" and getattr(config, 'paper_trading_mode', False):
+            has_paper_trades = True
+            break
+    
+    if has_paper_trades:
+        # Run full position updates for paper trading (includes TP/SL monitoring)
+        update_all_positions_with_live_data(chat_id)
+    else:
+        # Use optimized lightweight monitoring - only checks break-even positions  
+        update_positions_lightweight()
     
     # Return only essential price and P&L data for fast updates
     live_data = {}
