@@ -9,8 +9,9 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
-**Latest Updates (August 25, 2025):**
+**Latest Updates (August 26, 2025):**
 - **Migration Completed**: Successfully migrated from Replit Agent to standard Replit environment with full functionality
+- **Enhanced TP Allocation Display**: Added partial TP allocation percentage display across SMC, position, and positions tabs with real-time summary showing total allocation and remaining percentage
 - **Auto-trades Visibility Fix**: Fixed critical issue where auto-trades weren't appearing in trading tab due to user ID type mismatch (string vs integer keys)
 - **Break-even Monitoring Fix**: Fixed issue where break-even at TP1 settings weren't being properly monitored by changing storage format from display names to internal codes
 

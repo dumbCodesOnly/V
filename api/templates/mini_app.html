@@ -2618,10 +2618,13 @@
                                 <span class="input-group-text">TP1 %</span>
                                 <input type="number" class="form-control tp-percent" data-level="1" placeholder="5" step="0.1">
                                 <span class="input-group-text">Size %</span>
-                                <input type="number" class="form-control tp-allocation" data-level="1" placeholder="30" step="1">
+                                <input type="number" class="form-control tp-allocation" data-level="1" placeholder="30" step="1" oninput="updateAllocationSummary()">
                             </div>
                         </div>
                         <button class="btn btn-outline-primary btn-sm" onclick="addTpLevel()">+ Add TP Level</button>
+                        <div class="mt-2">
+                            <small class="text-muted">Total Position Allocation: <span id="total-allocation">0</span>% (remaining: <span id="remaining-allocation">100</span>%)</small>
+                        </div>
                     </div>
 
                     <!-- Stop Loss -->
@@ -3208,7 +3211,7 @@
                                 <div style="font-size: 0.85rem;">
                                     ${pos.tp_sl_calculations && pos.tp_sl_calculations.take_profits && pos.tp_sl_calculations.take_profits.length > 0 ? 
                                         pos.tp_sl_calculations.take_profits.map(tp => 
-                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
+                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span><br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`
                                         ).join('') : 
                                         '<strong>Not set</strong>'}
                                 </div>
@@ -3479,10 +3482,10 @@
                                 <div style="font-size: 0.85rem;">
                                     ${trade.tp_sl_calculations && trade.tp_sl_calculations.take_profits && trade.tp_sl_calculations.take_profits.length > 0 ? 
                                         trade.tp_sl_calculations.take_profits.map(tp => 
-                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span></div>`
+                                            `<div><strong>TP${tp.level}:</strong> $${tp.price.toFixed(4)} <span style="color: #28a745;">(+$${tp.profit_amount.toFixed(2)})</span><br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`
                                         ).join('') : 
                                         trade.take_profits && trade.take_profits.length > 0 ? 
-                                            trade.take_profits.map((tp, idx) => `<div><strong>TP${idx+1}:</strong> ${tp.percentage || tp}%</div>`).join('') :
+                                            trade.take_profits.map((tp, idx) => `<div><strong>TP${idx+1}:</strong> ${tp.percentage || tp}% <br><small class="text-muted">${tp.allocation || '25'}% allocation</small></div>`).join('') :
                                         '<strong>Not set</strong>'}
                                 </div>
                             </div>
@@ -4382,10 +4385,29 @@
                 <span class="input-group-text">TP${level} %</span>
                 <input type="number" class="form-control tp-percent" data-level="${level}" placeholder="5" step="0.1">
                 <span class="input-group-text">Size %</span>
-                <input type="number" class="form-control tp-allocation" data-level="${level}" placeholder="30" step="1">
-                <button class="btn btn-outline-danger" onclick="this.parentElement.remove()">×</button>
+                <input type="number" class="form-control tp-allocation" data-level="${level}" placeholder="30" step="1" oninput="updateAllocationSummary()">
+                <button class="btn btn-outline-danger" onclick="this.parentElement.remove(); updateAllocationSummary()">×</button>
             `;
             container.appendChild(tpDiv);
+            updateAllocationSummary();
+        }
+
+        function updateAllocationSummary() {
+            let totalAllocation = 0;
+            document.querySelectorAll('.tp-allocation').forEach(input => {
+                const allocation = parseFloat(input.value) || 0;
+                totalAllocation += allocation;
+            });
+            
+            const totalElement = document.getElementById('total-allocation');
+            const remainingElement = document.getElementById('remaining-allocation');
+            
+            if (totalElement) totalElement.textContent = totalAllocation;
+            if (remainingElement) {
+                const remaining = 100 - totalAllocation;
+                remainingElement.textContent = remaining;
+                remainingElement.style.color = remaining < 0 ? '#dc3545' : remaining === 0 ? '#28a745' : '#6c757d';
+            }
         }
 
         async function saveTrade() {
