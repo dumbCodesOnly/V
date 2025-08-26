@@ -3575,9 +3575,10 @@
             
             const summary = data.summary || {};
             
-            // Check if user is in live trading mode and has credentials
-            const credsData = await apiCall(`/api/user-credentials?user_id=${getUserId() || '123456789'}`);
-            const isLiveMode = credsData && credsData.has_credentials && !credsData.testnet_mode;
+            // Check paper trading status to determine the mode
+            const paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
+            const isPaperMode = paperTradingStatus && paperTradingStatus.paper_trading_active;
+            const isLiveMode = !isPaperMode;
             
             if (isLiveMode) {
                 // Fetch real exchange balance for live trading mode
@@ -3621,23 +3622,28 @@
                     document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
                 }
             } else {
-                // Use simulated balance for testnet mode
-                document.getElementById('account-balance').textContent = `$${summary.account_balance?.toFixed(2) || '0.00'}`;
+                // Paper trading mode - show paper balance
+                const paperBalance = paperTradingStatus?.paper_balance || 10000; // Default to $10,000
+                
+                document.getElementById('account-balance').textContent = `$${paperBalance.toFixed(2)}`;
                 document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;
-                document.getElementById('free-margin').textContent = `$${summary.free_margin?.toFixed(2) || '0.00'}`;
+                document.getElementById('free-margin').textContent = `$${(paperBalance - (summary.total_margin_used || 0)).toFixed(2)}`;
                 document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
                 
-                // Show testnet indicator
+                // Show paper trading indicator
                 const balanceElement = document.getElementById('account-balance');
                 const balanceParent = balanceElement.closest('.portfolio-stat');
                 if (balanceParent) {
-                    const indicator = balanceParent.querySelector('.live-indicator') || document.createElement('div');
-                    indicator.className = 'live-indicator';
-                    indicator.innerHTML = '🧪 Test';
-                    indicator.style.cssText = 'font-size: 0.5rem; color: #007bff; font-weight: 600; margin-top: 2px;';
-                    if (!balanceParent.querySelector('.live-indicator')) {
-                        balanceParent.appendChild(indicator);
+                    const existingIndicator = balanceParent.querySelector('.live-indicator');
+                    if (existingIndicator) {
+                        existingIndicator.remove(); // Remove existing indicator first
                     }
+                    
+                    const indicator = document.createElement('div');
+                    indicator.className = 'live-indicator';
+                    indicator.innerHTML = '📄 Paper';
+                    indicator.style.cssText = 'font-size: 0.5rem; color: #6bb6ff; font-weight: 600; margin-top: 2px;';
+                    balanceParent.appendChild(indicator);
                 }
             }
             
