@@ -12,6 +12,7 @@ The application uses Flask for its web framework, serving as the Telegram Mini-A
 **Latest Updates (August 26, 2025):**
 - **Migration Completed**: Successfully migrated from Replit Agent to standard Replit environment with full functionality
 - **Enhanced TP Allocation Display**: Added partial TP allocation percentage display across SMC, position, and positions tabs with real-time summary showing total allocation and remaining percentage
+- **TP Format Standardization**: Fixed TP allocation format to show "TP1 2.0%(50%)" with price percentage and cumulative allocation percentage. Corrected all fallback values from hardcoded 25% to proper 0% defaults for accurate calculations
 - **Auto-trades Visibility Fix**: Fixed critical issue where auto-trades weren't appearing in trading tab due to user ID type mismatch (string vs integer keys)
 - **Break-even Monitoring Fix**: Fixed issue where break-even at TP1 settings weren't being properly monitored by changing storage format from display names to internal codes
 

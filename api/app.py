@@ -3978,7 +3978,7 @@ def update_all_positions_with_live_data(user_id=None):
                         # Check each TP level
                         for i, tp in enumerate(config.take_profits):
                             tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
-                            allocation = tp.get('allocation', 100) if isinstance(tp, dict) else 100
+                            allocation = tp.get('allocation', 25) if isinstance(tp, dict) else 25
                             
                             if tp_percentage > 0 and profit_percentage >= tp_percentage:
                                 # Take profit target hit!
@@ -4126,7 +4126,7 @@ def calculate_tp_sl_prices_and_amounts(config):
     # Calculate Take Profit levels
     for i, tp in enumerate(config.take_profits or []):
         tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
-        allocation = tp.get('allocation', 100) if isinstance(tp, dict) else 100
+        allocation = tp.get('allocation', 25) if isinstance(tp, dict) else 25
         
         if tp_percentage > 0:
             # TP percentage is the desired profit on margin (what user risks), not price movement
