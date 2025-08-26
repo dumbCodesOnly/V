@@ -5129,6 +5129,28 @@
             loadCredentialsStatus();
         }
 
+        // Simple notification function for Telegram Web App
+        function showNotification(type, message) {
+            try {
+                // Use Telegram Web App haptic feedback if available
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+                    if (type === 'error') {
+                        window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+                    } else if (type === 'info' || type === 'success') {
+                        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                    }
+                }
+                
+                // Show message using browser alert for now (can be enhanced later)
+                const emoji = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+                alert(`${emoji} ${message}`);
+            } catch (error) {
+                console.error('Error showing notification:', error);
+                // Fallback to console log
+                console.log(`${type.toUpperCase()}: ${message}`);
+            }
+        }
+
         async function togglePaperTrading() {
             // Hide hamburger menu
             document.getElementById('hamburger-dropdown').classList.remove('show');
