@@ -4138,7 +4138,9 @@ def calculate_tp_sl_prices_and_amounts(config):
     
 
     
-    # Calculate Take Profit levels
+    # Calculate Take Profit levels with proper sequential allocation handling
+    cumulative_allocation_closed = 0  # Track how much of original position has been closed
+    
     for i, tp in enumerate(config.take_profits or []):
         tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
         allocation = tp.get('allocation', 0) if isinstance(tp, dict) else 0
@@ -4153,13 +4155,22 @@ def calculate_tp_sl_prices_and_amounts(config):
             else:  # short
                 tp_price = config.entry_price * (1 - required_price_movement)
             
-            # Calculate profit amount: TP percentage of margin * allocation
-            # User wants 10% profit on $100 margin when 30% of position closes
-            # Total profit target = $10, but only 30% of position closes at this level
-            # So profit at this TP = $10 * 30% = $3 profit at this TP level
-            profit_amount = (tp_percentage / 100) * actual_margin * (allocation / 100)
+            # CRITICAL FIX: Calculate profit based on ORIGINAL position margin, not current reduced amount
+            # The issue was: After TP1 triggers, config.amount gets reduced, causing wrong TP2/TP3 calculations
+            # 
+            # Correct logic: Each TP should calculate profit based on its allocation of the ORIGINAL position
+            # TP1: 2% profit on 50% allocation = 2% * (50% of original margin) = 1% of original margin
+            # TP2: 3.5% profit on 30% allocation = 3.5% * (30% of original margin) = 1.05% of original margin  
+            # TP3: 5% profit on 20% allocation = 5% * (20% of original margin) = 1% of original margin
+            #
+            # Get original position margin - either from config or calculate it fresh
+            original_margin = getattr(config, 'original_margin', None) or calculate_position_margin(
+                getattr(config, 'original_amount', config.amount), config.leverage
+            )
             
-            # Calculate position size to close to achieve this profit amount
+            profit_amount = (tp_percentage / 100) * original_margin * (allocation / 100)
+            
+            # Calculate position size to close based on the profit amount and price difference
             price_difference = abs(tp_price - config.entry_price)
             if price_difference > 0:
                 position_size_to_close = profit_amount / price_difference
@@ -4174,6 +4185,9 @@ def calculate_tp_sl_prices_and_amounts(config):
                 'profit_amount': profit_amount,
                 'position_size_to_close': position_size_to_close
             })
+            
+            # Track cumulative allocation for future sequential TP handling
+            cumulative_allocation_closed += allocation
     
     # Calculate Stop Loss
     if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
@@ -5736,6 +5750,12 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         logging.info(f"Paper Trading: TP{tp_level['level']} triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
     else:
         # Partial close
+        # CRITICAL FIX: Store original amounts before any TP triggers to preserve correct calculations
+        if not hasattr(config, 'original_amount'):
+            config.original_amount = config.amount
+        if not hasattr(config, 'original_margin'):
+            config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+        
         partial_pnl = config.unrealized_pnl * (allocation / 100)
         remaining_amount = config.amount * ((100 - allocation) / 100)
         
@@ -5744,7 +5764,7 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
             config.realized_pnl = 0.0
         config.realized_pnl += partial_pnl
         
-        # Update position with remaining amount
+        # Update position with remaining amount  
         config.amount = remaining_amount
         config.unrealized_pnl -= partial_pnl
         
