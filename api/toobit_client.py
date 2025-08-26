@@ -16,17 +16,22 @@ from config import APIConfig, TimeConfig, TradingConfig, get_api_timeout
 class ToobitClient:
     """Toobit Exchange API Client for futures trading"""
     
-    def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = True):
+    def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False):
         self.api_key = api_key
         self.api_secret = api_secret
         self.passphrase = passphrase
-        self.testnet = testnet
+        # Toobit doesn't support testnet, always use mainnet
+        self.testnet = False  # Always False for Toobit since they don't have testnet
         
         # Base URLs for Toobit API using centralized config
-        # Note: Toobit may not have separate testnet URL, using main API with testnet credentials
+        # Note: Toobit only supports mainnet/live trading - no testnet available
         self.base_url = APIConfig.TOOBIT_BASE_URL
         self.quote_base = APIConfig.TOOBIT_QUOTE_PATH
         self.futures_base = APIConfig.TOOBIT_FUTURES_PATH
+        
+        # Log warning if testnet was requested
+        if testnet:
+            logging.warning("Toobit does not support testnet mode. Using mainnet/live trading instead.")
         
         # Request session for connection pooling
         self.session = requests.Session()

@@ -2414,6 +2414,7 @@ def get_user_credentials():
                 'exchange': user_creds.exchange_name,
                 'api_key_preview': api_key_preview,
                 'testnet_mode': user_creds.testnet_mode,
+                'supports_testnet': user_creds.exchange_name.lower() != 'toobit',  # Toobit doesn't support testnet
                 'is_active': user_creds.is_active,
                 'last_used': user_creds.last_used.isoformat() if user_creds.last_used else None,
                 'created_at': user_creds.created_at.isoformat()
@@ -2424,6 +2425,7 @@ def get_user_credentials():
                 'exchange': None,
                 'api_key_preview': None,
                 'testnet_mode': True,
+                'supports_testnet': True,  # Default to true for unknown exchanges
                 'is_active': False,
                 'last_used': None,
                 'created_at': None
@@ -2475,9 +2477,14 @@ def save_credentials():
         user_creds.exchange_name = exchange
         user_creds.is_active = True
         
-        # Handle testnet mode setting
-        if 'testnet_mode' in data:
+        # Handle testnet mode setting - Toobit doesn't support testnet
+        if exchange.lower() == 'toobit':
+            user_creds.testnet_mode = False  # Toobit only supports mainnet
+        elif 'testnet_mode' in data:
             user_creds.testnet_mode = bool(data['testnet_mode'])
+        else:
+            # Default to testnet for other exchanges that support it
+            user_creds.testnet_mode = True
         
         db.session.commit()
         
@@ -2541,6 +2548,10 @@ def toggle_testnet():
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         if not user_creds:
             return jsonify({'error': 'No credentials found. Please set up API keys first.'}), 404
+        
+        # Don't allow testnet mode for Toobit since it doesn't support it
+        if user_creds.exchange_name.lower() == 'toobit' and testnet_mode:
+            return jsonify({'error': 'Toobit exchange does not support testnet mode. Only live trading is available.'}), 400
         
         user_creds.testnet_mode = testnet_mode
         db.session.commit()
