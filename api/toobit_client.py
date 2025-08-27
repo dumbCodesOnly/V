@@ -95,10 +95,15 @@ class ToobitClient:
         else:
             url = self.base_url + self.futures_base + endpoint
         
-        # Enhanced logging for debugging API calls
+        # Enhanced logging for debugging API calls - Special tags for Render debugging
         api_mode = "TESTNET" if self.testnet else "LIVE"
-        logging.info(f"[{api_mode}] Toobit API Call: {method} {url}")
-        logging.info(f"[{api_mode}] Parameters: {all_params}")
+        logging.info(f"[RENDER {api_mode}] Toobit API Call: {method} {url}")
+        logging.info(f"[RENDER {api_mode}] Parameters: {all_params}")
+        
+        # Additional debugging for order placement requests
+        if endpoint == '/order' and method.upper() == 'POST':
+            logging.info(f"[RENDER ORDER DEBUG] Order placement attempt - Symbol: {all_params.get('symbol')}, Side: {all_params.get('side')}, Type: {all_params.get('type')}")
+            logging.info(f"[RENDER ORDER DEBUG] Reduce Only: {all_params.get('reduceOnly', False)}")
         
         try:
             # For GET requests with parameters, use query string instead of form data
@@ -120,17 +125,30 @@ class ToobitClient:
                     timeout=get_api_timeout("default")
                 )
             
-            logging.info(f"[{api_mode}] Response status: {response.status_code}")
+            logging.info(f"[RENDER {api_mode}] Response status: {response.status_code}")
             response.raise_for_status()
             result = response.json()
-            logging.info(f"[{api_mode}] Response: {result}")
+            logging.info(f"[RENDER {api_mode}] Response: {result}")
+            
+            # Enhanced logging for order placement responses
+            if endpoint == '/order' and method.upper() == 'POST':
+                if result and 'code' in result:
+                    logging.info(f"[RENDER ORDER RESPONSE] Code: {result.get('code')}, Message: {result.get('msg', 'No message')}")
+                    if result.get('data'):
+                        logging.info(f"[RENDER ORDER RESPONSE] Order data: {result.get('data')}")
+                        
             return result
             
         except requests.exceptions.RequestException as e:
-            logging.error(f"[{api_mode}] Toobit API request failed: {e}")
-            logging.error(f"[{api_mode}] Request details: {method} {url}")
-            logging.error(f"[{api_mode}] Request headers: {headers}")
-            logging.error(f"[{api_mode}] Request params: {all_params}")
+            logging.error(f"[RENDER {api_mode} ERROR] Toobit API request failed: {e}")
+            logging.error(f"[RENDER {api_mode} ERROR] Request details: {method} {url}")
+            logging.error(f"[RENDER {api_mode} ERROR] Request headers: {headers}")
+            logging.error(f"[RENDER {api_mode} ERROR] Request params: {all_params}")
+            
+            # Enhanced error tracking for order placement failures
+            if endpoint == '/order' and method.upper() == 'POST':
+                logging.error(f"[RENDER ORDER FAILED] Position close order failed - Exception: {e}")
+                self.last_error = f"Order placement failed: {str(e)}"
             
             # Store detailed error information for better user feedback
             response = getattr(e, 'response', None)
@@ -246,14 +264,23 @@ class ToobitClient:
             
             # Enhanced logging for position closing orders
             if kwargs.get('reduceOnly'):
-                logging.info(f"[POSITION CLOSE] Attempting to close position: {symbol} {side} {quantity}")
+                logging.info(f"[RENDER POSITION CLOSE] Attempting to close position: {symbol} {side} {quantity}")
+                logging.info(f"[RENDER POSITION CLOSE] Order data: {data}")
             
-            response = self._make_request('POST', '/order', data=data)
+            # Make API request with enhanced error tracking for Render
+            try:
+                response = self._make_request('POST', '/order', data=data)
+                logging.info(f"[RENDER API RESPONSE] Toobit response received: {response}")
+            except Exception as api_error:
+                error_msg = f"API request failed for {symbol} {side} order: {str(api_error)}"
+                logging.error(f"[RENDER API ERROR] {error_msg}")
+                self.last_error = error_msg
+                return None
             
             # Enhanced error handling for failed orders
             if not response:
                 error_msg = f"No response received from Toobit API for {symbol} {side} order"
-                logging.error(f"[ORDER FAILED] {error_msg}")
+                logging.error(f"[RENDER ORDER FAILED] {error_msg}")
                 # Store last error for better user feedback
                 self.last_error = error_msg
                 return None

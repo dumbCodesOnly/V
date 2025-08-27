@@ -1877,6 +1877,81 @@ def debug_paper_trading_status():
             'details': str(e)
         }), 500
 
+@app.route('/api/debug/position-close-test')
+def debug_position_close_test():
+    """Debug endpoint to test position closing functionality on Render"""
+    user_id = get_user_id_from_request()
+    
+    # Get user credentials
+    user_creds = UserCredentials.query.filter_by(
+        telegram_user_id=str(user_id),
+        is_active=True
+    ).first()
+    
+    debug_info = {
+        'timestamp': get_iran_time().isoformat(),
+        'user_id': user_id,
+        'has_credentials': False,
+        'testnet_mode': False,
+        'api_connection_test': 'Not tested',
+        'active_trades_count': 0,
+        'paper_mode_active': True,
+        'last_error': None,
+        'toobit_client_status': 'Not created'
+    }
+    
+    if user_creds and user_creds.has_credentials():
+        debug_info['has_credentials'] = True
+        debug_info['testnet_mode'] = user_creds.testnet_mode
+        
+        # Test API connection
+        try:
+            logging.info(f"[RENDER POSITION DEBUG] Creating ToobitClient for user {user_id}")
+            client = ToobitClient(
+                api_key=user_creds.get_api_key(),
+                api_secret=user_creds.get_api_secret(),
+                passphrase=user_creds.get_passphrase(),
+                testnet=False  # ALWAYS False for Toobit
+            )
+            debug_info['toobit_client_status'] = 'Created successfully'
+            
+            # Test basic connection
+            logging.info(f"[RENDER POSITION DEBUG] Testing API connection for user {user_id}")
+            balance = client.get_account_balance()
+            if balance:
+                debug_info['api_connection_test'] = 'Success'
+                debug_info['paper_mode_active'] = False
+                debug_info['account_balance'] = balance
+            else:
+                debug_info['api_connection_test'] = 'Failed - No balance data'
+                debug_info['last_error'] = client.get_last_error()
+                
+        except Exception as e:
+            debug_info['api_connection_test'] = f'Failed - Exception: {str(e)}'
+            debug_info['last_error'] = str(e)
+            debug_info['toobit_client_status'] = f'Creation failed: {str(e)}'
+            logging.error(f"[RENDER POSITION DEBUG] ToobitClient creation failed for user {user_id}: {e}")
+    
+    # Count active trades
+    active_count = 0
+    active_trades = []
+    for trade_id, config in user_trade_configs.get(user_id, {}).items():
+        if config.status == "active":
+            active_count += 1
+            active_trades.append({
+                'trade_id': trade_id,
+                'symbol': config.symbol,
+                'side': config.side,
+                'position_size': getattr(config, 'position_size', 0),
+                'unrealized_pnl': getattr(config, 'unrealized_pnl', 0)
+            })
+    
+    debug_info['active_trades_count'] = active_count
+    debug_info['active_trades'] = active_trades
+    
+    logging.info(f"[RENDER POSITION DEBUG] Position close test for user {user_id}: {debug_info}")
+    return jsonify(debug_info)
+
 @app.route('/api/margin-data')
 def margin_data():
     """Get comprehensive margin data for a specific user"""
