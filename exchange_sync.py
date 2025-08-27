@@ -20,7 +20,16 @@ class ExchangeSyncService:
         self.db = db
         self.running = False
         self.sync_thread = None
-        self.sync_interval = TimeConfig.EXCHANGE_SYNC_INTERVAL
+        
+        # Import here to avoid circular import
+        from config import Environment
+        
+        # Optimize sync interval based on environment
+        if Environment.IS_RENDER:
+            self.sync_interval = TimeConfig.RENDER_SYNC_INTERVAL
+        else:
+            self.sync_interval = TimeConfig.EXCHANGE_SYNC_INTERVAL
+            
         self.last_sync = {}  # {user_id: timestamp}
         
     def start(self):

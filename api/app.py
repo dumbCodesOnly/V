@@ -88,6 +88,21 @@ elif database_url.startswith("postgresql") and (Environment.IS_VERCEL or "neon" 
             "keepalives_count": DatabaseConfig.KEEPALIVES_COUNT
         }
     }
+elif database_url.startswith("postgresql") and Environment.IS_RENDER:
+    # Render PostgreSQL configuration - optimized for always-on services
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_recycle": DatabaseConfig.RENDER_POOL_RECYCLE,
+        "pool_pre_ping": DatabaseConfig.POOL_PRE_PING,
+        "pool_size": DatabaseConfig.RENDER_POOL_SIZE,
+        "max_overflow": DatabaseConfig.RENDER_MAX_OVERFLOW,
+        "pool_timeout": DatabaseConfig.RENDER_POOL_TIMEOUT,
+        "pool_reset_on_return": "commit",
+        "connect_args": {
+            "sslmode": DatabaseConfig.SSL_MODE,
+            "connect_timeout": TimeConfig.DEFAULT_API_TIMEOUT,
+            "application_name": DatabaseConfig.APPLICATION_NAME
+        }
+    }
 elif database_url.startswith("postgresql"):
     # Standard PostgreSQL configuration (Replit or other)
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {

@@ -48,6 +48,7 @@ class TimeConfig:
     # Sync Intervals
     EXCHANGE_SYNC_INTERVAL = 15    # seconds - background sync for Replit (faster for paper trading TP/SL)
     VERCEL_SYNC_COOLDOWN = 30      # seconds - cooldown between syncs for Vercel
+    RENDER_SYNC_INTERVAL = 10      # seconds - optimized sync for Render always-on service
     
     # UI Update Intervals
     PRICE_UPDATE_INTERVAL = 10000  # milliseconds - frontend price updates
@@ -69,12 +70,17 @@ class DatabaseConfig:
     # PostgreSQL Connection Pool Settings
     POOL_RECYCLE = 1800  # seconds (30 minutes) - connection recycling for serverless
     STANDARD_POOL_RECYCLE = 300  # seconds (5 minutes) - standard pool recycle
+    RENDER_POOL_RECYCLE = 600    # seconds (10 minutes) - Render managed PostgreSQL
     POOL_PRE_PING = True
     
     # Connection Pool Size Settings
     SERVERLESS_POOL_SIZE = 5     # Pool size for serverless environments (Vercel/Neon)
     SERVERLESS_MAX_OVERFLOW = 10  # Max overflow for serverless
     SERVERLESS_POOL_TIMEOUT = 60  # Pool timeout for serverless (seconds)
+    
+    RENDER_POOL_SIZE = 10        # Pool size for Render (always-on service)
+    RENDER_MAX_OVERFLOW = 15     # Max overflow for Render
+    RENDER_POOL_TIMEOUT = 30     # Pool timeout for Render (seconds)
     
     STANDARD_POOL_SIZE = 5       # Standard pool size for Replit
     STANDARD_MAX_OVERFLOW = 10   # Standard max overflow
@@ -272,8 +278,10 @@ class TimezoneConfig:
 class Environment:
     # Environment Detection
     IS_VERCEL = bool(os.environ.get("VERCEL"))
-    IS_REPLIT = not IS_VERCEL
+    IS_RENDER = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+    IS_REPLIT = not IS_VERCEL and not IS_RENDER
     IS_DEVELOPMENT = os.environ.get("FLASK_ENV") == "development"
+    IS_PRODUCTION = IS_VERCEL or IS_RENDER
     
     # Server Configuration
     DEFAULT_PORT = 5000
@@ -326,6 +334,6 @@ def get_database_url():
 
 def get_log_level():
     """Get appropriate log level for current environment"""
-    if Environment.IS_VERCEL:
-        return LoggingConfig.VERCEL_LOG_LEVEL
+    if Environment.IS_VERCEL or Environment.IS_RENDER:
+        return LoggingConfig.VERCEL_LOG_LEVEL  # Use production log level for both
     return LoggingConfig.REPLIT_LOG_LEVEL

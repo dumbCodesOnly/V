@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: trading-bot
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn -c gunicorn_config.py main:app"
+    envVars:
+      - key: RENDER
+        value: "1"
+      - key: FLASK_ENV
+        value: "production"
+      - key: PYTHONPATH
+        value: "/opt/render/project/src"
+    autoDeploy: true
+    healthCheckPath: /health
