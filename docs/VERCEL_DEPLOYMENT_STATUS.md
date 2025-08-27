@@ -1,13 +1,19 @@
 # Vercel/Neon Deployment Status - Latest Updates
 
 ## 🚀 Deployment Summary
-**Date**: August 21, 2025  
-**Version**: v2.3 - Price Source Fix & Exchange Integration  
-**Status**: Ready for deployment with critical fixes
+**Date**: August 26, 2025  
+**Version**: v2.4 - Position Loading Fix & Migration Complete  
+**Status**: Ready for deployment with frontend fixes
 
 ## ✅ Latest Updates Included
 
-### 1. **Price Source Fix (Critical)**
+### 1. **Frontend Position Loading Fix (Critical)**
+- ✅ Fixed positions not displaying without tab switching in Telegram WebView
+- ✅ Updated loadPositions() to use correct /api/positions endpoint
+- ✅ Fixed data structure references from trades to positions
+- ✅ Improved real-time position updates and display
+
+### 2. **Price Source Fix (Critical)**
 - ✅ Fixed price discrepancy issue - now uses Toobit exchange prices first
 - ✅ Enhanced fallback system with multiple APIs (CoinGecko, Binance, CryptoCompare)
 - ✅ Intelligent caching and concurrent price fetching
