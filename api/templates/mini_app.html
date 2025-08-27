@@ -3149,12 +3149,12 @@
                 await loadPaperTradingStatus();
             }
             
-            const data = await apiCall(`/api/user-trades?user_id=${getUserId()}`);
+            const data = await apiCall(`/api/positions?user_id=${getUserId()}`);
             if (!data) return;
             
             const container = document.getElementById('positions-list');
-            const activePositions = data.trades?.filter(t => t.status === 'active' || t.status === 'pending') || [];
-            const closedPositions = data.trades?.filter(t => t.status === 'stopped') || [];
+            const activePositions = data.positions?.filter(t => t.status === 'active' || t.status === 'pending') || [];
+            const closedPositions = data.positions?.filter(t => t.status === 'stopped') || [];
             
             document.getElementById('total-positions').textContent = activePositions.length;
             
