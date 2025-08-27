@@ -5940,6 +5940,10 @@ def update_positions_lightweight():
     
     for user_id, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
+            # Skip closed/stopped positions entirely from monitoring
+            if config.status == "stopped":
+                continue
+                
             total_positions += 1
             
             # Debug logging for breakeven analysis
