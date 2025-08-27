@@ -1793,12 +1793,19 @@ def margin_data():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
+    # For Render: Force reload to ensure fresh data across workers
+    force_reload = Environment.IS_RENDER
+    
     # Initialize user environment (uses cache to prevent DB hits)
-    initialize_user_environment(chat_id, force_reload=False)
+    initialize_user_environment(chat_id, force_reload=force_reload)
     
     # Update all positions with live market data from Toobit exchange
-    # Use optimized lightweight monitoring - only checks break-even positions
-    update_positions_lightweight()
+    # On Render: Force full update for all positions due to multi-worker environment
+    if Environment.IS_RENDER:
+        update_all_positions_with_live_data(chat_id)
+    else:
+        # Use optimized lightweight monitoring - only checks break-even positions
+        update_positions_lightweight()
     
     # Get margin data for this specific user only
     margin_summary = get_margin_summary(chat_id)
@@ -1874,8 +1881,11 @@ def live_position_update():
             sync_result = sync_service.sync_user_on_request(user_id)
             # Continue with regular live update regardless of sync result
     
-    # For live updates, ensure user is initialized from cache (no DB hit)
-    initialize_user_environment(chat_id, force_reload=False)
+    # For Render: Force reload to ensure fresh data across workers
+    force_reload = Environment.IS_RENDER
+    
+    # For live updates, ensure user is initialized from cache (no DB hit unless on Render)
+    initialize_user_environment(chat_id, force_reload=force_reload)
     
     # Only proceed if user has trades loaded
     if chat_id not in user_trade_configs:
@@ -1894,8 +1904,8 @@ def live_position_update():
             has_paper_trades = True
             break
     
-    if has_paper_trades:
-        # Run full position updates for paper trading (includes TP/SL monitoring)
+    if has_paper_trades or Environment.IS_RENDER:
+        # Run full position updates for paper trading or Render (includes TP/SL monitoring)
         update_all_positions_with_live_data(chat_id)
     else:
         # Use optimized lightweight monitoring - only checks break-even positions  
