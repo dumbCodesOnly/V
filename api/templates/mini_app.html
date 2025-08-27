@@ -5710,7 +5710,7 @@
                 const response = await fetch(`/api/smc-analysis/${symbol}`);
                 const data = await response.json();
                 
-                if (data.status === 'signal_generated') {
+                if (data.status === 'cached_signal' || data.status === 'new_signal_generated') {
                     // Create detailed analysis modal
                     const modalHtml = `
                         <div class="modal fade" id="smcDetailsModal" tabindex="-1">
