@@ -47,6 +47,26 @@ class VercelSyncService:
                 is_active=True
             ).first()
             
+            # Check if user is in paper trading mode - skip API calls if so
+            chat_id = int(user_id) if user_id.isdigit() else 0
+            
+            # Import here to avoid circular imports
+            with self.app.app_context():
+                from . import user_paper_trading_preferences
+                manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
+                is_paper_mode = (manual_paper_mode or 
+                               not user_creds or 
+                               (user_creds and user_creds.testnet_mode) or 
+                               (user_creds and not user_creds.has_credentials()))
+                
+                if is_paper_mode:
+                    return {
+                        'success': True,
+                        'message': 'Paper trading mode - no sync needed',
+                        'paper_trading_mode': True,
+                        'sync_skipped': True
+                    }
+            
             if not user_creds or not user_creds.has_credentials():
                 return {
                     'success': False,

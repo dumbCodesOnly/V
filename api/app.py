@@ -2143,7 +2143,7 @@ def execute_trade():
                 # Test connection first - balance endpoint works even if ticker endpoints don't
                 try:
                     balance_data = client.get_account_balance()
-                    logging.info(f"Toobit connection test successful. Balance data: {balance_data}")
+                    logging.info(f"Toobit connection test successful. Balance data received")
                 except Exception as conn_error:
                     logging.error(f"Toobit connection test failed: {conn_error}")
                     return jsonify({'error': f'Exchange connection failed: {str(conn_error)}'}), 400
