@@ -349,9 +349,21 @@ class VercelSyncService:
                 
                 total_realized_pnl += pnl
             
+            # CRITICAL FIX: Store original amounts before any TP triggers to preserve correct allocation calculations
+            if not hasattr(trade, 'original_amount') or trade.original_amount is None:
+                trade.original_amount = trade.amount
+            if not hasattr(trade, 'original_margin') or trade.original_margin is None:
+                # Calculate original margin based on original amount and leverage
+                trade.original_margin = trade.original_amount / trade.leverage if trade.leverage > 0 else trade.original_amount
+            
             # Update realized P&L
             current_realized_pnl = getattr(trade, 'realized_pnl', 0.0) or 0.0
             trade.realized_pnl = current_realized_pnl + total_realized_pnl
+            
+            # Commit realized P&L update to database immediately
+            self.db.session.commit()
+            logging.info(f"Updated realized P&L for trade {trade.trade_id}: ${trade.realized_pnl:.2f} (added ${total_realized_pnl:.2f})")
+            logging.info(f"Preserved original allocation amounts - Original: ${trade.original_amount:.2f}, Current: ${trade.amount:.2f}")
             
             # Remove the first TP level (the one that was just triggered)
             if current_tps:
@@ -365,7 +377,7 @@ class VercelSyncService:
                 if hasattr(trade, 'breakeven_after') and trade.breakeven_after > 0:
                     if not getattr(trade, 'breakeven_sl_triggered', False):
                         trade.breakeven_sl_triggered = True
-                        logging.info(f"Breakeven stop loss triggered for trade {trade.trade_id}")
+                        logging.info(f"Breakeven stop loss triggered for trade {trade.trade_id} - SL moved to entry price {trade.entry_price}")
             
             logging.info(f"Updated TP levels for trade {trade.trade_id}. Remaining TPs: {len(current_tps)}")
             
