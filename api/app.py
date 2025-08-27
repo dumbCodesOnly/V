@@ -1792,6 +1792,73 @@ def recent_trades():
     """Get recent trades"""
     return jsonify(bot_trades[-10:])  # Last 10 trades
 
+@app.route('/api/debug/paper-trading-status')
+def debug_paper_trading_status():
+    """Debug endpoint for paper trading status and diagnostics"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+        
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        # Check paper trading mode determination
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        is_paper_mode = (manual_paper_mode or 
+                        not user_creds or 
+                        (user_creds and user_creds.testnet_mode) or 
+                        (user_creds and not user_creds.has_credentials()))
+        
+        # Get trade configurations
+        initialize_user_environment(chat_id, force_reload=True)
+        trades = user_trade_configs.get(chat_id, {})
+        
+        # Analyze paper trading configs
+        paper_trades = []
+        for trade_id, config in trades.items():
+            if hasattr(config, 'paper_trading_mode') and config.paper_trading_mode:
+                paper_trades.append({
+                    'trade_id': trade_id,
+                    'symbol': config.symbol,
+                    'status': config.status,
+                    'entry_price': getattr(config, 'entry_price', None),
+                    'current_price': getattr(config, 'current_price', None),
+                    'unrealized_pnl': getattr(config, 'unrealized_pnl', 0),
+                    'has_paper_sl_data': hasattr(config, 'paper_sl_data'),
+                    'has_paper_tp_levels': hasattr(config, 'paper_tp_levels'),
+                    'breakeven_triggered': getattr(config, 'breakeven_sl_triggered', False)
+                })
+        
+        return jsonify({
+            'success': True,
+            'user_id': user_id,
+            'manual_paper_mode': manual_paper_mode,
+            'is_paper_mode': is_paper_mode,
+            'has_credentials': user_creds is not None and user_creds.has_credentials() if user_creds else False,
+            'testnet_mode': user_creds.testnet_mode if user_creds else False,
+            'paper_balance': user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE),
+            'total_trades': len(trades),
+            'paper_trades': paper_trades,
+            'paper_trades_count': len(paper_trades),
+            'environment': {
+                'is_render': Environment.IS_RENDER,
+                'is_vercel': Environment.IS_VERCEL,
+                'is_replit': Environment.IS_REPLIT
+            },
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in paper trading debug endpoint: {e}")
+        return jsonify({
+            'error': 'Failed to get paper trading status',
+            'details': str(e)
+        }), 500
+
 @app.route('/api/margin-data')
 def margin_data():
     """Get comprehensive margin data for a specific user"""
@@ -2884,12 +2951,23 @@ def close_trade():
         
         if is_paper_mode:
             # PAPER TRADING - Simulate closing the position
-            logging.info(f"Closing paper trade for user {chat_id}: {config.symbol} {config.side}")
+            logging.info(f"[RENDER PAPER] Closing paper trade for user {chat_id}: {config.symbol} {config.side}")
+            logging.info(f"[RENDER PAPER] Config details - Status: {config.status}, PnL: {getattr(config, 'unrealized_pnl', 0)}")
+            
+            # Update paper balance with final P&L
+            try:
+                final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+                current_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
+                new_balance = current_balance + final_pnl
+                user_paper_balances[chat_id] = new_balance
+                logging.info(f"[RENDER PAPER] Updated paper balance: ${current_balance:.2f} + ${final_pnl:.2f} = ${new_balance:.2f}")
+            except Exception as balance_error:
+                logging.error(f"[RENDER PAPER ERROR] Failed to update paper balance: {balance_error}")
             
             # Simulate cancelling paper TP/SL orders
             if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
                 cancelled_orders = len(config.exchange_tp_sl_orders)
-                logging.info(f"Simulated cancellation of {cancelled_orders} TP/SL orders in paper mode")
+                logging.info(f"[RENDER PAPER] Simulated cancellation of {cancelled_orders} TP/SL orders in paper mode")
                 
         else:
             # REAL TRADING - Close position on Toobit exchange
@@ -5941,14 +6019,23 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
 def process_paper_trading_position(user_id, trade_id, config):
     """Enhanced paper trading monitoring with real price-based TP/SL simulation"""
     try:
+        # Enhanced logging for Render paper trading debugging
+        logging.debug(f"[RENDER PAPER DEBUG] Processing position for user {user_id}, trade {trade_id}")
+        
         if not config.entry_price or not config.current_price:
+            logging.warning(f"[RENDER PAPER] Missing price data - Entry: {getattr(config, 'entry_price', None)}, Current: {getattr(config, 'current_price', None)}")
             return
         
         # Calculate unrealized P&L
-        config.unrealized_pnl = calculate_unrealized_pnl(
-            config.entry_price, config.current_price,
-            config.amount, config.leverage, config.side
-        )
+        try:
+            config.unrealized_pnl = calculate_unrealized_pnl(
+                config.entry_price, config.current_price,
+                config.amount, config.leverage, config.side
+            )
+            logging.debug(f"[RENDER PAPER] P&L calculated: ${config.unrealized_pnl:.2f} for {config.symbol}")
+        except Exception as pnl_error:
+            logging.error(f"[RENDER PAPER ERROR] Failed to calculate P&L: {pnl_error}")
+            return
         
         # Check paper trading stop loss
         if hasattr(config, 'paper_sl_data') and not config.paper_sl_data.get('triggered', False):
@@ -5999,7 +6086,11 @@ def process_paper_trading_position(user_id, trade_id, config):
                 logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} - SL moved to entry price")
         
     except Exception as e:
-        logging.error(f"Paper trading position processing failed for {config.symbol}: {e}")
+        logging.error(f"[RENDER PAPER ERROR] Paper trading position processing failed for {getattr(config, 'symbol', 'unknown')}: {e}")
+        logging.error(f"[RENDER PAPER ERROR] Config status: {getattr(config, 'status', 'unknown')}")
+        logging.error(f"[RENDER PAPER ERROR] User ID: {user_id}, Trade ID: {trade_id}")
+        import traceback
+        logging.error(f"[RENDER PAPER ERROR] Traceback: {traceback.format_exc()}")
 
 def execute_paper_stop_loss(user_id, trade_id, config):
     """Execute paper trading stop loss"""

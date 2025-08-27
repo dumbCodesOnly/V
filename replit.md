@@ -15,6 +15,11 @@ The application uses Flask for its web framework, serving as the Telegram Mini-A
   - **Render-Specific Logging**: Added comprehensive logging for position closure attempts on Render with detailed tracking
   - **API Error Tracking**: Implemented `last_error` tracking in ToobitClient for better user feedback when exchanges fail
   - **User-Friendly Error Messages**: Position closure failures now provide specific error details instead of generic "Failed to close position" messages
+- **Paper Trading Mode Enhanced for Render**: Improved paper trading reliability and debugging for Render deployments:
+  - **Enhanced Paper Trading Logging**: Added detailed debugging logs for paper trading operations on Render with comprehensive error tracking
+  - **Paper Balance Management**: Improved paper balance updates during position closures with proper error handling
+  - **Position Processing Debugging**: Added enhanced error tracking and diagnostics for paper trading position processing
+  - **Render-Specific Paper Trading Fixes**: Addressed specific issues with paper trading mode in multi-worker Render environment
 - **Migration Completed Successfully**: Fully migrated project from Replit Agent to standard Replit environment with enhanced error handling and debugging capabilities
 - **CRITICAL Trading Logic Bugs Fixed**: Resolved three major issues in TP execution on Render:
   - **Realized P&L Update**: Fixed issue where realized P&L wasn't properly updating after TP1 triggers - now commits to database immediately with proper logging
