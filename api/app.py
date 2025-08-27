@@ -1512,8 +1512,9 @@ def get_multiple_smc_signals():
         for symbol in symbols:
             try:
                 # Get current price for validation
-                current_price_data = get_live_market_price(symbol)
-                current_price = current_price_data.get('price', 0) if current_price_data else 0
+                current_price = get_live_market_price(symbol)
+                if not current_price:
+                    current_price = 0
                 
                 # Try cached signal first
                 cached_signal = SMCSignalCache.get_valid_signal(symbol, current_price)
