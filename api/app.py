@@ -1387,14 +1387,24 @@ def get_multiple_prices():
 
 @app.route('/api/smc-analysis/<symbol>')
 def get_smc_analysis(symbol):
-    """Get Smart Money Concepts analysis for a specific symbol"""
+    """Get Smart Money Concepts analysis for a specific symbol with database caching"""
     try:
         from .smc_analyzer import SMCAnalyzer
+        from .models import SMCSignalCache, db
+
         
-        analyzer = SMCAnalyzer()
-        signal = analyzer.generate_trade_signal(symbol.upper())
+        symbol = symbol.upper()
         
-        if signal:
+        # Get current market price for validation
+        current_price_data = get_live_market_price(symbol)
+        current_price = current_price_data.get('price', 0) if current_price_data else 0
+        
+        # Try to get valid cached signal first
+        cached_signal = SMCSignalCache.get_valid_signal(symbol, current_price)
+        
+        if cached_signal:
+            # Return cached signal
+            signal = cached_signal.to_smc_signal()
             return jsonify({
                 'symbol': signal.symbol,
                 'direction': signal.direction,
@@ -1406,14 +1416,41 @@ def get_smc_analysis(symbol):
                 'signal_strength': signal.signal_strength.value,
                 'risk_reward_ratio': signal.risk_reward_ratio,
                 'timestamp': signal.timestamp.isoformat(),
-                'status': 'signal_generated'
+                'status': 'cached_signal',
+                'cache_source': True
+            })
+        
+        # No valid cached signal, generate new one
+        analyzer = SMCAnalyzer()
+        signal = analyzer.generate_trade_signal(symbol)
+        
+        if signal:
+            # Cache the new signal for 15 minutes
+            cache_entry = SMCSignalCache.from_smc_signal(signal, cache_duration_minutes=15)
+            db.session.add(cache_entry)
+            db.session.commit()
+            
+            return jsonify({
+                'symbol': signal.symbol,
+                'direction': signal.direction,
+                'entry_price': signal.entry_price,
+                'stop_loss': signal.stop_loss,
+                'take_profit_levels': signal.take_profit_levels,
+                'confidence': signal.confidence,
+                'reasoning': signal.reasoning,
+                'signal_strength': signal.signal_strength.value,
+                'risk_reward_ratio': signal.risk_reward_ratio,
+                'timestamp': signal.timestamp.isoformat(),
+                'status': 'new_signal_generated',
+                'cache_source': False
             })
         else:
             return jsonify({
-                'symbol': symbol.upper(),
+                'symbol': symbol,
                 'status': 'no_signal',
                 'message': 'No strong SMC signal detected at this time',
-                'timestamp': get_iran_time().isoformat()
+                'timestamp': get_iran_time().isoformat(),
+                'cache_source': False
             })
             
     except Exception as e:
@@ -1422,19 +1459,36 @@ def get_smc_analysis(symbol):
 
 @app.route('/api/smc-signals')
 def get_multiple_smc_signals():
-    """Get SMC signals for multiple popular trading symbols"""
+    """Get SMC signals for multiple popular trading symbols with caching"""
     try:
         from .smc_analyzer import SMCAnalyzer
+        from .models import SMCSignalCache, db
+
         
         # Analyze popular trading pairs
         symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT', 'SOLUSDT']
         analyzer = SMCAnalyzer()
         
         signals = {}
+        cache_hits = 0
+        new_signals_generated = 0
+        
+        # Clean up expired signals first
+        SMCSignalCache.cleanup_expired()
+        
         for symbol in symbols:
             try:
-                signal = analyzer.generate_trade_signal(symbol)
-                if signal:
+                # Get current price for validation
+                current_price_data = get_live_market_price(symbol)
+                current_price = current_price_data.get('price', 0) if current_price_data else 0
+                
+                # Try cached signal first
+                cached_signal = SMCSignalCache.get_valid_signal(symbol, current_price)
+                
+                if cached_signal:
+                    # Use cached signal
+                    signal = cached_signal.to_smc_signal()
+                    cache_hits += 1
                     signals[symbol] = {
                         'direction': signal.direction,
                         'entry_price': signal.entry_price,
@@ -1444,24 +1498,55 @@ def get_multiple_smc_signals():
                         'reasoning': signal.reasoning[:3],  # Limit reasoning for summary
                         'signal_strength': signal.signal_strength.value,
                         'risk_reward_ratio': signal.risk_reward_ratio,
-                        'timestamp': signal.timestamp.isoformat()
+                        'timestamp': signal.timestamp.isoformat(),
+                        'cache_source': True
                     }
                 else:
-                    signals[symbol] = {
-                        'status': 'no_signal',
-                        'message': 'No strong signal detected'
-                    }
+                    # Generate new signal
+                    signal = analyzer.generate_trade_signal(symbol)
+                    if signal:
+                        # Cache the new signal
+                        cache_entry = SMCSignalCache.from_smc_signal(signal, cache_duration_minutes=15)
+                        db.session.add(cache_entry)
+                        new_signals_generated += 1
+                        
+                        signals[symbol] = {
+                            'direction': signal.direction,
+                            'entry_price': signal.entry_price,
+                            'stop_loss': signal.stop_loss,
+                            'take_profit_levels': signal.take_profit_levels,
+                            'confidence': signal.confidence,
+                            'reasoning': signal.reasoning[:3],  # Limit reasoning for summary
+                            'signal_strength': signal.signal_strength.value,
+                            'risk_reward_ratio': signal.risk_reward_ratio,
+                            'timestamp': signal.timestamp.isoformat(),
+                            'cache_source': False
+                        }
+                    else:
+                        signals[symbol] = {
+                            'status': 'no_signal',
+                            'message': 'No strong signal detected',
+                            'cache_source': False
+                        }
             except Exception as e:
                 signals[symbol] = {
                     'status': 'error',
-                    'message': str(e)
+                    'message': str(e),
+                    'cache_source': False
                 }
+        
+        # Commit any new cache entries
+        if new_signals_generated > 0:
+            db.session.commit()
         
         return jsonify({
             'signals': signals,
             'timestamp': get_iran_time().isoformat(),
             'total_analyzed': len(symbols),
-            'signals_found': len([s for s in signals.values() if 'direction' in s])
+            'signals_found': len([s for s in signals.values() if 'direction' in s]),
+            'cache_hits': cache_hits,
+            'new_signals_generated': new_signals_generated,
+            'cache_efficiency': f"{(cache_hits / len(symbols) * 100):.1f}%" if symbols else "0%"
         })
         
     except Exception as e:
@@ -6117,6 +6202,62 @@ def place_exchange_native_orders(config, user_id):
     except Exception as e:
         logging.error(f"Failed to place exchange-native orders: {e}")
         return False
+
+
+# SMC Signal Cache Management Routes
+@app.route('/api/smc-cache-status')
+def get_smc_cache_status():
+    """Get status and statistics of SMC signal cache"""
+    try:
+        from .models import SMCSignalCache
+        
+        total_signals = SMCSignalCache.query.count()
+        active_signals = SMCSignalCache.query.filter(
+            SMCSignalCache.expires_at > datetime.utcnow()
+        ).count()
+        expired_signals = total_signals - active_signals
+        
+        # Get signals by symbol
+        symbols_data = {}
+        active_cache_entries = SMCSignalCache.query.filter(
+            SMCSignalCache.expires_at > datetime.utcnow()
+        ).all()
+        
+        for entry in active_cache_entries:
+            symbols_data[entry.symbol] = {
+                'direction': entry.direction,
+                'confidence': entry.confidence,
+                'signal_strength': entry.signal_strength,
+                'expires_at': entry.expires_at.isoformat(),
+                'age_minutes': int((datetime.utcnow() - entry.created_at).total_seconds() / 60)
+            }
+        
+        return jsonify({
+            'total_cached_signals': total_signals,
+            'active_signals': active_signals,
+            'expired_signals': expired_signals,
+            'cache_efficiency': f"{(active_signals / total_signals * 100):.1f}%" if total_signals > 0 else "0%",
+            'symbols_cached': symbols_data,
+            'timestamp': get_iran_time().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/smc-cache-cleanup', methods=['POST'])
+def cleanup_smc_cache():
+    """Manually trigger cleanup of expired SMC signals"""
+    try:
+        from .models import SMCSignalCache
+        
+        expired_count = SMCSignalCache.cleanup_expired()
+        
+        return jsonify({
+            'success': True,
+            'expired_signals_removed': expired_count,
+            'timestamp': get_iran_time().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == "__main__":

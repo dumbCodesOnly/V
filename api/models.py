@@ -303,3 +303,119 @@ class TradeConfiguration(db.Model):
     
     def __repr__(self):
         return f'<TradeConfiguration {self.telegram_user_id}:{self.trade_id}>'
+
+
+class SMCSignalCache(db.Model):
+    """Cache SMC signals to reduce frequent recalculation and entry price changes"""
+    __tablename__ = 'smc_signal_cache'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    direction = db.Column(db.String(10), nullable=False)  # 'long' or 'short'
+    entry_price = db.Column(db.Float, nullable=False)
+    stop_loss = db.Column(db.Float, nullable=False)
+    take_profit_levels = db.Column(db.Text, nullable=False)  # JSON array of TP levels
+    confidence = db.Column(db.Float, nullable=False)
+    reasoning = db.Column(db.Text, nullable=False)  # JSON array of reasoning
+    signal_strength = db.Column(db.String(20), nullable=False)  # WEAK, MODERATE, STRONG, VERY_STRONG
+    risk_reward_ratio = db.Column(db.Float, nullable=False)
+    
+    # Caching metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    market_price_at_signal = db.Column(db.Float, nullable=False)  # Price when signal was generated
+    
+    # Add index for efficient queries
+    __table_args__ = (
+        db.Index('idx_symbol_expires', 'symbol', 'expires_at'),
+    )
+    
+    def is_expired(self):
+        """Check if the signal has expired"""
+        return datetime.utcnow() > self.expires_at
+    
+    def is_price_still_valid(self, current_price, tolerance_percent=2.0):
+        """Check if current price is still within tolerance of signal price"""
+        price_change = abs(current_price - self.market_price_at_signal) / self.market_price_at_signal * 100
+        return price_change <= tolerance_percent
+    
+    def to_smc_signal(self):
+        """Convert database model to SMCSignal object"""
+        import json
+        from .smc_analyzer import SMCSignal, SignalStrength
+        
+        # Parse JSON fields
+        take_profits = json.loads(self.take_profit_levels)
+        reasoning_list = json.loads(self.reasoning)
+        
+        # Convert string to enum
+        strength_map = {
+            'WEAK': SignalStrength.WEAK,
+            'MODERATE': SignalStrength.MODERATE, 
+            'STRONG': SignalStrength.STRONG,
+            'VERY_STRONG': SignalStrength.VERY_STRONG
+        }
+        signal_strength = strength_map.get(self.signal_strength, SignalStrength.WEAK)
+        
+        return SMCSignal(
+            symbol=self.symbol,
+            direction=self.direction,
+            entry_price=self.entry_price,
+            stop_loss=self.stop_loss,
+            take_profit_levels=take_profits,
+            confidence=self.confidence,
+            reasoning=reasoning_list,
+            signal_strength=signal_strength,
+            risk_reward_ratio=self.risk_reward_ratio,
+            timestamp=self.created_at
+        )
+    
+    @classmethod
+    def from_smc_signal(cls, signal, cache_duration_minutes=15):
+        """Create database model from SMCSignal object"""
+        import json
+        
+        expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
+        
+        return cls(
+            symbol=signal.symbol,
+            direction=signal.direction,
+            entry_price=signal.entry_price,
+            stop_loss=signal.stop_loss,
+            take_profit_levels=json.dumps(signal.take_profit_levels),
+            confidence=signal.confidence,
+            reasoning=json.dumps(signal.reasoning),
+            signal_strength=signal.signal_strength.value,
+            risk_reward_ratio=signal.risk_reward_ratio,
+            expires_at=expires_at,
+            market_price_at_signal=signal.entry_price
+        )
+    
+    @classmethod
+    def get_valid_signal(cls, symbol, current_price=None):
+        """Get a valid cached signal for symbol, considering expiration and price tolerance"""
+        # Get most recent non-expired signal
+        signal = cls.query.filter(
+            cls.symbol == symbol,
+            cls.expires_at > datetime.utcnow()
+        ).order_by(cls.created_at.desc()).first()
+        
+        if not signal:
+            return None
+            
+        # Check if price is still within tolerance if current_price provided
+        if current_price and not signal.is_price_still_valid(current_price):
+            # Price moved too much, signal is no longer valid
+            return None
+            
+        return signal
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired signals from cache"""
+        expired_count = cls.query.filter(cls.expires_at <= datetime.utcnow()).delete()
+        db.session.commit()
+        return expired_count
+    
+    def __repr__(self):
+        return f"<SMCSignalCache {self.symbol}: {self.direction} @ {self.entry_price}>"
