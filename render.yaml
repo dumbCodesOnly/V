@@ -3,7 +3,7 @@ services:
     name: trading-bot
     env: python
     plan: starter
-    buildCommand: "pip install -r requirements.txt && python -c 'import render_performance_fix'"
+    buildCommand: "pip install -r requirements.txt && python -c 'import render_performance_fix, render_session_fix, render_database_fix'"
     startCommand: "gunicorn -c gunicorn_config.py main:app"
     envVars:
       - key: RENDER

@@ -378,6 +378,11 @@ def initialize_user_environment(user_id, force_reload=False):
     user_id = int(user_id)
     user_id_str = str(user_id)
     
+    # For Render deployment: Always force database reload to prevent worker sync issues
+    from config import Environment
+    if Environment.IS_RENDER:
+        force_reload = True
+    
     # Check enhanced cache first for user trade configurations
     cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
     if not force_reload and cached_result:
@@ -389,10 +394,8 @@ def initialize_user_environment(user_id, force_reload=False):
 # Cache hit - removed excessive debug logging for cleaner output
         return
     
-    # Only load from database if user has no data in memory or force_reload is True
-    # This prevents unnecessary database calls during frequent price updates
-    if user_id not in user_trade_configs or force_reload:
-        user_trade_configs[user_id] = load_user_trades_from_db(user_id)
+    # Always load from database for Render or when needed
+    user_trade_configs[user_id] = load_user_trades_from_db(user_id, force_reload)
     
     # Initialize user's selected trade if not exists
     if user_id not in user_selected_trade:
@@ -1961,8 +1964,11 @@ def user_trades():
     except ValueError:
         return jsonify({'error': 'Invalid user ID format'}), 400
     
+    # For Render: Force reload to ensure fresh data across workers
+    force_reload = Environment.IS_RENDER
+    
     # Initialize user environment (will use cache if available)
-    initialize_user_environment(chat_id)
+    initialize_user_environment(chat_id, force_reload=force_reload)
     
     user_trade_list = []
     
