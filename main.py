@@ -2,6 +2,12 @@ import os
 import logging
 from api.app import app
 
+# Apply Render performance optimizations
+try:
+    import render_performance_fix
+except ImportError:
+    pass
+
 # Set up logging for different environments
 from config import Environment, get_log_level
 logging.basicConfig(level=getattr(logging, get_log_level()))

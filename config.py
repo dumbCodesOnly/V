@@ -48,7 +48,7 @@ class TimeConfig:
     # Sync Intervals
     EXCHANGE_SYNC_INTERVAL = 15    # seconds - background sync for Replit (faster for paper trading TP/SL)
     VERCEL_SYNC_COOLDOWN = 30      # seconds - cooldown between syncs for Vercel
-    RENDER_SYNC_INTERVAL = 10      # seconds - optimized sync for Render always-on service
+    RENDER_SYNC_INTERVAL = 5       # seconds - faster sync for Render always-on service
     
     # UI Update Intervals
     PRICE_UPDATE_INTERVAL = 10000  # milliseconds - frontend price updates
@@ -78,9 +78,9 @@ class DatabaseConfig:
     SERVERLESS_MAX_OVERFLOW = 10  # Max overflow for serverless
     SERVERLESS_POOL_TIMEOUT = 60  # Pool timeout for serverless (seconds)
     
-    RENDER_POOL_SIZE = 10        # Pool size for Render (always-on service)
-    RENDER_MAX_OVERFLOW = 15     # Max overflow for Render
-    RENDER_POOL_TIMEOUT = 30     # Pool timeout for Render (seconds)
+    RENDER_POOL_SIZE = 3         # Reduced pool size for Render starter plan
+    RENDER_MAX_OVERFLOW = 5      # Reduced overflow for memory efficiency
+    RENDER_POOL_TIMEOUT = 20     # Shorter timeout for faster responses
     
     STANDARD_POOL_SIZE = 5       # Standard pool size for Replit
     STANDARD_MAX_OVERFLOW = 10   # Standard max overflow
@@ -222,13 +222,13 @@ class CacheConfig:
     VOLATILITY_CALCULATION_MULTIPLIER = 100  # Multiplier for volatility percentage calculation
     HIGH_VOLATILITY_THRESHOLD = 2.0     # Threshold for high volatility detection
     
-    # Cache TTL Settings (seconds)
-    BASE_PRICE_TTL = 10                  # Base TTL for price data
-    MIN_PRICE_TTL = 2                    # Minimum TTL for high volatility assets
-    MAX_PRICE_TTL = 30                   # Maximum TTL for stable assets
-    USER_DATA_TTL = 300                  # User data cache TTL (5 minutes)
-    CREDENTIALS_TTL = 1800               # API credentials TTL (30 minutes)
-    PREFERENCES_TTL = 3600               # User preferences TTL (1 hour)
+    # Cache TTL Settings (seconds) - Optimized for Render
+    BASE_PRICE_TTL = 5                   # Shorter TTL for faster price updates
+    MIN_PRICE_TTL = 1                    # Minimum TTL for high volatility assets
+    MAX_PRICE_TTL = 15                   # Reduced maximum TTL for responsiveness
+    USER_DATA_TTL = 60                   # Shorter user data cache TTL (1 minute)
+    CREDENTIALS_TTL = 900                # API credentials TTL (15 minutes)
+    PREFERENCES_TTL = 1800               # User preferences TTL (30 minutes)
     
     # TTL Multiplier Calculations
     MIN_TTL_MULTIPLIER = 0.2             # Minimum multiplier for high volatility
