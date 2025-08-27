@@ -34,7 +34,8 @@ class ToobitClient:
         
         # Log warning if testnet was requested
         if testnet:
-            logging.warning("Toobit does not support testnet mode. Using mainnet/live trading instead.")
+            logging.warning("TOOBIT TESTNET DISABLED: Toobit does not support testnet mode. Using mainnet/live trading instead.")
+            logging.warning("RENDER ALERT: If you see this on Render, check database credentials for testnet_mode=True")
         
         # Request session for connection pooling
         self.session = requests.Session()

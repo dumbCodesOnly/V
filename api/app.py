@@ -210,6 +210,24 @@ def run_database_migrations():
                     logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
                 
                 logging.info("Fixed Toobit testnet mode for existing credentials")
+                
+                # CRITICAL: Force disable testnet mode for ALL environments (Replit, Vercel, Render)
+                # This addresses persistent testnet issues on Render deployments
+                all_toobit_creds = UserCredentials.query.filter_by(
+                    exchange_name='toobit',
+                    is_active=True
+                ).all()
+                
+                testnet_fixes = 0
+                for cred in all_toobit_creds:
+                    if cred.testnet_mode:
+                        cred.testnet_mode = False
+                        testnet_fixes += 1
+                        logging.warning(f"RENDER FIX: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                
+                if testnet_fixes > 0:
+                    db.session.commit()
+                    logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
             except Exception as toobit_fix_error:
                 logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
                 db.session.rollback()
@@ -881,12 +899,12 @@ def test_exchange_connection():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'success': False, 'message': 'No API credentials found'}), 400
         
-        # Create client and test connection
+        # Create client and test connection - Force mainnet mode for Toobit
         client = ToobitClient(
             api_key=user_creds.get_api_key(),
             api_secret=user_creds.get_api_secret(),
             passphrase=user_creds.get_passphrase(),
-            testnet=user_creds.testnet_mode
+            testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
         is_connected, message = client.test_connection()
@@ -947,12 +965,12 @@ def get_exchange_balance():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found for live trading', 'testnet_mode': False}), 400
         
-        # Create client and get balance
+        # Create client and get balance - Force mainnet mode for Toobit
         client = ToobitClient(
             api_key=user_creds.get_api_key(),
             api_secret=user_creds.get_api_secret(),
             passphrase=user_creds.get_passphrase(),
-            testnet=user_creds.testnet_mode
+            testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
         balance_data = client.get_account_balance()
@@ -1017,12 +1035,12 @@ def get_exchange_positions():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found'}), 400
         
-        # Create client and get positions
+        # Create client and get positions - Force mainnet mode for Toobit
         client = ToobitClient(
             api_key=user_creds.get_api_key(),
             api_secret=user_creds.get_api_secret(),
             passphrase=user_creds.get_passphrase(),
-            testnet=user_creds.testnet_mode
+            testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
         positions = client.get_positions()
@@ -1054,12 +1072,12 @@ def get_exchange_orders():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found'}), 400
         
-        # Create client and get orders
+        # Create client and get orders - Force mainnet mode for Toobit
         client = ToobitClient(
             api_key=user_creds.get_api_key(),
             api_secret=user_creds.get_api_secret(),
             passphrase=user_creds.get_passphrase(),
-            testnet=user_creds.testnet_mode
+            testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
         orders = client.get_orders(symbol=symbol, status=status)
@@ -2426,7 +2444,7 @@ def execute_trade():
                     api_key=user_creds.get_api_key(),
                     api_secret=user_creds.get_api_secret(),
                     passphrase=user_creds.get_passphrase(),
-                    testnet=user_creds.testnet_mode
+                    testnet=False  # ALWAYS False for Toobit - no testnet support
                 )
                 
                 # Test connection first - balance endpoint works even if ticker endpoints don't
@@ -2981,7 +2999,7 @@ def close_trade():
                     api_key=user_creds.get_api_key(),
                     api_secret=user_creds.get_api_secret(),
                     passphrase=user_creds.get_passphrase(),
-                    testnet=user_creds.testnet_mode
+                    testnet=False  # ALWAYS False for Toobit - no testnet support
                 )
                 
                 # Close position on exchange
@@ -3120,7 +3138,7 @@ def close_all_trades():
                 api_key=user_creds.get_api_key(),
                 api_secret=user_creds.get_api_secret(),
                 passphrase=user_creds.get_passphrase(),
-                testnet=user_creds.testnet_mode
+                testnet=False  # ALWAYS False for Toobit - no testnet support
             )
         
         # Close each active trade
@@ -4101,7 +4119,7 @@ def get_toobit_price(symbol, user_id=None):
                     api_key=user_creds.get_api_key(),
                     api_secret=user_creds.get_api_secret(),
                     passphrase=user_creds.get_passphrase(),
-                    testnet=user_creds.testnet_mode
+                    testnet=False  # ALWAYS False for Toobit - no testnet support
                 )
                 
                 toobit_price = client.get_ticker_price(symbol)
@@ -6347,7 +6365,7 @@ def update_positions_lightweight():
                                     client = ToobitClient(
                                         api_key=user_creds.get_api_key(),
                                         api_secret=user_creds.get_api_secret(),
-                                        testnet=user_creds.testnet_mode
+                                        testnet=False  # ALWAYS False for Toobit - no testnet support
                                     )
                                     # Move stop loss to entry price (break-even)
                                     config.breakeven_sl_price = config.entry_price
@@ -6371,7 +6389,7 @@ def place_exchange_native_orders(config, user_id):
         client = ToobitClient(
             api_key=user_creds.get_api_key(),
             api_secret=user_creds.get_api_secret(),
-            testnet=user_creds.testnet_mode
+            testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
         # Calculate position size and prices

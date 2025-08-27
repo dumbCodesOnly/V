@@ -20,6 +20,11 @@ The application uses Flask for its web framework, serving as the Telegram Mini-A
   - **Paper Balance Management**: Improved paper balance updates during position closures with proper error handling
   - **Position Processing Debugging**: Added enhanced error tracking and diagnostics for paper trading position processing
   - **Render-Specific Paper Trading Fixes**: Addressed specific issues with paper trading mode in multi-worker Render environment
+- **CRITICAL Toobit Testnet Mode Completely Disabled**: Resolved persistent testnet issues on Render deployments:
+  - **Universal Testnet Disabling**: All ToobitClient instantiations now force `testnet=False` regardless of database settings
+  - **Database Migration Enhancement**: Added comprehensive database fixes to ensure all Toobit credentials use mainnet mode
+  - **Render-Specific Testnet Fixes**: Addressed specific testnet persistence issues in Render multi-worker environment
+  - **Toobit Client Hardcoding**: ToobitClient constructor now ignores testnet parameter and always uses mainnet (since Toobit has no testnet)
 - **Migration Completed Successfully**: Fully migrated project from Replit Agent to standard Replit environment with enhanced error handling and debugging capabilities
 - **CRITICAL Trading Logic Bugs Fixed**: Resolved three major issues in TP execution on Render:
   - **Realized P&L Update**: Fixed issue where realized P&L wasn't properly updating after TP1 triggers - now commits to database immediately with proper logging

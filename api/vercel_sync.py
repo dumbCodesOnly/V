@@ -121,7 +121,7 @@ class VercelSyncService:
                 api_key=user_creds.get_api_key(),
                 api_secret=user_creds.get_api_secret(),
                 passphrase=user_creds.get_passphrase(),
-                testnet=user_creds.testnet_mode
+                testnet=False  # ALWAYS False for Toobit - no testnet support
             )
             
             # Test connection first
