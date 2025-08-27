@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user_credentials (
     api_key_encrypted TEXT,
     api_secret_encrypted TEXT,
     passphrase_encrypted TEXT,
-    testnet_mode BOOLEAN DEFAULT FALSE,
+    testnet_mode BOOLEAN DEFAULT FALSE,  -- Defaults to False for Toobit compatibility
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -81,6 +81,9 @@ UPDATE user_credentials SET testnet_mode = false WHERE exchange_name = 'toobit' 
 
 -- Ensure all Toobit exchanges are set to mainnet (comprehensive fix for Vercel/Neon)
 UPDATE user_credentials SET testnet_mode = false WHERE LOWER(exchange_name) = 'toobit';
+
+-- Set all new credentials to mainnet by default for better Toobit compatibility
+ALTER TABLE user_credentials ALTER COLUMN testnet_mode SET DEFAULT false;
 
 -- Log testnet disable action for debugging
 INSERT INTO user_trading_sessions (telegram_user_id, session_start, api_calls_made, last_api_error)

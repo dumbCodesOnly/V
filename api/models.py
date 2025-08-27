@@ -78,8 +78,8 @@ class UserCredentials(db.Model):
     api_secret_encrypted = db.Column(db.Text)
     passphrase_encrypted = db.Column(db.Text)  # For some exchanges
     
-    # API settings
-    testnet_mode = db.Column(db.Boolean, default=True)
+    # API settings - Default to False for Toobit compatibility (no testnet support)
+    testnet_mode = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     
     # Timestamps
