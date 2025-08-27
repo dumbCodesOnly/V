@@ -53,6 +53,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", SecurityConfig.DEFAULT_SESSION_SECRET)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
+# Record app start time for uptime tracking
+app.config['START_TIME'] = time.time()
+
 # Configure database using centralized config
 database_url = get_database_url()
 if not database_url:
@@ -835,12 +838,65 @@ def database_status():
 
 @app.route('/api/health')
 def api_health_check():
-    """API Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': get_iran_time().isoformat(),
-        'api_version': '1.0'
-    })
+    """Comprehensive health check endpoint for UptimeRobot and monitoring"""
+    try:
+        # Test database connection
+        db_status = "healthy"
+        try:
+            with app.app_context():
+                from sqlalchemy import text
+                db.session.execute(text("SELECT 1"))
+                db.session.commit()
+        except Exception as e:
+            db_status = f"unhealthy: {str(e)}"
+        
+        # Check cache system
+        cache_status = "active" if enhanced_cache else "inactive"
+        
+        # Check circuit breakers
+        cb_status = "healthy"
+        try:
+            if hasattr(circuit_manager, 'get_all_status'):
+                status = circuit_manager.get_all_status()
+                failing_breakers = [name for name, info in status.items() if info.get('state') == 'OPEN']
+                cb_status = "degraded" if failing_breakers else "healthy"
+        except:
+            cb_status = "unknown"
+        
+        # Monitor system load (basic check)
+        active_configs = sum(len(configs) for configs in user_trade_configs.values())
+        
+        health_data = {
+            'status': 'healthy' if db_status == "healthy" else 'degraded',
+            'timestamp': get_iran_time().isoformat(),
+            'api_version': '1.0',
+            'database': db_status,
+            'services': {
+                'cache': cache_status,
+                'monitoring': 'running',
+                'circuit_breakers': cb_status
+            },
+            'metrics': {
+                'active_trade_configs': active_configs,
+                'uptime_seconds': int(time.time() - app.config.get('START_TIME', time.time()))
+            },
+            'environment': {
+                'render': Environment.IS_RENDER,
+                'vercel': Environment.IS_VERCEL,
+                'replit': Environment.IS_REPLIT
+            }
+        }
+        
+        # Return appropriate HTTP status
+        status_code = 200 if health_data['status'] == 'healthy' else 503
+        return jsonify(health_data), status_code
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': get_iran_time().isoformat()
+        }), 503
 
 # Exchange Synchronization Endpoints
 @app.route('/api/exchange/sync-status')

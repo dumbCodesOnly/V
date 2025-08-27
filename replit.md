@@ -1,7 +1,7 @@
 # Toobit Multi-Trade Telegram Bot
 
 ## Overview
-This project is a Telegram-based trading bot for Toobit USDT-M futures, featuring multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The vision is to offer a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with future expansion to other exchanges and a comprehensive suite of trading tools.
+This project is a Telegram-based trading bot for Toobit USDT-M futures, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with future expansion to other exchanges and a comprehensive suite of trading tools.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,73 +9,11 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
-**Latest Updates (August 27, 2025):**
-- **CRITICAL Position Closing Issue Fixed**: Resolved major bug where users couldn't close positions on Render deployment:
-  - **Enhanced Error Reporting**: Improved ToobitClient error handling with specific error messages and technical details for debugging
-  - **Render-Specific Logging**: Added comprehensive logging for position closure attempts on Render with detailed tracking
-  - **API Error Tracking**: Implemented `last_error` tracking in ToobitClient for better user feedback when exchanges fail
-  - **User-Friendly Error Messages**: Position closure failures now provide specific error details instead of generic "Failed to close position" messages
-- **Paper Trading Mode Enhanced for Render**: Improved paper trading reliability and debugging for Render deployments:
-  - **Enhanced Paper Trading Logging**: Added detailed debugging logs for paper trading operations on Render with comprehensive error tracking
-  - **Paper Balance Management**: Improved paper balance updates during position closures with proper error handling
-  - **Position Processing Debugging**: Added enhanced error tracking and diagnostics for paper trading position processing
-  - **Render-Specific Paper Trading Fixes**: Addressed specific issues with paper trading mode in multi-worker Render environment
-- **CRITICAL Toobit Testnet Mode Completely Disabled**: Resolved persistent testnet issues on Render deployments:
-  - **Universal Testnet Disabling**: All ToobitClient instantiations now force `testnet=False` regardless of database settings
-  - **Database Migration Enhancement**: Added comprehensive database fixes to ensure all Toobit credentials use mainnet mode
-  - **Render-Specific Testnet Fixes**: Addressed specific testnet persistence issues in Render multi-worker environment
-  - **Toobit Client Hardcoding**: ToobitClient constructor now ignores testnet parameter and always uses mainnet (since Toobit has no testnet)
-- **CRITICAL Position Closing Enhanced Debugging**: Added comprehensive debugging for position closing failures on Render:
-  - **Enhanced ToobitClient Logging**: Added detailed `[RENDER POSITION CLOSE]` and `[RENDER API RESPONSE]` logging tags for position closure attempts
-  - **API Request/Response Tracking**: All Toobit API calls now log detailed request and response data for debugging
-  - **Error Classification System**: Enhanced error handling to capture and classify specific API failures during position closure
-  - **Debug Endpoint Created**: Added `/api/debug/position-close-test` endpoint to diagnose API connection and active position status
-- **Migration Completed Successfully**: Fully migrated project from Replit Agent to standard Replit environment with enhanced error handling and debugging capabilities
-- **CRITICAL Trading Logic Bugs Fixed**: Resolved three major issues in TP execution on Render:
-  - **Realized P&L Update**: Fixed issue where realized P&L wasn't properly updating after TP1 triggers - now commits to database immediately with proper logging
-  - **Breakeven Stop Loss Movement**: Fixed bug where breakeven SL wasn't moving to entry price after TP1 - now correctly triggers breakeven protection
-  - **Allocation Logic Preservation**: Fixed critical bug where subsequent TP calculations (TP2/TP3) were based on reduced position instead of original position - now preserves original amounts for accurate sequential TP profit calculations
-- **Root Directory Streamlined**: Organized project structure by moving utility scripts to `scripts/` directory and deployment documentation to `docs/` while maintaining full hybrid deployment compatibility for Replit, Vercel, and Render platforms
-- **Render Deployment Streamlined**: Consolidated scattered Render deployment files into single `scripts/render_deploy.py` with comprehensive optimizations, trading fix verification, and database connection checks
-- **Multi-Platform Support Enhanced**: Application now supports Replit (development), Vercel (serverless), and Render (always-on) environments with automatic optimization for each platform
-- **Migration Completed Successfully**: Fully migrated from Replit Agent to standard Replit environment with 100% functionality preserved
-- **SMC Signal Bug Fixed**: Resolved critical bug where `get_live_market_price` returned float instead of dict, causing "'float' object has no attribute 'get'" errors in both single and multiple signal endpoints
-- **SMC Signals Now Working**: Frontend now displays live SMC signals correctly - currently showing 4 active signals (ETHUSDT 70%, ADAUSDT 60%, SOLUSDT 90% VERY STRONG, XRPUSDT 90% VERY STRONG)
-- **Database Caching Active**: SMC signals properly cached in database with 15-minute expiration and 2% price tolerance validation
-
-**Previous Updates (August 26, 2025):**
-- **Migration Completed**: Successfully migrated from Replit Agent to standard Replit environment with full functionality
-- **CRITICAL TP Allocation Fix**: Fixed major bug in partial TP profit calculations. When TP1 triggered with 50% allocation, subsequent TPs (TP2/TP3) were calculating profit based on reduced position instead of original position. Now preserves original amounts for accurate sequential TP profit calculations.
-- **Complete Configuration Centralization**: Achieved 100% centralization of all magic numbers and hardcoded values into config.py with organized configuration classes:
-  - **CacheConfig**: All caching timeouts, volatility thresholds, and TTL calculations
-  - **ErrorConfig**: Standardized retry timeouts for all error types
-  - **TimezoneConfig**: Centralized timezone offset constants
-  - **CircuitBreakerConfig**: API failure thresholds and recovery timeouts
-  - **SMCConfig**: All Smart Money Concepts analysis parameters
-- **Code Quality Achievement**: Eliminated all LSP diagnostics and technical debt from hardcoded values
-- **TP Format Standardization**: Standardized TP allocation format to consistently show individual allocation percentages (not cumulative) across all displays: "TP1 2.0%(50%)"
-- **Default Allocation Fix**: Corrected all fallback allocation values from hardcoded 25% to proper 0% defaults for accurate calculations
-- **Auto-trades Visibility Fix**: Fixed critical issue where auto-trades weren't appearing in trading tab due to user ID type mismatch (string vs integer keys)
-- **Break-even Monitoring Fix**: Fixed issue where break-even at TP1 settings weren't being properly monitored by changing storage format from display names to internal codes
-
-**Previous Updates (August 23, 2025):**
-- **Enhanced Limit Order System**: Limit orders are now placed directly on the exchange instead of manual price monitoring, providing more realistic trading behavior
-- **Improved TP/SL Management**: Take profit and stop loss orders are configured to activate automatically when limit orders are filled
-- **Comprehensive Error Classification**: Implemented user-friendly error messaging system with 10 error categories, contextual suggestions, and appropriate severity levels
-- Implemented enhanced caching system with smart volatility-based TTL for optimal performance
-- Added comprehensive user data caching to reduce database load and improve response times
-- Deployed background cache cleanup worker for automatic expired entry management
-- Added real-time cache performance tracking with hit rate analytics and monitoring endpoints
-- Implemented circuit breaker pattern for all external API calls (Toobit, Binance, CoinGecko, CryptoCompare)
-- Circuit breakers prevent cascading failures with configurable thresholds and recovery timeouts
-- Added circuit breaker monitoring dashboard with health status and statistics endpoints
-- Enhanced API error handling with intelligent fallback mechanisms for improved reliability
-
 **UI/UX Decisions:**
-The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. Modern, professional trading platform symbols are used throughout. Typography uses Google Fonts (Inter for text, JetBrains Mono for numerical data). Application title is "Trading Expert".
+The UI/UX utilizes HTML formatting with a dark blue theme, gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. Modern, professional trading platform symbols are used. Typography uses Google Fonts (Inter for text, JetBrains Mono for numerical data). The application title is "Trading Expert".
 
 **Technical Implementations & Feature Specifications:**
-- Streamlined project structure with `api/` directory and clear separation of environments.
+- Streamlined project structure with an `api/` directory and clear separation of environments.
 - Comprehensive webhook security with secret token authentication.
 - Implemented proper limit order functionality with "pending" status and monitoring.
 - Corrected margin, position size, and leverage calculations for mathematically accurate futures trading.
@@ -87,7 +25,7 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Collapsible/expandable functionality for positions and trading tabs.
 - Multi-symbol trading support for `get_live_market_price` function with concurrent processing and intelligent fallbacks.
 - Correctly displays "Position Size" alongside "Margin" in the UI.
-- Tracks and displays the last 5 closed positions in the Portfolio tab with comprehensive details including partial take profit levels, breakeven stop loss activation status, accurate ROE, and realized vs final P&L breakdown.
+- Tracks and displays the last 5 closed positions in the Portfolio tab with comprehensive details.
 - Implemented hamburger menu with API Keys functionality.
 - Corrected account balance calculation to include realized P&L from closed trades.
 - Implemented comprehensive micro-interactions for trade management buttons.
@@ -100,7 +38,7 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Enhanced realized P&L tracking system for partial take profit closures with separate display of realized vs floating P&L.
 - Fixed and enhanced stop loss trigger logic with proper break-even stop loss support for both long and short positions.
 - Supports both Replit and Vercel/Neon deployments seamlessly with shared codebase and environment-specific optimizations.
-- Automatic database migration system to handle schema updates across environments, including `breakeven_sl_triggered` and `realized_pnl` columns.
+- Automatic database migration system to handle schema updates across environments.
 - Enhanced import system with fallback mechanisms for relative (Vercel) and absolute (Replit) import paths.
 - Optimized Neon PostgreSQL connection pooling.
 - Fixed take profit progression where triggered TP levels are removed and subsequent TPs become new TP1.
@@ -109,6 +47,22 @@ The UI/UX utilizes HTML formatting with a sophisticated dark blue theme, elegant
 - Added testnet/mainnet toggle functionality with real-time exchange balance display.
 - Added paper trading mode for development testing without requiring API credentials.
 - Enhanced trade execution to properly handle both paper and live trading modes seamlessly.
+- Enhanced error reporting with specific error messages and technical details.
+- Improved paper trading reliability and debugging.
+- Universal disabling of Toobit Testnet mode, forcing mainnet for all operations.
+- Comprehensive debugging for position closing failures.
+- UptimeRobot integration for continuous monitoring and prevention of Render free tier sleeping.
+- Resolved critical bugs in TP execution and breakeven stop loss movement.
+- Streamlined root directory organization and Render deployment process.
+- Achieved 100% centralization of all configuration values into `config.py`.
+- Standardized TP allocation format and corrected default allocation values.
+- Fixed critical issues with auto-trades visibility and break-even monitoring.
+- Implemented comprehensive error classification system with user-friendly messages.
+- Enhanced caching system with smart volatility-based TTL and user data caching.
+- Deployed background cache cleanup worker.
+- Implemented circuit breaker pattern for all external API calls to prevent cascading failures.
+- Resolved bug in SMC signal data retrieval (`get_live_market_price`).
+- SMC signals now display correctly and are cached in the database with validation.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
