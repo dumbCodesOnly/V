@@ -15,7 +15,7 @@ The application uses Flask for its web framework, serving as the Telegram Mini-A
   - **Breakeven Stop Loss Movement**: Fixed bug where breakeven SL wasn't moving to entry price after TP1 - now correctly triggers breakeven protection
   - **Allocation Logic Preservation**: Fixed critical bug where subsequent TP calculations (TP2/TP3) were based on reduced position instead of original position - now preserves original amounts for accurate sequential TP profit calculations
 - **Root Directory Streamlined**: Organized project structure by moving utility scripts to `scripts/` directory and deployment documentation to `docs/` while maintaining full hybrid deployment compatibility for Replit, Vercel, and Render platforms
-- **Render Deployment Compatibility Added**: Full compatibility with Render.com for always-on hosting with optimized Gunicorn configuration, environment detection, and database connection pooling
+- **Render Deployment Streamlined**: Consolidated scattered Render deployment files into single `scripts/render_deploy.py` with comprehensive optimizations, trading fix verification, and database connection checks
 - **Multi-Platform Support Enhanced**: Application now supports Replit (development), Vercel (serverless), and Render (always-on) environments with automatic optimization for each platform
 - **Migration Completed Successfully**: Fully migrated from Replit Agent to standard Replit environment with 100% functionality preserved
 - **SMC Signal Bug Fixed**: Resolved critical bug where `get_live_market_price` returned float instead of dict, causing "'float' object has no attribute 'get'" errors in both single and multiple signal endpoints
