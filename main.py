@@ -4,9 +4,9 @@ from api.app import app
 
 # Apply Render performance and session fixes
 try:
-    import render_performance_fix
-    import render_session_fix
-    import render_database_fix
+    import scripts.render_performance_fix
+    import scripts.render_session_fix
+    import scripts.render_database_fix
 except ImportError:
     pass
 

@@ -21,7 +21,7 @@ from config import (
 try:
     # Try relative import first (for module import - Vercel/main.py)
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
-    from exchange_sync import initialize_sync_service, get_sync_service
+    from ..scripts.exchange_sync import initialize_sync_service, get_sync_service
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .toobit_client import ToobitClient
     from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
@@ -33,7 +33,7 @@ except ImportError:
     parent_dir = os.path.dirname(current_dir)
     sys.path.extend([current_dir, parent_dir])
     from api.models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
-    from exchange_sync import initialize_sync_service, get_sync_service
+    from scripts.exchange_sync import initialize_sync_service, get_sync_service
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from api.toobit_client import ToobitClient
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
