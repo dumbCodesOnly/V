@@ -61,7 +61,19 @@ if not database_url:
     database_url = f"sqlite:///{db_path}"
     logging.info(f"Using SQLite database for development at {db_path}")
 
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+# Validate the database URL before setting it
+try:
+    from sqlalchemy import create_engine
+    # Test if the URL can be parsed by SQLAlchemy
+    test_engine = create_engine(database_url, strategy='mock', executor=lambda sql, *_: None)
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    logging.info(f"Database configured successfully: {database_url.split('://')[0]}")
+except Exception as e:
+    # If URL is invalid, fall back to SQLite
+    logging.error(f"Invalid database URL, falling back to SQLite: {e}")
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance', 'trading_bot.db')
+    database_url = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
 # Database engine configuration based on database type
 if database_url.startswith("sqlite"):

@@ -326,11 +326,40 @@ def get_cache_ttl(cache_type="price"):
     return ttls.get(cache_type, TimeConfig.PRICE_CACHE_TTL)
 
 def get_database_url():
-    """Get database URL with proper formatting"""
+    """Get database URL with proper formatting and validation"""
+    import logging
     database_url = os.environ.get("DATABASE_URL")
-    if database_url and database_url.startswith("postgres://"):
+    
+    if not database_url:
+        return None
+    
+    # Clean up the URL - remove any extra whitespace or newlines
+    database_url = database_url.strip()
+    
+    # Handle common URL format issues
+    if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-    return database_url
+    
+    # Validate the URL format
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(database_url)
+        
+        # Check if it's a valid database URL
+        if not parsed.scheme or not parsed.netloc:
+            logging.warning(f"Invalid database URL format: {database_url[:20]}...")
+            return None
+            
+        # Ensure postgresql scheme
+        if parsed.scheme not in ['postgresql', 'sqlite']:
+            logging.warning(f"Unsupported database scheme: {parsed.scheme}")
+            return None
+            
+        return database_url
+        
+    except Exception as e:
+        logging.error(f"Error parsing database URL: {e}")
+        return None
 
 def get_log_level():
     """Get appropriate log level for current environment"""
