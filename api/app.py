@@ -134,6 +134,22 @@ def run_database_migrations():
                     WHERE exchange_name = 'toobit' AND testnet_mode = true
                 """))
                 db.session.commit()
+                
+                # Additional Vercel/Neon protection - ensure all Toobit credentials are mainnet
+                toobit_testnet_users = UserCredentials.query.filter_by(
+                    exchange_name='toobit',
+                    testnet_mode=True,
+                    is_active=True
+                ).all()
+                
+                if toobit_testnet_users:
+                    for cred in toobit_testnet_users:
+                        cred.testnet_mode = False
+                        logging.info(f"Vercel/Neon: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                    
+                    db.session.commit()
+                    logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
+                
                 logging.info("Fixed Toobit testnet mode for existing credentials")
             except Exception as toobit_fix_error:
                 logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")

@@ -79,6 +79,16 @@ ALTER TABLE trade_configurations ADD COLUMN IF NOT EXISTS exchange_tp_sl_orders 
 -- Fix Toobit testnet mode issue - Toobit doesn't support testnet
 UPDATE user_credentials SET testnet_mode = false WHERE exchange_name = 'toobit' AND testnet_mode = true;
 
+-- Ensure all Toobit exchanges are set to mainnet (comprehensive fix for Vercel/Neon)
+UPDATE user_credentials SET testnet_mode = false WHERE LOWER(exchange_name) = 'toobit';
+
+-- Log testnet disable action for debugging
+INSERT INTO user_trading_sessions (telegram_user_id, session_start, api_calls_made, last_api_error)
+SELECT telegram_user_id, CURRENT_TIMESTAMP, 0, 'Toobit testnet disabled - not supported'
+FROM user_credentials 
+WHERE LOWER(exchange_name) = 'toobit' AND testnet_mode = true
+ON CONFLICT DO NOTHING;
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_credentials_telegram_user_id ON user_credentials(telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_trading_sessions_telegram_user_id ON user_trading_sessions(telegram_user_id);
