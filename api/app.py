@@ -126,6 +126,38 @@ def run_database_migrations():
                 ('realized_pnl', 'FLOAT DEFAULT 0.0')
             ]
             
+            # Ensure SMC signal cache table exists
+            try:
+                db.session.execute(text("""
+                    CREATE TABLE IF NOT EXISTS smc_signal_cache (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(20) NOT NULL,
+                        direction VARCHAR(10) NOT NULL,
+                        entry_price FLOAT NOT NULL,
+                        stop_loss FLOAT NOT NULL,
+                        take_profit_levels TEXT NOT NULL,
+                        confidence FLOAT NOT NULL,
+                        reasoning TEXT NOT NULL,
+                        signal_strength VARCHAR(20) NOT NULL,
+                        risk_reward_ratio FLOAT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        market_price_at_signal FLOAT NOT NULL
+                    )
+                """))
+                
+                # Create index for efficient SMC signal queries
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_smc_signal_cache_symbol_expires 
+                    ON smc_signal_cache(symbol, expires_at)
+                """))
+                
+                db.session.commit()
+                logging.info("SMC signal cache table ensured for Vercel/Neon deployment")
+            except Exception as smc_error:
+                logging.warning(f"SMC signal cache table creation failed (may already exist): {smc_error}")
+                db.session.rollback()
+            
             # Fix Toobit testnet issue for existing data
             try:
                 db.session.execute(text("""

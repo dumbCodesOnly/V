@@ -14,6 +14,7 @@ This guide covers deploying the Toobit Multi-Trade Telegram Bot to both Replit (
 ### Vercel Environment (Production)
 - **On-Demand Services**: `VercelSyncService` with smart cooldown (30s)
 - **Database**: Neon PostgreSQL with serverless optimization
+- **SMC Signal Caching**: Database-backed caching for stable entry prices (15-min TTL)
 - **Sync Method**: Triggered by user requests and webhooks
 - **Performance**: Optimized for serverless cold starts
 

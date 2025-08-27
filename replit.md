@@ -9,7 +9,10 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
-**Latest Updates (August 26, 2025):**
+**Latest Updates (August 27, 2025):**
+- **SMC Signal Caching Implemented**: Added database-backed caching for SMC signals to resolve entry price volatility. Signals cached for 15 minutes with 2% price tolerance validation across both Replit and Vercel/Neon deployments.
+
+**Previous Updates (August 26, 2025):**
 - **Migration Completed**: Successfully migrated from Replit Agent to standard Replit environment with full functionality
 - **CRITICAL TP Allocation Fix**: Fixed major bug in partial TP profit calculations. When TP1 triggered with 50% allocation, subsequent TPs (TP2/TP3) were calculating profit based on reduced position instead of original position. Now preserves original amounts for accurate sequential TP profit calculations.
 - **Complete Configuration Centralization**: Achieved 100% centralization of all magic numbers and hardcoded values into config.py with organized configuration classes:

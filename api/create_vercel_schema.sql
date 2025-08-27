@@ -92,9 +92,27 @@ FROM user_credentials
 WHERE LOWER(exchange_name) = 'toobit' AND testnet_mode = true
 ON CONFLICT DO NOTHING;
 
+-- Create SMC signal cache table for stable entry prices
+CREATE TABLE IF NOT EXISTS smc_signal_cache (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    entry_price FLOAT NOT NULL,
+    stop_loss FLOAT NOT NULL,
+    take_profit_levels TEXT NOT NULL,
+    confidence FLOAT NOT NULL,
+    reasoning TEXT NOT NULL,
+    signal_strength VARCHAR(20) NOT NULL,
+    risk_reward_ratio FLOAT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    market_price_at_signal FLOAT NOT NULL
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_credentials_telegram_user_id ON user_credentials(telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_trading_sessions_telegram_user_id ON user_trading_sessions(telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_trade_configurations_telegram_user_id ON trade_configurations(telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_trade_configurations_trade_id ON trade_configurations(trade_id);
 CREATE INDEX IF NOT EXISTS idx_trade_configurations_status ON trade_configurations(status);
+CREATE INDEX IF NOT EXISTS idx_smc_signal_cache_symbol_expires ON smc_signal_cache(symbol, expires_at);

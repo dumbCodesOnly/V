@@ -44,6 +44,7 @@ The application automatically handles schema migrations on startup, but for fres
 ✅ **Price Source Fix**: Exchange-accurate pricing with intelligent fallbacks
 ✅ **Enhanced Error Handling**: Clear diagnostics for API issues
 ✅ **Flask Context Management**: Resolved serverless context issues
+✅ **SMC Signal Caching**: Database-backed caching for stable entry prices (15-min TTL)
 
 ## Troubleshooting
 
