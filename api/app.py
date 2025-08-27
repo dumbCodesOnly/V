@@ -759,6 +759,50 @@ def health_check():
         'timestamp': get_iran_time().isoformat()
     })
 
+@app.route('/api/db-status')
+def database_status():
+    """Database status diagnostic endpoint"""
+    try:
+        database_url = get_database_url()
+        db_type = "sqlite"
+        if database_url:
+            if database_url.startswith("postgresql"):
+                db_type = "postgresql"
+            elif database_url.startswith("sqlite"):
+                db_type = "sqlite"
+        
+        # Test database connection
+        try:
+            db.create_all()
+            connection_status = "connected"
+            
+            # Count records
+            from api.models import TradeConfiguration
+            trade_count = TradeConfiguration.query.count()
+            
+        except Exception as e:
+            connection_status = f"error: {str(e)}"
+            trade_count = 0
+        
+        return jsonify({
+            'database_type': db_type,
+            'connection_status': connection_status,
+            'trade_count': trade_count,
+            'environment': {
+                'IS_RENDER': Environment.IS_RENDER,
+                'IS_VERCEL': Environment.IS_VERCEL,
+                'IS_REPLIT': Environment.IS_REPLIT
+            },
+            'database_url_set': bool(os.environ.get("DATABASE_URL")),
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'timestamp': get_iran_time().isoformat()
+        }), 500
+
 @app.route('/api/health')
 def api_health_check():
     """API Health check endpoint"""

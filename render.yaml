@@ -8,6 +8,28 @@ services:
     envVars:
       - key: RENDER
         value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+    
+  # PostgreSQL Database (required for position persistence)
+  - type: pserv
+    name: trading-bot-db
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.postgres
+    envVars:
+      - key: POSTGRES_DB
+        value: trading_bot
+      - key: POSTGRES_USER
+        value: trading_user
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+
+# Database connection for web service
+databases:
+  - name: trading-bot-db
+    databaseName: trading_bot
+    user: trading_user
       - key: FLASK_ENV
         value: "production"
       - key: PYTHONPATH
