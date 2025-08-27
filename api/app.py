@@ -2908,6 +2908,11 @@ def close_trade():
                 
                 # Close position on exchange
                 close_side = "sell" if config.side == "long" else "buy"
+                
+                # Enhanced logging for Render debugging
+                logging.info(f"[RENDER CLOSE] User {chat_id} attempting to close {config.symbol} {config.side} position")
+                logging.info(f"[RENDER CLOSE] Position size: {config.position_size}, Close side: {close_side}")
+                
                 close_order = client.place_order(
                     symbol=config.symbol,
                     side=close_side,
@@ -2917,7 +2922,17 @@ def close_trade():
                 )
                 
                 if not close_order:
-                    return jsonify({'error': 'Failed to close position on exchange. Please check your connection and try again.'}), 500
+                    # Get specific error from ToobitClient if available
+                    error_detail = getattr(client, 'last_error', 'Unknown error occurred')
+                    logging.error(f"[RENDER CLOSE FAILED] {error_detail}")
+                    
+                    # Provide more specific error message to user
+                    return jsonify({
+                        'error': f'Failed to close {config.symbol} position: {error_detail}. Please try again or contact support if the issue persists.',
+                        'technical_details': error_detail,
+                        'symbol': config.symbol,
+                        'side': config.side
+                    }), 500
                 
                 logging.info(f"Position closed on Toobit: {close_order}")
                 
@@ -2933,8 +2948,17 @@ def close_trade():
                                 logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
                 
             except Exception as e:
-                logging.error(f"Exchange position closure failed: {e}")
-                return jsonify({'error': f'Exchange closure failed: {str(e)}'}), 500
+                logging.error(f"[RENDER CLOSE EXCEPTION] Exchange position closure failed: {e}")
+                logging.error(f"[RENDER CLOSE EXCEPTION] Config details: {config.symbol} {config.side}, User: {chat_id}")
+                
+                # Provide detailed error information for troubleshooting
+                return jsonify({
+                    'error': f'Exchange closure failed for {config.symbol}: {str(e)}',
+                    'technical_details': str(e),
+                    'symbol': config.symbol,
+                    'side': config.side,
+                    'suggestion': 'Check your API credentials and try again. If the problem persists, contact support.'
+                }), 500
         
         # Update trade configuration
         final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)

@@ -29,6 +29,9 @@ class ToobitClient:
         self.quote_base = APIConfig.TOOBIT_QUOTE_PATH
         self.futures_base = APIConfig.TOOBIT_FUTURES_PATH
         
+        # Track last error for better user feedback
+        self.last_error = None
+        
         # Log warning if testnet was requested
         if testnet:
             logging.warning("Toobit does not support testnet mode. Using mainnet/live trading instead.")
@@ -127,15 +130,30 @@ class ToobitClient:
             logging.error(f"[{api_mode}] Request details: {method} {url}")
             logging.error(f"[{api_mode}] Request headers: {headers}")
             logging.error(f"[{api_mode}] Request params: {all_params}")
+            
+            # Store detailed error information for better user feedback
             response = getattr(e, 'response', None)
             if response is not None:
+                logging.error(f"[{api_mode}] Response status: {response.status_code}")
                 logging.error(f"[{api_mode}] Response body: {response.text}")
-                # Try to decode error response for more details
+                
+                # Parse common Toobit error responses
                 try:
                     error_data = response.json()
                     logging.error(f"[{api_mode}] Error details: {error_data}")
+                    
+                    # Store specific Toobit error message
+                    if 'msg' in error_data:
+                        self.last_error = f"Toobit API Error: {error_data['msg']}"
+                    elif 'message' in error_data:
+                        self.last_error = f"Toobit API Error: {error_data['message']}"
+                    else:
+                        self.last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                 except:
-                    pass
+                    self.last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+            else:
+                self.last_error = f"Connection error: {str(e)}"
+                
             raise
         except json.JSONDecodeError as e:
             logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
@@ -225,14 +243,34 @@ class ToobitClient:
                 if key not in ['leverage', 'timeInForce']:  # Skip these as they're handled above
                     data[key] = value
             
+            # Enhanced logging for position closing orders
+            if kwargs.get('reduceOnly'):
+                logging.info(f"[POSITION CLOSE] Attempting to close position: {symbol} {side} {quantity}")
+            
             response = self._make_request('POST', '/order', data=data)
             
-            # Toobit might return different response format
-            if response:
-                return response
-            return None
+            # Enhanced error handling for failed orders
+            if not response:
+                error_msg = f"No response received from Toobit API for {symbol} {side} order"
+                logging.error(f"[ORDER FAILED] {error_msg}")
+                # Store last error for better user feedback
+                self.last_error = error_msg
+                return None
+            
+            # Check for Toobit-specific error responses
+            if 'code' in response and response.get('code') != 200:
+                error_msg = response.get('msg', 'Unknown Toobit API error')
+                logging.error(f"[TOOBIT ERROR] Code: {response.get('code')}, Message: {error_msg}")
+                self.last_error = f"Toobit API Error: {error_msg}"
+                return None
+                
+            logging.info(f"[ORDER SUCCESS] {symbol} {side} order placed successfully")
+            return response
+            
         except Exception as e:
-            logging.error(f"Failed to place order: {e}")
+            error_msg = f"Exception placing {symbol} {side} order: {str(e)}"
+            logging.error(f"[ORDER EXCEPTION] {error_msg}")
+            self.last_error = error_msg
             return None
     
     def cancel_order(self, order_id: str) -> bool:
@@ -242,7 +280,16 @@ class ToobitClient:
             return response.get('success', False) if response else False
         except Exception as e:
             logging.error(f"Failed to cancel order {order_id}: {e}")
+            self.last_error = f"Failed to cancel order {order_id}: {str(e)}"
             return False
+    
+    def get_last_error(self) -> str:
+        """Get the last error message for better user feedback"""
+        return self.last_error or "No error details available"
+    
+    def clear_last_error(self) -> None:
+        """Clear the last error message"""
+        self.last_error = None
     
     def place_tp_sl_orders(self, symbol: str, side: str, quantity: str, 
                           take_profit_price: Optional[str] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:

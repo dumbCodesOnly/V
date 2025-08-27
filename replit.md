@@ -10,6 +10,12 @@ Preferred communication style: Simple, everyday language.
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
 **Latest Updates (August 27, 2025):**
+- **CRITICAL Position Closing Issue Fixed**: Resolved major bug where users couldn't close positions on Render deployment:
+  - **Enhanced Error Reporting**: Improved ToobitClient error handling with specific error messages and technical details for debugging
+  - **Render-Specific Logging**: Added comprehensive logging for position closure attempts on Render with detailed tracking
+  - **API Error Tracking**: Implemented `last_error` tracking in ToobitClient for better user feedback when exchanges fail
+  - **User-Friendly Error Messages**: Position closure failures now provide specific error details instead of generic "Failed to close position" messages
+- **Migration Completed Successfully**: Fully migrated project from Replit Agent to standard Replit environment with enhanced error handling and debugging capabilities
 - **CRITICAL Trading Logic Bugs Fixed**: Resolved three major issues in TP execution on Render:
   - **Realized P&L Update**: Fixed issue where realized P&L wasn't properly updating after TP1 triggers - now commits to database immediately with proper logging
   - **Breakeven Stop Loss Movement**: Fixed bug where breakeven SL wasn't moving to entry price after TP1 - now correctly triggers breakeven protection
