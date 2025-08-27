@@ -1004,12 +1004,12 @@
             justify-content: space-between;
             align-items: center;
             gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            padding: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.6rem;
             background: linear-gradient(135deg, var(--tg-theme-card-bg) 0%, var(--tg-theme-silver-dark) 100%);
             border: 2px solid var(--tg-theme-silver-blue);
-            border-radius: 16px;
-            box-shadow: 0 8px 20px rgba(75, 93, 122, 0.25), 0 4px 10px rgba(0,0,0,0.3);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(75, 93, 122, 0.15), 0 2px 6px rgba(0,0,0,0.2);
             position: relative;
             overflow: hidden;
         }
@@ -1028,7 +1028,7 @@
         .position-summary-compact .stat-item {
             text-align: center;
             flex: 1;
-            padding: 0.5rem;
+            padding: 0.3rem;
         }
 
         .position-summary-compact .stat-item:not(:last-child) {
@@ -1036,43 +1036,21 @@
         }
 
         .position-summary-compact .stat-value {
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: var(--tg-theme-text-color);
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            margin-bottom: 0.25rem;
-        }
-
-        .position-summary-compact .stat-label {
-            font-size: 0.75rem;
-            color: var(--tg-theme-silver-light);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* Compact SMC Summary - Smaller version */
-        .smc-summary .position-summary-compact {
-            padding: 0.6rem;
-            margin-bottom: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(75, 93, 122, 0.15), 0 2px 6px rgba(0,0,0,0.2);
-        }
-
-        .smc-summary .position-summary-compact .stat-item {
-            padding: 0.3rem;
-        }
-
-        .smc-summary .position-summary-compact .stat-value {
             font-size: 1.2rem;
             font-weight: 700;
+            color: var(--tg-theme-text-color);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
             margin-bottom: 0.2rem;
         }
 
-        .smc-summary .position-summary-compact .stat-label {
+        .position-summary-compact .stat-label {
             font-size: 0.65rem;
+            color: var(--tg-theme-silver-light);
+            font-weight: 600;
+            text-transform: uppercase;
             letter-spacing: 0.3px;
         }
+
 
         .portfolio-summary {
             background: linear-gradient(135deg, var(--tg-theme-card-bg) 0%, var(--tg-theme-silver-dark) 50%, var(--tg-theme-secondary-bg-color) 100%);
