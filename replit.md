@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
 **Latest Updates (August 27, 2025):**
+- **Root Directory Streamlined**: Organized project structure by moving utility scripts to `scripts/` directory and deployment documentation to `docs/` while maintaining full hybrid deployment compatibility for Replit, Vercel, and Render platforms
 - **Render Deployment Compatibility Added**: Full compatibility with Render.com for always-on hosting with optimized Gunicorn configuration, environment detection, and database connection pooling
 - **Multi-Platform Support Enhanced**: Application now supports Replit (development), Vercel (serverless), and Render (always-on) environments with automatic optimization for each platform
 - **Migration Completed Successfully**: Fully migrated from Replit Agent to standard Replit environment with 100% functionality preserved
