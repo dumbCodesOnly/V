@@ -1003,6 +1003,14 @@ def api_health_check():
         # CORE MONITORING: Trigger position monitoring and price updates
         monitoring_results = trigger_core_monitoring()
         
+        # HEALTH PING BOOST: Activate extended monitoring for Render
+        try:
+            sync_service = get_sync_service()
+            if sync_service and hasattr(sync_service, 'trigger_health_ping_boost'):
+                sync_service.trigger_health_ping_boost()
+        except Exception as e:
+            logging.warning(f"Health ping boost activation failed: {e}")
+        
         # Monitor system load (basic check)
         active_configs = sum(len(configs) for configs in user_trade_configs.values())
         

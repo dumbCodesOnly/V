@@ -50,6 +50,10 @@ class TimeConfig:
     VERCEL_SYNC_COOLDOWN = 30      # seconds - cooldown between syncs for Vercel
     RENDER_SYNC_INTERVAL = 5       # seconds - faster sync for Render always-on service
     
+    # Health Ping Boost - Extended monitoring after health checks
+    HEALTH_PING_BOOST_DURATION = 180  # seconds (3 minutes) - continue monitoring after health ping
+    HEALTH_PING_BOOST_INTERVAL = 10   # seconds - faster sync during boost period
+    
     # UI Update Intervals
     PRICE_UPDATE_INTERVAL = 10000  # milliseconds - frontend price updates
     PORTFOLIO_REFRESH_INTERVAL = 30000  # milliseconds - portfolio auto-refresh

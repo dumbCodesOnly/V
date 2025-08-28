@@ -32,6 +32,10 @@ class ExchangeSyncService:
             
         self.last_sync = {}  # {user_id: timestamp}
         
+        # Health ping boost mechanism
+        self.last_health_ping = None
+        self.is_render = Environment.IS_RENDER
+        
     def start(self):
         """Start the background synchronization service"""
         if not self.running:
@@ -48,14 +52,43 @@ class ExchangeSyncService:
         logging.info("Exchange synchronization service stopped")
     
     def _sync_loop(self):
-        """Main synchronization loop"""
+        """Main synchronization loop with health ping boost"""
         while self.running:
             try:
                 self._sync_all_users()
-                time.sleep(self.sync_interval)
+                
+                # Dynamic interval based on health ping boost
+                current_interval = self._get_current_sync_interval()
+                time.sleep(current_interval)
+                
             except Exception as e:
                 logging.error(f"Error in sync loop: {e}")
                 time.sleep(TimeConfig.VERCEL_SYNC_COOLDOWN)  # Wait longer on error
+    
+    def _get_current_sync_interval(self):
+        """Get current sync interval based on health ping boost status"""
+        # Only apply boost for Render environment
+        if not self.is_render or not self.last_health_ping:
+            return self.sync_interval
+        
+        # Check if we're within the boost period
+        time_since_health_ping = (datetime.utcnow() - self.last_health_ping).total_seconds()
+        
+        if time_since_health_ping <= TimeConfig.HEALTH_PING_BOOST_DURATION:
+            # Use faster interval during boost period
+            boost_interval = TimeConfig.HEALTH_PING_BOOST_INTERVAL
+            if time_since_health_ping < 30:  # First 30 seconds after ping
+                logging.debug(f"Health ping boost active: using {boost_interval}s interval")
+            return boost_interval
+        else:
+            # Return to normal interval
+            return self.sync_interval
+    
+    def trigger_health_ping_boost(self):
+        """Trigger extended monitoring after health ping"""
+        if self.is_render:
+            self.last_health_ping = datetime.utcnow()
+            logging.info(f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds")
     
     def _sync_all_users(self):
         """Synchronize all users with active positions"""
