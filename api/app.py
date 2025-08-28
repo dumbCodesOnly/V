@@ -899,7 +899,7 @@ def trigger_core_monitoring():
                                 check_position_trigger_alerts(trade, current_price)
                             
                             all_positions_processed += 1
-                            logging.info(f"HEALTH CHECK: Successfully processed position {trade.trade_id} - Price: ${current_price}, P&L: ${trade.unrealized_pnl:.2f}")
+                            logging.debug(f"HEALTH CHECK: Successfully processed position {trade.trade_id} - Price: ${current_price}, P&L: ${trade.unrealized_pnl:.2f}")
                             
                 except Exception as e:
                     logging.warning(f"Position monitoring failed for trade {trade.trade_id}: {e}")

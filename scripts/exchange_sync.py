@@ -53,7 +53,7 @@ class ExchangeSyncService:
         logging.info("Exchange synchronization service stopped")
     
     def _sync_loop(self):
-        """Main synchronization loop with health ping boost"""
+        """Main synchronization loop with health ping boost and cost optimization"""
         while self.running:
             try:
                 # Check if we're in boost period before syncing
@@ -61,10 +61,21 @@ class ExchangeSyncService:
                 is_boost_active = ((self.is_render or not self.is_vercel) and self.last_health_ping and 
                                  (datetime.utcnow() - self.last_health_ping).total_seconds() <= TimeConfig.HEALTH_PING_BOOST_DURATION)
                 
+                # COST OPTIMIZATION: Only sync if there are active users or during boost
+                should_sync = is_boost_active or self._has_active_users()
+                
                 if is_boost_active:
                     logging.info("Health ping boost: executing enhanced monitoring sync")
+                elif should_sync:
+                    logging.debug("Regular sync: active users detected")
+                else:
+                    logging.debug("COST OPTIMIZATION: Skipping sync - no active users")
                 
-                self._sync_all_users()
+                if should_sync:
+                    self._sync_all_users()
+                else:
+                    # Lighter check - just verify active users exist
+                    self._quick_user_check()
                 
                 # Sleep for the calculated interval
                 time.sleep(current_interval)
@@ -138,6 +149,30 @@ class ExchangeSyncService:
                         
             except Exception as e:
                 logging.error(f"Error syncing all users: {e}")
+    
+    def _has_active_users(self):
+        """Quick check if there are any active users to monitor (cost optimization)"""
+        try:
+            with self.app.app_context():
+                # Quick count query instead of full fetch
+                from api.models import UserCredentials, TradeConfiguration
+                active_users = UserCredentials.query.filter_by(is_active=True).count()
+                active_trades = TradeConfiguration.query.filter_by(status='active').count()
+                return active_users > 0 or active_trades > 0
+        except Exception as e:
+            logging.error(f"Error checking active users: {e}")
+            return True  # Default to sync on error
+    
+    def _quick_user_check(self):
+        """Lightweight user check without full sync (cost optimization)"""
+        try:
+            with self.app.app_context():
+                from api.models import UserCredentials
+                active_count = UserCredentials.query.filter_by(is_active=True).count()
+                if active_count > 0:
+                    logging.info(f"COST OPTIMIZATION: Found {active_count} active users - will resume full sync")
+        except Exception as e:
+            logging.debug(f"Quick user check error: {e}")
     
     def _sync_paper_trading_positions(self):
         """Monitor and process paper trading positions for TP/SL triggers"""

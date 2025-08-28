@@ -45,14 +45,14 @@ class TimeConfig:
     PRICE_CACHE_TTL = 10      # seconds - how long to cache price data
     USER_DATA_CACHE_TTL = 30  # seconds - how long to cache user data
     
-    # Sync Intervals
+    # Sync Intervals - COST OPTIMIZED FOR RENDER
     EXCHANGE_SYNC_INTERVAL = 15    # seconds - background sync for Replit (faster for paper trading TP/SL)
     VERCEL_SYNC_COOLDOWN = 30      # seconds - cooldown between syncs for Vercel
-    RENDER_SYNC_INTERVAL = 5       # seconds - faster sync for Render always-on service
+    RENDER_SYNC_INTERVAL = 12      # seconds - optimized sync for Render (reduced from 5s)
     
-    # Health Ping Boost - Extended monitoring after health checks
-    HEALTH_PING_BOOST_DURATION = 180  # seconds (3 minutes) - continue monitoring after health ping
-    HEALTH_PING_BOOST_INTERVAL = 10   # seconds - faster sync during boost period
+    # Health Ping Boost - Extended monitoring after health checks (COST OPTIMIZED)
+    HEALTH_PING_BOOST_DURATION = 120  # seconds (2 minutes) - reduced from 3 minutes
+    HEALTH_PING_BOOST_INTERVAL = 8    # seconds - optimized from 10s (still faster than normal)
     
     # UI Update Intervals
     PRICE_UPDATE_INTERVAL = 10000  # milliseconds - frontend price updates
@@ -226,13 +226,13 @@ class CacheConfig:
     VOLATILITY_CALCULATION_MULTIPLIER = 100  # Multiplier for volatility percentage calculation
     HIGH_VOLATILITY_THRESHOLD = 2.0     # Threshold for high volatility detection
     
-    # Cache TTL Settings (seconds) - Optimized for Render
-    BASE_PRICE_TTL = 5                   # Shorter TTL for faster price updates
-    MIN_PRICE_TTL = 1                    # Minimum TTL for high volatility assets
-    MAX_PRICE_TTL = 15                   # Reduced maximum TTL for responsiveness
-    USER_DATA_TTL = 60                   # Shorter user data cache TTL (1 minute)
-    CREDENTIALS_TTL = 900                # API credentials TTL (15 minutes)
-    PREFERENCES_TTL = 1800               # User preferences TTL (30 minutes)
+    # Cache TTL Settings (seconds) - COST OPTIMIZED FOR RENDER
+    BASE_PRICE_TTL = 8                   # Increased from 5s for fewer API calls
+    MIN_PRICE_TTL = 2                    # Increased from 1s for high volatility assets
+    MAX_PRICE_TTL = 20                   # Increased from 15s for better caching
+    USER_DATA_TTL = 120                  # Increased to 2 minutes (was 1 minute)
+    CREDENTIALS_TTL = 1800               # Increased to 30 minutes (was 15 minutes)
+    PREFERENCES_TTL = 3600               # Increased to 1 hour (was 30 minutes)
     
     # TTL Multiplier Calculations
     MIN_TTL_MULTIPLIER = 0.2             # Minimum multiplier for high volatility
@@ -241,8 +241,8 @@ class CacheConfig:
     STABILITY_MULTIPLIER = 2.0           # Multiplier for stability calculation
     MIN_VOLATILITY_THRESHOLD = 0.1       # Minimum volatility threshold to prevent division by zero
     
-    # Cleanup Settings
-    CLEANUP_INTERVAL = 60                # Cache cleanup interval in seconds
+    # Cleanup Settings - COST OPTIMIZED
+    CLEANUP_INTERVAL = 120               # Reduced cleanup frequency (was 60s)
     
     # Hit Rate Calculation
     HIT_RATE_PERCENTAGE_MULTIPLIER = 100 # Multiplier for hit rate percentage calculation
