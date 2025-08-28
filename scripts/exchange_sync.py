@@ -108,7 +108,9 @@ class ExchangeSyncService:
             try:
                 # Get all users with credentials for real trading
                 users_with_creds = UserCredentials.query.filter_by(is_active=True).all()
+                logging.info(f"SYNC: Found {len(users_with_creds)} users with active credentials")
                 
+                users_synced = 0
                 for user_creds in users_with_creds:
                     user_id = user_creds.telegram_user_id
                     
@@ -119,7 +121,13 @@ class ExchangeSyncService:
                     ).all()
                     
                     if active_trades:
+                        logging.info(f"SYNC: Syncing {len(active_trades)} active trades for user {user_id}")
                         self._sync_user_positions(user_creds)
+                        users_synced += 1
+                    else:
+                        logging.debug(f"SYNC: User {user_id} has no active trades to sync")
+                
+                logging.info(f"SYNC: Completed real trading sync for {users_synced} users")
                 
                 # CRITICAL FIX: Also monitor paper trading positions
                 self._sync_paper_trading_positions()
