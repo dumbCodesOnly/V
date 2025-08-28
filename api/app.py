@@ -3402,10 +3402,27 @@ def close_trade():
         # Check for manual paper trading preference
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
         
-        is_paper_mode = (manual_paper_mode or 
-                       not user_creds or 
-                       user_creds.testnet_mode or 
-                       not user_creds.has_credentials())
+        # FIXED: Improved paper trading mode detection for Render deployment
+        # Check multiple indicators to determine if this is a paper trade
+        paper_indicators = [
+            manual_paper_mode,
+            not user_creds,
+            (user_creds and user_creds.testnet_mode),
+            (user_creds and not user_creds.has_credentials()),
+            str(getattr(config, 'exchange_order_id', '')).startswith('paper_'),
+            getattr(config, 'paper_trading_mode', False),
+            hasattr(config, 'paper_tp_levels'),
+            hasattr(config, 'paper_sl_data')
+        ]
+        
+        is_paper_mode = any(paper_indicators)
+        
+        # Log detailed paper trading detection for debugging on Render
+        logging.info(f"[RENDER CLOSE DEBUG] Paper mode detection for {config.symbol}:")
+        logging.info(f"  Manual paper mode: {manual_paper_mode}")
+        logging.info(f"  Has credentials: {user_creds is not None}")
+        logging.info(f"  Paper order ID: {str(getattr(config, 'exchange_order_id', '')).startswith('paper_')}")
+        logging.info(f"  Final determination: Paper mode = {is_paper_mode}")
         
         if is_paper_mode:
             # PAPER TRADING - Simulate closing the position
@@ -3449,26 +3466,35 @@ def close_trade():
                 logging.info(f"[RENDER CLOSE] User {chat_id} attempting to close {config.symbol} {config.side} position")
                 logging.info(f"[RENDER CLOSE] Position size: {config.position_size}, Close side: {close_side}")
                 
+                # IMPROVED: Better position size handling for closure
+                position_size = getattr(config, 'position_size', config.amount)
+                if not position_size or position_size <= 0:
+                    # Calculate position size from remaining amount and leverage
+                    position_size = config.amount * config.leverage
+                    logging.warning(f"[RENDER CLOSE] Calculated position size: {position_size} from amount: {config.amount} * leverage: {config.leverage}")
+                
                 close_order = client.place_order(
                     symbol=config.symbol,
                     side=close_side,
                     order_type="market",
-                    quantity=str(config.position_size),
+                    quantity=str(position_size),
                     reduceOnly=True
                 )
                 
                 if not close_order:
                     # Get specific error from ToobitClient if available
-                    error_detail = getattr(client, 'last_error', 'Unknown error occurred')
+                    error_detail = client.get_last_error()
                     logging.error(f"[RENDER CLOSE FAILED] {error_detail}")
                     
-                    # Provide more specific error message to user
+                    # FIXED: Return JSON error instead of causing server error
                     return jsonify({
-                        'error': f'Failed to close {config.symbol} position: {error_detail}. Please try again or contact support if the issue persists.',
+                        'success': False,
+                        'error': f'Failed to close {config.symbol} position: {error_detail}',
                         'technical_details': error_detail,
                         'symbol': config.symbol,
-                        'side': config.side
-                    }), 500
+                        'side': config.side,
+                        'suggestion': 'This might be a paper trade or the position may have already been closed. Please refresh and try again.'
+                    }), 400
                 
                 logging.info(f"Position closed on Toobit: {close_order}")
                 
@@ -6509,10 +6535,14 @@ def process_paper_trading_position(user_id, trade_id, config):
             
             # Check break-even stop loss first
             if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
-                if config.side == "long" and config.current_price <= config.entry_price:
+                # FIXED: Use more precise breakeven logic with tolerance for minor price fluctuations
+                price_tolerance = 0.0001  # 0.01% tolerance for floating point precision
+                if config.side == "long" and config.current_price <= (config.entry_price * (1 + price_tolerance)):
                     stop_loss_triggered = True
-                elif config.side == "short" and config.current_price >= config.entry_price:
+                    logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} LONG - Current: ${config.current_price:.4f} <= Entry: ${config.entry_price:.4f}")
+                elif config.side == "short" and config.current_price >= (config.entry_price * (1 - price_tolerance)):
                     stop_loss_triggered = True
+                    logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} SHORT - Current: ${config.current_price:.4f} >= Entry: ${config.entry_price:.4f}")
             # Check regular stop loss
             elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
                 loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
@@ -6533,23 +6563,34 @@ def process_paper_trading_position(user_id, trade_id, config):
                     execute_paper_take_profit(user_id, trade_id, config, i, tp_level)
                     break  # Only trigger one TP at a time
         
-        # Check break-even trigger for paper trades
+        # FIXED: Check break-even trigger for paper trades - improved logic
         if (hasattr(config, 'breakeven_after') and config.breakeven_after and 
             not getattr(config, 'breakeven_sl_triggered', False) and config.unrealized_pnl > 0):
             
             profit_percentage = (config.unrealized_pnl / config.amount) * 100
             breakeven_threshold = 0
             
+            # Handle different breakeven trigger types
             if isinstance(config.breakeven_after, (int, float)):
                 breakeven_threshold = config.breakeven_after
-            elif config.breakeven_after == "tp1":
-                breakeven_threshold = config.take_profits[0].get('percentage', 0) if config.take_profits else 0
+            elif str(config.breakeven_after).lower() == "tp1":
+                # Check if first TP has been triggered by looking at paper_tp_levels
+                if hasattr(config, 'paper_tp_levels') and config.paper_tp_levels:
+                    first_tp = config.paper_tp_levels[0]
+                    if first_tp.get('triggered', False):
+                        breakeven_threshold = first_tp.get('percentage', 0)
+                    else:
+                        # TP1 not triggered yet, don't activate breakeven
+                        breakeven_threshold = 0
+                elif hasattr(config, 'take_profits') and config.take_profits:
+                    # Fallback to original TP configuration
+                    breakeven_threshold = config.take_profits[0].get('percentage', 0)
             
             if breakeven_threshold > 0 and profit_percentage >= breakeven_threshold:
                 config.breakeven_sl_triggered = True
                 config.breakeven_sl_price = config.entry_price
                 save_trade_to_db(user_id, config)
-                logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} - SL moved to entry price")
+                logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} at {profit_percentage:.2f}% profit - SL moved to entry price")
         
     except Exception as e:
         logging.error(f"[RENDER PAPER ERROR] Paper trading position processing failed for {getattr(config, 'symbol', 'unknown')}: {e}")
@@ -6640,7 +6681,21 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         if not hasattr(config, 'original_margin'):
             config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
         
-        partial_pnl = config.unrealized_pnl * (allocation / 100)
+        # FIXED: Calculate partial profit based on original position and correct allocation
+        # Use TP calculation data for accurate profit amounts
+        tp_calculations = calculate_tp_sl_prices_and_amounts(config)
+        current_tp_data = None
+        for tp_calc in tp_calculations.get('take_profits', []):
+            if tp_calc['level'] == tp_index + 1:
+                current_tp_data = tp_calc
+                break
+        
+        if current_tp_data:
+            partial_pnl = current_tp_data['profit_amount']
+        else:
+            # Fallback calculation
+            partial_pnl = config.unrealized_pnl * (allocation / 100)
+            
         remaining_amount = config.amount * ((100 - allocation) / 100)
         
         # Update realized P&L
