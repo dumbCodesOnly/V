@@ -2377,18 +2377,23 @@ def margin_data():
                     'entry_price': config.entry_price,
                     'current_price': config.current_price,
                     'unrealized_pnl': config.unrealized_pnl,
+                    'realized_pnl': getattr(config, 'realized_pnl', 0.0),  # Include realized P&L from triggered TPs
+                    'total_pnl': (config.unrealized_pnl or 0) + (getattr(config, 'realized_pnl', 0) or 0),  # Combined P&L
                     'status': config.status,
                     'take_profits': config.take_profits,
                     'stop_loss_percent': config.stop_loss_percent,
                     'tp_sl_calculations': tp_sl_data
                 })
     
-    # Calculate total realized P&L from closed positions
+    # Calculate total realized P&L from closed positions AND partial TP closures from active positions
     total_realized_pnl = 0.0
     if chat_id in user_trade_configs:
         for config in user_trade_configs[chat_id].values():
             if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
                 total_realized_pnl += config.final_pnl
+            # Also include partial realized P&L from active positions (from partial TPs)
+            elif config.status == "active" and hasattr(config, 'realized_pnl') and config.realized_pnl is not None:
+                total_realized_pnl += config.realized_pnl
     
     return jsonify({
         'user_id': user_id,
