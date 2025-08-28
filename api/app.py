@@ -2099,10 +2099,11 @@ def create_auto_trade_from_smc():
         num_tp_levels = min(len(signal.take_profit_levels), 3)  # Max 3 TP levels
         
         # Define allocation strategies based on number of TP levels
+        # CORRECTED: More conservative and standard allocation strategies
         allocation_strategies = {
             1: [100],           # Single TP: close full position
-            2: [60, 40],        # Two TPs: 60% then 40%
-            3: [50, 30, 20]     # Three TPs: 50%, 30%, 20%
+            2: [50, 50],        # Two TPs: 50% each (more balanced)
+            3: [40, 35, 25]     # Three TPs: 40%, 35%, 25% (ensures all allocations add to 100%)
         }
         
         allocations = allocation_strategies.get(num_tp_levels, [100])
@@ -5032,12 +5033,20 @@ def calculate_tp_sl_prices_and_amounts(config):
             
             profit_amount = (tp_percentage / 100) * original_margin * (allocation / 100)
             
-            # Calculate position size to close based on the profit amount and price difference
-            price_difference = abs(tp_price - config.entry_price)
-            if price_difference > 0:
-                position_size_to_close = profit_amount / price_difference
-            else:
-                position_size_to_close = 0
+            # CORRECTED: Calculate position size to close based on allocation percentage of original position
+            # The position size should be a fraction of the original position, not based on profit amount
+            original_amount = getattr(config, 'original_amount', config.amount)
+            position_size_to_close = original_amount * (allocation / 100)
+            
+            # Validate the profit calculation matches expected profit for this allocation
+            actual_price_movement = abs(tp_price - config.entry_price) / config.entry_price
+            expected_profit = actual_price_movement * config.leverage * position_size_to_close
+            
+            # Double-check: ensure profit_amount aligns with position size calculation
+            if abs(expected_profit - profit_amount) > 0.01:  # Allow small floating point differences
+                logging.warning(f"TP{i+1} profit calculation mismatch: expected {expected_profit}, calculated {profit_amount}")
+                # Use the position-based calculation as it's more reliable
+                profit_amount = expected_profit
             
             result['take_profits'].append({
                 'level': i + 1,
