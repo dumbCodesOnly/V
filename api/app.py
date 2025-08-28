@@ -710,6 +710,7 @@ def save_trade_to_db(user_id, trade_config):
                     existing_trade.current_price = db_trade.current_price
                     existing_trade.position_size = db_trade.position_size
                     existing_trade.position_value = db_trade.position_value
+                    existing_trade.realized_pnl = db_trade.realized_pnl  # CRITICAL FIX: Save realized P&L to database
                     existing_trade.final_pnl = db_trade.final_pnl
                     existing_trade.closed_at = db_trade.closed_at
                     existing_trade.updated_at = get_iran_time().replace(tzinfo=None)
