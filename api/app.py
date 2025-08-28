@@ -861,6 +861,11 @@ def trigger_core_monitoring():
             # Get all active positions from database
             all_active_trades = TradeConfiguration.query.filter_by(status='active').all()
             
+            if all_active_trades:
+                logging.info(f"HEALTH CHECK: Found {len(all_active_trades)} active positions for monitoring")
+                for trade in all_active_trades:
+                    logging.info(f"HEALTH CHECK: Processing position {trade.trade_id} ({trade.symbol}) for user {trade.telegram_user_id}")
+            
             for trade in all_active_trades:
                 try:
                     user_id = trade.telegram_user_id
@@ -894,6 +899,7 @@ def trigger_core_monitoring():
                                 check_position_trigger_alerts(trade, current_price)
                             
                             all_positions_processed += 1
+                            logging.info(f"HEALTH CHECK: Successfully processed position {trade.trade_id} - Price: ${current_price}, P&L: ${trade.unrealized_pnl:.2f}")
                             
                 except Exception as e:
                     logging.warning(f"Position monitoring failed for trade {trade.trade_id}: {e}")
@@ -901,6 +907,7 @@ def trigger_core_monitoring():
             # Commit price and P&L updates
             if all_positions_processed > 0:
                 db.session.commit()
+                logging.info(f"HEALTH CHECK: Committed price updates for {all_positions_processed} positions")
                 
             monitoring_results['all_positions_monitoring'] = {
                 'processed': all_positions_processed,
@@ -943,11 +950,13 @@ def trigger_core_monitoring():
             sync_service = get_sync_service()
             if sync_service and hasattr(sync_service, '_sync_all_users'):
                 try:
+                    logging.info("HEALTH CHECK: Triggering background sync for all users with active positions")
                     sync_service._sync_all_users()
                     monitoring_results['real_trading_sync'] = {
                         'processed': 1,
                         'status': 'triggered'
                     }
+                    logging.info("HEALTH CHECK: Background sync completed successfully")
                 except Exception as e:
                     logging.warning(f"Background sync trigger failed: {e}")
         
