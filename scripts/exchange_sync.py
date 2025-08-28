@@ -75,8 +75,8 @@ class ExchangeSyncService:
     
     def _get_current_sync_interval(self):
         """Get current sync interval based on health ping boost status"""
-        # Apply boost for Render and development environments (not Vercel)
-        if (not self.is_render and self.is_vercel) or not self.last_health_ping:
+        # Apply boost for all environments when health ping is received
+        if not self.last_health_ping:
             return self.sync_interval
         
         # Check if we're within the boost period
@@ -96,11 +96,15 @@ class ExchangeSyncService:
     
     def trigger_health_ping_boost(self):
         """Trigger extended monitoring after health ping"""
-        # Allow boost for both Render and development environments
-        if self.is_render or not self.is_vercel:  # Works for Render and Replit
-            self.last_health_ping = datetime.utcnow()
-            env_name = "Render" if self.is_render else "Development"
-            logging.info(f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment)")
+        # Allow boost for ALL environments (Render, Vercel, Replit)
+        self.last_health_ping = datetime.utcnow()
+        if self.is_render:
+            env_name = "Render"
+        elif self.is_vercel:
+            env_name = "Vercel"
+        else:
+            env_name = "Development"
+        logging.info(f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment)")
     
     def _sync_all_users(self):
         """Synchronize all users with active positions"""
