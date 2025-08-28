@@ -836,6 +836,144 @@ def database_status():
             'timestamp': get_iran_time().isoformat()
         }), 500
 
+def trigger_core_monitoring():
+    """
+    Trigger core monitoring functionalities including:
+    - Position synchronization for real trading users
+    - Paper trading position monitoring
+    - Price updates and P&L calculations
+    - TP/SL monitoring
+    """
+    monitoring_results = {
+        'real_trading_sync': {'processed': 0, 'status': 'not_available'},
+        'paper_trading_monitoring': {'processed': 0, 'status': 'inactive'},
+        'price_updates': {'symbols_updated': 0, 'status': 'inactive'},
+        'timestamp': get_iran_time().isoformat()
+    }
+    
+    try:
+        # REAL TRADING MONITORING: Sync users with active positions
+        if os.environ.get("VERCEL"):
+            # Use Vercel sync service for serverless environment
+            sync_service = get_vercel_sync_service()
+            if sync_service:
+                # Get all users with credentials and active trades
+                users_with_creds = UserCredentials.query.filter_by(is_active=True).all()
+                synced_users = 0
+                for user_creds in users_with_creds:
+                    user_id = user_creds.telegram_user_id
+                    active_trades = TradeConfiguration.query.filter_by(
+                        telegram_user_id=user_id,
+                        status='active'
+                    ).count()
+                    
+                    if active_trades > 0 and sync_service.should_sync_user(str(user_id)):
+                        try:
+                            result = sync_service.sync_user_on_request(str(user_id))
+                            if result.get('success'):
+                                synced_users += 1
+                        except Exception as e:
+                            logging.warning(f"Health sync failed for user {user_id}: {e}")
+                
+                monitoring_results['real_trading_sync'] = {
+                    'processed': synced_users,
+                    'status': 'active' if synced_users > 0 else 'no_active_positions'
+                }
+        else:
+            # Use background sync service for regular environments
+            sync_service = get_sync_service()
+            if sync_service and hasattr(sync_service, '_sync_all_users'):
+                try:
+                    sync_service._sync_all_users()
+                    monitoring_results['real_trading_sync'] = {
+                        'processed': 1,
+                        'status': 'triggered'
+                    }
+                except Exception as e:
+                    logging.warning(f"Background sync trigger failed: {e}")
+        
+        # PAPER TRADING MONITORING: Process all paper trading positions
+        paper_positions_processed = 0
+        try:
+            # Get all active paper trading configurations
+            for user_id, configs in user_trade_configs.items():
+                for trade_id, config in configs.items():
+                    if (hasattr(config, 'paper_trading_mode') and 
+                        config.paper_trading_mode and 
+                        config.status == 'active'):
+                        
+                        try:
+                            # Update current price
+                            if config.symbol:
+                                current_price = get_live_market_price(
+                                    config.symbol, 
+                                    use_cache=True, 
+                                    user_id=user_id
+                                )
+                                if current_price:
+                                    config.current_price = current_price
+                                    
+                                    # Process paper trading position
+                                    process_paper_trading_position(user_id, trade_id, config)
+                                    paper_positions_processed += 1
+                        except Exception as e:
+                            logging.warning(f"Paper position processing failed for {config.symbol}: {e}")
+            
+            monitoring_results['paper_trading_monitoring'] = {
+                'processed': paper_positions_processed,
+                'status': 'active' if paper_positions_processed > 0 else 'no_active_positions'
+            }
+        except Exception as e:
+            logging.warning(f"Paper trading monitoring failed: {e}")
+        
+        # PRICE UPDATES: Update prices for active symbols
+        price_updates = 0
+        try:
+            active_symbols = set()
+            
+            # Collect symbols from active trades
+            for user_id, configs in user_trade_configs.items():
+                for config in configs.values():
+                    if config.status == 'active' and config.symbol:
+                        active_symbols.add(config.symbol)
+            
+            # Also check database for real trading positions
+            active_db_trades = TradeConfiguration.query.filter_by(status='active').all()
+            for trade in active_db_trades:
+                if trade.symbol:
+                    active_symbols.add(trade.symbol)
+            
+            # Update prices for all active symbols
+            for symbol in active_symbols:
+                try:
+                    price = get_live_market_price(symbol, use_cache=True)
+                    if price:
+                        price_updates += 1
+                except Exception as e:
+                    logging.warning(f"Price update failed for {symbol}: {e}")
+            
+            monitoring_results['price_updates'] = {
+                'symbols_updated': price_updates,
+                'status': 'active' if price_updates > 0 else 'no_active_symbols'
+            }
+        except Exception as e:
+            logging.warning(f"Price updates failed: {e}")
+        
+        # Summary status
+        total_activity = (monitoring_results['real_trading_sync']['processed'] + 
+                         monitoring_results['paper_trading_monitoring']['processed'] + 
+                         monitoring_results['price_updates']['symbols_updated'])
+        
+        monitoring_results['overall_status'] = 'active' if total_activity > 0 else 'monitoring_idle'
+        
+        logging.info(f"Health monitoring completed: {total_activity} operations processed")
+        
+    except Exception as e:
+        logging.error(f"Core monitoring trigger failed: {e}")
+        monitoring_results['error'] = str(e)
+    
+    return monitoring_results
+
 @app.route('/api/health')
 def api_health_check():
     """Comprehensive health check endpoint for UptimeRobot and monitoring"""
@@ -856,12 +994,14 @@ def api_health_check():
         # Check circuit breakers
         cb_status = "healthy"
         try:
-            if hasattr(circuit_manager, 'get_all_status'):
-                status = circuit_manager.get_all_status()
-                failing_breakers = [name for name, info in status.items() if info.get('state') == 'OPEN']
-                cb_status = "degraded" if failing_breakers else "healthy"
+            if hasattr(circuit_manager, 'get_unhealthy_services'):
+                unhealthy_services = circuit_manager.get_unhealthy_services()
+                cb_status = "degraded" if unhealthy_services else "healthy"
         except:
             cb_status = "unknown"
+        
+        # CORE MONITORING: Trigger position monitoring and price updates
+        monitoring_results = trigger_core_monitoring()
         
         # Monitor system load (basic check)
         active_configs = sum(len(configs) for configs in user_trade_configs.values())
@@ -884,7 +1024,8 @@ def api_health_check():
                 'render': Environment.IS_RENDER,
                 'vercel': Environment.IS_VERCEL,
                 'replit': Environment.IS_REPLIT
-            }
+            },
+            'monitoring': monitoring_results
         }
         
         # Return appropriate HTTP status
