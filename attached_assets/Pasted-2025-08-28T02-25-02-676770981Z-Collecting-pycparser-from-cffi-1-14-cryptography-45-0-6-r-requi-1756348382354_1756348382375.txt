@@ -1,0 +1,250 @@
+2025-08-28T02:25:02.676770981Z Collecting pycparser (from cffi>=1.14->cryptography>=45.0.6->-r requirements.txt (line 2))
+2025-08-28T02:25:02.67851387Z   Using cached pycparser-2.22-py3-none-any.whl.metadata (943 bytes)
+2025-08-28T02:25:02.789282185Z Collecting sniffio>=1.1 (from anyio->httpx<0.29,>=0.27->python-telegram-bot>=22.3->-r requirements.txt (line 8))
+2025-08-28T02:25:02.819714239Z   Using cached sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+2025-08-28T02:25:02.829013973Z Using cached aiohttp-3.12.15-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.7 MB)
+2025-08-28T02:25:02.831989062Z Using cached multidict-6.6.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (254 kB)
+2025-08-28T02:25:02.83368542Z Using cached yarl-1.20.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (352 kB)
+2025-08-28T02:25:02.835151165Z Using cached cryptography-45.0.6-cp311-abi3-manylinux_2_34_x86_64.whl (4.5 MB)
+2025-08-28T02:25:03.037591828Z Using cached email_validator-2.3.0-py3-none-any.whl (35 kB)
+2025-08-28T02:25:03.039065662Z Using cached flask-3.1.2-py3-none-any.whl (103 kB)
+2025-08-28T02:25:03.040550536Z Using cached flask_sqlalchemy-3.1.1-py3-none-any.whl (25 kB)
+2025-08-28T02:25:03.041917679Z Using cached gunicorn-23.0.0-py3-none-any.whl (85 kB)
+2025-08-28T02:25:03.043204961Z Using cached psycopg2_binary-2.9.10-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.0 MB)
+2025-08-28T02:25:03.046891672Z Using cached python_telegram_bot-22.3-py3-none-any.whl (717 kB)
+2025-08-28T02:25:03.048855994Z Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+2025-08-28T02:25:03.05042127Z Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+2025-08-28T02:25:03.052027277Z Using cached requests-2.32.5-py3-none-any.whl (64 kB)
+2025-08-28T02:25:03.053539592Z Using cached charset_normalizer-3.4.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (151 kB)
+2025-08-28T02:25:03.054895604Z Using cached idna-3.10-py3-none-any.whl (70 kB)
+2025-08-28T02:25:03.056266747Z Using cached urllib3-2.5.0-py3-none-any.whl (129 kB)
+2025-08-28T02:25:03.057768232Z Using cached sqlalchemy-2.0.43-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.3 MB)
+2025-08-28T02:25:03.063577418Z Using cached werkzeug-3.1.3-py3-none-any.whl (224 kB)
+2025-08-28T02:25:03.065943767Z Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+2025-08-28T02:25:03.067412661Z Using cached aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+2025-08-28T02:25:03.069260152Z Using cached attrs-25.3.0-py3-none-any.whl (63 kB)
+2025-08-28T02:25:03.071153763Z Using cached blinker-1.9.0-py3-none-any.whl (8.5 kB)
+2025-08-28T02:25:03.07515665Z Using cached certifi-2025.8.3-py3-none-any.whl (161 kB)
+2025-08-28T02:25:03.07516779Z Using cached cffi-1.17.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (479 kB)
+2025-08-28T02:25:03.077189554Z Using cached click-8.2.1-py3-none-any.whl (102 kB)
+2025-08-28T02:25:03.078494795Z Using cached dnspython-2.7.0-py3-none-any.whl (313 kB)
+2025-08-28T02:25:03.079928419Z Using cached frozenlist-1.7.0-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (232 kB)
+2025-08-28T02:25:03.081367613Z Using cached greenlet-3.2.4-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (610 kB)
+2025-08-28T02:25:03.251633053Z Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+2025-08-28T02:25:03.252960905Z Using cached itsdangerous-2.2.0-py3-none-any.whl (16 kB)
+2025-08-28T02:25:03.254343368Z Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+2025-08-28T02:25:03.255913824Z Using cached MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+2025-08-28T02:25:03.257197155Z Using cached propcache-0.3.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (206 kB)
+2025-08-28T02:25:03.259030966Z Using cached typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+2025-08-28T02:25:03.260600941Z Using cached anyio-4.10.0-py3-none-any.whl (107 kB)
+2025-08-28T02:25:03.265714646Z Using cached sniffio-1.3.1-py3-none-any.whl (10 kB)
+2025-08-28T02:25:03.269629651Z Using cached packaging-25.0-py3-none-any.whl (66 kB)
+2025-08-28T02:25:03.269671622Z Using cached pycparser-2.22-py3-none-any.whl (117 kB)
+2025-08-28T02:25:03.477497784Z Installing collected packages: urllib3, typing-extensions, sniffio, pycparser, psycopg2-binary, propcache, packaging, multidict, markupsafe, itsdangerous, idna, h11, greenlet, frozenlist, dnspython, click, charset_normalizer, certifi, blinker, attrs, aiohappyeyeballs, yarl, werkzeug, sqlalchemy, requests, jinja2, httpcore, gunicorn, email-validator, cffi, anyio, aiosignal, httpx, flask, cryptography, aiohttp, python-telegram-bot, flask-sqlalchemy
+2025-08-28T02:25:12.697910109Z 
+2025-08-28T02:25:12.702843351Z Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.12.15 aiosignal-1.4.0 anyio-4.10.0 attrs-25.3.0 blinker-1.9.0 certifi-2025.8.3 cffi-1.17.1 charset_normalizer-3.4.3 click-8.2.1 cryptography-45.0.6 dnspython-2.7.0 email-validator-2.3.0 flask-3.1.2 flask-sqlalchemy-3.1.1 frozenlist-1.7.0 greenlet-3.2.4 gunicorn-23.0.0 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.10 itsdangerous-2.2.0 jinja2-3.1.6 markupsafe-3.0.2 multidict-6.6.4 packaging-25.0 propcache-0.3.2 psycopg2-binary-2.9.10 pycparser-2.22 python-telegram-bot-22.3 requests-2.32.5 sniffio-1.3.1 sqlalchemy-2.0.43 typing-extensions-4.15.0 urllib3-2.5.0 werkzeug-3.1.3 yarl-1.20.1
+2025-08-28T02:25:12.711046736Z 
+2025-08-28T02:25:12.711066227Z [notice] A new release of pip is available: 25.1.1 -> 25.2
+2025-08-28T02:25:12.711069397Z [notice] To update, run: pip install --upgrade pip
+2025-08-28T02:25:14.699446152Z ==> Uploading build...
+2025-08-28T02:25:21.222264463Z ==> Uploaded in 5.0s. Compression took 1.5s
+2025-08-28T02:25:21.324646269Z ==> Build successful 🎉
+2025-08-28T02:25:36.236274717Z ==> Deploying...
+2025-08-28T02:25:55.141130326Z ==> Running 'gunicorn -c gunicorn_config.py main:app'
+2025-08-28T02:26:08.08437154Z INFO:root:Database configured successfully: postgresql
+2025-08-28T02:26:08.182005108Z INFO:root:Cache cleanup worker started
+2025-08-28T02:26:08.18202564Z INFO:root:Enhanced caching system initialized with smart volatility-based TTL
+2025-08-28T02:26:08.2879644Z INFO:root:Database tables created successfully
+2025-08-28T02:26:08.297121242Z INFO:root:SMC signal cache table ensured for Vercel/Neon deployment
+2025-08-28T02:26:08.315990873Z INFO:root:Fixed Toobit testnet mode for existing credentials
+2025-08-28T02:26:08.441388652Z INFO:root:Exchange synchronization service started
+2025-08-28T02:26:08.489475781Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:08.49537744Z INFO:root:Circuit breaker 'binance_api' initialized - threshold: 3, timeout: 30s
+2025-08-28T02:26:08.495395891Z INFO:root:Circuit breaker 'coingecko_api' initialized - threshold: 4, timeout: 45s
+2025-08-28T02:26:08.495407181Z INFO:root:Circuit breaker 'cryptocompare_api' initialized - threshold: 4, timeout: 45s
+2025-08-28T02:26:08.495489935Z INFO:root:Circuit breaker 'toobit_api' initialized - threshold: 3, timeout: 60s
+2025-08-28T02:26:08.58265433Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:08.582845348Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:08.583364713Z [2025-08-28 02:26:08 +0000] [56] [INFO] Starting gunicorn 23.0.0
+2025-08-28T02:26:08.583785823Z [2025-08-28 02:26:08 +0000] [56] [INFO] Listening at: http://0.0.0.0:10000 (56)
+2025-08-28T02:26:08.583802094Z [2025-08-28 02:26:08 +0000] [56] [INFO] Using worker: sync
+2025-08-28T02:26:08.588667323Z [2025-08-28 02:26:08 +0000] [59] [INFO] Booting worker with pid: 59
+2025-08-28T02:26:08.682144416Z [2025-08-28 02:26:08 +0000] [60] [INFO] Booting worker with pid: 60
+2025-08-28T02:26:09.092048434Z 127.0.0.1 - - [28/Aug/2025:02:26:09 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
+2025-08-28T02:26:13.593105949Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:13.597471035Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:13.597487725Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:17.269060628Z ==> Your service is live 🎉
+2025-08-28T02:26:17.578882867Z ==> 
+2025-08-28T02:26:17.914447645Z ==> ///////////////////////////////////////////////////////////
+2025-08-28T02:26:18.089231313Z ==> 
+2025-08-28T02:26:18.264205322Z ==> Available at your primary URL https://v0-03-q14p.onrender.com
+2025-08-28T02:26:18.44085837Z ==> 
+2025-08-28T02:26:18.602256316Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:18.603722265Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:18.603751007Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:18.615366278Z ==> ///////////////////////////////////////////////////////////
+2025-08-28T02:26:20.822315185Z 10.210.243.52 - - [28/Aug/2025:02:26:20 +0000] "GET / HTTP/1.1" 200 253642 "-" "Go-http-client/2.0"
+2025-08-28T02:26:23.608851284Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:23.610571214Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:23.610636848Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:28.615818668Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:28.617480017Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:28.617494727Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:33.622891728Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:33.624352388Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:33.624369848Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:38.630721184Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:38.632210715Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:38.632226795Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:43.63768633Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:43.639546138Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:43.639570139Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:48.643729261Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:48.645120807Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:48.645133457Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:53.650361611Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:53.6520305Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:53.652055441Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:26:58.656581532Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:26:58.658192518Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:26:58.658227299Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:03.666706177Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:03.667643641Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:03.667659962Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:08.673049634Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:08.675843626Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:08.675871677Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:13.68043919Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:13.682263556Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:13.682292018Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:18.687389646Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:18.689084256Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:18.689123938Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:23.693383646Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:23.694879257Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:23.694902918Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:28.699405589Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:28.70177138Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:28.702044513Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:33.706323253Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:33.738235499Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:33.73824907Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:38.712837769Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:38.715124627Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:38.715172729Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:43.719439809Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:43.721093837Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:43.721112248Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:48.7256276Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:48.72838479Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:48.728408951Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:53.733371624Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:53.73519294Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:53.735210471Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:27:58.740060129Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:27:58.741939108Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:27:58.741960609Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:03.747799003Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:03.749449091Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:03.749473802Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:08.754139692Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:08.756237771Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:08.756261372Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:13.764375724Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:13.766315626Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:13.766339477Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:18.773040113Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:18.774375646Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:18.774400947Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:23.779271377Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:23.781236859Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:23.781270211Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:28.78612007Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:28.787590649Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:28.787634171Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:33.792884819Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:33.79714358Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:33.7971586Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:38.799322803Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:38.801341028Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:38.801510566Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:43.805857732Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:43.80729905Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:43.807318871Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:48.812988339Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:48.81450498Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:48.814519561Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:53.820272623Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:53.821764183Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:53.821786624Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:28:58.828359405Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:28:58.830092187Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:28:58.830116388Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:03.835239491Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:03.837982751Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:03.837997451Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:08.843896411Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:08.846140147Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:08.846161188Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:13.857805649Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:13.863308238Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:13.863328079Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:18.870263748Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:18.87199071Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:18.872015791Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:23.87746962Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:23.882150901Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:23.882172882Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:28.887357888Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:28.889052428Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:28.889075839Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:33.894319409Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:33.896777305Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:33.896800326Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:38.901880797Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:38.903121386Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:38.903136407Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:43.907906024Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:43.909207335Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:43.909236217Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:48.914897627Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:48.91687677Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:48.916899941Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:53.61111116Z INFO:root:HEALTH CHECK: Found 1 active positions for monitoring
+2025-08-28T02:29:53.611143951Z INFO:root:HEALTH CHECK: Processing position smc_BNBUSDT_1756321377 (BNBUSDT) for user 6042961158
+2025-08-28T02:29:53.62087114Z INFO:root:[RENDER LIVE] Toobit API Call: GET https://api.toobit.com/quote/v1/ticker/24hr
+2025-08-28T02:29:53.620891471Z INFO:root:[RENDER LIVE] Parameters: {'symbol': 'BNBUSDT'}
+2025-08-28T02:29:53.9450085Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:53.948289535Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:53.948315226Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:54.001976299Z INFO:root:[RENDER LIVE] Response status: 200
+2025-08-28T02:29:54.002070694Z INFO:root:[RENDER LIVE] Response: [{'t': 1756348193080, 's': 'BNBUSDT', 'c': '857.47', 'h': '867.1', 'l': '851.2', 'o': '862.14', 'b': '857.39', 'a': '857.57', 'v': '42999.389', 'qv': '36972878.38092', 'pc': '-4.67', 'pcp': '-0.0054'}]
+2025-08-28T02:29:54.003845688Z INFO:root:Retrieved live price for BNBUSDT from Toobit exchange: $857.47
+2025-08-28T02:29:54.004375723Z INFO:root:HEALTH CHECK: Successfully processed position smc_BNBUSDT_1756321377 - Price: $857.47, P&L: $1.03
+2025-08-28T02:29:54.013620849Z INFO:root:HEALTH CHECK: Committed price updates for 1 positions
+2025-08-28T02:29:54.01364673Z INFO:root:HEALTH CHECK: Triggering background sync for all users with active positions
+2025-08-28T02:29:54.017639579Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:54.019505817Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:54.019540079Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:29:54.021116233Z INFO:root:HEALTH CHECK: Background sync completed successfully
+2025-08-28T02:29:54.031832909Z INFO:root:Health monitoring completed: 3 operations processed
+2025-08-28T02:29:54.031888801Z INFO:root:HEALTH CHECK: Activating Health Ping Boost for enhanced monitoring
+2025-08-28T02:29:54.031893942Z INFO:root:Health ping boost activated for 180 seconds (Render environment)
+2025-08-28T02:29:54.031897352Z INFO:root:HEALTH CHECK: Health Ping Boost successfully activated - monitoring will run every 10s for next 3 minutes
+2025-08-28T02:29:54.082359034Z 10.210.120.100 - - [28/Aug/2025:02:29:54 +0000] "HEAD /api/health HTTP/1.1" 200 0 "https://v0-03-q14p.onrender.com/api/health" "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"
+2025-08-28T02:29:58.955884076Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:29:58.958391814Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:29:58.958408145Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:30:03.963509909Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:30:03.965168727Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:30:03.965184528Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:30:08.970843058Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:30:08.972491726Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:30:08.972506537Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:30:13.977487665Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:30:13.979654717Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:30:13.979669088Z INFO:root:SYNC: Completed real trading sync for 1 users
+2025-08-28T02:30:18.983914441Z INFO:root:SYNC: Found 1 users with active credentials
+2025-08-28T02:30:18.98536946Z INFO:root:SYNC: Syncing 1 active trades for user 6042961158
+2025-08-28T02:30:18.985413812Z INFO:root:SYNC: Completed real trading sync for 1 users
