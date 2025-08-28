@@ -1103,12 +1103,20 @@ def api_health_check():
         monitoring_results = trigger_core_monitoring()
         
         # HEALTH PING BOOST: Activate extended monitoring for Render
+        boost_status = "not_activated"
         try:
             sync_service = get_sync_service()
             if sync_service and hasattr(sync_service, 'trigger_health_ping_boost'):
+                logging.info("HEALTH CHECK: Activating Health Ping Boost for enhanced monitoring")
                 sync_service.trigger_health_ping_boost()
+                boost_status = "activated"
+                logging.info("HEALTH CHECK: Health Ping Boost successfully activated - monitoring will run every 10s for next 3 minutes")
+            else:
+                logging.warning("HEALTH CHECK: Sync service not available for Health Ping Boost")
+                boost_status = "service_unavailable"
         except Exception as e:
             logging.warning(f"Health ping boost activation failed: {e}")
+            boost_status = f"failed: {str(e)}"
         
         # Monitor system load (basic check)
         active_configs = sum(len(configs) for configs in user_trade_configs.values())
@@ -1132,7 +1140,12 @@ def api_health_check():
                 'vercel': Environment.IS_VERCEL,
                 'replit': Environment.IS_REPLIT
             },
-            'monitoring': monitoring_results
+            'monitoring': monitoring_results,
+            'health_ping_boost': {
+                'status': boost_status,
+                'duration_seconds': 180,
+                'enhanced_interval_seconds': 10
+            }
         }
         
         # Return appropriate HTTP status
