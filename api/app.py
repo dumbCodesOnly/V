@@ -2086,13 +2086,17 @@ def create_auto_trade_from_smc():
         trade_config.entry_type = "market"  # Market entry for immediate execution
         trade_config.entry_price = signal.entry_price
         
-        # Calculate stop loss percentage
+        # FIXED: Calculate stop loss percentage on margin for consistency
+        # The issue was: SL calculation used raw price percentage, but system expected margin percentage
         if signal.direction == 'long':
-            sl_percent = ((signal.entry_price - signal.stop_loss) / signal.entry_price) * 100
+            sl_price_movement_percent = ((signal.entry_price - signal.stop_loss) / signal.entry_price) * 100
         else:
-            sl_percent = ((signal.stop_loss - signal.entry_price) / signal.entry_price) * 100
+            sl_price_movement_percent = ((signal.stop_loss - signal.entry_price) / signal.entry_price) * 100
         
-        trade_config.stop_loss_percent = min(sl_percent, 5.0)  # Cap at 5% for safety
+        # Convert to margin percentage: sl_percent_on_margin = price_movement_percent * leverage
+        sl_percent_on_margin = sl_price_movement_percent * trade_config.leverage
+        
+        trade_config.stop_loss_percent = min(sl_percent_on_margin, 25.0)  # Cap at 25% margin loss for safety
         
         # Set up take profit levels with proper allocation logic
         tp_levels = []
@@ -2109,15 +2113,23 @@ def create_auto_trade_from_smc():
         allocations = allocation_strategies.get(num_tp_levels, [100])
         
         for i, tp_price in enumerate(signal.take_profit_levels[:3]):
+            # FIXED: Calculate TP percentage on margin (not price movement) for consistency with leverage calculation
+            # The issue was: SMC signal generation calculated raw price percentage, but the system expected margin percentage
+            # This caused differences when saving/loading from database because calculate_tp_sl_prices_and_amounts uses leverage
+            
             if signal.direction == 'long':
-                tp_percent = ((tp_price - signal.entry_price) / signal.entry_price) * 100
+                price_movement_percent = ((tp_price - signal.entry_price) / signal.entry_price) * 100
             else:
-                tp_percent = ((signal.entry_price - tp_price) / signal.entry_price) * 100
+                price_movement_percent = ((signal.entry_price - tp_price) / signal.entry_price) * 100
+            
+            # Convert to margin percentage: tp_percent_on_margin = price_movement_percent * leverage
+            # This ensures consistency with how TP calculations work throughout the system
+            tp_percent_on_margin = price_movement_percent * trade_config.leverage
             
             allocation = allocations[i] if i < len(allocations) else 10
             
             tp_levels.append({
-                'percentage': tp_percent,
+                'percentage': tp_percent_on_margin,  # Store margin percentage for consistency
                 'allocation': allocation,
                 'triggered': False
             })
