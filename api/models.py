@@ -184,6 +184,10 @@ class TradeConfiguration(db.Model):
     final_pnl = db.Column(db.Float, default=0.0)
     closed_at = db.Column(db.DateTime)
     
+    # Original position tracking for partial closes
+    original_amount = db.Column(db.Float, default=0.0)  # Original position size
+    original_margin = db.Column(db.Float, default=0.0)  # Original margin used
+    
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

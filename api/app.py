@@ -153,7 +153,9 @@ def run_database_migrations():
             # Check for missing columns
             required_columns = [
                 ('breakeven_sl_triggered', 'BOOLEAN DEFAULT FALSE'),
-                ('realized_pnl', 'FLOAT DEFAULT 0.0')
+                ('realized_pnl', 'FLOAT DEFAULT 0.0'),
+                ('original_amount', 'FLOAT DEFAULT 0.0'),
+                ('original_margin', 'FLOAT DEFAULT 0.0')
             ]
             
             # Ensure SMC signal cache table exists
