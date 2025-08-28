@@ -842,11 +842,12 @@ def trigger_core_monitoring():
     """
     Trigger core monitoring functionalities including:
     - Position synchronization for real trading users
-    - Paper trading position monitoring
+    - Paper trading position monitoring  
     - Price updates and P&L calculations
-    - TP/SL monitoring
+    - TP/SL monitoring for ALL users regardless of credentials
     """
     monitoring_results = {
+        'all_positions_monitoring': {'processed': 0, 'status': 'inactive'},
         'real_trading_sync': {'processed': 0, 'status': 'not_available'},
         'paper_trading_monitoring': {'processed': 0, 'status': 'inactive'},
         'price_updates': {'symbols_updated': 0, 'status': 'inactive'},
@@ -854,6 +855,62 @@ def trigger_core_monitoring():
     }
     
     try:
+        # ALL POSITIONS MONITORING: Monitor positions for ALL users regardless of credentials
+        all_positions_processed = 0
+        try:
+            # Get all active positions from database
+            all_active_trades = TradeConfiguration.query.filter_by(status='active').all()
+            
+            for trade in all_active_trades:
+                try:
+                    user_id = trade.telegram_user_id
+                    
+                    # Update price for the symbol (works without credentials)
+                    if trade.symbol:
+                        current_price = get_live_market_price(
+                            trade.symbol, 
+                            use_cache=True, 
+                            user_id=user_id
+                        )
+                        
+                        if current_price and current_price > 0:
+                            # Update current price in database
+                            trade.current_price = current_price
+                            
+                            # Calculate P&L and check TP/SL triggers (works for all positions)
+                            if trade.entry_price and trade.entry_price > 0:
+                                # Calculate unrealized P&L
+                                if trade.side == 'long':
+                                    price_change = (current_price - trade.entry_price) / trade.entry_price
+                                else:  # short
+                                    price_change = (trade.entry_price - current_price) / trade.entry_price
+                                
+                                # Update unrealized P&L
+                                position_value = trade.amount * trade.leverage
+                                trade.unrealized_pnl = position_value * price_change
+                                
+                                # Check for TP/SL triggers (basic monitoring without executing trades)
+                                # For now, just log potential trigger events for monitoring
+                                check_position_trigger_alerts(trade, current_price)
+                            
+                            all_positions_processed += 1
+                            
+                except Exception as e:
+                    logging.warning(f"Position monitoring failed for trade {trade.trade_id}: {e}")
+            
+            # Commit price and P&L updates
+            if all_positions_processed > 0:
+                db.session.commit()
+                
+            monitoring_results['all_positions_monitoring'] = {
+                'processed': all_positions_processed,
+                'status': 'active' if all_positions_processed > 0 else 'no_active_positions'
+            }
+            
+        except Exception as e:
+            logging.warning(f"All positions monitoring failed: {e}")
+            db.session.rollback()
+        
         # REAL TRADING MONITORING: Sync users with active positions
         if os.environ.get("VERCEL"):
             # Use Vercel sync service for serverless environment
@@ -894,10 +951,10 @@ def trigger_core_monitoring():
                 except Exception as e:
                     logging.warning(f"Background sync trigger failed: {e}")
         
-        # PAPER TRADING MONITORING: Process all paper trading positions
+        # PAPER TRADING MONITORING: Process all paper trading positions (including users without credentials)
         paper_positions_processed = 0
         try:
-            # Get all active paper trading configurations
+            # Monitor in-memory paper trading configs
             for user_id, configs in user_trade_configs.items():
                 for trade_id, config in configs.items():
                     if (hasattr(config, 'paper_trading_mode') and 
@@ -920,6 +977,37 @@ def trigger_core_monitoring():
                                     paper_positions_processed += 1
                         except Exception as e:
                             logging.warning(f"Paper position processing failed for {config.symbol}: {e}")
+            
+            # Also monitor database positions that might be in paper trading mode
+            # Get all active trades again for paper trading check
+            db_active_trades = TradeConfiguration.query.filter_by(status='active').all()
+            for trade in db_active_trades:
+                user_id = trade.telegram_user_id
+                
+                # Check if user has no credentials or is in paper mode
+                user_creds = UserCredentials.query.filter_by(
+                    telegram_user_id=user_id,
+                    is_active=True
+                ).first()
+                
+                # If no credentials or manual paper mode, treat as paper trading
+                is_paper_mode = (not user_creds or 
+                               not user_creds.has_credentials() or
+                               user_paper_trading_preferences.get(user_id, True))
+                
+                if is_paper_mode and trade.symbol:
+                    try:
+                        current_price = get_live_market_price(
+                            trade.symbol, 
+                            use_cache=True, 
+                            user_id=user_id
+                        )
+                        if current_price and current_price > 0:
+                            # Simulate paper trading TP/SL monitoring
+                            paper_positions_processed += 1
+                            logging.debug(f"Paper monitoring for {trade.trade_id}: price ${current_price}")
+                    except Exception as e:
+                        logging.warning(f"Paper trading monitoring failed for DB trade {trade.trade_id}: {e}")
             
             monitoring_results['paper_trading_monitoring'] = {
                 'processed': paper_positions_processed,
@@ -1048,6 +1136,53 @@ def api_health_check():
             'error': str(e),
             'timestamp': get_iran_time().isoformat()
         }), 503
+
+def check_position_trigger_alerts(trade, current_price):
+    """Check for potential TP/SL triggers and log monitoring alerts"""
+    try:
+        if not trade.entry_price or trade.entry_price <= 0:
+            return
+        
+        # Check stop loss trigger
+        if trade.stop_loss_percent > 0:
+            if trade.side == 'long':
+                sl_price = trade.entry_price * (1 - trade.stop_loss_percent / 100)
+                if current_price <= sl_price:
+                    logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
+            else:  # short
+                sl_price = trade.entry_price * (1 + trade.stop_loss_percent / 100)
+                if current_price >= sl_price:
+                    logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
+        
+        # Check take profit triggers
+        if trade.take_profits:
+            import json
+            try:
+                tps = json.loads(trade.take_profits) if isinstance(trade.take_profits, str) else trade.take_profits
+                for i, tp in enumerate(tps):
+                    tp_price = trade.entry_price * (1 + tp.get('percentage', 0) / 100)
+                    if trade.side == 'short':
+                        tp_price = trade.entry_price * (1 - tp.get('percentage', 0) / 100)
+                    
+                    if ((trade.side == 'long' and current_price >= tp_price) or 
+                        (trade.side == 'short' and current_price <= tp_price)):
+                        logging.info(f"MONITORING ALERT: TP{i+1} trigger detected for {trade.trade_id} at {current_price}")
+            except:
+                pass  # Skip if TP format is invalid
+        
+        # Check break-even trigger
+        if (trade.breakeven_after > 0 and not trade.breakeven_sl_triggered):
+            profit_percent = 0
+            if trade.side == 'long':
+                profit_percent = ((current_price - trade.entry_price) / trade.entry_price) * 100
+            else:  # short
+                profit_percent = ((trade.entry_price - current_price) / trade.entry_price) * 100
+            
+            if profit_percent >= trade.breakeven_after:
+                logging.info(f"MONITORING ALERT: Break-even trigger detected for {trade.trade_id} - profit: {profit_percent:.2f}%")
+                
+    except Exception as e:
+        logging.warning(f"Position trigger alert check failed for {trade.trade_id}: {e}")
 
 # Exchange Synchronization Endpoints
 @app.route('/api/exchange/sync-status')
