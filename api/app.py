@@ -2202,7 +2202,7 @@ def debug_paper_trading_status():
         ).first()
         
         # Check paper trading mode determination
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
         is_paper_mode = (manual_paper_mode or 
                         not user_creds or 
                         (user_creds and user_creds.testnet_mode) or 
@@ -3412,7 +3412,7 @@ def close_trade():
         
         # Default to paper mode if no credentials exist
         # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
         
         # FIXED: Improved paper trading mode detection for Render deployment
         # Check multiple indicators to determine if this is a paper trade
@@ -3640,7 +3640,7 @@ def close_all_trades():
         
         # Default to paper mode if no credentials exist
         # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, False)
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
         
         is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
