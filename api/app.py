@@ -3441,20 +3441,58 @@ def close_trade():
             logging.info(f"[RENDER PAPER] Closing paper trade for user {chat_id}: {config.symbol} {config.side}")
             logging.info(f"[RENDER PAPER] Config details - Status: {config.status}, PnL: {getattr(config, 'unrealized_pnl', 0)}")
             
-            # Update paper balance with final P&L
+            # FIXED: Complete paper trade closure in one block for Render stability
             try:
+                # Calculate final P&L
                 final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+                
+                # Update paper balance
                 current_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
                 new_balance = current_balance + final_pnl
                 user_paper_balances[chat_id] = new_balance
                 logging.info(f"[RENDER PAPER] Updated paper balance: ${current_balance:.2f} + ${final_pnl:.2f} = ${new_balance:.2f}")
-            except Exception as balance_error:
-                logging.error(f"[RENDER PAPER ERROR] Failed to update paper balance: {balance_error}")
-            
-            # Simulate cancelling paper TP/SL orders
-            if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                cancelled_orders = len(config.exchange_tp_sl_orders)
-                logging.info(f"[RENDER PAPER] Simulated cancellation of {cancelled_orders} TP/SL orders in paper mode")
+                
+                # Update trade configuration immediately
+                config.status = "stopped"
+                config.final_pnl = final_pnl
+                config.closed_at = get_iran_time().isoformat()
+                config.unrealized_pnl = 0.0
+                
+                # Save to database immediately for paper trades
+                save_trade_to_db(chat_id, config)
+                
+                # Log trade closure
+                bot_trades.append({
+                    'id': len(bot_trades) + 1,
+                    'user_id': str(chat_id),
+                    'trade_id': trade_id,
+                    'symbol': config.symbol,
+                    'side': config.side,
+                    'amount': config.amount,
+                    'final_pnl': final_pnl,
+                    'timestamp': get_iran_time().isoformat(),
+                    'status': 'closed_paper'
+                })
+                
+                # Simulate cancelling paper TP/SL orders
+                if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+                    cancelled_orders = len(config.exchange_tp_sl_orders)
+                    logging.info(f"[RENDER PAPER] Simulated cancellation of {cancelled_orders} TP/SL orders in paper mode")
+                
+                # Return success immediately for paper trades
+                return jsonify({
+                    'success': True,
+                    'message': 'Paper trade closed successfully',
+                    'final_pnl': final_pnl,
+                    'paper_balance': new_balance
+                })
+                
+            except Exception as paper_error:
+                logging.error(f"[RENDER PAPER ERROR] Failed to close paper trade: {paper_error}")
+                return jsonify({
+                    'error': f'Failed to close paper trade: {str(paper_error)}',
+                    'paper_trading': True
+                }), 500
                 
         else:
             # REAL TRADING - Close position on Toobit exchange
