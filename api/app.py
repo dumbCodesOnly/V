@@ -6777,27 +6777,32 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         
         # Update paper trading balance for partial closure
         if user_id in user_paper_balances:
+            # FIXED: Use original margin amount for correct balance calculation
             # Return partial margin plus partial P&L to balance
-            partial_margin_return = (config.amount / (100 - allocation)) * allocation  # Original partial margin
+            original_margin = getattr(config, 'original_margin', config.original_amount / config.leverage)
+            partial_margin_return = original_margin * (allocation / 100)
             balance_change = partial_margin_return + partial_pnl
             user_paper_balances[user_id] += balance_change
             logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
         
         # Log partial closure
+        # CRITICAL FIX: Use original position amount for allocation calculation
+        # This ensures TP2 closes 25% of ORIGINAL position, not 25% of remaining position
+        closed_amount = config.original_amount * (allocation / 100)
         bot_trades.append({
             'id': len(bot_trades) + 1,
             'user_id': str(user_id),
             'trade_id': trade_id,
             'symbol': config.symbol,
             'side': config.side,
-            'amount': config.amount * (allocation / 100),
+            'amount': closed_amount,
             'final_pnl': partial_pnl,
             'timestamp': get_iran_time().isoformat(),
             'status': f'paper_partial_take_profit_{tp_level["level"]}',
             'trading_mode': 'paper'
         })
         
-        logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% for ${partial_pnl:.2f}")
+        logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% (${closed_amount:.2f}) for ${partial_pnl:.2f}")
         
         # Auto-trigger break-even after first TP if configured
         if tp_level['level'] == 1 and hasattr(config, 'breakeven_after') and config.breakeven_after == "tp1":
