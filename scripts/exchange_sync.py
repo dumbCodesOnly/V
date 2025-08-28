@@ -35,6 +35,7 @@ class ExchangeSyncService:
         # Health ping boost mechanism
         self.last_health_ping = None
         self.is_render = Environment.IS_RENDER
+        self.is_vercel = Environment.IS_VERCEL
         
     def start(self):
         """Start the background synchronization service"""
@@ -55,10 +56,17 @@ class ExchangeSyncService:
         """Main synchronization loop with health ping boost"""
         while self.running:
             try:
+                # Check if we're in boost period before syncing
+                current_interval = self._get_current_sync_interval()
+                is_boost_active = ((self.is_render or not self.is_vercel) and self.last_health_ping and 
+                                 (datetime.utcnow() - self.last_health_ping).total_seconds() <= TimeConfig.HEALTH_PING_BOOST_DURATION)
+                
+                if is_boost_active:
+                    logging.info("Health ping boost: executing enhanced monitoring sync")
+                
                 self._sync_all_users()
                 
-                # Dynamic interval based on health ping boost
-                current_interval = self._get_current_sync_interval()
+                # Sleep for the calculated interval
                 time.sleep(current_interval)
                 
             except Exception as e:
@@ -67,8 +75,8 @@ class ExchangeSyncService:
     
     def _get_current_sync_interval(self):
         """Get current sync interval based on health ping boost status"""
-        # Only apply boost for Render environment
-        if not self.is_render or not self.last_health_ping:
+        # Apply boost for Render and development environments (not Vercel)
+        if (not self.is_render and self.is_vercel) or not self.last_health_ping:
             return self.sync_interval
         
         # Check if we're within the boost period
@@ -78,7 +86,9 @@ class ExchangeSyncService:
             # Use faster interval during boost period
             boost_interval = TimeConfig.HEALTH_PING_BOOST_INTERVAL
             if time_since_health_ping < 30:  # First 30 seconds after ping
-                logging.debug(f"Health ping boost active: using {boost_interval}s interval")
+                logging.info(f"Health ping boost active: using {boost_interval}s interval (time since ping: {time_since_health_ping:.1f}s)")
+            elif int(time_since_health_ping) % 30 == 0:  # Log every 30 seconds during boost
+                logging.info(f"Health ping boost continues: {time_since_health_ping:.0f}s elapsed, using {boost_interval}s interval")
             return boost_interval
         else:
             # Return to normal interval
@@ -86,9 +96,11 @@ class ExchangeSyncService:
     
     def trigger_health_ping_boost(self):
         """Trigger extended monitoring after health ping"""
-        if self.is_render:
+        # Allow boost for both Render and development environments
+        if self.is_render or not self.is_vercel:  # Works for Render and Replit
             self.last_health_ping = datetime.utcnow()
-            logging.info(f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds")
+            env_name = "Render" if self.is_render else "Development"
+            logging.info(f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment)")
     
     def _sync_all_users(self):
         """Synchronize all users with active positions"""
