@@ -39,6 +39,6 @@ databases:
       - key: WEB_CONCURRENCY
         value: "2"
     autoDeploy: true
-    healthCheckPath: /health
+    healthCheckPath: /api/health
     region: oregon  # Use Oregon region for better performance
     runtime: python3
