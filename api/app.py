@@ -2869,8 +2869,8 @@ def execute_trade():
         
         is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
-                       user_creds.testnet_mode or 
-                       not user_creds.has_credentials())
+                       (user_creds and user_creds.testnet_mode) or 
+                       (user_creds and not user_creds.has_credentials()))
         
         execution_success = False
         client = None  # Initialize client variable
@@ -3644,8 +3644,8 @@ def close_all_trades():
         
         is_paper_mode = (manual_paper_mode or 
                        not user_creds or 
-                       user_creds.testnet_mode or 
-                       not user_creds.has_credentials())
+                       (user_creds and user_creds.testnet_mode) or 
+                       (user_creds and not user_creds.has_credentials()))
         
         client = None
         if not is_paper_mode and user_creds and user_creds.has_credentials():
