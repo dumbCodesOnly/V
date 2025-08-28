@@ -6804,13 +6804,35 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         
         logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% (${closed_amount:.2f}) for ${partial_pnl:.2f}")
         
-        # Auto-trigger break-even after first TP if configured
-        if tp_level['level'] == 1 and hasattr(config, 'breakeven_after') and config.breakeven_after == "tp1":
-            if not getattr(config, 'breakeven_sl_triggered', False):
-                config.breakeven_sl_triggered = True
-                config.breakeven_sl_price = config.entry_price
-                save_trade_to_db(user_id, config)
-                logging.info(f"Paper Trading: Auto break-even triggered after TP1 - SL moved to entry price")
+        # FIXED: Auto-trigger break-even after specified TP level if configured
+        # Handle both numeric (1.0, 2.0, 3.0) and string values ("tp1", "tp2", "tp3")
+        breakeven_trigger_level = None
+        if hasattr(config, 'breakeven_after') and config.breakeven_after:
+            if isinstance(config.breakeven_after, (int, float)):
+                # Numeric values: 1.0 = TP1, 2.0 = TP2, 3.0 = TP3
+                if config.breakeven_after == 1.0:
+                    breakeven_trigger_level = 1
+                elif config.breakeven_after == 2.0:
+                    breakeven_trigger_level = 2
+                elif config.breakeven_after == 3.0:
+                    breakeven_trigger_level = 3
+            elif isinstance(config.breakeven_after, str):
+                # String values: "tp1", "tp2", "tp3"
+                if config.breakeven_after == "tp1":
+                    breakeven_trigger_level = 1
+                elif config.breakeven_after == "tp2":
+                    breakeven_trigger_level = 2
+                elif config.breakeven_after == "tp3":
+                    breakeven_trigger_level = 3
+        
+        # Trigger break-even if current TP level matches configured break-even level
+        if (breakeven_trigger_level and tp_level['level'] == breakeven_trigger_level and 
+            not getattr(config, 'breakeven_sl_triggered', False)):
+            config.breakeven_sl_triggered = True
+            config.breakeven_sl_price = config.entry_price
+            save_trade_to_db(user_id, config)
+            logging.info(f"Paper Trading: Auto break-even triggered after TP{breakeven_trigger_level} - SL moved to entry price {config.entry_price}")
+            logging.info(f"Paper Trading: Break-even breakeven_after value was: {config.breakeven_after} (type: {type(config.breakeven_after)})")
 
 def initialize_paper_trading_monitoring(config):
     """Initialize paper trading monitoring after position opens"""
