@@ -204,31 +204,33 @@ class ToobitClient:
         From docs example:
         symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307
         """
-        # Prepare order parameters according to official docs
-        params = {
-            'symbol': symbol.upper(),
-            'side': side.upper(),
-            'type': order_type.upper(),
-            'quantity': f"{float(quantity):.6f}".rstrip('0').rstrip('.')  # 6 decimal precision
-        }
+        # Prepare order parameters in correct order for Toobit signature validation
+        import uuid
+        from collections import OrderedDict
         
-        # Add timeInForce ONLY for limit orders (required by docs, forbidden for market orders)
+        params = OrderedDict()
+        
+        # Core parameters (always first)
+        params['symbol'] = symbol.upper()
+        params['side'] = side.upper()  
+        params['type'] = order_type.upper()
+        params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+        
+        # Add timeInForce for limit orders only
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
-        
+            
         # Add price for limit orders
         if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['price'] = str(price)
-        
-        # Add stop price if provided (with validation for conditional orders)
+            
+        # Add stopPrice if provided (for conditional orders)
         if 'stopPrice' in kwargs:
             stop_price = float(kwargs['stopPrice'])
             params['stopPrice'] = str(stop_price)
             
             # Validate stop price for conditional orders to prevent immediate trigger
             if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT']:
-                # Get current market price for validation (basic implementation)
-                # Note: In production, you'd want to pass current price or fetch it
                 current_price = kwargs.get('currentPrice')
                 if current_price:
                     current_price = float(current_price)
@@ -239,20 +241,19 @@ class ToobitClient:
                     else:
                         logging.info(f"STOP order validation: Price {stop_price} is valid for {side} order")
         
-        # Add margin type only for limit orders (not needed for market orders per docs)
+        # Add margin type for limit orders only
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['marginType'] = kwargs.get('marginType', 'ISOLATED')
-        
+            
         # Add reduce only flag if closing position
         if kwargs.get('reduceOnly'):
             params['reduceOnly'] = 'true'
-        
-        # Add recvWindow for timing security (required by Toobit)
-        params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
-        
-        # Add newClientOrderId for all orders (required by Toobit)
-        import uuid
+            
+        # Add newClientOrderId (required for all orders)
         params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        
+        # Add recvWindow (always near the end)
+        params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
         
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
