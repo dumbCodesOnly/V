@@ -53,19 +53,15 @@ class VercelSyncService:
             # Check if user is in paper trading mode
             # Import in app context to avoid circular imports
             with self.app.app_context():
-                from .app import user_paper_trading_preferences
-                manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
-                
                 # For Toobit, force disable testnet mode since it's not supported
                 if user_creds and user_creds.exchange_name == 'toobit' and user_creds.testnet_mode:
                     user_creds.testnet_mode = False
                     self.db.session.commit()
                     logging.info(f"Disabled testnet mode for Toobit user {user_id} in Vercel environment")
                 
-                is_paper_mode = (manual_paper_mode or 
-                               not user_creds or 
-                               (user_creds and user_creds.testnet_mode) or 
-                               (user_creds and not user_creds.has_credentials()))
+                # Use centralized trading mode detection
+                from .app import determine_trading_mode
+                is_paper_mode = determine_trading_mode(user_id)
                 
                 if is_paper_mode:
                     return {

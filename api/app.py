@@ -401,6 +401,54 @@ bot_trades_lock = threading.RLock()
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
 
+def determine_trading_mode(user_id):
+    """
+    Centralized function to determine if user should be in paper trading mode.
+    Returns True for paper mode, False for live mode.
+    """
+    try:
+        chat_id = int(user_id)
+        
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(user_id),
+            is_active=True
+        ).first()
+        
+        # Check if user has valid credentials
+        has_valid_creds = user_creds and user_creds.has_credentials()
+        
+        # Check if user has explicitly set a paper trading preference
+        has_preference = chat_id in user_paper_trading_preferences
+        
+        if has_preference:
+            # User has explicitly chosen a mode - honor their choice
+            manual_preference = user_paper_trading_preferences[chat_id]
+            
+            # If they want live mode but don't have credentials, force paper mode for safety
+            if not manual_preference and not has_valid_creds:
+                logging.warning(f"User {user_id} wants live mode but has no valid credentials - forcing paper mode")
+                return True
+            
+            return manual_preference
+        else:
+            # User hasn't set a preference - use intelligent defaults
+            if has_valid_creds:
+                # User has credentials but no preference - default to live mode
+                logging.info(f"User {user_id} has credentials but no mode preference - defaulting to live mode")
+                user_paper_trading_preferences[chat_id] = False  # Set default for future use
+                return False
+            else:
+                # No credentials - must use paper mode
+                logging.info(f"User {user_id} has no credentials - defaulting to paper mode")
+                user_paper_trading_preferences[chat_id] = True  # Set default for future use
+                return True
+                
+    except Exception as e:
+        logging.error(f"Error determining trading mode for user {user_id}: {e}")
+        # On error, default to paper mode for safety
+        return True
+
 # Paper trading balance tracking
 user_paper_balances = {}  # {user_id: balance_amount}
 
@@ -1303,12 +1351,8 @@ def get_exchange_balance():
             is_active=True
         ).first()
         
-        # Check if user is in paper trading mode
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
-        is_paper_mode = (manual_paper_mode or 
-                        not user_creds or 
-                        (user_creds and user_creds.testnet_mode) or 
-                        (user_creds and not user_creds.has_credentials()))
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
         
         # If in paper trading mode, return virtual paper balance
         if is_paper_mode:
@@ -1676,14 +1720,9 @@ def get_paper_trading_status():
             is_active=True
         ).first()
         
-        # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
-        
-        # Determine if paper trading is active (same logic as toggle endpoint)
-        is_paper_mode = (manual_paper_mode or 
-                        not user_creds or 
-                        (user_creds and user_creds.testnet_mode) or 
-                        (user_creds and not user_creds.has_credentials()))
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
+        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
         
         # Determine the reason for the current mode
         if manual_paper_mode:
@@ -2217,12 +2256,8 @@ def debug_paper_trading_status():
             is_active=True
         ).first()
         
-        # Check paper trading mode determination
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
-        is_paper_mode = (manual_paper_mode or 
-                        not user_creds or 
-                        (user_creds and user_creds.testnet_mode) or 
-                        (user_creds and not user_creds.has_credentials()))
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
         
         # Get trade configurations
         initialize_user_environment(chat_id, force_reload=True)
@@ -2247,7 +2282,7 @@ def debug_paper_trading_status():
         return jsonify({
             'success': True,
             'user_id': user_id,
-            'manual_paper_mode': manual_paper_mode,
+            'manual_paper_mode': user_paper_trading_preferences.get(chat_id, True),
             'is_paper_mode': is_paper_mode,
             'has_credentials': user_creds is not None and user_creds.has_credentials() if user_creds else False,
             'testnet_mode': user_creds.testnet_mode if user_creds else False,
@@ -2885,13 +2920,8 @@ def execute_trade():
         ).first()
         
         # Default to paper mode for safety - only use live trading when explicitly disabled
-        # Check for manual paper trading preference (default to True for safety)
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
-        
-        is_paper_mode = (manual_paper_mode or 
-                       not user_creds or 
-                       (user_creds and user_creds.testnet_mode) or 
-                       (user_creds and not user_creds.has_credentials()))
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
         
         execution_success = False
         client = None  # Initialize client variable
@@ -3543,13 +3573,13 @@ def close_trade():
         ).first()
         
         # Default to paper mode if no credentials exist
-        # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
         
         # FIXED: Improved paper trading mode detection for Render deployment
         # Check multiple indicators to determine if this is a paper trade
         paper_indicators = [
-            manual_paper_mode,
+            is_paper_mode,
             not user_creds,
             (user_creds and user_creds.testnet_mode),
             (user_creds and not user_creds.has_credentials()),
@@ -3563,7 +3593,7 @@ def close_trade():
         
         # Log detailed paper trading detection for debugging on Render
         logging.info(f"[RENDER CLOSE DEBUG] Paper mode detection for {config.symbol}:")
-        logging.info(f"  Manual paper mode: {manual_paper_mode}")
+        logging.info(f"  Manual paper mode: {user_paper_trading_preferences.get(chat_id, True)}")
         logging.info(f"  Has credentials: {user_creds is not None}")
         logging.info(f"  Paper order ID: {str(getattr(config, 'exchange_order_id', '')).startswith('paper_')}")
         logging.info(f"  Final determination: Paper mode = {is_paper_mode}")
@@ -3772,13 +3802,8 @@ def close_all_trades():
         ).first()
         
         # Default to paper mode if no credentials exist
-        # Check for manual paper trading preference
-        manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)
-        
-        is_paper_mode = (manual_paper_mode or 
-                       not user_creds or 
-                       (user_creds and user_creds.testnet_mode) or 
-                       (user_creds and not user_creds.has_credentials()))
+        # Use centralized trading mode detection
+        is_paper_mode = determine_trading_mode(chat_id)
         
         client = None
         if not is_paper_mode and user_creds and user_creds.has_credentials():
@@ -7256,7 +7281,8 @@ def debug_trading_status():
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         
         # Paper trading status
-        manual_paper_mode = user_paper_trading_preferences.get(user_id, True)
+        is_paper_mode = determine_trading_mode(user_id)
+        manual_paper_mode = user_paper_trading_preferences.get(int(user_id), True)
         
         # Diagnostic information
         diagnostic_info = {
