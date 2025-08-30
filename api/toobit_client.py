@@ -235,9 +235,10 @@ class ToobitClient:
         # Add recvWindow for timing security (required by Toobit)
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
         
-        # Add newClientOrderId for all orders (required by Toobit for all order types)
-        import uuid
-        params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        # Add newClientOrderId only for conditional orders (STOP, STOP_MARKET, etc.)
+        if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT'] or kwargs.get('newClientOrderId'):
+            import uuid
+            params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
         
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
