@@ -1302,8 +1302,8 @@ def get_exchange_balance():
         manual_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
         is_paper_mode = (manual_paper_mode or 
                         not user_creds or 
-                        user_creds.testnet_mode if user_creds else True or 
-                        not user_creds.has_credentials() if user_creds else True)
+                        (user_creds and user_creds.testnet_mode) or 
+                        (user_creds and not user_creds.has_credentials()))
         
         # If in paper trading mode, return virtual paper balance
         if is_paper_mode:
