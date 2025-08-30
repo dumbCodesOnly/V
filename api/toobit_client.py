@@ -209,7 +209,7 @@ class ToobitClient:
             'symbol': symbol.upper(),
             'side': side.upper(),
             'type': order_type.upper(),
-            'quantity': f"{float(quantity):.6f}".rstrip('0').rstrip('.')  # Format precision
+            'quantity': f"{float(quantity):.8f}".rstrip('0').rstrip('.')  # Higher precision for crypto quantities
         }
         
         # Add timeInForce ONLY for limit orders (required by docs, forbidden for market orders)
@@ -235,10 +235,9 @@ class ToobitClient:
         # Add recvWindow for timing security (required by Toobit)
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
         
-        # Add newClientOrderId for conditional orders (required for STOP, STOP_MARKET types)
-        if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT'] or kwargs.get('newClientOrderId'):
-            import uuid
-            params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        # Add newClientOrderId for all orders (required by Toobit for all order types)
+        import uuid
+        params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
         
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
