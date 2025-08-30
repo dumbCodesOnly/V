@@ -6591,12 +6591,12 @@ def process_paper_trading_position(user_id, trade_id, config):
             
             # Check break-even stop loss first
             if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
-                # FIXED: Use more precise breakeven logic with tolerance for minor price fluctuations
+                # FIXED: Correct breakeven logic - trigger when price moves against position from entry
                 price_tolerance = 0.0001  # 0.01% tolerance for floating point precision
-                if config.side == "long" and config.current_price <= (config.entry_price * (1 + price_tolerance)):
+                if config.side == "long" and config.current_price <= (config.entry_price * (1 - price_tolerance)):
                     stop_loss_triggered = True
                     logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} LONG - Current: ${config.current_price:.4f} <= Entry: ${config.entry_price:.4f}")
-                elif config.side == "short" and config.current_price >= (config.entry_price * (1 - price_tolerance)):
+                elif config.side == "short" and config.current_price >= (config.entry_price * (1 + price_tolerance)):
                     stop_loss_triggered = True
                     logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} SHORT - Current: ${config.current_price:.4f} >= Entry: ${config.entry_price:.4f}")
             # Check regular stop loss
