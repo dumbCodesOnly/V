@@ -242,7 +242,8 @@ class ToobitClient:
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
         
-        logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {quantity}")
+        formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+        logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {formatted_quantity}")
         
         return self._signed_request('POST', f"{self.futures_base}/order", params)
     
