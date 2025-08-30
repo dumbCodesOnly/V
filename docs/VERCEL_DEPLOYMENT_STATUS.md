@@ -1,11 +1,20 @@
 # Vercel/Neon Deployment Status - Latest Updates
 
 ## 🚀 Deployment Summary
-**Date**: August 26, 2025  
-**Version**: v2.4 - Position Loading Fix & Migration Complete  
-**Status**: Ready for deployment with frontend fixes
+**Date**: August 30, 2025  
+**Version**: v2.5 - Critical Toobit API Authentication Fix  
+**Status**: ✅ READY - Signature authentication resolved
 
 ## ✅ Latest Updates Included
+
+### 🔥 **CRITICAL: Toobit API Authentication Fixed**
+- ✅ Fixed -1022 "Signature for this request is not valid" error
+- ✅ Removed timeInForce parameter from market orders (not allowed by Toobit API)
+- ✅ Removed marginType parameter from market orders (per Toobit documentation) 
+- ✅ Ensured all parameters are converted to strings (required by signature)
+- ✅ Using correct X-BB-APIKEY header format (not X-MBX-APIKEY)
+- ✅ Added missing get_ticker_price method
+- ✅ Market orders now follow exact Toobit API specification
 
 ### 1. **Frontend Position Loading Fix (Critical)**
 - ✅ Fixed positions not displaying without tab switching in Telegram WebView
@@ -46,9 +55,9 @@
 - **Telegram Integration**: ✅ Webhooks and WebView working
 
 ### Known Issues ⚠️
-- **Toobit Market Data**: Some endpoints return 404 (ticker, order placement)
-- **Testnet Limitations**: Limited endpoint availability
-- **Mainnet Trading**: Balance endpoint confirmed working
+- ✅ **RESOLVED**: Order placement now works with corrected API parameters
+- ✅ **RESOLVED**: Signature authentication fixed for all endpoints
+- **Mainnet Trading**: Fully functional with proper API authentication
 
 ## 📦 Deployment Files Ready
 

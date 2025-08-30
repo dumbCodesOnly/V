@@ -53,5 +53,8 @@ After adding PostgreSQL:
 
 - ❌ SQLite (causes position disappearing)
 - ✅ After fix: PostgreSQL (positions persist)
+- 🔥 **NEW**: Toobit API authentication fixed (-1022 error resolved)
+- ✅ Market orders now work properly with Toobit exchange  
+- ✅ All signature validation issues resolved
 
 The database configuration in your code is already optimized for Render with proper connection pooling and timeouts.
