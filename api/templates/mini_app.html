@@ -3151,10 +3151,8 @@
             // Show loading state
             showTabLoading('positions-list', 'Loading positions...');
             
-            // Ensure paper trading status is loaded before loading positions
-            if (window.currentPaperTradingStatus === undefined) {
-                await loadPaperTradingStatus();
-            }
+            // Always reload paper trading status to prevent flashing
+            await loadPaperTradingStatus();
             
             const data = await apiCall(`/api/positions?user_id=${getUserId()}`);
             if (!data) return;
@@ -3643,18 +3641,16 @@
             
             const summary = data.summary || {};
             
-            // Use cached paper trading status if available, otherwise fetch it
+            // Always fetch fresh paper trading status to prevent UI flashing
             let isPaperMode;
             let paperTradingStatus = null;
-            if (window.currentPaperTradingStatus !== undefined) {
-                isPaperMode = window.currentPaperTradingStatus;
-                // If we have cached status, try to get the full paper trading data for balance info
-                paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
-            } else {
-                paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
-                isPaperMode = paperTradingStatus && paperTradingStatus.paper_trading_active;
-                window.currentPaperTradingStatus = isPaperMode;
-            }
+            
+            // Fetch current trading mode status
+            paperTradingStatus = await apiCall(`/api/paper-trading-status?user_id=${getUserId() || '123456789'}`);
+            isPaperMode = paperTradingStatus && paperTradingStatus.paper_trading_active;
+            
+            // Update cached status only after fresh API call
+            window.currentPaperTradingStatus = isPaperMode;
             const isLiveMode = !isPaperMode;
             
             if (isLiveMode) {
