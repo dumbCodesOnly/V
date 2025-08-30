@@ -2261,6 +2261,10 @@
                             <i data-feather="key"></i>
                             API Keys
                         </a>
+                        <a href="#" class="dropdown-item" onclick="showDiagnosticInfo()">
+                            <i data-feather="activity"></i>
+                            Trading Status
+                        </a>
                     </div>
                 </div>
             </div>
@@ -4258,8 +4262,35 @@
                 }
             } catch (error) {
                 animateButtonError(button);
-                showErrorMessage('Failed to execute trade. Please try again.');
-                console.error('Execute failed:', error);
+                console.error('[RENDER DEBUG] Execute failed:', error);
+                
+                // Enhanced error handling for debugging
+                let errorMessage = 'Failed to execute trade. Please try again.';
+                
+                if (error.message && error.message.includes('error')) {
+                    try {
+                        const errorData = JSON.parse(error.message.split('error: ')[1]);
+                        console.log('[RENDER DEBUG] Parsed error data:', errorData);
+                        
+                        if (errorData.debug_info) {
+                            // Show credential issues specifically
+                            if (errorData.debug_info.has_api_key === false || errorData.debug_info.has_api_secret === false) {
+                                errorMessage = 'Missing API credentials. Please set up your Toobit API keys in the hamburger menu (☰).';
+                            } else if (errorData.troubleshooting) {
+                                errorMessage = errorData.error + '\n\nTroubleshooting:\n• ' + errorData.troubleshooting.join('\n• ');
+                            } else {
+                                errorMessage = errorData.error || errorMessage;
+                            }
+                        } else {
+                            errorMessage = errorData.error || errorMessage;
+                        }
+                    } catch (parseError) {
+                        console.log('[RENDER DEBUG] Could not parse error details:', parseError);
+                        errorMessage = error.message || errorMessage;
+                    }
+                }
+                
+                showErrorMessage(errorMessage);
             } finally {
                 removeButtonLoading(button);
             }
@@ -5369,6 +5400,62 @@
             } else {
                 console.error('Error toggling paper trading:', response);
                 showNotification('error', response?.message || 'Failed to toggle paper trading mode');
+            }
+        }
+
+        async function showDiagnosticInfo() {
+            // Hide hamburger menu
+            document.getElementById('hamburger-dropdown').classList.remove('show');
+            
+            try {
+                const diagnostic = await apiCall(`/api/debug/trading-status?user_id=${getUserId()}`);
+                
+                let diagMessage = '🔍 TRADING STATUS DIAGNOSTIC\n\n';
+                
+                // Environment Info
+                diagMessage += '🌐 ENVIRONMENT:\n';
+                diagMessage += `Platform: ${diagnostic.environment.is_replit ? 'Replit' : 
+                                         diagnostic.environment.is_render ? 'Render' : 
+                                         diagnostic.environment.is_vercel ? 'Vercel' : 'Unknown'}\n`;
+                diagMessage += `Database: ${diagnostic.environment.database_type}\n\n`;
+                
+                // Credentials Status
+                diagMessage += '🔑 API CREDENTIALS:\n';
+                diagMessage += `Status: ${diagnostic.credentials.has_credentials_in_db ? '✅ Found' : '❌ Not Set'}\n`;
+                if (diagnostic.credentials.has_credentials_in_db) {
+                    diagMessage += `API Key: ${diagnostic.credentials.has_api_key ? '✅' : '❌'}\n`;
+                    diagMessage += `API Secret: ${diagnostic.credentials.has_api_secret ? '✅' : '❌'}\n`;
+                    diagMessage += `Passphrase: ${diagnostic.credentials.has_passphrase ? '✅' : '❌'}\n`;
+                    diagMessage += `Exchange: ${diagnostic.credentials.exchange_name || 'Unknown'}\n`;
+                }
+                diagMessage += '\n';
+                
+                // Trading Mode
+                diagMessage += '📊 TRADING MODE:\n';
+                diagMessage += `Paper Trading: ${diagnostic.trading_mode.manual_paper_mode ? 'ON' : 'OFF'}\n`;
+                diagMessage += `Paper Balance: $${diagnostic.trading_mode.paper_balance.toLocaleString()}\n`;
+                diagMessage += `Will Use Paper Mode: ${diagnostic.trading_mode.would_use_paper_mode ? 'YES' : 'NO'}\n`;
+                diagMessage += `Active Trades: ${diagnostic.active_trades}\n\n`;
+                
+                // Toobit Connection
+                if (diagnostic.toobit_connection) {
+                    diagMessage += '🔗 TOOBIT CONNECTION:\n';
+                    diagMessage += `Status: ${diagnostic.toobit_connection.status === 'success' ? '✅ Connected' : '❌ Failed'}\n`;
+                    if (diagnostic.toobit_connection.status === 'failed') {
+                        diagMessage += `Error: ${diagnostic.toobit_connection.error}\n`;
+                    } else {
+                        diagMessage += `Balance Data: ${diagnostic.toobit_connection.has_balance_data ? '✅ Available' : '❌ None'}\n`;
+                    }
+                } else {
+                    diagMessage += '🔗 TOOBIT CONNECTION:\n❌ No credentials to test\n';
+                }
+                
+                console.log('[RENDER DEBUG] Full diagnostic data:', diagnostic);
+                alert(diagMessage);
+                
+            } catch (error) {
+                console.error('[RENDER DEBUG] Diagnostic failed:', error);
+                alert('Failed to load diagnostic information. Check console for details.');
             }
         }
 

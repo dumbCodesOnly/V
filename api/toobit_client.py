@@ -98,7 +98,11 @@ class ToobitClient:
         # Enhanced logging for debugging API calls - Special tags for Render debugging
         api_mode = "TESTNET" if self.testnet else "LIVE"
         logging.info(f"[RENDER {api_mode}] Toobit API Call: {method} {url}")
-        logging.info(f"[RENDER {api_mode}] Parameters: {all_params}")
+        # Log parameters without exposing sensitive data
+        safe_params = {k: v for k, v in all_params.items() if k not in ['signature', 'api_key', 'api_secret']}
+        if 'signature' in all_params:
+            safe_params['signature'] = f"[HIDDEN - Length: {len(all_params['signature'])}]"
+        logging.info(f"[RENDER {api_mode}] Parameters: {safe_params}")
         
         # Additional debugging for order placement requests
         if endpoint == '/order' and method.upper() == 'POST':

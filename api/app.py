@@ -2897,21 +2897,82 @@ def execute_trade():
                 return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
             
             try:
+                # Enhanced credential debugging for Render
+                api_key = user_creds.get_api_key()
+                api_secret = user_creds.get_api_secret()
+                passphrase = user_creds.get_passphrase()
+                
+                # Debug credential validation (without exposing actual values)
+                logging.info(f"[RENDER CREDS DEBUG] API Key length: {len(api_key) if api_key else 0}")
+                logging.info(f"[RENDER CREDS DEBUG] API Secret length: {len(api_secret) if api_secret else 0}")
+                logging.info(f"[RENDER CREDS DEBUG] Passphrase length: {len(passphrase) if passphrase else 0}")
+                logging.info(f"[RENDER CREDS DEBUG] User credentials testnet mode: {user_creds.testnet_mode}")
+                
+                if not api_key or not api_secret:
+                    error_msg = f"[RENDER ERROR] Missing credentials - API Key: {'✓' if api_key else '✗'}, API Secret: {'✓' if api_secret else '✗'}"
+                    logging.error(error_msg)
+                    return jsonify({
+                        'error': 'Invalid API credentials. Please check your Toobit API key and secret in the API Keys menu.',
+                        'debug_info': {
+                            'has_api_key': bool(api_key),
+                            'has_api_secret': bool(api_secret),
+                            'credential_lengths': {
+                                'api_key': len(api_key) if api_key else 0,
+                                'api_secret': len(api_secret) if api_secret else 0
+                            }
+                        }
+                    }), 400
+                
                 # Create Toobit client
                 client = ToobitClient(
-                    api_key=user_creds.get_api_key(),
-                    api_secret=user_creds.get_api_secret(),
-                    passphrase=user_creds.get_passphrase(),
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    passphrase=passphrase,
                     testnet=False  # ALWAYS False for Toobit - no testnet support
                 )
                 
-                # Test connection first - balance endpoint works even if ticker endpoints don't
+                # Enhanced connection test with detailed error reporting
                 try:
+                    logging.info(f"[RENDER CONNECTION TEST] Testing Toobit API connection...")
                     balance_data = client.get_account_balance()
-                    logging.info(f"Toobit connection test successful. Balance data received")
+                    
+                    if balance_data:
+                        logging.info(f"[RENDER CONNECTION SUCCESS] Balance data received: {type(balance_data)}")
+                        # Log balance info without exposing actual amounts
+                        if isinstance(balance_data, dict):
+                            logging.info(f"[RENDER BALANCE] Response has {len(balance_data)} fields")
+                    else:
+                        logging.warning(f"[RENDER CONNECTION WARNING] Empty balance response")
+                        
                 except Exception as conn_error:
-                    logging.error(f"Toobit connection test failed: {conn_error}")
-                    return jsonify({'error': f'Exchange connection failed: {str(conn_error)}'}), 400
+                    error_details = {
+                        'error_type': type(conn_error).__name__,
+                        'error_message': str(conn_error),
+                        'last_client_error': getattr(client, 'last_error', None)
+                    }
+                    
+                    logging.error(f"[RENDER CONNECTION FAILED] {error_details}")
+                    
+                    # Provide user-friendly error messages based on error type
+                    if 'unauthorized' in str(conn_error).lower() or '401' in str(conn_error):
+                        user_message = 'Invalid API credentials. Please verify your Toobit API key and secret.'
+                    elif 'forbidden' in str(conn_error).lower() or '403' in str(conn_error):
+                        user_message = 'API access forbidden. Please check your Toobit API permissions for futures trading.'
+                    elif 'timeout' in str(conn_error).lower():
+                        user_message = 'Connection timeout. Please try again.'
+                    else:
+                        user_message = f'Exchange connection failed: {str(conn_error)}'
+                    
+                    return jsonify({
+                        'error': user_message,
+                        'debug_info': error_details,
+                        'troubleshooting': [
+                            'Verify your Toobit API key and secret are correct',
+                            'Ensure your API key has futures trading permissions',
+                            'Check if your Toobit account is verified and funded',
+                            'Make sure you copied the full API key without spaces'
+                        ]
+                    }), 400
                 
                 # Calculate position size for order
                 position_value = config.amount * config.leverage
@@ -2934,7 +2995,28 @@ def execute_trade():
                 )
                 
                 if not order_result:
-                    return jsonify({'error': 'Failed to place order on exchange. Please check your API keys and try again.'}), 500
+                    error_details = {
+                        'client_last_error': getattr(client, 'last_error', None),
+                        'order_params': {
+                            'symbol': config.symbol,
+                            'side': order_side,
+                            'type': order_type,
+                            'quantity_calculated': position_size
+                        }
+                    }
+                    
+                    logging.error(f"[RENDER ORDER FAILED] Order placement failed: {error_details}")
+                    
+                    return jsonify({
+                        'error': 'Failed to place order on exchange. Please check the details below.',
+                        'debug_info': error_details,
+                        'troubleshooting': [
+                            'Check if you have sufficient balance for this trade',
+                            'Verify the symbol is supported on Toobit futures',
+                            'Ensure your position size meets minimum requirements',
+                            'Check if there are any trading restrictions on your account'
+                        ]
+                    }), 500
                 
                 execution_success = True
                 logging.info(f"Order placed on Toobit: {order_result}")
@@ -2944,8 +3026,35 @@ def execute_trade():
                 config.exchange_client_order_id = order_result.get('clientOrderId')
                 
             except Exception as e:
-                logging.error(f"Exchange order placement failed: {e}")
-                return jsonify({'error': f'Exchange order failed: {str(e)}'}), 500
+                error_details = {
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'client_last_error': getattr(client, 'last_error', None) if client else None,
+                    'trade_config': {
+                        'symbol': config.symbol,
+                        'side': config.side,
+                        'amount': config.amount,
+                        'leverage': config.leverage,
+                        'entry_type': config.entry_type
+                    }
+                }
+                
+                logging.error(f"[RENDER TRADING ERROR] Exchange order placement failed: {error_details}")
+                
+                # Import stack trace for detailed debugging
+                import traceback
+                logging.error(f"[RENDER STACK TRACE] {traceback.format_exc()}")
+                
+                return jsonify({
+                    'error': f'Trading execution failed: {str(e)}',
+                    'debug_info': error_details,
+                    'troubleshooting': [
+                        'Check your internet connection',
+                        'Verify your Toobit API credentials are active',
+                        'Ensure you have sufficient account balance',
+                        'Try refreshing the page and attempting the trade again'
+                    ]
+                }), 500
         
         # Calculate common values needed for both paper and real trading
         position_value = config.amount * config.leverage
@@ -7098,6 +7207,81 @@ def cleanup_smc_cache():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/trading-status', methods=['GET'])
+def debug_trading_status():
+    """Enhanced diagnostic endpoint for troubleshooting trading issues"""
+    try:
+        user_id = request.args.get('user_id', Environment.DEFAULT_TEST_USER_ID)
+        
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        
+        # Paper trading status
+        manual_paper_mode = user_paper_trading_preferences.get(user_id, True)
+        
+        # Diagnostic information
+        diagnostic_info = {
+            'user_id': user_id,
+            'environment': {
+                'is_replit': Environment.IS_REPLIT,
+                'is_render': Environment.IS_RENDER,
+                'is_vercel': Environment.IS_VERCEL,
+                'database_type': get_database_url().split('://')[0] if get_database_url() else 'none'
+            },
+            'credentials': {
+                'has_credentials_in_db': bool(user_creds),
+                'has_api_key': bool(user_creds and user_creds.api_key_encrypted),
+                'has_api_secret': bool(user_creds and user_creds.api_secret_encrypted),
+                'has_passphrase': bool(user_creds and user_creds.passphrase_encrypted),
+                'testnet_mode': user_creds.testnet_mode if user_creds else None,
+                'is_active': user_creds.is_active if user_creds else None,
+                'exchange_name': user_creds.exchange_name if user_creds else None
+            },
+            'trading_mode': {
+                'manual_paper_mode': manual_paper_mode,
+                'paper_balance': user_paper_balances.get(user_id, TradingConfig.DEFAULT_TRIAL_BALANCE),
+                'would_use_paper_mode': (manual_paper_mode or 
+                                       not user_creds or 
+                                       (user_creds and user_creds.testnet_mode) or 
+                                       (user_creds and not user_creds.has_credentials()))
+            },
+            'active_trades': len(user_trade_configs.get(user_id, {})),
+            'toobit_connection': None
+        }
+        
+        # Test Toobit connection if credentials exist
+        if user_creds and user_creds.has_credentials():
+            try:
+                client = ToobitClient(
+                    api_key=user_creds.get_api_key(),
+                    api_secret=user_creds.get_api_secret(),
+                    passphrase=user_creds.get_passphrase(),
+                    testnet=False
+                )
+                
+                # Test connection
+                balance_data = client.get_account_balance()
+                diagnostic_info['toobit_connection'] = {
+                    'status': 'success',
+                    'has_balance_data': bool(balance_data),
+                    'balance_fields': len(balance_data) if isinstance(balance_data, dict) else 0,
+                    'last_error': getattr(client, 'last_error', None)
+                }
+                
+            except Exception as conn_error:
+                diagnostic_info['toobit_connection'] = {
+                    'status': 'failed',
+                    'error': str(conn_error),
+                    'error_type': type(conn_error).__name__
+                }
+        
+        logging.info(f"[RENDER DEBUG] Trading status diagnostic for user {user_id}: {diagnostic_info}")
+        return jsonify(diagnostic_info)
+        
+    except Exception as e:
+        logging.error(f"[RENDER DEBUG] Diagnostic failed: {e}")
+        return jsonify({'error': f'Diagnostic failed: {str(e)}'}), 500
 
 
 if __name__ == "__main__":
