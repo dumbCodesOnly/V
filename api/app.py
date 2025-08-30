@@ -3035,8 +3035,7 @@ def execute_trade():
                     order_type=order_type,
                     quantity=str(position_size),
                     price=str(order_price) if order_price else None,
-                    timeInForce="GTC",
-                    leverage=config.leverage
+                    timeInForce="GTC" if config.entry_type == "limit" else None
                 )
                 
                 if not order_result:
