@@ -70,8 +70,12 @@ class ToobitClient:
             # Add timestamp to all parameters first
             all_params['timestamp'] = timestamp
             
-            # Only add recvWindow for order-related endpoints, not for balance/position queries
-            if endpoint in ['/order', '/orders'] or any(x in endpoint for x in ['order', 'trade']):
+            # Only add recvWindow for limit orders, not for market orders or balance/position queries
+            # Market orders and balance calls don't need recvWindow according to Toobit API docs
+            is_order_endpoint = endpoint in ['/order', '/orders'] or any(x in endpoint for x in ['order', 'trade'])
+            is_market_order = all_params.get('type', '').upper() == 'MARKET'
+            
+            if is_order_endpoint and not is_market_order:
                 all_params['recvWindow'] = all_params.get('recvWindow', '100000')
             
             # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
