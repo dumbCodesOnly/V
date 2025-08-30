@@ -3029,14 +3029,19 @@ def execute_trade():
                 order_price = config.entry_price if config.entry_type == "limit" else None
                 
                 # Place the main position order on exchange
-                order_result = client.place_order(
-                    symbol=config.symbol,
-                    side=order_side,
-                    order_type=order_type,
-                    quantity=str(position_size),
-                    price=str(order_price) if order_price else None,
-                    timeInForce="GTC" if config.entry_type == "limit" else None
-                )
+                order_params = {
+                    'symbol': config.symbol,
+                    'side': order_side,
+                    'order_type': order_type,
+                    'quantity': str(position_size)
+                }
+                
+                # Only add price and timeInForce for limit orders
+                if config.entry_type == "limit" and order_price:
+                    order_params['price'] = str(order_price)
+                    order_params['timeInForce'] = "GTC"
+                
+                order_result = client.place_order(**order_params)
                 
                 if not order_result:
                     error_details = {

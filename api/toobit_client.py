@@ -161,6 +161,17 @@ class ToobitClient:
         """Get 24hr ticker price change statistics"""
         return self._public_request(f"/api/v1/futures/ticker/24hr", {"symbol": symbol})
     
+    def get_ticker_price(self, symbol: str) -> Optional[float]:
+        """Get current ticker price for a symbol"""
+        try:
+            ticker = self.get_ticker(symbol)
+            if ticker and 'price' in ticker:
+                return float(ticker['price'])
+            return None
+        except Exception as e:
+            logging.warning(f"Failed to get ticker price for {symbol}: {e}")
+            return None
+    
     def get_exchange_info(self) -> Optional[Dict]:
         """Get exchange information"""
         return self._public_request(f"/api/v1/futures/exchangeInfo")
@@ -202,7 +213,7 @@ class ToobitClient:
             'quantity': f"{float(quantity):.6f}".rstrip('0').rstrip('.')  # Format precision
         }
         
-        # Add timeInForce for limit orders (required by docs)
+        # Add timeInForce ONLY for limit orders (required by docs, forbidden for market orders)
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
         
