@@ -5284,29 +5284,36 @@
                 resetBtn.disabled = true;
                 resetBtn.classList.add('btn-loading');
                 
-                const response = await fetch('/api/reset-history', {
+                const result = await apiCall('/api/reset-history', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
                     body: JSON.stringify({
-                        user_id: currentUser.id
+                        user_id: getUserId()
                     })
                 });
                 
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('✅ Trade history reset successfully');
+                if (result && result.success) {
+                    showSuccessMessage('✅ Trade history reset successfully');
                     
-                    // Reset UI elements to paper trading initial balance
-                    document.getElementById('account-balance').textContent = '$10000.00';
-                    document.getElementById('margin-used').textContent = '$0.00';
-                    document.getElementById('free-margin').textContent = '$10000.00';
-                    document.getElementById('margin-ratio').textContent = '0%';
-                    document.getElementById('realized-pnl').textContent = '$0.00';
-                    document.getElementById('total-pnl-portfolio').textContent = '$0.00';
-                    document.getElementById('total-pnl-portfolio').style.color = '#28a745';
+                    // Reset UI elements to paper trading initial balance - works with any credentials
+                    const uiElements = {
+                        'account-balance': '$10,000.00',
+                        'margin-used': '$0.00', 
+                        'free-margin': '$10,000.00',
+                        'margin-ratio': '0%',
+                        'realized-pnl': '$0.00',
+                        'total-pnl-portfolio': '$0.00'
+                    };
+                    
+                    // Update UI elements safely
+                    for (const [id, value] of Object.entries(uiElements)) {
+                        const element = document.getElementById(id);
+                        if (element) {
+                            element.textContent = value;
+                            if (id === 'total-pnl-portfolio') {
+                                element.style.color = '#28a745'; // Green for neutral
+                            }
+                        }
+                    }
                     
                     // Clear portfolio details
                     const portfolioDetails = document.getElementById('portfolio-details');
@@ -5314,18 +5321,27 @@
                         portfolioDetails.innerHTML = '<div class="text-center py-4"><small class="text-muted">No trade history</small></div>';
                     }
                     
-                    // Refresh other tabs if they're active
-                    if (currentActiveTab === 'positions') {
-                        await loadPositions();
-                    } else if (currentActiveTab === 'trading') {
-                        await loadTradeConfigs();
+                    console.log('[RENDER DEBUG] Refreshing UI after history reset...');
+                    
+                    // Force refresh all tabs with optimized loading for Render
+                    try {
+                        await Promise.all([
+                            loadPortfolio(),
+                            currentActiveTab === 'positions' ? loadPositions() : Promise.resolve(),
+                            currentActiveTab === 'trading' ? loadTradeConfigs() : Promise.resolve()
+                        ]);
+                    } catch (refreshError) {
+                        console.warn('[RENDER DEBUG] Some tabs failed to refresh:', refreshError);
+                        // Continue anyway - the reset was successful
                     }
+                    
                 } else {
-                    alert(`❌ ${result.error || 'Failed to reset history'}`);
+                    const errorMsg = result?.error || 'Failed to reset history';
+                    showErrorMessage(`❌ ${errorMsg}`);
                 }
             } catch (error) {
-                console.error('Reset history error:', error);
-                alert('❌ Failed to reset history');
+                console.error('[RENDER DEBUG] Reset history error:', error);
+                showErrorMessage('❌ Failed to reset history - please try again');
             } finally {
                 // Restore button state
                 resetBtn.innerHTML = '🗑️ Reset History';

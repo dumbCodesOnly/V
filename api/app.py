@@ -1612,15 +1612,23 @@ def toggle_paper_trading():
             logging.error(f"Toggle paper trading failed: Invalid user ID format: {user_id}")
             return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
         
-        # Simple toggle for paper trading preference
+        # Optimize for Render deployment - minimize database queries
         current_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
         new_paper_mode = not current_paper_mode
+        
+        # Update preference immediately in memory
         user_paper_trading_preferences[chat_id] = new_paper_mode
         
-        # Initialize paper balance if switching to paper mode
-        if new_paper_mode and chat_id not in user_paper_balances:
+        # Initialize/ensure paper balance exists (optimize for both modes)
+        if chat_id not in user_paper_balances or user_paper_balances[chat_id] <= 0:
             user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
-            logging.info(f"Initialized paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
+            logging.info(f"[RENDER OPTIMIZATION] Set paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
+        
+        # Clear any cached data that might cause lag on mode switch
+        cache_clear_keys = [f"user_positions_{chat_id}", f"portfolio_data_{chat_id}"]
+        for key in cache_clear_keys:
+            if key in globals():
+                del globals()[key]
         
         # Log the mode change
         mode_text = "ENABLED" if new_paper_mode else "DISABLED"
@@ -3973,9 +3981,27 @@ def reset_trade_history():
         if chat_id in user_selected_trade:
             del user_selected_trade[chat_id]
         
+        # Reset paper trading balance to default regardless of credentials
+        user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+        
         # Clear trade history from bot_trades list
         global bot_trades
         bot_trades = [trade for trade in bot_trades if trade.get('user_id') != str(chat_id)]
+        
+        # Clear any cached portfolio data manually
+        try:
+            from .cache_manager import PortfolioCache
+            cache_keys = [
+                f"portfolio_summary_{chat_id}",
+                f"margin_summary_{chat_id}",
+                f"user_positions_{chat_id}"
+            ]
+            for key in cache_keys:
+                if hasattr(PortfolioCache, 'cache') and key in PortfolioCache.cache:
+                    del PortfolioCache.cache[key]
+        except ImportError:
+            # Cache manager not available, continue without clearing cache
+            pass
         
         logging.info(f"Trade history reset successfully for user {chat_id}")
         
@@ -7227,7 +7253,7 @@ def debug_trading_status():
                 'is_replit': Environment.IS_REPLIT,
                 'is_render': Environment.IS_RENDER,
                 'is_vercel': Environment.IS_VERCEL,
-                'database_type': get_database_url().split('://')[0] if get_database_url() else 'none'
+                'database_type': (get_database_url() or '').split('://')[0] if get_database_url() else 'none'
             },
             'credentials': {
                 'has_credentials_in_db': bool(user_creds),
