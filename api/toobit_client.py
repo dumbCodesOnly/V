@@ -73,7 +73,7 @@ class ToobitClient:
             # Only add recvWindow for limit orders, not for market orders or balance/position queries
             # Market orders and balance calls don't need recvWindow according to Toobit API docs
             is_order_endpoint = endpoint in ['/order', '/orders'] or any(x in endpoint for x in ['order', 'trade'])
-            is_market_order = all_params.get('type', '').upper() == 'MARKET'
+            is_market_order = (all_params.get('type', '').upper() == 'MARKET') or (data and data.get('type', '').upper() == 'MARKET')
             
             if is_order_endpoint and not is_market_order:
                 all_params['recvWindow'] = all_params.get('recvWindow', '100000')
@@ -260,12 +260,15 @@ class ToobitClient:
         """Place a new order using Toobit API format"""
         try:
             # Format order data according to Toobit documentation
+            # Fix quantity precision - Toobit expects max 6 decimal places for BTCUSDT
+            formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+            
             data = {
                 'symbol': symbol.upper(),  # e.g., BTCUSDT
                 'side': side.upper(),  # BUY, SELL (uppercase as per docs)
                 'type': order_type.upper(),  # MARKET, LIMIT, STOP_MARKET, etc.
-                'quantity': str(quantity),
-                'recvWindow': kwargs.get('recvWindow', '100000')  # Required by Toobit API
+                'quantity': formatted_quantity,
+                'marginType': kwargs.get('marginType', 'ISOLATED')  # Required: ISOLATED or CROSS
             }
             
             # Only add timeInForce for limit orders (not for market orders)
@@ -280,7 +283,7 @@ class ToobitClient:
                 
             # Add additional parameters (reduceOnly, etc.)
             for key, value in kwargs.items():
-                if key not in ['leverage', 'timeInForce', 'recvWindow']:  # Skip these as they're handled above
+                if key not in ['leverage', 'timeInForce', 'marginType']:  # Skip these as they're handled above
                     data[key] = value
             
             # Enhanced logging for position closing orders
