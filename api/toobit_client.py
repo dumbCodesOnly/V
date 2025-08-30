@@ -1,545 +1,284 @@
 """
-Toobit Exchange API Client for USDT-M Futures Trading
-Handles authentication, order management, and position synchronization
+Toobit API Client - Completely rewritten based on official documentation
+Reference: https://toobit-docs.github.io/apidocs/usdt_swap/v1/en/
 """
 
 import hashlib
 import hmac
-import time
-import requests
-import json
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-from config import APIConfig, TimeConfig, TradingConfig, get_api_timeout
+import requests
+import time
+from typing import Optional, Dict, List
+from urllib.parse import urlencode
+
+from config import APIConfig
+
 
 class ToobitClient:
-    """Toobit Exchange API Client for futures trading"""
+    """Toobit API client following official documentation specifications"""
     
-    def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False):
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
         self.api_key = api_key
         self.api_secret = api_secret
-        self.passphrase = passphrase
-        # Toobit doesn't support testnet, always use mainnet
-        self.testnet = False  # Always False for Toobit since they don't have testnet
+        self.testnet = testnet
         
-        # Base URLs for Toobit API using centralized config
-        # Note: Toobit only supports mainnet/live trading - no testnet available
-        self.base_url = APIConfig.TOOBIT_BASE_URL
-        self.quote_base = APIConfig.TOOBIT_QUOTE_PATH
-        self.futures_base = APIConfig.TOOBIT_FUTURES_PATH
+        # Official Toobit API endpoints
+        self.base_url = "https://api.toobit.com"
+        self.futures_base = "/api/v1/futures"  # USDT-M Futures
+        self.spot_base = "/api/v1/spot"        # Spot trading
         
         # Track last error for better user feedback
         self.last_error = None
         
-        # Log warning if testnet was requested
+        # Log warning if testnet was requested (Toobit doesn't support testnet)
         if testnet:
             logging.warning("TOOBIT TESTNET DISABLED: Toobit does not support testnet mode. Using mainnet/live trading instead.")
-            logging.warning("RENDER ALERT: If you see this on Render, check database credentials for testnet_mode=True")
         
         # Request session for connection pooling
         self.session = requests.Session()
-        self.session.headers.update({
-            'Content-Type': 'application/x-www-form-urlencoded',  # Toobit expects form-encoded data
-            'User-Agent': APIConfig.USER_AGENT
-        })
         
-    def _generate_signature(self, params_string: str) -> str:
-        """Generate signature for Toobit API authentication"""
-        # Toobit uses HMAC SHA256 on the parameter string only
-        signature = hmac.new(
+    def _generate_signature(self, query_string: str) -> str:
+        """
+        Generate HMAC SHA256 signature according to Toobit specification
+        
+        From docs: The signature uses the HMAC SHA256 algorithm. The API-Secret 
+        corresponding to the API-KEY is used as the key of HMAC SHA256, and all 
+        other parameters are used as the operation object of HMAC SHA256
+        """
+        return hmac.new(
             self.api_secret.encode('utf-8'),
-            params_string.encode('utf-8'),
+            query_string.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
-        return signature
     
     def get_server_time(self) -> int:
-        """Get Toobit server time for accurate timestamp synchronization"""
+        """Get server time from Toobit for accurate timestamp synchronization"""
         try:
-            # Toobit server time endpoint (from their USDT-M futures docs)
-            response = self.session.get(f"{self.base_url}/api/v1/futures/time", timeout=5)
-            if response.status_code == 200:
-                server_data = response.json()
-                return int(server_data.get('serverTime', time.time() * 1000))
-        except:
-            pass
-        # Try alternative endpoint
-        try:
+            # Public endpoint for server time
             response = self.session.get(f"{self.base_url}/api/v1/time", timeout=5)
             if response.status_code == 200:
-                server_data = response.json()
-                return int(server_data.get('serverTime', time.time() * 1000))
-        except:
-            pass
-        # Fallback to local time if server time unavailable
+                data = response.json()
+                return int(data.get('serverTime', time.time() * 1000))
+        except Exception as e:
+            logging.debug(f"Failed to get server time: {e}")
+        
+        # Fallback to local time
         return int(time.time() * 1000)
     
-    def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None, authenticated: bool = True) -> Dict:
-        """Make authenticated request to Toobit API following official documentation format"""
-        # Use server time for better synchronization
-        timestamp = str(self.get_server_time())
+    def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Make signed request following Toobit official specifications
         
-        # Combine all parameters (query params + data + required params)
-        all_params = {}
-        if params:
-            all_params.update(params)
-        if data:
-            all_params.update(data)
+        Based on official docs example:
+        - Parameters are sorted alphabetically 
+        - Query string format: key=value&key=value
+        - Signature is HMAC SHA256 of the query string
+        - Headers include X-BB-APIKEY
+        """
+        if params is None:
+            params = {}
         
-        # For authenticated requests, prepare signature
-        if authenticated:
-            # Add timestamp to all parameters first
-            all_params['timestamp'] = timestamp
-            
-            # Only add recvWindow for limit orders, not for market orders or balance/position queries
-            # Market orders and balance calls don't need recvWindow according to Toobit API docs
-            is_order_endpoint = endpoint in ['/order', '/orders'] or any(x in endpoint for x in ['order', 'trade'])
-            is_market_order = (all_params.get('type', '').upper() == 'MARKET') or (data and data.get('type', '').upper() == 'MARKET')
-            
-            if is_order_endpoint and not is_market_order:
-                all_params['recvWindow'] = all_params.get('recvWindow', '5000')  # Recommended: 5000ms or less
-            
-            # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
-            sorted_params = sorted(all_params.items())
-            params_string = "&".join([f"{k}={v}" for k, v in sorted_params])
-            
-            # Generate signature
-            signature = self._generate_signature(params_string)
-            
-            # Add signature AFTER generating it
-            all_params['signature'] = signature
-            
-            # Set authenticated headers
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-BB-APIKEY': self.api_key
-            }
-        else:
-            # Public endpoints - no signature
-            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        # Add required timestamp
+        params['timestamp'] = self.get_server_time()
         
-        # Use quote API for public endpoints, futures API for authenticated endpoints
-        if not authenticated and endpoint.startswith('/ticker'):
-            url = self.base_url + self.quote_base + endpoint
-        else:
-            url = self.base_url + self.futures_base + endpoint
+        # Sort parameters alphabetically as per docs
+        sorted_params = sorted(params.items())
+        query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
         
-        # Enhanced logging for debugging API calls - Special tags for Render debugging
-        api_mode = "TESTNET" if self.testnet else "LIVE"
-        logging.info(f"[RENDER {api_mode}] Toobit API Call: {method} {url}")
-        # Log parameters without exposing sensitive data
-        safe_params = {k: v for k, v in all_params.items() if k not in ['signature', 'api_key', 'api_secret']}
-        if 'signature' in all_params:
-            safe_params['signature'] = f"[HIDDEN - Length: {len(all_params['signature'])}]"
-        logging.info(f"[RENDER {api_mode}] Parameters: {safe_params}")
+        # Generate signature
+        signature = self._generate_signature(query_string)
+        params['signature'] = signature
         
-        # Additional debugging for order placement requests
-        if endpoint == '/order' and method.upper() == 'POST':
-            logging.info(f"[RENDER ORDER DEBUG] Order placement attempt - Symbol: {all_params.get('symbol')}, Side: {all_params.get('side')}, Type: {all_params.get('type')}")
-            logging.info(f"[RENDER ORDER DEBUG] Reduce Only: {all_params.get('reduceOnly', False)}")
+        # Prepare headers as per official docs
+        headers = {
+            'X-BB-APIKEY': self.api_key,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        # Build full URL
+        url = f"{self.base_url}{endpoint}"
+        
+        # Debug logging
+        logging.info(f"[TOOBIT API] {method} {url}")
+        safe_params = {k: v for k, v in params.items() if k != 'signature'}
+        logging.info(f"[TOOBIT PARAMS] {safe_params}")
+        logging.debug(f"[SIGNATURE] Query: {query_string}")
+        logging.debug(f"[SIGNATURE] Hash: {signature}")
         
         try:
-            # Debug: Log the exact params string used for signature
-            if authenticated:
-                # Recreate the exact params string that was used for signature
-                sorted_params = sorted(all_params.items())
-                debug_params_string = "&".join([f"{k}={v}" for k, v in sorted_params if k != 'signature'])
-                logging.info(f"[SIGNATURE DEBUG] Params string: {debug_params_string}")
-                logging.info(f"[SIGNATURE DEBUG] Signature: {all_params.get('signature', 'MISSING')}")
-            
-            # For GET requests with parameters, use query string instead of form data
-            if method.upper() == 'GET' and all_params:
-                response = self.session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    params=all_params,  # Query parameters for GET
-                    timeout=get_api_timeout("default")
-                )
+            if method == 'GET':
+                response = self.session.get(url, params=params, headers=headers, timeout=10)
+            elif method == 'POST':
+                response = self.session.post(url, data=params, headers=headers, timeout=10)
+            elif method == 'DELETE':
+                response = self.session.delete(url, data=params, headers=headers, timeout=10)
             else:
-                # For POST requests, use form-encoded data 
-                response = self.session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    data=all_params if all_params else None,  # Form-encoded data
-                    timeout=get_api_timeout("default")
-                )
+                raise ValueError(f"Unsupported HTTP method: {method}")
             
-            logging.info(f"[RENDER {api_mode}] Response status: {response.status_code}")
-            response.raise_for_status()
-            result = response.json()
-            logging.info(f"[RENDER {api_mode}] Response: {result}")
+            logging.info(f"[TOOBIT RESPONSE] Status: {response.status_code}")
             
-            # Enhanced logging for order placement responses
-            if endpoint == '/order' and method.upper() == 'POST':
-                if result and 'code' in result:
-                    logging.info(f"[RENDER ORDER RESPONSE] Code: {result.get('code')}, Message: {result.get('msg', 'No message')}")
-                    if result.get('data'):
-                        logging.info(f"[RENDER ORDER RESPONSE] Order data: {result.get('data')}")
-                        
-            return result
-            
-        except requests.exceptions.RequestException as e:
-            logging.error(f"[RENDER {api_mode} ERROR] Toobit API request failed: {e}")
-            logging.error(f"[RENDER {api_mode} ERROR] Request details: {method} {url}")
-            logging.error(f"[RENDER {api_mode} ERROR] Request headers: {headers}")
-            logging.error(f"[RENDER {api_mode} ERROR] Request params: {all_params}")
-            
-            # Enhanced error tracking for order placement failures
-            if endpoint == '/order' and method.upper() == 'POST':
-                logging.error(f"[RENDER ORDER FAILED] Position close order failed - Exception: {e}")
-                self.last_error = f"Order placement failed: {str(e)}"
-            
-            # Store detailed error information for better user feedback
-            response = getattr(e, 'response', None)
-            if response is not None:
-                logging.error(f"[{api_mode}] Response status: {response.status_code}")
-                logging.error(f"[{api_mode}] Response body: {response.text}")
-                
-                # Parse common Toobit error responses
+            if response.status_code == 200:
+                result = response.json()
+                logging.info(f"[TOOBIT SUCCESS] {result}")
+                return result
+            else:
+                error_text = response.text
+                logging.error(f"[TOOBIT ERROR] {response.status_code}: {error_text}")
                 try:
                     error_data = response.json()
-                    logging.error(f"[{api_mode}] Error details: {error_data}")
-                    
-                    # Store specific Toobit error message
-                    if 'msg' in error_data:
-                        self.last_error = f"Toobit API Error: {error_data['msg']}"
-                    elif 'message' in error_data:
-                        self.last_error = f"Toobit API Error: {error_data['message']}"
-                    else:
-                        self.last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                    self.last_error = f"API Error {error_data.get('code', 'Unknown')}: {error_data.get('msg', error_text)}"
                 except:
-                    self.last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-            else:
-                self.last_error = f"Connection error: {str(e)}"
+                    self.last_error = f"HTTP {response.status_code}: {error_text}"
+                return None
                 
-            raise
-        except json.JSONDecodeError as e:
-            logging.error(f"[{api_mode}] Toobit API response decode failed: {e}")
-            response = getattr(e, 'response', None)
-            if response is not None:
-                logging.error(f"[{api_mode}] Raw response: {response.text}")
-            else:
-                logging.error(f"[{api_mode}] No response object available")
-            raise
-    
-    def get_account_balance(self) -> Dict:
-        """Get futures account balance"""
-        try:
-            # Balance endpoint might not need additional parameters
-            response = self._make_request('GET', '/balance', params={})
-            return response if response else {}
         except Exception as e:
-            logging.error(f"Failed to get account balance: {e}")
-            return {}
+            logging.error(f"[TOOBIT EXCEPTION] {str(e)}")
+            self.last_error = f"Request failed: {str(e)}"
+            return None
+    
+    def _public_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """Make public (unsigned) request"""
+        url = f"{self.base_url}{endpoint}"
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logging.error(f"Public request failed: {e}")
+            return None
+    
+    # Market Data Methods
+    def get_ticker(self, symbol: str) -> Optional[Dict]:
+        """Get 24hr ticker price change statistics"""
+        return self._public_request(f"/api/v1/futures/ticker/24hr", {"symbol": symbol})
+    
+    def get_exchange_info(self) -> Optional[Dict]:
+        """Get exchange information"""
+        return self._public_request(f"/api/v1/futures/exchangeInfo")
+    
+    # Account Methods
+    def get_account_balance(self) -> List[Dict]:
+        """Get futures account balance"""
+        result = self._signed_request('GET', f"{self.futures_base}/balance")
+        return result if isinstance(result, list) else []
     
     def get_positions(self) -> List[Dict]:
-        """Get all open positions"""
-        try:
-            response = self._make_request('GET', '/positions')
-            return response.get('data', []) if response else []
-        except Exception as e:
-            logging.error(f"Failed to get positions: {e}")
-            return []
+        """Get all positions"""
+        result = self._signed_request('GET', f"{self.futures_base}/positionRisk")
+        return result if isinstance(result, list) else []
     
     def get_position(self, symbol: str) -> Optional[Dict]:
         """Get specific position by symbol"""
-        try:
-            response = self._make_request('GET', f'/position/{symbol}')
-            return response.get('data') if response else None
-        except Exception as e:
-            logging.error(f"Failed to get position for {symbol}: {e}")
-            return None
+        positions = self.get_positions()
+        if positions:
+            for pos in positions:
+                if pos.get('symbol') == symbol.upper():
+                    return pos
+        return None
     
-    def get_orders(self, symbol: Optional[str] = None, status: Optional[str] = None) -> List[Dict]:
-        """Get orders with optional filters"""
-        try:
-            params = {}
-            if symbol:
-                params['symbol'] = symbol
-            if status:
-                params['status'] = status
-                
-            response = self._make_request('GET', '/orders', params=params)
-            return response.get('data', []) if response else []
-        except Exception as e:
-            logging.error(f"Failed to get orders: {e}")
-            return []
-    
-    def get_order_status(self, order_id: str) -> Optional[Dict]:
-        """Get specific order status"""
-        try:
-            response = self._make_request('GET', f'/order/{order_id}')
-            return response.get('data') if response else None
-        except Exception as e:
-            logging.error(f"Failed to get order status for {order_id}: {e}")
-            return None
-    
+    # Order Methods
     def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
-                   price: Optional[str] = None, stop_price: Optional[str] = None, **kwargs) -> Optional[Dict]:
-        """Place a new order using Toobit API format"""
-        try:
-            # Format order data according to Toobit documentation
-            # Fix quantity precision - Toobit expects max 6 decimal places for BTCUSDT
-            formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
-            
-            data = {
-                'symbol': symbol.upper(),  # e.g., BTCUSDT
-                'side': side.upper(),  # BUY, SELL (uppercase as per docs)
-                'type': order_type.upper(),  # MARKET, LIMIT, STOP_MARKET, etc.
-                'quantity': formatted_quantity,
-                'marginType': kwargs.get('marginType', 'ISOLATED')  # Required: ISOLATED or CROSS
-            }
-            
-            # Only add timeInForce for limit orders (not for market orders)
-            if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
-                data['timeInForce'] = kwargs.get('timeInForce', 'GTC')
-            
-            # Only add price for limit orders
-            if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
-                data['price'] = str(price)
-            if stop_price:
-                data['stopPrice'] = str(stop_price)
-                
-            # Add additional parameters (reduceOnly, etc.)
-            for key, value in kwargs.items():
-                if key not in ['leverage', 'timeInForce', 'marginType']:  # Skip these as they're handled above
-                    data[key] = value
-            
-            # Enhanced logging for position closing orders
-            if kwargs.get('reduceOnly'):
-                logging.info(f"[RENDER POSITION CLOSE] Attempting to close position: {symbol} {side} {quantity}")
-                logging.info(f"[RENDER POSITION CLOSE] Order data: {data}")
-            
-            # Make API request with enhanced error tracking for Render
-            try:
-                response = self._make_request('POST', '/order', data=data)
-                logging.info(f"[RENDER API RESPONSE] Toobit response received: {response}")
-            except Exception as api_error:
-                error_msg = f"API request failed for {symbol} {side} order: {str(api_error)}"
-                logging.error(f"[RENDER API ERROR] {error_msg}")
-                self.last_error = error_msg
-                return None
-            
-            # Enhanced error handling for failed orders
-            if not response:
-                error_msg = f"No response received from Toobit API for {symbol} {side} order"
-                logging.error(f"[RENDER ORDER FAILED] {error_msg}")
-                # Store last error for better user feedback
-                self.last_error = error_msg
-                return None
-            
-            # Check for Toobit-specific error responses
-            if 'code' in response and response.get('code') != 200:
-                error_msg = response.get('msg', 'Unknown Toobit API error')
-                logging.error(f"[TOOBIT ERROR] Code: {response.get('code')}, Message: {error_msg}")
-                self.last_error = f"Toobit API Error: {error_msg}"
-                return None
-                
-            logging.info(f"[ORDER SUCCESS] {symbol} {side} order placed successfully")
-            return response
-            
-        except Exception as e:
-            error_msg = f"Exception placing {symbol} {side} order: {str(e)}"
-            logging.error(f"[ORDER EXCEPTION] {error_msg}")
-            self.last_error = error_msg
-            return None
+                   price: Optional[str] = None, **kwargs) -> Optional[Dict]:
+        """
+        Place a new order following Toobit specifications
+        
+        From docs example:
+        symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307
+        """
+        # Prepare order parameters according to official docs
+        params = {
+            'symbol': symbol.upper(),
+            'side': side.upper(),
+            'type': order_type.upper(),
+            'quantity': f"{float(quantity):.6f}".rstrip('0').rstrip('.')  # Format precision
+        }
+        
+        # Add timeInForce for limit orders (required by docs)
+        if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+            params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
+        
+        # Add price for limit orders
+        if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+            params['price'] = str(price)
+        
+        # Add stop price if provided
+        if 'stopPrice' in kwargs:
+            params['stopPrice'] = str(kwargs['stopPrice'])
+        
+        # Add margin type (required for futures)
+        if 'marginType' in kwargs:
+            params['marginType'] = kwargs['marginType']
+        
+        # Add reduce only flag if closing position
+        if kwargs.get('reduceOnly'):
+            params['reduceOnly'] = 'true'
+        
+        # Add recvWindow for non-market orders (from docs: timing security)
+        if order_type.upper() != 'MARKET':
+            params['recvWindow'] = kwargs.get('recvWindow', '5000')
+        
+        logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {quantity}")
+        
+        return self._signed_request('POST', f"{self.futures_base}/order", params)
     
-    def cancel_order(self, order_id: str) -> bool:
+    def get_order(self, symbol: str, order_id: str) -> Optional[Dict]:
+        """Get order status"""
+        params = {
+            'symbol': symbol.upper(),
+            'orderId': order_id
+        }
+        return self._signed_request('GET', f"{self.futures_base}/order", params)
+    
+    def cancel_order(self, symbol: str, order_id: str) -> Optional[Dict]:
         """Cancel an order"""
-        try:
-            response = self._make_request('DELETE', f'/order/{order_id}')
-            return response.get('success', False) if response else False
-        except Exception as e:
-            logging.error(f"Failed to cancel order {order_id}: {e}")
-            self.last_error = f"Failed to cancel order {order_id}: {str(e)}"
-            return False
+        params = {
+            'symbol': symbol.upper(),
+            'orderId': order_id
+        }
+        return self._signed_request('DELETE', f"{self.futures_base}/order", params)
     
-    def get_last_error(self) -> str:
-        """Get the last error message for better user feedback"""
-        return self.last_error or "No error details available"
-    
-    def clear_last_error(self) -> None:
-        """Clear the last error message"""
-        self.last_error = None
-    
-    def place_tp_sl_orders(self, symbol: str, side: str, quantity: str, 
-                          take_profit_price: Optional[str] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:
-        """Place take profit and stop loss orders"""
-        orders_placed = []
+    def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
+        """Get all open orders"""
+        params = {}
+        if symbol:
+            params['symbol'] = symbol.upper()
         
-        try:
-            # Place take profit order (opposite side)
-            if take_profit_price:
-                tp_side = "sell" if side.lower() == "buy" else "buy"
-                tp_order = self.place_order(
-                    symbol=symbol,
-                    side=tp_side,
-                    order_type="limit",
-                    quantity=quantity,
-                    price=take_profit_price,
-                    timeInForce="GTC",
-                    reduceOnly=True
-                )
-                if tp_order:
-                    orders_placed.append({"type": "take_profit", "order": tp_order})
-            
-            # Place stop loss order (opposite side)
-            if stop_loss_price:
-                sl_side = "sell" if side.lower() == "buy" else "buy"
-                sl_order = self.place_order(
-                    symbol=symbol,
-                    side=sl_side,
-                    order_type="stop_market",
-                    quantity=quantity,
-                    stop_price=stop_loss_price,
-                    timeInForce="GTC",
-                    reduceOnly=True
-                )
-                if sl_order:
-                    orders_placed.append({"type": "stop_loss", "order": sl_order})
-                    
-            return orders_placed
-        except Exception as e:
-            logging.error(f"Failed to place TP/SL orders: {e}")
-            return orders_placed
-
-    def get_ticker_price(self, symbol: str) -> Optional[float]:
-        """Get current ticker price from Toobit exchange using the correct public API"""
-        try:
-            # Use the correct Toobit public API endpoint from quote/v1/ticker/24hr
-            # Only use the working endpoint to avoid unnecessary 404 errors
-            endpoints_to_try = [
-                # Primary and working endpoint - Toobit public quote API 
-                ('/ticker/24hr', {'symbol': symbol}),
-            ]
-            
-            for endpoint, params in endpoints_to_try:
-                try:
-                    response = self._make_request('GET', endpoint, params=params, authenticated=False)
-                    
-                    if response and isinstance(response, list) and len(response) > 0:
-                        # Toobit returns array format - get first item
-                        first_item = response[0]
-                        # Check for Toobit's actual field names
-                        if 'c' in first_item:  # 'c' is close/current price in Toobit API
-                            return float(first_item['c'])
-                        elif 'lastPrice' in first_item:
-                            return float(first_item['lastPrice'])
-                        elif 'price' in first_item:
-                            return float(first_item['price'])
-                    elif response and 'c' in response:
-                        return float(response['c'])
-                    elif response and 'lastPrice' in response:
-                        return float(response['lastPrice'])
-                    elif response and 'price' in response:
-                        return float(response['price'])
-                except Exception as e:
-                    logging.debug(f"Endpoint {endpoint} failed for {symbol}: {e}")
-                    continue
-            
-            return None
-        except Exception as e:
-            logging.error(f"Failed to get ticker price for {symbol} from Toobit: {e}")
-            return None
+        result = self._signed_request('GET', f"{self.futures_base}/openOrders", params)
+        return result if isinstance(result, list) else []
     
-    def get_market_data(self, symbol: str) -> Optional[Dict]:
-        """Get comprehensive market data from Toobit using correct quote API endpoints"""
-        try:
-            # Try official Toobit quote API endpoints in order of preference
-            endpoints_to_try = [
-                ('/ticker/24hr', {'symbol': symbol}),
-            ]
-            
-            for endpoint, params in endpoints_to_try:
-                try:
-                    response = self._make_request('GET', endpoint, params=params, authenticated=False)
-                    if response:
-                        return response
-                except:
-                    continue
-            
-            return None
-        except Exception as e:
-            logging.error(f"Failed to get market data for {symbol} from Toobit: {e}")
-            return None
-
-    def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str,
-                                   take_profits: Optional[List[Dict]] = None, stop_loss_price: Optional[str] = None) -> List[Dict]:
-        """Place multiple partial take profit orders and one stop loss order"""
-        orders_placed = []
-        
-        try:
-            # Place multiple take profit orders (opposite side)
-            if take_profits:
-                tp_side = "sell" if side.lower() == "buy" else "buy"
-                
-                for i, tp in enumerate(take_profits):
-                    tp_price = str(tp.get('price', 0))
-                    tp_quantity = str(tp.get('quantity', 0))
-                    
-                    if float(tp_price) > 0 and float(tp_quantity) > 0:
-                        tp_order = self.place_order(
-                            symbol=symbol,
-                            side=tp_side,
-                            order_type="limit",
-                            quantity=tp_quantity,
-                            price=tp_price,
-                            timeInForce="GTC",
-                            reduceOnly=True
-                        )
-                        if tp_order:
-                            orders_placed.append({
-                                "type": f"take_profit_{i+1}", 
-                                "order": tp_order,
-                                "percentage": tp.get('percentage', 0),
-                                "allocation": tp.get('allocation', 100)
-                            })
-            
-            # Place stop loss order (opposite side, full remaining quantity)
-            if stop_loss_price:
-                sl_side = "sell" if side.lower() == "buy" else "buy"
-                sl_order = self.place_order(
-                    symbol=symbol,
-                    side=sl_side,
-                    order_type="stop_market",
-                    quantity=total_quantity,
-                    stop_price=stop_loss_price,
-                    timeInForce="GTC",
-                    reduceOnly=True
-                )
-                if sl_order:
-                    orders_placed.append({"type": "stop_loss", "order": sl_order})
-                    
-            return orders_placed
-        except Exception as e:
-            logging.error(f"Failed to place multiple TP/SL orders: {e}")
-            return orders_placed
+    def get_order_history(self, symbol: str, limit: int = 100) -> List[Dict]:
+        """Get order history"""
+        params = {
+            'symbol': symbol.upper(),
+            'limit': limit
+        }
+        result = self._signed_request('GET', f"{self.futures_base}/allOrders", params)
+        return result if isinstance(result, list) else []
     
-    def get_trade_history(self, symbol: Optional[str] = None, limit: Optional[int] = None) -> List[Dict]:
-        """Get trade history with configurable limit"""
-        if limit is None:
-            limit = TradingConfig.DEFAULT_TRADE_HISTORY_LIMIT
-        try:
-            params = {'limit': str(limit)}
-            if symbol:
-                params['symbol'] = symbol
-                
-            response = self._make_request('GET', '/trades', params=params)
-            return response.get('data', []) if response else []
-        except Exception as e:
-            logging.error(f"Failed to get trade history: {e}")
-            return []
+    # Position Management
+    def change_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
+        """Change initial leverage"""
+        params = {
+            'symbol': symbol.upper(),
+            'leverage': str(leverage)
+        }
+        return self._signed_request('POST', f"{self.futures_base}/leverage", params)
     
-    def test_connection(self) -> Tuple[bool, str]:
-        """Test API connection and credentials"""
-        try:
-            response = self._make_request('GET', '/balance')
-            if response:
-                return True, "Connection successful"
-            else:
-                return False, "Invalid response from exchange"
-        except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+    def change_margin_type(self, symbol: str, margin_type: str) -> Optional[Dict]:
+        """Change margin type (ISOLATED or CROSS)"""
+        params = {
+            'symbol': symbol.upper(),
+            'marginType': margin_type.upper()
+        }
+        return self._signed_request('POST', f"{self.futures_base}/marginType", params)
+    
+    # Utility Methods
+    def test_connectivity(self) -> bool:
+        """Test API connectivity"""
+        result = self._public_request("/api/v1/ping")
+        return result is not None
+    
+    def get_last_error(self) -> Optional[str]:
+        """Get the last error message"""
+        return self.last_error
