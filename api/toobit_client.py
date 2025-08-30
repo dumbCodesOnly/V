@@ -235,6 +235,11 @@ class ToobitClient:
         # Add recvWindow for timing security (required by Toobit)
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
         
+        # Add newClientOrderId for conditional orders (required for STOP, STOP_MARKET types)
+        if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT'] or kwargs.get('newClientOrderId'):
+            import uuid
+            params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
         
@@ -257,6 +262,76 @@ class ToobitClient:
             'orderId': order_id
         }
         return self._signed_request('DELETE', f"{self.futures_base}/order", params)
+    
+    def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str, 
+                                   take_profits: List[Dict], stop_loss_price: Optional[str] = None) -> List[Dict]:
+        """
+        Place multiple take profit and stop loss orders
+        
+        Args:
+            symbol: Trading pair symbol
+            side: Original position side ('long' or 'short')
+            total_quantity: Total position size
+            take_profits: List of TP orders with price, quantity, percentage, allocation
+            stop_loss_price: Stop loss price (optional)
+        
+        Returns:
+            List of placed order responses
+        """
+        import uuid
+        orders_placed = []
+        
+        # Determine the correct side for closing orders (opposite of position side)
+        close_side = "SELL" if side.lower() == "long" else "BUY"
+        
+        try:
+            # Place take profit orders
+            for i, tp in enumerate(take_profits):
+                tp_params = {
+                    'newClientOrderId': str(uuid.uuid4())[:36],
+                    'reduceOnly': True,
+                    'recvWindow': '5000'
+                }
+                
+                order_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="LIMIT",
+                    quantity=tp['quantity'],
+                    price=tp['price'],
+                    **tp_params
+                )
+                
+                if order_result:
+                    orders_placed.append(order_result)
+                    logging.info(f"Placed TP{i+1} order: {tp['price']} for {tp['quantity']}")
+            
+            # Place stop loss order if specified
+            if stop_loss_price:
+                sl_params = {
+                    'newClientOrderId': str(uuid.uuid4())[:36],
+                    'stopPrice': stop_loss_price,
+                    'reduceOnly': True,
+                    'recvWindow': '5000'
+                }
+                
+                sl_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="STOP_MARKET",
+                    quantity=total_quantity,
+                    **sl_params
+                )
+                
+                if sl_result:
+                    orders_placed.append(sl_result)
+                    logging.info(f"Placed SL order: {stop_loss_price} for {total_quantity}")
+        
+        except Exception as e:
+            logging.error(f"Error placing TP/SL orders: {e}")
+            # Return partial results if some orders were placed
+        
+        return orders_placed
     
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """Get all open orders"""
