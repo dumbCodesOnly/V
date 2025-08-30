@@ -392,6 +392,11 @@ bot_status = {
 # User state tracking for API setup
 user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase', 'exchange': 'toobit'}}
 
+# Thread locks for global state to prevent race conditions
+trade_configs_lock = threading.RLock()
+paper_balances_lock = threading.RLock()
+bot_trades_lock = threading.RLock()
+
 # Multi-trade management storage
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade = {}  # {user_id: trade_id}
@@ -1620,9 +1625,10 @@ def toggle_paper_trading():
         user_paper_trading_preferences[chat_id] = new_paper_mode
         
         # Initialize/ensure paper balance exists (optimize for both modes)
-        if chat_id not in user_paper_balances or user_paper_balances[chat_id] <= 0:
-            user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
-            logging.info(f"[RENDER OPTIMIZATION] Set paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
+        with paper_balances_lock:
+            if chat_id not in user_paper_balances or user_paper_balances[chat_id] <= 0:
+                user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+                logging.info(f"[RENDER OPTIMIZATION] Set paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
         
         # Clear any cached data that might cause lag on mode switch
         cache_clear_keys = [f"user_positions_{chat_id}", f"portfolio_data_{chat_id}"]
@@ -2155,7 +2161,8 @@ def create_auto_trade_from_smc():
         if user_id_int not in user_trade_configs:
             user_trade_configs[user_id_int] = {}
         
-        user_trade_configs[user_id_int][trade_id] = trade_config
+        with trade_configs_lock:
+            user_trade_configs[user_id_int][trade_id] = trade_config
         
         # Save to database
         save_trade_to_db(user_id, trade_config)
@@ -3211,13 +3218,15 @@ def execute_trade():
                 }), 400
             
             # Deduct margin from paper balance
-            user_paper_balances[chat_id] -= config.amount
-            logging.info(f"Paper Trading: Deducted ${config.amount:,.2f} margin. Remaining balance: ${user_paper_balances[chat_id]:,.2f}")
+            with paper_balances_lock:
+                user_paper_balances[chat_id] -= config.amount
+                logging.info(f"Paper Trading: Deducted ${config.amount:,.2f} margin. Remaining balance: ${user_paper_balances[chat_id]:,.2f}")
         
         # Log trade execution
-        bot_trades.append({
-            'id': len(bot_trades) + 1,
-            'user_id': str(chat_id),
+        with bot_trades_lock:
+            bot_trades.append({
+                'id': len(bot_trades) + 1,
+                'user_id': str(chat_id),
             'trade_id': trade_id,
             'symbol': config.symbol,
             'side': config.side,
@@ -3572,8 +3581,9 @@ def close_trade():
                 # Update paper balance
                 current_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
                 new_balance = current_balance + final_pnl
-                user_paper_balances[chat_id] = new_balance
-                logging.info(f"[RENDER PAPER] Updated paper balance: ${current_balance:.2f} + ${final_pnl:.2f} = ${new_balance:.2f}")
+                with paper_balances_lock:
+                    user_paper_balances[chat_id] = new_balance
+                    logging.info(f"[RENDER PAPER] Updated paper balance: ${current_balance:.2f} + ${final_pnl:.2f} = ${new_balance:.2f}")
                 
                 # Update trade configuration immediately
                 config.status = "stopped"
@@ -3986,7 +3996,8 @@ def reset_trade_history():
         
         # Clear trade history from bot_trades list
         global bot_trades
-        bot_trades = [trade for trade in bot_trades if trade.get('user_id') != str(chat_id)]
+        with bot_trades_lock:
+            bot_trades = [trade for trade in bot_trades if trade.get('user_id') != str(chat_id)]
         
         # Clear any cached portfolio data manually
         try:
@@ -6805,8 +6816,9 @@ def execute_paper_stop_loss(user_id, trade_id, config):
     if user_id in user_paper_balances:
         # Return margin plus final P&L to balance
         balance_change = config.amount + config.final_pnl
-        user_paper_balances[user_id] += balance_change
-        logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+        with paper_balances_lock:
+            user_paper_balances[user_id] += balance_change
+            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
     
     save_trade_to_db(user_id, config)
     
