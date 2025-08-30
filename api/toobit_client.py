@@ -70,23 +70,30 @@ class ToobitClient:
         Make signed request following Toobit official specifications
         
         Based on official docs example:
-        - Parameters are sorted alphabetically 
-        - Query string format: key=value&key=value
-        - Signature is HMAC SHA256 of the query string
-        - Headers include X-BB-APIKEY
+        echo -n "symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307" | openssl dgst -sha256 -hmac "YOUR_SECRET"
+        
+        Key points:
+        1. Parameters are sorted alphabetically 
+        2. Query string format: key=value&key=value (NO URL encoding before signing)
+        3. Signature is HMAC SHA256 of the query string (WITHOUT signature parameter)
+        4. Signature is appended as &signature= to the request body
         """
         if params is None:
             params = {}
         
-        # Add required timestamp
+        # Add required timestamp and recvWindow
         params['timestamp'] = self.get_server_time()
+        if 'recvWindow' not in params:
+            params['recvWindow'] = '5000'
         
-        # Sort parameters alphabetically as per docs
+        # Sort parameters alphabetically as per docs (CRITICAL for signature validation)
         sorted_params = sorted(params.items())
         query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
         
-        # Generate signature
+        # Generate signature from the query string (WITHOUT signature parameter)
         signature = self._generate_signature(query_string)
+        
+        # Now add signature to params for the actual request
         params['signature'] = signature
         
         # Prepare headers as per official docs
@@ -109,6 +116,7 @@ class ToobitClient:
             if method == 'GET':
                 response = self.session.get(url, params=params, headers=headers, timeout=10)
             elif method == 'POST':
+                # For POST, send as form data in body (not URL params)
                 response = self.session.post(url, data=params, headers=headers, timeout=10)
             elif method == 'DELETE':
                 response = self.session.delete(url, data=params, headers=headers, timeout=10)
