@@ -67,8 +67,9 @@ class ToobitClient:
         
         # For authenticated requests, prepare signature
         if authenticated:
-            # Add timestamp to all parameters first
+            # Add timestamp and recvWindow to all parameters first
             all_params['timestamp'] = timestamp
+            all_params['recvWindow'] = all_params.get('recvWindow', '100000')  # Required by Toobit API
             
             # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
             sorted_params = sorted(all_params.items())
@@ -248,7 +249,8 @@ class ToobitClient:
                 'symbol': symbol.upper(),  # e.g., BTCUSDT
                 'side': side.upper(),  # BUY, SELL (uppercase as per docs)
                 'type': order_type.upper(),  # MARKET, LIMIT, STOP_MARKET, etc.
-                'quantity': str(quantity)
+                'quantity': str(quantity),
+                'recvWindow': kwargs.get('recvWindow', '100000')  # Required by Toobit API
             }
             
             # Only add timeInForce for limit orders (not for market orders)
@@ -263,7 +265,7 @@ class ToobitClient:
                 
             # Add additional parameters (reduceOnly, etc.)
             for key, value in kwargs.items():
-                if key not in ['leverage', 'timeInForce']:  # Skip these as they're handled above
+                if key not in ['leverage', 'timeInForce', 'recvWindow']:  # Skip these as they're handled above
                     data[key] = value
             
             # Enhanced logging for position closing orders
