@@ -67,9 +67,12 @@ class ToobitClient:
         
         # For authenticated requests, prepare signature
         if authenticated:
-            # Add timestamp and recvWindow to all parameters first
+            # Add timestamp to all parameters first
             all_params['timestamp'] = timestamp
-            all_params['recvWindow'] = all_params.get('recvWindow', '100000')  # Required by Toobit API
+            
+            # Only add recvWindow for order-related endpoints, not for balance/position queries
+            if endpoint in ['/order', '/orders'] or any(x in endpoint for x in ['order', 'trade']):
+                all_params['recvWindow'] = all_params.get('recvWindow', '100000')
             
             # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
             sorted_params = sorted(all_params.items())
@@ -111,6 +114,14 @@ class ToobitClient:
             logging.info(f"[RENDER ORDER DEBUG] Reduce Only: {all_params.get('reduceOnly', False)}")
         
         try:
+            # Debug: Log the exact params string used for signature
+            if authenticated:
+                # Recreate the exact params string that was used for signature
+                sorted_params = sorted(all_params.items())
+                debug_params_string = "&".join([f"{k}={v}" for k, v in sorted_params if k != 'signature'])
+                logging.info(f"[SIGNATURE DEBUG] Params string: {debug_params_string}")
+                logging.info(f"[SIGNATURE DEBUG] Signature: {all_params.get('signature', 'MISSING')}")
+            
             # For GET requests with parameters, use query string instead of form data
             if method.upper() == 'GET' and all_params:
                 response = self.session.request(
