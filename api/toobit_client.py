@@ -249,9 +249,8 @@ class ToobitClient:
         if kwargs.get('reduceOnly'):
             params['reduceOnly'] = 'true'
             
-        # Add newClientOrderId only for conditional orders (optional for MARKET orders)
-        if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT', 'TAKE_PROFIT_MARKET'] or kwargs.get('newClientOrderId'):
-            params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        # Add newClientOrderId (required for all orders on Toobit)
+        params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
         
         # Add recvWindow (always near the end)
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))

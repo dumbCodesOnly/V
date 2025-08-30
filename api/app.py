@@ -3019,9 +3019,9 @@ def execute_trade():
                         ]
                     }), 400
                 
-                # Calculate position size for order
+                # Calculate position size for order (rounded to 6 decimals)
                 position_value = config.amount * config.leverage
-                position_size = position_value / current_market_price
+                position_size = round(position_value / current_market_price, 6)
                 
                 # Determine order type and parameters
                 order_type = "market" if config.entry_type == "market" else "limit"
@@ -3050,7 +3050,7 @@ def execute_trade():
                             'symbol': config.symbol,
                             'side': order_side,
                             'type': order_type,
-                            'quantity_calculated': position_size
+                            'quantity_calculated': round(position_size, 6)
                         }
                     }
                     
@@ -3107,7 +3107,7 @@ def execute_trade():
         
         # Calculate common values needed for both paper and real trading
         position_value = config.amount * config.leverage
-        position_size = position_value / current_market_price
+        position_size = round(position_value / current_market_price, 6)
         order_side = "buy" if config.side == "long" else "sell"
         
         # Update trade configuration - status depends on order type
