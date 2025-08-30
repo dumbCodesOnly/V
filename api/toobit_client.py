@@ -225,15 +225,19 @@ class ToobitClient:
         if 'stopPrice' in kwargs:
             params['stopPrice'] = str(kwargs['stopPrice'])
         
-        # Add margin type (required for futures)
-        params['marginType'] = kwargs.get('marginType', 'ISOLATED')
+        # Add margin type only for limit orders (not needed for market orders per docs)
+        if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+            params['marginType'] = kwargs.get('marginType', 'ISOLATED')
         
         # Add reduce only flag if closing position
         if kwargs.get('reduceOnly'):
             params['reduceOnly'] = 'true'
         
         # Add recvWindow for timing security (required by Toobit)
-        params['recvWindow'] = kwargs.get('recvWindow', '5000')
+        params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
+        
+        # Ensure all parameters are strings (required by Toobit signature)
+        params = {k: str(v) for k, v in params.items()}
         
         logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {quantity}")
         
