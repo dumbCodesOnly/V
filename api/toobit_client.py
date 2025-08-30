@@ -17,7 +17,7 @@ from config import APIConfig
 class ToobitClient:
     """Toobit API client following official documentation specifications"""
     
-    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+    def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False):
         self.api_key = api_key
         self.api_secret = api_secret
         self.testnet = testnet
@@ -207,16 +207,14 @@ class ToobitClient:
             params['stopPrice'] = str(kwargs['stopPrice'])
         
         # Add margin type (required for futures)
-        if 'marginType' in kwargs:
-            params['marginType'] = kwargs['marginType']
+        params['marginType'] = kwargs.get('marginType', 'ISOLATED')
         
         # Add reduce only flag if closing position
         if kwargs.get('reduceOnly'):
             params['reduceOnly'] = 'true'
         
-        # Add recvWindow for non-market orders (from docs: timing security)
-        if order_type.upper() != 'MARKET':
-            params['recvWindow'] = kwargs.get('recvWindow', '5000')
+        # Add recvWindow for timing security (required by Toobit)
+        params['recvWindow'] = kwargs.get('recvWindow', '5000')
         
         logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {quantity}")
         
