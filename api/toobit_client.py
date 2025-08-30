@@ -209,7 +209,7 @@ class ToobitClient:
             'symbol': symbol.upper(),
             'side': side.upper(),
             'type': order_type.upper(),
-            'quantity': f"{float(quantity):.8f}".rstrip('0').rstrip('.')  # Higher precision for crypto quantities
+            'quantity': f"{float(quantity):.6f}".rstrip('0').rstrip('.')  # 6 decimal precision
         }
         
         # Add timeInForce ONLY for limit orders (required by docs, forbidden for market orders)
