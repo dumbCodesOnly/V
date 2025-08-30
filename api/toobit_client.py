@@ -220,9 +220,24 @@ class ToobitClient:
         if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['price'] = str(price)
         
-        # Add stop price if provided
+        # Add stop price if provided (with validation for conditional orders)
         if 'stopPrice' in kwargs:
-            params['stopPrice'] = str(kwargs['stopPrice'])
+            stop_price = float(kwargs['stopPrice'])
+            params['stopPrice'] = str(stop_price)
+            
+            # Validate stop price for conditional orders to prevent immediate trigger
+            if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT']:
+                # Get current market price for validation (basic implementation)
+                # Note: In production, you'd want to pass current price or fetch it
+                current_price = kwargs.get('currentPrice')
+                if current_price:
+                    current_price = float(current_price)
+                    if side.upper() == "BUY" and stop_price <= current_price:
+                        logging.warning(f"STOP order validation: BUY stop price {stop_price} <= market price {current_price}")
+                    elif side.upper() == "SELL" and stop_price >= current_price:
+                        logging.warning(f"STOP order validation: SELL stop price {stop_price} >= market price {current_price}")
+                    else:
+                        logging.info(f"STOP order validation: Price {stop_price} is valid for {side} order")
         
         # Add margin type only for limit orders (not needed for market orders per docs)
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
@@ -235,10 +250,9 @@ class ToobitClient:
         # Add recvWindow for timing security (required by Toobit)
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
         
-        # Add newClientOrderId only for conditional orders (STOP, STOP_MARKET, etc.)
-        if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT'] or kwargs.get('newClientOrderId'):
-            import uuid
-            params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        # Add newClientOrderId for all orders (required by Toobit)
+        import uuid
+        params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
         
         # Ensure all parameters are strings (required by Toobit signature)
         params = {k: str(v) for k, v in params.items()}
