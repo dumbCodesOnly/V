@@ -54,9 +54,31 @@ class ToobitClient:
         ).hexdigest()
         return signature
     
+    def get_server_time(self) -> int:
+        """Get Toobit server time for accurate timestamp synchronization"""
+        try:
+            # Toobit server time endpoint (from their USDT-M futures docs)
+            response = self.session.get(f"{self.base_url}/api/v1/futures/time", timeout=5)
+            if response.status_code == 200:
+                server_data = response.json()
+                return int(server_data.get('serverTime', time.time() * 1000))
+        except:
+            pass
+        # Try alternative endpoint
+        try:
+            response = self.session.get(f"{self.base_url}/api/v1/time", timeout=5)
+            if response.status_code == 200:
+                server_data = response.json()
+                return int(server_data.get('serverTime', time.time() * 1000))
+        except:
+            pass
+        # Fallback to local time if server time unavailable
+        return int(time.time() * 1000)
+    
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None, authenticated: bool = True) -> Dict:
         """Make authenticated request to Toobit API following official documentation format"""
-        timestamp = str(int(time.time() * 1000))
+        # Use server time for better synchronization
+        timestamp = str(self.get_server_time())
         
         # Combine all parameters (query params + data + required params)
         all_params = {}
@@ -76,7 +98,7 @@ class ToobitClient:
             is_market_order = (all_params.get('type', '').upper() == 'MARKET') or (data and data.get('type', '').upper() == 'MARKET')
             
             if is_order_endpoint and not is_market_order:
-                all_params['recvWindow'] = all_params.get('recvWindow', '100000')
+                all_params['recvWindow'] = all_params.get('recvWindow', '5000')  # Recommended: 5000ms or less
             
             # Create parameter string for signature (sorted by key) - EXCLUDE signature itself
             sorted_params = sorted(all_params.items())
