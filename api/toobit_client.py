@@ -276,8 +276,8 @@ class ToobitClient:
         if price and (params['type'] == 'LIMIT' or params.get('priceType') == 'INPUT'):
             params['price'] = str(price)
 
-        # Client order ID
-        params['clientOrderId'] = kwargs.get('clientOrderId', f"client_{int(time.time() * 1000)}")
+        # Client order ID - Toobit expects 'newClientOrderId'
+        params['newClientOrderId'] = kwargs.get('newClientOrderId', f"pl{int(time.time() * 1000)}")
 
         # recvWindow
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
@@ -376,7 +376,7 @@ class ToobitClient:
                     quantity=quantity,
                     price=stop_loss_price,
                     priceType="INPUT",
-                    clientOrderId=f"sl_{int(time.time() * 1000)}",
+                    newClientOrderId=f"sl{int(time.time() * 1000)}"[:36],
                     recvWindow="5000"
                 )
                 results['sl_order'] = sl_result
@@ -393,7 +393,7 @@ class ToobitClient:
                     price=take_profit_price,
                     priceType="INPUT",
                     timeInForce="GTC",
-                    clientOrderId=f"tp_{int(time.time() * 1000)}",
+                    newClientOrderId=f"tp{int(time.time() * 1000)}"[:36],
                     recvWindow="5000"
                 )
                 results['tp_order'] = tp_result
