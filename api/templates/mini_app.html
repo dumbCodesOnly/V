@@ -2491,10 +2491,10 @@
                             <div class="mb-3">
                                 <label class="form-label">Exchange</label>
                                 <select class="form-control" id="exchange-select" onchange="handleExchangeChange()">
-                                    <option value="toobit">Toobit</option>
+                                    <option value="binance" selected>Binance</option>
                                     <option value="lbank">LBank</option>
-                                    <option value="binance">Binance</option>
                                     <option value="okx">OKX</option>
+                                    <option value="toobit">Toobit (Live Only)</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -4713,6 +4713,9 @@
             const modalSetupContainer = document.getElementById('api-credentials-setup');
             if (setupContainer) setupContainer.classList.remove('hidden');
             if (modalSetupContainer) modalSetupContainer.classList.remove('hidden');
+            
+            // Initialize form state and visibility based on current exchange selection
+            handleExchangeChange();
         }
 
         function cancelCredentialsSetup() {
@@ -4727,7 +4730,7 @@
             document.getElementById('api-key-input').value = '';
             document.getElementById('api-secret-input').value = '';
             document.getElementById('passphrase-input').value = '';
-            document.getElementById('exchange-select').value = 'toobit';
+            document.getElementById('exchange-select').value = 'binance';
             document.getElementById('testnet-mode-toggle').checked = false; // Default to live mode
             handleExchangeChange(); // Update visibility
         }
