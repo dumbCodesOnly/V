@@ -194,71 +194,54 @@ class ToobitClient:
                    price: Optional[str] = None, **kwargs) -> Optional[Dict]:
         """
         Place a new order following Toobit specifications
-        
-        From docs example:
-        symbol=BTCUSDT&side=SELL&type=LIMIT&timeInForce=GTC&quantity=1&price=400&recvWindow=100000&timestamp=1668481902307
+
+        Supported types (per Toobit docs):
+        LIMIT, MARKET, STOP, TAKE_PROFIT, STOP_MARKET, TAKE_PROFIT_MARKET
         """
-        # Prepare order parameters in correct order for Toobit signature validation
         import uuid
         from collections import OrderedDict
-        
+
         params = OrderedDict()
-        
-        # Core parameters (always first)
+
+        # Core params
         params['symbol'] = symbol.upper()
-        params['side'] = side.upper()  
+        params['side'] = side.upper()
         params['type'] = order_type.upper()
         params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
-        
-        # Add timeInForce - only for LIMIT orders per Toobit documentation
-        if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+
+        # timeInForce is required ONLY for LIMIT orders
+        if order_type.upper() == 'LIMIT':
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
-        # MARKET orders do NOT use timeInForce parameter on Toobit
-            
-        # Add price for limit orders
-        if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
+
+        # Add price for LIMIT, STOP, TAKE_PROFIT
+        if price and order_type.upper() in ['LIMIT', 'STOP', 'TAKE_PROFIT']:
             params['price'] = str(price)
-            
-        # Add stopPrice if provided (for conditional orders)
-        if 'stopPrice' in kwargs:
-            stop_price = float(kwargs['stopPrice'])
-            params['stopPrice'] = str(stop_price)
-            
-            # Validate stop price for conditional orders to prevent immediate trigger
-            if order_type.upper() in ['STOP', 'STOP_MARKET', 'STOP_LIMIT']:
-                current_price = kwargs.get('currentPrice')
-                if current_price:
-                    current_price = float(current_price)
-                    if side.upper() == "BUY" and stop_price <= current_price:
-                        logging.warning(f"STOP order validation: BUY stop price {stop_price} <= market price {current_price}")
-                    elif side.upper() == "SELL" and stop_price >= current_price:
-                        logging.warning(f"STOP order validation: SELL stop price {stop_price} >= market price {current_price}")
-                    else:
-                        logging.info(f"STOP order validation: Price {stop_price} is valid for {side} order")
-        
-        # Add margin type for limit orders only
-        if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
-            params['marginType'] = kwargs.get('marginType', 'ISOLATED')
-            
-        # Add reduce only flag if closing position
+
+        # Add stopPrice for STOP/TP orders
+        if 'stopPrice' in kwargs and order_type.upper() in [
+            'STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET'
+        ]:
+            params['stopPrice'] = str(kwargs['stopPrice'])
+
+        # Reduce-only flag
         if kwargs.get('reduceOnly'):
             params['reduceOnly'] = 'true'
-            
-        # Add newClientOrderId (required for all orders on Toobit)
+
+        # Client order ID
         params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
-        
-        # Add recvWindow (always near the end)
+
+        # recvWindow
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
-        
-        # Ensure all parameters are strings (required by Toobit signature)
+
+        # Convert everything to str
         params = {k: str(v) for k, v in params.items()}
-        
+
         formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
-        logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {formatted_quantity}")
-        
+        logging.info(f"[ORDER] Placing {side.upper()} {order_type.upper()} order for {symbol}: {formatted_quantity}")
+
         # DEBUG: Log the exact parameters being sent to Toobit
         logging.info(f"[DEBUG] Toobit order parameters: {params}")
-        
+
         return self._signed_request('POST', f"{self.futures_base}/order", params)
     
     def get_order(self, symbol: str, order_id: str) -> Optional[Dict]:
