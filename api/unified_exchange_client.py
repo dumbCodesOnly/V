@@ -457,12 +457,12 @@ class ToobitClient:
         result = self._signed_request('GET', f"{self.futures_base}/openOrders", params)
         return result if isinstance(result, list) else []
     
-    def get_order_history(self, symbol: str, limit: int = 100) -> List[Dict]:
+    def get_order_history(self, symbol: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """Get order history"""
-        params = {
-            'symbol': self.convert_to_toobit_symbol(symbol),
-            'limit': limit
-        }
+        params = {'limit': str(limit)}
+        if symbol:
+            params['symbol'] = self.convert_to_toobit_symbol(symbol)
+        
         result = self._signed_request('GET', f"{self.futures_base}/allOrders", params)
         return result if isinstance(result, list) else []
     
@@ -808,9 +808,13 @@ class LBankClient:
             logging.error(f"LBank get_order failed: {e}")
             return None
     
-    def get_order_history(self, symbol: str, limit: int = 50) -> List[Dict]:
+    def get_order_history(self, symbol: Optional[str] = None, limit: int = 50) -> List[Dict]:
         """Get order history"""
         try:
+            # LBank requires symbol, return empty if not provided
+            if not symbol:
+                return []
+                
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
             params = {
                 'symbol': lbank_symbol,

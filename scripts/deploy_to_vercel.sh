@@ -14,7 +14,7 @@ required_files=(
     "api/app.py"
     "api/index.py" 
     "api/models.py"
-    "api/toobit_client.py"
+    "api/unified_exchange_client.py"
     "api/templates/mini_app.html"
     "api/requirements.txt"
     "api/create_vercel_schema.sql"

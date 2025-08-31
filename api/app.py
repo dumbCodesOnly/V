@@ -199,7 +199,7 @@ def run_database_migrations():
                     WHERE exchange_name = 'toobit' AND is_active = true
                 """)).scalar()
                 
-                if toobit_count > 0:
+                if toobit_count and toobit_count > 0:
                     # Only run Toobit fixes if there are actual Toobit users
                     db.session.execute(text("""
                         UPDATE user_credentials 
@@ -1562,7 +1562,15 @@ def get_exchange_orders():
         # Create client and get orders - Dynamic exchange selection
         client = create_exchange_client(user_creds, testnet=False)
         
-        orders = client.get_order_history(symbol=symbol)
+        if symbol:
+            orders = client.get_order_history(symbol=symbol)
+        else:
+            # For exchanges that support getting all orders without symbol
+            try:
+                orders = client.get_order_history()
+            except TypeError:
+                # If the method requires symbol parameter, return empty list
+                orders = []
         
         return jsonify({
             'success': True,
@@ -2394,7 +2402,7 @@ def debug_position_close_test():
         'active_trades_count': 0,
         'paper_mode_active': True,
         'last_error': None,
-        'toobit_client_status': 'Not created'
+        'exchange_client_status': 'Not created'
     }
     
     if user_creds and user_creds.has_credentials():
@@ -2405,7 +2413,7 @@ def debug_position_close_test():
         try:
             logging.debug(f"Creating exchange client for user {user_id}")
             client = create_exchange_client(user_creds, testnet=False)
-            debug_info['toobit_client_status'] = 'Created successfully'
+            debug_info['exchange_client_status'] = 'Created successfully'
             
             # Test basic connection
             logging.debug(f"Testing API connection for user {user_id}")
@@ -2421,7 +2429,7 @@ def debug_position_close_test():
         except Exception as e:
             debug_info['api_connection_test'] = f'Failed - Exception: {str(e)}'
             debug_info['last_error'] = str(e)
-            debug_info['toobit_client_status'] = f'Creation failed: {str(e)}'
+            debug_info['exchange_client_status'] = f'Creation failed: {str(e)}'
             logging.error(f"ToobitClient creation failed for user {user_id}: {e}")
     
     # Count active trades
@@ -3855,7 +3863,7 @@ def close_trade():
                         order_id = tp_sl_order.get('order', {}).get('orderId')
                         if order_id:
                             try:
-                                client.cancel_order(str(order_id))
+                                client.cancel_order(symbol=config.symbol, order_id=str(order_id))
                                 logging.info(f"Cancelled TP/SL order: {order_id}")
                             except Exception as cancel_error:
                                 logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
@@ -3983,7 +3991,7 @@ def close_all_trades():
                                 order_id = tp_sl_order.get('order', {}).get('orderId')
                                 if order_id:
                                     try:
-                                        client.cancel_order(str(order_id))
+                                        client.cancel_order(symbol=config.symbol, order_id=str(order_id))
                                     except Exception as cancel_error:
                                         logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
                     else:
