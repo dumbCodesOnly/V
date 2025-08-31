@@ -244,6 +244,31 @@ def run_database_migrations():
                         logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
                 else:
                     logging.debug("No Toobit users found - skipping Toobit testnet fixes")
+                
+                # CRITICAL FIX: Ensure all non-Toobit exchanges default to live mode (not testnet)
+                # This addresses the user issue where they're stuck in testnet mode
+                try:
+                    non_toobit_testnet_users = UserCredentials.query.filter(
+                        UserCredentials.exchange_name != 'toobit',
+                        UserCredentials.testnet_mode == True,
+                        UserCredentials.is_active == True
+                    ).all()
+                    
+                    if non_toobit_testnet_users:
+                        fixed_count = 0
+                        for cred in non_toobit_testnet_users:
+                            cred.testnet_mode = False  # Switch to live mode by default
+                            fixed_count += 1
+                            logging.info(f"LIVE MODE FIX: Switched {cred.exchange_name} user {cred.telegram_user_id} to live trading")
+                        
+                        db.session.commit()
+                        logging.info(f"LIVE MODE FIX: Updated {fixed_count} users from testnet to live mode")
+                    else:
+                        logging.debug("No users stuck in testnet mode - migration not needed")
+                        
+                except Exception as testnet_fix_error:
+                    logging.warning(f"Live mode migration failed (may not be needed): {testnet_fix_error}")
+                    db.session.rollback()
                     
             except Exception as toobit_fix_error:
                 logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
@@ -1509,7 +1534,7 @@ def get_exchange_balance():
         return jsonify({
             'success': False,
             'error': str(e),
-            'testnet_mode': True
+            'testnet_mode': False
         }), 500
 
 @app.route('/api/exchange/positions')
@@ -3596,14 +3621,14 @@ def save_credentials():
         user_creds.exchange_name = exchange
         user_creds.is_active = True
         
-        # Handle testnet mode setting - Toobit doesn't support testnet
+        # Handle testnet mode setting - Default to live trading for all exchanges
         if exchange.lower() == 'toobit':
             user_creds.testnet_mode = False  # Toobit only supports mainnet
         elif 'testnet_mode' in data:
             user_creds.testnet_mode = bool(data['testnet_mode'])
         else:
-            # Default to testnet for other exchanges that support it
-            user_creds.testnet_mode = True
+            # Default to live trading for better user experience
+            user_creds.testnet_mode = False
         
         db.session.commit()
         
@@ -3662,7 +3687,7 @@ def toggle_testnet():
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
         user_id = data.get('user_id', Environment.DEFAULT_TEST_USER_ID)
-        testnet_mode = bool(data.get('testnet_mode', True))
+        testnet_mode = bool(data.get('testnet_mode', False))
         
         user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
         if not user_creds:
