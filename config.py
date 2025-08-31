@@ -20,6 +20,15 @@ class APIConfig:
     # Endpoint: https://api.toobit.com/api/v1/futures/*
     TOOBIT_FUTURES_PATH = "/api/v1/futures"
     
+    # LBank Exchange - Official API structure
+    LBANK_BASE_URL = "https://api.lbkex.com"
+    LBANK_API_VERSION = "v2"
+    
+    # LBank API paths
+    LBANK_PUBLIC_PATH = "/v2"         # Public market data
+    LBANK_FUTURES_PATH = "/v2/futures" # Futures trading
+    LBANK_SPOT_PATH = "/v2"           # Spot trading
+    
     # Fallback Price APIs  
     BINANCE_BASE_URL = "https://api.binance.com"
     COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
@@ -140,6 +149,24 @@ class TradingConfig:
         "AVAXUSDT": "AVAX-SWAP-USDT",
         "LINKUSDT": "LINK-SWAP-USDT"
     }
+    
+    # LBank Symbol Mapping (Standard format -> LBank format)
+    LBANK_SYMBOL_MAP = {
+        "BTCUSDT": "btc_usdt",
+        "ETHUSDT": "eth_usdt",
+        "BNBUSDT": "bnb_usdt", 
+        "ADAUSDT": "ada_usdt",
+        "XRPUSDT": "xrp_usdt",
+        "SOLUSDT": "sol_usdt",
+        "DOTUSDT": "dot_usdt",
+        "DOGEUSDT": "doge_usdt",
+        "AVAXUSDT": "avax_usdt",
+        "LINKUSDT": "link_usdt"
+    }
+    
+    # Supported exchanges
+    SUPPORTED_EXCHANGES = ["toobit", "lbank"]
+    DEFAULT_EXCHANGE = "toobit"
 
 
 # =============================================================================

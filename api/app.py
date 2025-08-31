@@ -24,6 +24,8 @@ try:
     from ..scripts.exchange_sync import initialize_sync_service, get_sync_service
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .toobit_client import ToobitClient
+    from .lbank_client import LBankClient
+    from .exchange_factory import create_exchange_client, create_wrapped_exchange_client
     from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 except ImportError:
     # Fall back to absolute import (for direct execution - Replit)
@@ -36,7 +38,10 @@ except ImportError:
     from scripts.exchange_sync import initialize_sync_service, get_sync_service
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from api.toobit_client import ToobitClient
+    from api.lbank_client import LBankClient
+    from api.exchange_factory import create_exchange_client, create_wrapped_exchange_client
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
+
 from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
 from api.error_handler import handle_error, handle_api_error, create_validation_error, create_success_response
 
@@ -1317,13 +1322,8 @@ def test_exchange_connection():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'success': False, 'message': 'No API credentials found'}), 400
         
-        # Create client and test connection - Force mainnet mode for Toobit
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=False  # ALWAYS False for Toobit - no testnet support
-        )
+        # Create client and test connection - Dynamic exchange selection
+        client = create_exchange_client(user_creds, testnet=False)
         
         is_connected = client.test_connectivity()
         message = "Connected successfully" if is_connected else "Connection failed"
@@ -1385,13 +1385,8 @@ def set_futures_leverage():
                 'paper_trading_mode': True
             })
         
-        # Live trading mode - make actual API call
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=False  # Always mainnet for Toobit
-        )
+        # Live trading mode - make actual API call with dynamic exchange
+        client = create_exchange_client(user_creds, testnet=False)
         
         result = client.change_leverage(symbol, leverage)
         
@@ -1455,13 +1450,8 @@ def get_exchange_balance():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found for live trading', 'testnet_mode': False}), 400
         
-        # Create client and get balance - Force mainnet mode for Toobit
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=False  # ALWAYS False for Toobit - no testnet support
-        )
+        # Create client and get balance - Dynamic exchange selection
+        client = create_exchange_client(user_creds, testnet=False)
         
         balance_data = client.get_account_balance()
         
@@ -1525,13 +1515,8 @@ def get_exchange_positions():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found'}), 400
         
-        # Create client and get positions - Force mainnet mode for Toobit
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=False  # ALWAYS False for Toobit - no testnet support
-        )
+        # Create client and get positions - Dynamic exchange selection
+        client = create_exchange_client(user_creds, testnet=False)
         
         positions = client.get_positions()
         
@@ -1562,13 +1547,8 @@ def get_exchange_orders():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found'}), 400
         
-        # Create client and get orders - Force mainnet mode for Toobit
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            passphrase=user_creds.get_passphrase(),
-            testnet=False  # ALWAYS False for Toobit - no testnet support
-        )
+        # Create client and get orders - Dynamic exchange selection
+        client = create_exchange_client(user_creds, testnet=False)
         
         orders = client.get_order_history(symbol=symbol)
         
@@ -2410,13 +2390,8 @@ def debug_position_close_test():
         
         # Test API connection
         try:
-            logging.debug(f"Creating ToobitClient for user {user_id}")
-            client = ToobitClient(
-                api_key=user_creds.get_api_key(),
-                api_secret=user_creds.get_api_secret(),
-                passphrase=user_creds.get_passphrase(),
-                testnet=False  # ALWAYS False for Toobit
-            )
+            logging.debug(f"Creating exchange client for user {user_id}")
+            client = create_exchange_client(user_creds, testnet=False)
             debug_info['toobit_client_status'] = 'Created successfully'
             
             # Test basic connection
@@ -3041,13 +3016,8 @@ def execute_trade():
                         }
                     }), 400
                 
-                # Create Toobit client
-                client = ToobitClient(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    passphrase=passphrase,
-                    testnet=False  # ALWAYS False for Toobit - no testnet support
-                )
+                # Create exchange client (dynamic selection)
+                client = create_exchange_client(user_creds, testnet=False)
                 
                 # Enhanced connection test with detailed error reporting
                 try:
