@@ -274,7 +274,16 @@ class ToobitClient:
 
         # Add price for LIMIT orders or when priceType is INPUT
         if price and (params['type'] == 'LIMIT' or params.get('priceType') == 'INPUT'):
-            params['price'] = str(price)
+            # Format price with appropriate decimal places for different symbols
+            if 'BTC' in symbol.upper():
+                # BTC requires fewer decimal places (typically 2)
+                params['price'] = f"{float(price):.2f}"
+            elif any(coin in symbol.upper() for coin in ['ETH', 'SOL', 'BNB']):
+                # Major altcoins typically use 2-3 decimals
+                params['price'] = f"{float(price):.3f}"
+            else:
+                # Other symbols use 4 decimal places max
+                params['price'] = f"{float(price):.4f}"
 
         # Client order ID - Toobit expects 'newClientOrderId'
         params['newClientOrderId'] = kwargs.get('newClientOrderId', f"pl{int(time.time() * 1000)}")
