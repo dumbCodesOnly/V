@@ -341,41 +341,15 @@ class ToobitClient:
             # Determine closing side (opposite of entry)
             close_side = "SELL" if side.upper() == "BUY" else "BUY"
             
-            # 2. Place Stop Loss order if specified
+            # 2. TP/SL orders temporarily disabled - Toobit uses different TP/SL system
+            # TODO: Implement Toobit-specific TP/SL order placement
             if stop_loss_price:
-                sl_result = self.place_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="STOP_MARKET", 
-                    quantity=quantity,
-                    stopPrice=stop_loss_price,
-                    newClientOrderId=str(uuid.uuid4())[:36],
-                    recvWindow="5000"
-                )
-                
-                results['sl_order'] = sl_result
-                if sl_result:
-                    logging.info(f"Stop Loss placed: {stop_loss_price} for {quantity}")
-                else:
-                    results['errors'].append("Failed to place stop loss order")
+                logging.info(f"Stop Loss will be managed by the bot at {stop_loss_price} (Toobit TP/SL integration pending)")
+                results['sl_order'] = {'status': 'pending_integration', 'price': stop_loss_price}
             
-            # 3. Place Take Profit order if specified  
             if take_profit_price:
-                tp_result = self.place_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="TAKE_PROFIT_MARKET",
-                    quantity=quantity, 
-                    stopPrice=take_profit_price,
-                    newClientOrderId=str(uuid.uuid4())[:36],
-                    recvWindow="5000"
-                )
-                
-                results['tp_order'] = tp_result
-                if tp_result:
-                    logging.info(f"Take Profit placed: {take_profit_price} for {quantity}")
-                else:
-                    results['errors'].append("Failed to place take profit order")
+                logging.info(f"Take Profit will be managed by the bot at {take_profit_price} (Toobit TP/SL integration pending)")
+                results['tp_order'] = {'status': 'pending_integration', 'price': take_profit_price}
             
             # Mark as successful if main order succeeded
             results['success'] = bool(main_result)
@@ -399,37 +373,15 @@ class ToobitClient:
         close_side = "SELL" if side.lower() == "long" else "BUY"
         
         try:
-            # Place take profit orders using TAKE_PROFIT_MARKET
+            # TP/SL orders temporarily disabled - Toobit uses different TP/SL system
+            # TODO: Implement Toobit-specific TP/SL order placement
+            logging.info(f"TP/SL order placement disabled - using bot monitoring system instead")
             for i, tp in enumerate(take_profits):
-                order_result = self.place_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="TAKE_PROFIT_MARKET",
-                    quantity=tp['quantity'],
-                    stopPrice=tp['price'],
-                    newClientOrderId=str(uuid.uuid4())[:36],
-                    recvWindow="5000"
-                )
-                
-                if order_result:
-                    orders_placed.append(order_result)
-                    logging.info(f"Placed TP{i+1} order: {tp['price']} for {tp['quantity']}")
+                logging.info(f"TP{i+1} will be managed by bot at {tp['price']} for {tp['quantity']} (Toobit integration pending)")
             
-            # Place stop loss order if specified using STOP_MARKET
+            # Skip stop loss order placement for now
             if stop_loss_price:
-                sl_result = self.place_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="STOP_MARKET",
-                    quantity=total_quantity,
-                    stopPrice=stop_loss_price,
-                    newClientOrderId=str(uuid.uuid4())[:36],
-                    recvWindow="5000"
-                )
-                
-                if sl_result:
-                    orders_placed.append(sl_result)
-                    logging.info(f"Placed SL order: {stop_loss_price} for {total_quantity}")
+                logging.info(f"Stop Loss will be managed by bot at {stop_loss_price} for {total_quantity} (Toobit integration pending)")
         
         except Exception as e:
             logging.error(f"Error placing TP/SL orders: {e}")
