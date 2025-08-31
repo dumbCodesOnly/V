@@ -126,6 +126,20 @@ class TradingConfig:
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT",
         "SOLUSDT", "DOTUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT"
     ]
+    
+    # Toobit Futures Symbol Mapping (Standard format -> Toobit format)
+    TOOBIT_SYMBOL_MAP = {
+        "BTCUSDT": "BTC-SWAP-USDT",
+        "ETHUSDT": "ETH-SWAP-USDT", 
+        "BNBUSDT": "BNB-SWAP-USDT",
+        "ADAUSDT": "ADA-SWAP-USDT",
+        "XRPUSDT": "XRP-SWAP-USDT",
+        "SOLUSDT": "SOL-SWAP-USDT",
+        "DOTUSDT": "DOT-SWAP-USDT", 
+        "DOGEUSDT": "DOGE-SWAP-USDT",
+        "AVAXUSDT": "AVAX-SWAP-USDT",
+        "LINKUSDT": "LINK-SWAP-USDT"
+    }
 
 
 # =============================================================================

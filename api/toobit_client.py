@@ -11,7 +11,7 @@ import time
 from typing import Optional, Dict, List
 from urllib.parse import urlencode
 
-from config import APIConfig
+from config import APIConfig, TradingConfig
 
 
 class ToobitClient:
@@ -152,7 +152,8 @@ class ToobitClient:
     # Market Data Methods
     def get_ticker(self, symbol: str) -> Optional[Dict]:
         """Get 24hr ticker price change statistics"""
-        return self._public_request(f"/api/v1/futures/ticker/24hr", {"symbol": symbol})
+        toobit_symbol = self.convert_to_toobit_symbol(symbol)
+        return self._public_request(f"/api/v1/futures/ticker/24hr", {"symbol": toobit_symbol})
     
     def get_ticker_price(self, symbol: str) -> Optional[float]:
         """Get current ticker price for a symbol"""
@@ -222,8 +223,8 @@ class ToobitClient:
 
         params = OrderedDict()
 
-        # Core params
-        params['symbol'] = symbol.upper()
+        # Core params - convert to Toobit format
+        params['symbol'] = self.convert_to_toobit_symbol(symbol)
         params['side'] = side.upper()
         
         # Some exchanges use different names for market orders
@@ -272,7 +273,7 @@ class ToobitClient:
     def get_order(self, symbol: str, order_id: str) -> Optional[Dict]:
         """Get order status"""
         params = {
-            'symbol': symbol.upper(),
+            'symbol': self.convert_to_toobit_symbol(symbol),
             'orderId': order_id
         }
         return self._signed_request('GET', f"{self.futures_base}/order", params)
@@ -280,7 +281,7 @@ class ToobitClient:
     def cancel_order(self, symbol: str, order_id: str) -> Optional[Dict]:
         """Cancel an order"""
         params = {
-            'symbol': symbol.upper(),
+            'symbol': self.convert_to_toobit_symbol(symbol),
             'orderId': order_id
         }
         return self._signed_request('DELETE', f"{self.futures_base}/order", params)
@@ -417,7 +418,7 @@ class ToobitClient:
         """Get all open orders"""
         params = {}
         if symbol:
-            params['symbol'] = symbol.upper()
+            params['symbol'] = self.convert_to_toobit_symbol(symbol)
         
         result = self._signed_request('GET', f"{self.futures_base}/openOrders", params)
         return result if isinstance(result, list) else []
@@ -425,7 +426,7 @@ class ToobitClient:
     def get_order_history(self, symbol: str, limit: int = 100) -> List[Dict]:
         """Get order history"""
         params = {
-            'symbol': symbol.upper(),
+            'symbol': self.convert_to_toobit_symbol(symbol),
             'limit': limit
         }
         result = self._signed_request('GET', f"{self.futures_base}/allOrders", params)
@@ -435,7 +436,7 @@ class ToobitClient:
     def change_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
         """Change initial leverage"""
         params = {
-            'symbol': symbol.upper(),
+            'symbol': self.convert_to_toobit_symbol(symbol),
             'leverage': str(leverage)
         }
         return self._signed_request('POST', f"{self.futures_base}/leverage", params)
@@ -443,7 +444,7 @@ class ToobitClient:
     def change_margin_type(self, symbol: str, margin_type: str) -> Optional[Dict]:
         """Change margin type (ISOLATED or CROSS)"""
         params = {
-            'symbol': symbol.upper(),
+            'symbol': self.convert_to_toobit_symbol(symbol),
             'marginType': margin_type.upper()
         }
         return self._signed_request('POST', f"{self.futures_base}/marginType", params)
@@ -457,3 +458,15 @@ class ToobitClient:
     def get_last_error(self) -> Optional[str]:
         """Get the last error message"""
         return self.last_error
+    
+    @staticmethod
+    def convert_to_toobit_symbol(symbol: str) -> str:
+        """Convert standard format (BTCUSDT) to Toobit futures format (BTC-SWAP-USDT)"""
+        toobit_symbol = TradingConfig.TOOBIT_SYMBOL_MAP.get(symbol.upper())
+        if toobit_symbol:
+            return toobit_symbol
+        # Fallback: try to construct the format if not in mapping
+        if symbol.endswith('USDT'):
+            base = symbol[:-4]  # Remove 'USDT'
+            return f"{base}-SWAP-USDT"
+        return symbol  # Return as-is if conversion not possible
