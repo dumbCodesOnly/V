@@ -3122,9 +3122,26 @@ def execute_trade():
                         ]
                     }), 400
                 
-                # Calculate position size for order (rounded to 6 decimals)
-                position_value = config.amount * config.leverage
-                position_size = round(position_value / current_market_price, 6)
+                # Calculate position size in BTC (not margin amount)
+                # For Toobit futures: quantity = margin / current_price (this is the position size in BTC)
+                position_size = round(config.amount / current_market_price, 6)
+                
+                # Set leverage FIRST before placing order
+                logging.info(f"Setting leverage {config.leverage}x for {config.symbol}")
+                leverage_result = client.change_leverage(config.symbol, config.leverage)
+                if not leverage_result:
+                    error_msg = client.get_last_error() or 'Failed to set leverage'
+                    logging.error(f"Failed to set leverage: {error_msg}")
+                    return jsonify({
+                        'error': f'Failed to set leverage: {error_msg}',
+                        'troubleshooting': [
+                            'Check if the symbol supports the specified leverage',
+                            'Verify you have no open positions that would conflict',
+                            'Ensure your account has sufficient margin'
+                        ]
+                    }), 500
+                else:
+                    logging.info(f"Successfully set leverage {config.leverage}x for {config.symbol}")
                 
                 # Determine order type and parameters
                 # Use LIMIT orders for all trades since Toobit doesn't support MARKET orders
