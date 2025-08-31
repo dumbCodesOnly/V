@@ -4166,23 +4166,12 @@ def reset_trade_history():
         with bot_trades_lock:
             bot_trades = [trade for trade in bot_trades if trade.get('user_id') != str(chat_id)]
         
-        # Clear any cached portfolio data manually
+        # Clear any cached portfolio data manually using enhanced cache
         try:
-            try:
-                from api.cache_manager import PortfolioCache
-            except ImportError:
-                PortfolioCache = None
-            cache_keys = [
-                f"portfolio_summary_{chat_id}",
-                f"margin_summary_{chat_id}",
-                f"user_positions_{chat_id}"
-            ]
-            if PortfolioCache:
-                for key in cache_keys:
-                    if hasattr(PortfolioCache, 'cache') and key in PortfolioCache.cache:
-                        del PortfolioCache.cache[key]
-        except ImportError:
-            # Cache manager not available, continue without clearing cache
+            # Clear user data cache for this user
+            enhanced_cache.invalidate_user_data(str(chat_id))
+        except Exception:
+            # Cache clearing failed, continue without clearing cache
             pass
         
         logging.info(f"Trade history reset successfully for user {chat_id}")
