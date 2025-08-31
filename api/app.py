@@ -2334,7 +2334,7 @@ def debug_position_close_test():
         
         # Test API connection
         try:
-            logging.info(f"[RENDER POSITION DEBUG] Creating ToobitClient for user {user_id}")
+            logging.debug(f"Creating ToobitClient for user {user_id}")
             client = ToobitClient(
                 api_key=user_creds.get_api_key(),
                 api_secret=user_creds.get_api_secret(),
@@ -2344,7 +2344,7 @@ def debug_position_close_test():
             debug_info['toobit_client_status'] = 'Created successfully'
             
             # Test basic connection
-            logging.info(f"[RENDER POSITION DEBUG] Testing API connection for user {user_id}")
+            logging.debug(f"Testing API connection for user {user_id}")
             balance = client.get_account_balance()
             if balance:
                 debug_info['api_connection_test'] = 'Success'
@@ -2358,7 +2358,7 @@ def debug_position_close_test():
             debug_info['api_connection_test'] = f'Failed - Exception: {str(e)}'
             debug_info['last_error'] = str(e)
             debug_info['toobit_client_status'] = f'Creation failed: {str(e)}'
-            logging.error(f"[RENDER POSITION DEBUG] ToobitClient creation failed for user {user_id}: {e}")
+            logging.error(f"ToobitClient creation failed for user {user_id}: {e}")
     
     # Count active trades
     active_count = 0
@@ -2377,7 +2377,7 @@ def debug_position_close_test():
     debug_info['active_trades_count'] = active_count
     debug_info['active_trades'] = active_trades
     
-    logging.info(f"[RENDER POSITION DEBUG] Position close test for user {user_id}: {debug_info}")
+    logging.debug(f"Position close test for user {user_id}")
     return jsonify(debug_info)
 
 @app.route('/api/margin-data')
@@ -2948,10 +2948,7 @@ def execute_trade():
                 passphrase = user_creds.get_passphrase()
                 
                 # Debug credential validation (without exposing actual values)
-                logging.info(f"[RENDER CREDS DEBUG] API Key length: {len(api_key) if api_key else 0}")
-                logging.info(f"[RENDER CREDS DEBUG] API Secret length: {len(api_secret) if api_secret else 0}")
-                logging.info(f"[RENDER CREDS DEBUG] Passphrase length: {len(passphrase) if passphrase else 0}")
-                logging.info(f"[RENDER CREDS DEBUG] User credentials testnet mode: {user_creds.testnet_mode}")
+                logging.debug(f"Processing API credentials for user {user_id}")
                 
                 if not api_key or not api_secret:
                     error_msg = f"[RENDER ERROR] Missing credentials - API Key: {'✓' if api_key else '✗'}, API Secret: {'✓' if api_secret else '✗'}"
@@ -2978,16 +2975,13 @@ def execute_trade():
                 
                 # Enhanced connection test with detailed error reporting
                 try:
-                    logging.info(f"[RENDER CONNECTION TEST] Testing Toobit API connection...")
+                    logging.debug("Testing Toobit API connection...")
                     balance_data = client.get_account_balance()
                     
                     if balance_data:
-                        logging.info(f"[RENDER CONNECTION SUCCESS] Balance data received: {type(balance_data)}")
-                        # Log balance info without exposing actual amounts
-                        if isinstance(balance_data, dict):
-                            logging.info(f"[RENDER BALANCE] Response has {len(balance_data)} fields")
+                        logging.debug("API connection successful")
                     else:
-                        logging.warning(f"[RENDER CONNECTION WARNING] Empty balance response")
+                        logging.warning("Empty balance response from API")
                         
                 except Exception as conn_error:
                     error_details = {
@@ -2996,7 +2990,7 @@ def execute_trade():
                         'last_client_error': getattr(client, 'last_error', None)
                     }
                     
-                    logging.error(f"[RENDER CONNECTION FAILED] {error_details}")
+                    logging.error(f"API connection failed: {conn_error}")
                     
                     # Provide user-friendly error messages based on error type
                     if 'unauthorized' in str(conn_error).lower() or '401' in str(conn_error):
@@ -3054,7 +3048,7 @@ def execute_trade():
                         }
                     }
                     
-                    logging.error(f"[RENDER ORDER FAILED] Order placement failed: {error_details}")
+                    logging.error(f"Order placement failed: {order_result.get('client_last_error', 'Unknown error')}")
                     
                     return jsonify({
                         'error': 'Failed to place order on exchange. Please check the details below.',

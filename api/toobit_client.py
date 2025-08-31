@@ -104,12 +104,8 @@ class ToobitClient:
         # Build full URL
         url = f"{self.base_url}{endpoint}"
         
-        # Debug logging
-        logging.info(f"[TOOBIT API] {method} {url}")
-        safe_params = {k: v for k, v in params.items() if k != 'signature'}
-        logging.info(f"[TOOBIT PARAMS] {safe_params}")
-        logging.debug(f"[SIGNATURE] Query: {query_string}")
-        logging.debug(f"[SIGNATURE] Hash: {signature}")
+        # Minimal logging for API calls
+        logging.debug(f"Toobit {method} {endpoint}")
         
         try:
             if method == 'GET':
@@ -122,15 +118,13 @@ class ToobitClient:
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
-            logging.info(f"[TOOBIT RESPONSE] Status: {response.status_code}")
-            
             if response.status_code == 200:
                 result = response.json()
-                logging.info(f"[TOOBIT SUCCESS] {result}")
+                logging.debug(f"Toobit API success: {endpoint}")
                 return result
             else:
                 error_text = response.text
-                logging.error(f"[TOOBIT ERROR] {response.status_code}: {error_text}")
+                logging.error(f"Toobit API error {response.status_code}: {error_text}")
                 try:
                     error_data = response.json()
                     self.last_error = f"API Error {error_data.get('code', 'Unknown')}: {error_data.get('msg', error_text)}"
@@ -139,7 +133,7 @@ class ToobitClient:
                 return None
                 
         except Exception as e:
-            logging.error(f"[TOOBIT EXCEPTION] {str(e)}")
+            logging.error(f"Toobit API request failed: {str(e)}")
             self.last_error = f"Request failed: {str(e)}"
             return None
     
