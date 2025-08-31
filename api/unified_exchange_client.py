@@ -603,87 +603,85 @@ class LBankClient:
     
     def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Make signed request following LBank official v2 specifications
+        Make signed request following LBank official documentation format
         
-        LBank Authentication Process (v2):
+        Official LBank Authentication Process:
         1. Add required parameters: api_key, signature_method, timestamp, echostr
         2. Sort parameters alphabetically (excluding 'sign')
-        3. Create parameter string
+        3. Create parameter string in format: key=value&key=value
         4. Generate MD5 hash (uppercase) -> Sign with HmacSHA256 -> Base64 encode
-        5. Add signature to parameters
+        5. Add 'sign' parameter with signature
+        6. Send as POST with form data and specific headers
         """
         if params is None:
             params = {}
         
-        # Add required parameters for LBank v2
+        # Add required authentication parameters per LBank spec
         params['api_key'] = self.api_key
         params['signature_method'] = 'HmacSHA256'
-        params['timestamp'] = str(self.get_server_time())  # Use server timestamp
+        params['timestamp'] = str(self.get_server_time())
         params['echostr'] = self._generate_echostr()
         
-        # Sort parameters alphabetically (excluding 'sign' as per LBank spec)
-        sorted_params = dict(sorted(params.items()))
+        # Remove empty values and convert all to strings
+        filtered_params = {}
+        for k, v in params.items():
+            if v is not None and v != '':
+                filtered_params[k] = str(v)
         
-        # Remove empty values and create parameter string
-        filtered_params = {k: str(v) for k, v in sorted_params.items() if v is not None and v != ''}
+        # Sort parameters alphabetically by key (critical for signature)
+        sorted_params = dict(sorted(filtered_params.items()))
         
-        # Create parameter string for signature generation (alphabetically sorted)
-        params_string = '&'.join([f"{k}={v}" for k, v in sorted(filtered_params.items())])
+        # Create parameter string for signature (key=value&key=value format)
+        params_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
         
-        # Generate signature using the new method
+        # Generate signature
         signature = self._generate_signature(params_string)
         
-        # Add signature to final parameters
-        filtered_params['sign'] = signature
+        # Add signature to parameters
+        sorted_params['sign'] = signature
         
-        # Prepare headers - LBank requires specific headers
-        timestamp = filtered_params.get('timestamp')
-        signature_method = filtered_params.get('signature_method')
-        echostr = filtered_params.get('echostr')
-        
+        # Prepare headers according to LBank specification
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-            'timestamp': timestamp,
-            'signature_method': signature_method,
-            'echostr': echostr
+            'timestamp': sorted_params['timestamp'],
+            'signature_method': sorted_params['signature_method'],
+            'echostr': sorted_params['echostr']
         }
         
         # Build full URL
         url = f"{self.base_url}{endpoint}"
         
-        # Log API call for debugging
-        logging.debug(f"LBank {method} {endpoint}")
+        # Log request for debugging
+        logging.debug(f"LBank {method} {endpoint} with params: {list(sorted_params.keys())}")
         
         try:
-            if method == 'GET':
-                response = self.session.get(url, params=filtered_params, headers=headers, timeout=10)
-            elif method == 'POST':
-                response = self.session.post(url, data=filtered_params, headers=headers, timeout=10)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+            # LBank requires POST method with form data
+            response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
             
             if response.status_code == 200:
                 result = response.json()
-                # Check LBank's result structure
-                if 'result' in result and result['result'] == 'true':
-                    logging.debug(f"LBank API success: {endpoint}")
-                    return result.get('data', result)
-                elif 'error_code' in result:
-                    error_msg = result.get('error_code', 'Unknown error')
-                    logging.error(f"LBank API error: {error_msg}")
-                    self.last_error = f"LBank Error: {error_msg}"
-                    return None
+                
+                # Handle LBank response format
+                if 'result' in result:
+                    if result['result'] == 'true':
+                        logging.debug(f"LBank API success: {endpoint}")
+                        return result
+                    else:
+                        error_msg = result.get('error_code', result.get('result', 'Unknown error'))
+                        logging.error(f"LBank API error: {error_msg}")
+                        self.last_error = f"LBank Error: {error_msg}"
+                        return None
                 else:
+                    # Some endpoints return data directly
                     return result
             else:
-                error_text = response.text
-                logging.error(f"LBank API HTTP error {response.status_code}: {error_text}")
+                error_text = response.text[:500]  # Limit error text length
+                logging.error(f"LBank HTTP {response.status_code}: {error_text}")
                 self.last_error = f"HTTP {response.status_code}: {error_text}"
                 return None
                 
         except Exception as e:
-            logging.error(f"LBank API request failed: {str(e)}")
+            logging.error(f"LBank request failed: {str(e)}")
             self.last_error = f"Request failed: {str(e)}"
             return None
     
@@ -731,47 +729,91 @@ class LBankClient:
     
     # Account Methods
     def get_account_balance(self) -> List[Dict]:
-        """Get futures account balance using LBank v1 API"""
-        result = self._signed_request('POST', "/v1/user_info.do")
-        if result and 'info' in result:
-            # Convert LBank balance format to match Toobit structure
-            balances = []
-            for asset, balance_data in result['info'].items():
-                if isinstance(balance_data, dict):
-                    balances.append({
-                        'asset': asset.upper(),
-                        'balance': str(balance_data.get('total', '0')),
-                        'availableBalance': str(balance_data.get('free', '0')),
-                        'positionMargin': str(balance_data.get('locked', '0')),
-                        'orderMargin': '0',  # LBank doesn't separate order margin
-                        'crossUnRealizedPnl': '0'  # Will be calculated separately
-                    })
-            return balances
-        return []
+        """
+        Get account balance using LBank v1 user_info API
+        
+        Official endpoint: POST /v1/user_info.do
+        Returns account info with free, freeze, and asset totals
+        """
+        try:
+            # Use v1 API for user account information (most stable)
+            result = self._signed_request('POST', "/v1/user_info.do", {})
+            
+            if result and result.get('result') == 'true' and 'info' in result:
+                info = result['info']
+                balances = []
+                
+                # Extract free balances
+                free_balances = info.get('free', {})
+                frozen_balances = info.get('freeze', {})
+                
+                # Process each asset
+                all_assets = set(list(free_balances.keys()) + list(frozen_balances.keys()))
+                
+                for asset in all_assets:
+                    free_amount = float(free_balances.get(asset, 0))
+                    frozen_amount = float(frozen_balances.get(asset, 0))
+                    total_amount = free_amount + frozen_amount
+                    
+                    # Only include assets with non-zero balance
+                    if total_amount > 0:
+                        balances.append({
+                            'asset': asset.upper(),
+                            'balance': str(total_amount),
+                            'availableBalance': str(free_amount),
+                            'positionMargin': str(frozen_amount),
+                            'orderMargin': '0',
+                            'crossUnRealizedPnl': '0'
+                        })
+                
+                logging.debug(f"LBank balance fetched: {len(balances)} assets")
+                return balances
+            else:
+                error_msg = result.get('error_code', 'Balance fetch failed') if result else 'No response'
+                logging.warning(f"LBank balance fetch failed: {error_msg}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"LBank get_account_balance error: {e}")
+            self.last_error = f"Balance Error: {str(e)}"
+            return []
     
     def get_balance(self) -> Optional[Dict]:
-        """Get account balance in simplified format - compatibility method"""
+        """
+        Get account balance in simplified format - compatibility method
+        
+        Returns unified balance format compatible with trading bot expectations
+        """
         try:
-            result = self._signed_request('POST', "/v1/user_info.do")
-            if result and 'info' in result:
+            result = self._signed_request('POST', "/v1/user_info.do", {})
+            
+            if result and result.get('result') == 'true' and 'info' in result:
                 info = result['info']
                 
-                # LBank returns balance structure: info -> {asset: {net}, free: {usdt, btc}, freeze: {}}
+                # Extract balance data
                 asset_info = info.get('asset', {})
                 free_balances = info.get('free', {})
                 
-                # Calculate total USDT balance (free + equivalent)
+                # Get USDT balance (primary trading currency)
                 usdt_free = float(free_balances.get('usdt', 0))
-                net_asset = float(asset_info.get('net', 0))
+                usdt_frozen = float(info.get('freeze', {}).get('usdt', 0))
+                usdt_total = usdt_free + usdt_frozen
+                
+                # Use net asset value if available, otherwise USDT balance
+                net_asset = float(asset_info.get('net', usdt_total))
                 
                 return {
-                    'total_balance': max(net_asset, usdt_free),  # Use the higher value
+                    'total_balance': max(net_asset, usdt_total),
                     'available_balance': usdt_free,
                     'currency': 'USDT'
                 }
-            return None
+            else:
+                error_msg = result.get('error_code', 'Balance fetch failed') if result else 'No response'
+                logging.warning(f"LBank get_balance failed: {error_msg}")
+                return None
+                
         except Exception as e:
-            logging.error(f"Error getting LBank balance: {e}")
+            logging.error(f"LBank get_balance error: {e}")
             self.last_error = f"Balance Error: {str(e)}"
             return None
     
@@ -799,47 +841,55 @@ class LBankClient:
     def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
                    price: Optional[str] = None, **kwargs) -> Optional[Dict]:
         """
-        Place a new order following LBank specifications
+        Place a new order following LBank v1 API specifications
         
-        LBank order parameters:
+        Official endpoint: POST /v1/create_order.do
+        Parameters:
         - symbol: Trading pair (e.g., btc_usdt)
         - type: buy/sell
         - amount: Order quantity
-        - price: Order price (for limit orders)
+        - price: Order price (required for limit orders)
         """
         try:
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
             
-            # Map order parameters to LBank format
+            # Prepare order parameters according to LBank format
             params = {
                 'symbol': lbank_symbol,
-                'type': side.lower(),  # buy/sell
-                'amount': quantity
+                'type': side.lower(),  # buy or sell
+                'amount': str(quantity)
             }
             
-            # Add price for limit orders
-            if order_type.upper() == 'LIMIT' and price:
-                params['price'] = price
+            # Price is required for limit orders
+            if order_type.upper() == 'LIMIT':
+                if not price:
+                    raise ValueError("Price is required for limit orders")
+                params['price'] = str(price)
             
-            # Place order via LBank API
-            result = self._signed_request('POST', "/v2/create_order.do", params)
+            # Place order using v1 API (most stable)
+            result = self._signed_request('POST', "/v1/create_order.do", params)
             
-            if result and 'order_id' in result:
-                logging.info(f"LBank order placed successfully: {result['order_id']}")
+            if result and result.get('result') == 'true' and 'order_id' in result:
+                order_id = result['order_id']
+                logging.info(f"LBank order placed successfully: {order_id}")
+                
                 return {
-                    'orderId': str(result['order_id']),
+                    'orderId': str(order_id),
                     'symbol': symbol,
-                    'side': side,
-                    'type': order_type,
+                    'side': side.upper(),
+                    'type': order_type.upper(),
                     'quantity': quantity,
                     'price': price,
                     'status': 'NEW'
                 }
-            
-            return result
+            else:
+                error_msg = result.get('error_code', 'Order placement failed') if result else 'No response'
+                logging.error(f"LBank order failed: {error_msg}")
+                self.last_error = f"Order Error: {error_msg}"
+                return None
             
         except Exception as e:
-            logging.error(f"LBank place_order failed: {e}")
+            logging.error(f"LBank place_order exception: {e}")
             self.last_error = f"Order placement failed: {str(e)}"
             return None
     
