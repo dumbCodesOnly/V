@@ -412,6 +412,9 @@ user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase',
 trade_configs_lock = threading.RLock()
 paper_balances_lock = threading.RLock()
 bot_trades_lock = threading.RLock()
+api_setup_lock = threading.RLock()
+user_preferences_lock = threading.RLock()
+bot_status_lock = threading.RLock()
 
 # Multi-trade management storage
 user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
@@ -435,30 +438,31 @@ def determine_trading_mode(user_id):
         has_valid_creds = user_creds and user_creds.has_credentials()
         
         # Check if user has explicitly set a paper trading preference
-        has_preference = chat_id in user_paper_trading_preferences
-        
-        if has_preference:
-            # User has explicitly chosen a mode - honor their choice
-            manual_preference = user_paper_trading_preferences[chat_id]
+        with user_preferences_lock:
+            has_preference = chat_id in user_paper_trading_preferences
             
-            # If they want live mode but don't have credentials, force paper mode for safety
-            if not manual_preference and not has_valid_creds:
-                logging.warning(f"User {user_id} wants live mode but has no valid credentials - forcing paper mode")
-                return True
-            
-            return manual_preference
-        else:
-            # User hasn't set a preference - use intelligent defaults
-            if has_valid_creds:
-                # User has credentials but no preference - default to live mode
-                logging.info(f"User {user_id} has credentials but no mode preference - defaulting to live mode")
-                user_paper_trading_preferences[chat_id] = False  # Set default for future use
-                return False
+            if has_preference:
+                # User has explicitly chosen a mode - honor their choice
+                manual_preference = user_paper_trading_preferences[chat_id]
+                
+                # If they want live mode but don't have credentials, force paper mode for safety
+                if not manual_preference and not has_valid_creds:
+                    logging.warning(f"User {user_id} wants live mode but has no valid credentials - forcing paper mode")
+                    return True
+                
+                return manual_preference
             else:
-                # No credentials - must use paper mode
-                logging.info(f"User {user_id} has no credentials - defaulting to paper mode")
-                user_paper_trading_preferences[chat_id] = True  # Set default for future use
-                return True
+                # User hasn't set a preference - use intelligent defaults
+                if has_valid_creds:
+                    # User has credentials but no preference - default to live mode
+                    logging.info(f"User {user_id} has credentials but no mode preference - defaulting to live mode")
+                    user_paper_trading_preferences[chat_id] = False  # Set default for future use
+                    return False
+                else:
+                    # No credentials - must use paper mode
+                    logging.info(f"User {user_id} has no credentials - defaulting to paper mode")
+                    user_paper_trading_preferences[chat_id] = True  # Set default for future use
+                    return True
                 
     except Exception as e:
         logging.error(f"Error determining trading mode for user {user_id}: {e}")
@@ -1733,8 +1737,9 @@ def toggle_paper_trading():
         current_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
         new_paper_mode = not current_paper_mode
         
-        # Update preference immediately in memory
-        user_paper_trading_preferences[chat_id] = new_paper_mode
+        # Update preference immediately in memory with locking
+        with user_preferences_lock:
+            user_paper_trading_preferences[chat_id] = new_paper_mode
         
         # Initialize/ensure paper balance exists (optimize for both modes)
         with paper_balances_lock:
@@ -2329,7 +2334,8 @@ def debug_paper_trading_status():
         
         # Get trade configurations
         initialize_user_environment(chat_id, force_reload=True)
-        trades = user_trade_configs.get(chat_id, {})
+        with trade_configs_lock:
+            trades = user_trade_configs.get(chat_id, {})
         
         # Analyze paper trading configs
         paper_trades = []
@@ -4064,13 +4070,14 @@ def delete_trade():
         # Remove from database first
         delete_trade_from_db(chat_id, trade_id)
         
-        # Remove from configurations
-        del user_trade_configs[chat_id][trade_id]
-        
-        # Remove from selected trade if it was selected
-        if user_selected_trade.get(chat_id) == trade_id:
-            if chat_id in user_selected_trade:
-                del user_selected_trade[chat_id]
+        # Remove from configurations with proper locking
+        with trade_configs_lock:
+            del user_trade_configs[chat_id][trade_id]
+            
+            # Remove from selected trade if it was selected
+            if user_selected_trade.get(chat_id) == trade_id:
+                if chat_id in user_selected_trade:
+                    del user_selected_trade[chat_id]
         
         return jsonify(create_success_response(
             f'Trade configuration "{trade_name}" deleted successfully',
