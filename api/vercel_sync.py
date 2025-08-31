@@ -8,6 +8,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from .toobit_client import ToobitClient
+from .lbank_client import LBankClient
+from .exchange_factory import create_exchange_client
 from .models import UserCredentials, TradeConfiguration, get_iran_time
 from config import TimeConfig
 
@@ -113,12 +115,7 @@ class VercelSyncService:
         
         try:
             # Create Toobit client
-            client = ToobitClient(
-                api_key=user_creds.get_api_key(),
-                api_secret=user_creds.get_api_secret(),
-                passphrase=user_creds.get_passphrase(),
-                testnet=False  # ALWAYS False for Toobit - no testnet support
-            )
+            client = create_exchange_client(user_creds, testnet=False)
             
             # Test connection first
             is_connected, message = client.test_connection()

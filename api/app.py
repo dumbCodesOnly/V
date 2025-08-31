@@ -3784,13 +3784,8 @@ def close_trade():
                 if not user_creds or not user_creds.has_credentials():
                     return jsonify({'error': 'API credentials not available for live trading'}), 400
                 
-                # Create Toobit client
-                client = ToobitClient(
-                    api_key=user_creds.get_api_key(),
-                    api_secret=user_creds.get_api_secret(),
-                    passphrase=user_creds.get_passphrase(),
-                    testnet=False  # ALWAYS False for Toobit - no testnet support
-                )
+                # Create exchange client (dynamic selection)
+                client = create_exchange_client(user_creds, testnet=False)
                 
                 # Close position on exchange
                 close_side = "sell" if config.side == "long" else "buy"
@@ -3927,13 +3922,8 @@ def close_all_trades():
         
         client = None
         if not is_paper_mode and user_creds and user_creds.has_credentials():
-            # Create Toobit client for real trading
-            client = ToobitClient(
-                api_key=user_creds.get_api_key(),
-                api_secret=user_creds.get_api_secret(),
-                passphrase=user_creds.get_passphrase(),
-                testnet=False  # ALWAYS False for Toobit - no testnet support
-            )
+            # Create exchange client for real trading (dynamic selection)
+            client = create_exchange_client(user_creds, testnet=False)
         
         # Close each active trade
         for trade_id, config in active_trades:
@@ -4932,19 +4922,15 @@ def get_toobit_price(symbol, user_id=None):
             ).first()
             
             if user_creds and user_creds.has_credentials():
-                client = ToobitClient(
-                    api_key=user_creds.get_api_key(),
-                    api_secret=user_creds.get_api_secret(),
-                    passphrase=user_creds.get_passphrase(),
-                    testnet=False  # ALWAYS False for Toobit - no testnet support
-                )
+                client = create_exchange_client(user_creds, testnet=False)
                 
                 toobit_price = client.get_ticker_price(symbol)
                 if toobit_price:
                     return toobit_price, 'toobit'
         
         # Fallback: Create anonymous client for public market data
-        anonymous_client = ToobitClient("", "", "", testnet=False)
+        # Use wrapped anonymous client that can handle multiple exchanges
+        anonymous_client = create_wrapped_exchange_client(exchange_name="toobit", testnet=False)
         toobit_price = anonymous_client.get_ticker_price(symbol)
         if toobit_price:
             return toobit_price, 'toobit'
@@ -7244,11 +7230,7 @@ def update_positions_lightweight():
                             try:
                                 user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
                                 if user_creds and user_creds.has_credentials():
-                                    client = ToobitClient(
-                                        api_key=user_creds.get_api_key(),
-                                        api_secret=user_creds.get_api_secret(),
-                                        testnet=False  # ALWAYS False for Toobit - no testnet support
-                                    )
+                                    client = create_exchange_client(user_creds, testnet=False)
                                     # Move stop loss to entry price (break-even)
                                     config.breakeven_sl_price = config.entry_price
                                     config.breakeven_sl_triggered = True
@@ -7268,11 +7250,7 @@ def place_exchange_native_orders(config, user_id):
             logging.info("No credentials found - skipping exchange-native orders (using paper mode)")
             return False
             
-        client = ToobitClient(
-            api_key=user_creds.get_api_key(),
-            api_secret=user_creds.get_api_secret(),
-            testnet=False  # ALWAYS False for Toobit - no testnet support
-        )
+        client = create_exchange_client(user_creds, testnet=False)
         
         # Calculate position size and prices
         position_size = config.amount * config.leverage
@@ -7441,12 +7419,7 @@ def debug_trading_status():
         # Test Toobit connection if credentials exist
         if user_creds and user_creds.has_credentials():
             try:
-                client = ToobitClient(
-                    api_key=user_creds.get_api_key(),
-                    api_secret=user_creds.get_api_secret(),
-                    passphrase=user_creds.get_passphrase(),
-                    testnet=False
-                )
+                client = create_exchange_client(user_creds, testnet=False)
                 
                 # Test connection
                 balance_data = client.get_account_balance()

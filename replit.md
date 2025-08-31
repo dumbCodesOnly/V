@@ -1,7 +1,7 @@
-# Toobit Multi-Trade Telegram Bot
+# Multi-Exchange Trading Bot (Toobit & LBank)
 
 ## Overview
-This project is a Telegram-based trading bot for Toobit USDT-M futures, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with future expansion to other exchanges and a comprehensive suite of trading tools.
+This project is a comprehensive Telegram-based trading bot supporting both Toobit and LBank exchanges for USDT-M futures trading, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -63,6 +63,10 @@ The UI/UX utilizes HTML formatting with a dark blue theme, gradient backgrounds,
 - Implemented circuit breaker pattern for all external API calls to prevent cascading failures.
 - Resolved bug in SMC signal data retrieval (`get_live_market_price`).
 - SMC signals now display correctly and are cached in the database with validation.
+- **Multi-Exchange Support**: Added comprehensive LBank exchange integration alongside existing Toobit support.
+- **Dynamic Exchange Factory**: Implemented modular exchange client architecture with factory pattern for seamless multi-exchange operation.
+- **Exchange-Agnostic Trading**: All trading functions now support both Toobit and LBank exchanges dynamically based on user credentials.
+- **Unified API Interface**: Standardized exchange client interface ensuring consistent behavior across all supported exchanges.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
