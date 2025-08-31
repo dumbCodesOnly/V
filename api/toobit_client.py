@@ -166,8 +166,27 @@ class ToobitClient:
             return None
     
     def get_exchange_info(self) -> Optional[Dict]:
-        """Get exchange information"""
-        return self._public_request(f"/api/v1/futures/exchangeInfo")
+        """Get exchange information - try different possible endpoints"""
+        # Try the standard exchangeInfo first
+        result = self._public_request(f"/api/v1/futures/exchangeInfo")
+        if result:
+            return result
+            
+        # Try alternative endpoints that might exist on Toobit
+        alternatives = [
+            "/api/v1/exchangeInfo",  # Without 'futures' prefix
+            "/api/v1/futures/exchange-info",  # With hyphen
+            "/api/v1/futures/symbols",  # Just symbols
+        ]
+        
+        for endpoint in alternatives:
+            logging.debug(f"Trying alternative endpoint: {endpoint}")
+            result = self._public_request(endpoint)
+            if result:
+                logging.info(f"Found working endpoint: {endpoint}")
+                return result
+                
+        return None
     
     # Account Methods
     def get_account_balance(self) -> List[Dict]:
