@@ -276,8 +276,8 @@ class ToobitClient:
         if price and (params['type'] == 'LIMIT' or params.get('priceType') == 'INPUT'):
             # Format price with appropriate decimal places for different symbols
             if 'BTC' in symbol.upper():
-                # BTC requires fewer decimal places (typically 2)
-                params['price'] = f"{float(price):.2f}"
+                # BTC uses zero decimal places (whole numbers)
+                params['price'] = f"{float(price):.0f}"
             elif any(coin in symbol.upper() for coin in ['ETH', 'SOL', 'BNB']):
                 # Major altcoins typically use 2-3 decimals
                 params['price'] = f"{float(price):.3f}"
