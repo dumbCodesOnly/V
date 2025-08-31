@@ -3018,22 +3018,36 @@ def execute_trade():
                 position_size = round(position_value / current_market_price, 6)
                 
                 # Determine order type and parameters
-                order_type = "market" if config.entry_type == "market" else "limit"
+                # Use LIMIT orders for all trades since Toobit doesn't support MARKET orders
                 order_side = "buy" if config.side == "long" else "sell"
-                order_price = config.entry_price if config.entry_type == "limit" else None
                 
-                # Place the main position order on exchange
-                order_params = {
-                    'symbol': config.symbol,
-                    'side': order_side,
-                    'order_type': order_type,
-                    'quantity': str(position_size)
-                }
-                
-                # Only add price and timeInForce for limit orders
-                if config.entry_type == "limit" and order_price:
-                    order_params['price'] = str(order_price)
-                    order_params['timeInForce'] = "GTC"
+                if config.entry_type == "market":
+                    # For market execution, use LIMIT order at market price with buffer
+                    market_price_float = float(current_market_price)
+                    # Add small buffer to ensure execution: +0.1% for BUY, -0.1% for SELL
+                    if order_side == "buy":
+                        exec_price = market_price_float * 1.001  # Slightly above market
+                    else:
+                        exec_price = market_price_float * 0.999  # Slightly below market
+                        
+                    order_params = {
+                        'symbol': config.symbol,
+                        'side': order_side,
+                        'order_type': "limit",  # Always use LIMIT for Toobit
+                        'quantity': str(position_size),
+                        'price': str(exec_price),
+                        'timeInForce': "IOC"  # Immediate or Cancel for market-like behavior
+                    }
+                else:
+                    # Standard limit order
+                    order_params = {
+                        'symbol': config.symbol,
+                        'side': order_side,
+                        'order_type': "limit",
+                        'quantity': str(position_size),
+                        'price': str(config.entry_price),
+                        'timeInForce': "GTC"
+                    }
                 
                 order_result = client.place_order(**order_params)
                 

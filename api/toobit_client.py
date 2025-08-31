@@ -206,7 +206,13 @@ class ToobitClient:
         # Core params
         params['symbol'] = symbol.upper()
         params['side'] = side.upper()
-        params['type'] = order_type.upper()
+        
+        # Some exchanges use different names for market orders
+        if order_type.upper() == 'MARKET':
+            params['type'] = 'MARKET'  # Try exact case first
+        else:
+            params['type'] = order_type.upper()
+            
         params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
 
         # timeInForce is required ONLY for LIMIT orders
@@ -263,25 +269,11 @@ class ToobitClient:
     def place_futures_trade_with_tp_sl(self, symbol: str, side: str, quantity: str, 
                                       take_profit_price: Optional[str] = None, 
                                       stop_loss_price: Optional[str] = None,
-                                      entry_price: Optional[str] = None) -> Dict:
+                                      entry_price: Optional[str] = None,
+                                      market_price: Optional[str] = None) -> Dict:
         """
-        Place a complete futures trade with TP/SL as separate orders
-        
-        This places 1-3 separate orders:
-        1. Main order (MARKET or LIMIT entry)  
-        2. Stop Loss (STOP_MARKET order)
-        3. Take Profit (TAKE_PROFIT_MARKET order)
-        
-        Args:
-            symbol: Trading pair symbol 
-            side: Position side ('BUY' or 'SELL')
-            quantity: Position quantity
-            take_profit_price: TP trigger price (optional)
-            stop_loss_price: SL trigger price (optional) 
-            entry_price: Entry price (if None, uses MARKET order)
-        
-        Returns:
-            Dict with order results: {'main_order': result, 'tp_order': result, 'sl_order': result}
+        Place a complete futures trade with TP/SL using Toobit's supported order types:
+        LIMIT, MARKET, STOP_MARKET, TAKE_PROFIT_MARKET
         """
         import uuid
         results = {
@@ -291,11 +283,10 @@ class ToobitClient:
             'success': False,
             'errors': []
         }
-        
+
         try:
-            # 1. Place main entry order
+            # 1. Entry order - Use LIMIT at market price since MARKET might not be supported
             if entry_price:
-                # LIMIT order with price
                 main_result = self.place_order(
                     symbol=symbol,
                     side=side.upper(),
@@ -306,37 +297,68 @@ class ToobitClient:
                     recvWindow="5000"
                 )
             else:
-                # MARKET order (no price, no newClientOrderId needed)
+                # Use LIMIT order at current market price (with slight buffer for execution)
+                if not market_price:
+                    raise ValueError("Market price required for immediate execution")
+                
+                market_price_float = float(market_price)
+                # Add small buffer to ensure execution: +0.1% for BUY, -0.1% for SELL
+                if side.upper() == "BUY":
+                    exec_price = market_price_float * 1.001  # Slightly above market
+                else:
+                    exec_price = market_price_float * 0.999  # Slightly below market
+                    
                 main_result = self.place_order(
                     symbol=symbol,
-                    side=side.upper(), 
-                    order_type="MARKET",
+                    side=side.upper(),
+                    order_type="LIMIT",
                     quantity=quantity,
+                    price=str(exec_price),
+                    timeInForce="IOC",  # Immediate or Cancel for market-like behavior
                     recvWindow="5000"
                 )
-            
+
             results['main_order'] = main_result
             if not main_result:
                 results['errors'].append("Failed to place main entry order")
                 return results
-            
+
             logging.info(f"Main order placed: {side} {quantity} {symbol}")
-            
-            # Determine closing side (opposite of entry)
+
+            # Closing side is always opposite
             close_side = "SELL" if side.upper() == "BUY" else "BUY"
-            
-            # 2. TP/SL orders temporarily disabled - Toobit uses different TP/SL system
-            # TODO: Implement Toobit-specific TP/SL order placement
+
+            # 2. Stop Loss
             if stop_loss_price:
-                logging.info(f"Stop Loss will be managed by the bot at {stop_loss_price} (Toobit TP/SL integration pending)")
-                results['sl_order'] = {'status': 'pending_integration', 'price': stop_loss_price}
-            
+                sl_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="STOP_MARKET",
+                    quantity=quantity,
+                    stopPrice=stop_loss_price,
+                    reduceOnly=True,
+                    newClientOrderId=str(uuid.uuid4())[:36],
+                    recvWindow="5000"
+                )
+                results['sl_order'] = sl_result
+                logging.info(f"SL order placed at {stop_loss_price}")
+
+            # 3. Take Profit
             if take_profit_price:
-                logging.info(f"Take Profit will be managed by the bot at {take_profit_price} (Toobit TP/SL integration pending)")
-                results['tp_order'] = {'status': 'pending_integration', 'price': take_profit_price}
-            
-            # Mark as successful if main order succeeded
-            results['success'] = bool(main_result)
+                tp_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="TAKE_PROFIT_MARKET",
+                    quantity=quantity,
+                    stopPrice=take_profit_price,
+                    reduceOnly=True,
+                    newClientOrderId=str(uuid.uuid4())[:36],
+                    recvWindow="5000"
+                )
+                results['tp_order'] = tp_result
+                logging.info(f"TP order placed at {take_profit_price}")
+
+            results['success'] = True
             
         except Exception as e:
             logging.error(f"Error placing futures trade: {e}")

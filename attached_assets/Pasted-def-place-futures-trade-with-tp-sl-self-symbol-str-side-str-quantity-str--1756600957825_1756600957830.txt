@@ -1,0 +1,85 @@
+def place_futures_trade_with_tp_sl(self, symbol: str, side: str, quantity: str, 
+                                      take_profit_price: Optional[str] = None, 
+                                      stop_loss_price: Optional[str] = None,
+                                      entry_price: Optional[str] = None) -> Dict:
+        """
+        Place a complete futures trade with TP/SL using Toobit's supported order types:
+        LIMIT, MARKET, STOP_MARKET, TAKE_PROFIT_MARKET
+        """
+        import uuid
+        results = {
+            'main_order': None,
+            'tp_order': None, 
+            'sl_order': None,
+            'success': False,
+            'errors': []
+        }
+
+        try:
+            # 1. Entry order
+            if entry_price:
+                main_result = self.place_order(
+                    symbol=symbol,
+                    side=side.upper(),
+                    order_type="LIMIT",
+                    quantity=quantity,
+                    price=entry_price,
+                    timeInForce="GTC",
+                    recvWindow="5000"
+                )
+            else:
+                main_result = self.place_order(
+                    symbol=symbol,
+                    side=side.upper(),
+                    order_type="MARKET",
+                    quantity=quantity,
+                    recvWindow="5000"
+                )
+
+            results['main_order'] = main_result
+            if not main_result:
+                results['errors'].append("Failed to place main entry order")
+                return results
+
+            logging.info(f"Main order placed: {side} {quantity} {symbol}")
+
+            # Closing side is always opposite
+            close_side = "SELL" if side.upper() == "BUY" else "BUY"
+
+            # 2. Stop Loss
+            if stop_loss_price:
+                sl_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="STOP_MARKET",
+                    quantity=quantity,
+                    stopPrice=stop_loss_price,
+                    reduceOnly=True,
+                    newClientOrderId=str(uuid.uuid4())[:36],
+                    recvWindow="5000"
+                )
+                results['sl_order'] = sl_result
+                logging.info(f"SL order placed at {stop_loss_price}")
+
+            # 3. Take Profit
+            if take_profit_price:
+                tp_result = self.place_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type="TAKE_PROFIT_MARKET",
+                    quantity=quantity,
+                    stopPrice=take_profit_price,
+                    reduceOnly=True,
+                    newClientOrderId=str(uuid.uuid4())[:36],
+                    recvWindow="5000"
+                )
+                results['tp_order'] = tp_result
+                logging.info(f"TP order placed at {take_profit_price}")
+
+            results['success'] = True
+
+        except Exception as e:
+            logging.error(f"Error placing futures trade: {e}")
+            results['errors'].append(f"Exception: {str(e)}")
+
+        return results
