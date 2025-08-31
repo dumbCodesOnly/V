@@ -3048,7 +3048,7 @@ def execute_trade():
                         }
                     }
                     
-                    logging.error(f"Order placement failed: {order_result.get('client_last_error', 'Unknown error')}")
+                    logging.error(f"Order placement failed: {error_details.get('client_last_error', 'Unknown error')}")
                     
                     return jsonify({
                         'error': 'Failed to place order on exchange. Please check the details below.',

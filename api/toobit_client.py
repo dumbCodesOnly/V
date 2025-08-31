@@ -210,9 +210,12 @@ class ToobitClient:
         params['type'] = order_type.upper()
         params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
         
-        # Add timeInForce for limit orders only
+        # Add timeInForce - required for all order types on Toobit
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
+        elif order_type.upper() == 'MARKET':
+            # For market orders, Toobit requires timeInForce=IOC (Immediate or Cancel)
+            params['timeInForce'] = 'IOC'
             
         # Add price for limit orders
         if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
