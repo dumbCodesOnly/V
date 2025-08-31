@@ -2490,7 +2490,7 @@
                         <div class="card-body">
                             <div class="mb-3">
                                 <label class="form-label">Exchange</label>
-                                <select class="form-control" id="exchange-select">
+                                <select class="form-control" id="exchange-select" onchange="handleExchangeChange()">
                                     <option value="toobit">Toobit</option>
                                     <option value="lbank">LBank</option>
                                     <option value="binance">Binance</option>
@@ -2510,6 +2510,16 @@
                             <div class="mb-3" id="passphrase-group" style="display: none;">
                                 <label class="form-label">Passphrase (if required)</label>
                                 <input type="password" class="form-control" id="passphrase-input" placeholder="Enter passphrase if required">
+                            </div>
+                            <div class="mb-3" id="testnet-toggle-group" style="display: none;">
+                                <label class="form-label">Trading Mode</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="testnet-mode-toggle" onchange="updateTestnetToggleLabel()">
+                                    <label class="form-check-label" for="testnet-mode-toggle">
+                                        <span id="testnet-mode-label">🔥 Live Mode (Real Trading)</span>
+                                    </label>
+                                </div>
+                                <small class="text-muted" id="testnet-mode-description">Switch to testnet mode for safe testing</small>
                             </div>
                             <div class="two-column-grid">
                                 <button class="btn btn-outline-secondary" onclick="cancelCredentialsSetup()">Cancel</button>
@@ -4718,6 +4728,8 @@
             document.getElementById('api-secret-input').value = '';
             document.getElementById('passphrase-input').value = '';
             document.getElementById('exchange-select').value = 'toobit';
+            document.getElementById('testnet-mode-toggle').checked = false; // Default to live mode
+            handleExchangeChange(); // Update visibility
         }
 
         async function saveCredentials() {
@@ -4725,6 +4737,7 @@
             const apiKey = document.getElementById('api-key-input').value.trim();
             const apiSecret = document.getElementById('api-secret-input').value.trim();
             const passphrase = document.getElementById('passphrase-input').value.trim();
+            const testnetMode = document.getElementById('testnet-mode-toggle').checked;
 
             if (!apiKey || !apiSecret) {
                 alert('Please enter both API key and secret');
@@ -4743,7 +4756,8 @@
                         exchange: exchange,
                         api_key: apiKey,
                         api_secret: apiSecret,
-                        passphrase: passphrase || null
+                        passphrase: passphrase || null,
+                        testnet_mode: testnetMode
                     })
                 });
 
@@ -4759,6 +4773,42 @@
             } catch (error) {
                 console.error('Error saving credentials:', error);
                 alert('Error saving credentials. Please try again.');
+            }
+        }
+
+        // Handle exchange selection changes to show/hide testnet toggle
+        function handleExchangeChange() {
+            const exchange = document.getElementById('exchange-select').value;
+            const passphraseGroup = document.getElementById('passphrase-group');
+            const testnetToggleGroup = document.getElementById('testnet-toggle-group');
+            
+            // Show passphrase for OKX
+            if (exchange === 'okx') {
+                passphraseGroup.style.display = 'block';
+            } else {
+                passphraseGroup.style.display = 'none';
+            }
+            
+            // Show testnet toggle for all exchanges except Toobit
+            if (exchange !== 'toobit') {
+                testnetToggleGroup.style.display = 'block';
+            } else {
+                testnetToggleGroup.style.display = 'none';
+            }
+        }
+
+        // Handle testnet toggle changes
+        function updateTestnetToggleLabel() {
+            const toggle = document.getElementById('testnet-mode-toggle');
+            const label = document.getElementById('testnet-mode-label');
+            const description = document.getElementById('testnet-mode-description');
+            
+            if (toggle.checked) {
+                label.textContent = '🧪 Testnet Mode (Safe Testing)';
+                description.textContent = 'Switch to live mode for real trading with actual funds';
+            } else {
+                label.textContent = '🔥 Live Mode (Real Trading)';
+                description.textContent = 'Switch to testnet mode for safe testing';
             }
         }
 
