@@ -214,9 +214,18 @@ class ToobitClient:
                    price: Optional[str] = None, **kwargs) -> Optional[Dict]:
         """
         Place a new order following Toobit specifications
-
+        
+        Proper Toobit side values:
+        BUY_OPEN, SELL_OPEN, BUY_CLOSE, SELL_CLOSE
+        
         Supported types (per Toobit docs):
-        LIMIT, MARKET, STOP, TAKE_PROFIT, STOP_MARKET, TAKE_PROFIT_MARKET
+        LIMIT, STOP (includes MARKET)
+        
+        Supported timeInForce:
+        GTC, FOK, IOC, LIMIT_MAKER
+        
+        Supported priceType:
+        INPUT, OPPONENT, QUEUE, OVER, MARKET
         """
         import uuid
         from collections import OrderedDict
@@ -225,36 +234,50 @@ class ToobitClient:
 
         # Core params - convert to Toobit format
         params['symbol'] = self.convert_to_toobit_symbol(symbol)
-        params['side'] = side.upper()
         
-        # Some exchanges use different names for market orders
-        if order_type.upper() == 'MARKET':
-            params['type'] = 'MARKET'  # Try exact case first
+        # Convert standard side to Toobit side format
+        if side.upper() in ['BUY', 'LONG']:
+            params['side'] = 'BUY_OPEN'
+        elif side.upper() in ['SELL', 'SHORT']:
+            params['side'] = 'SELL_OPEN'
+        elif side.upper() == 'BUY_CLOSE':
+            params['side'] = 'BUY_CLOSE'
+        elif side.upper() == 'SELL_CLOSE':
+            params['side'] = 'SELL_CLOSE'
         else:
-            params['type'] = order_type.upper()
+            # Use the side as provided if it's already in correct format
+            params['side'] = side.upper()
+        
+        # Toobit order types: LIMIT or STOP
+        if order_type.upper() == 'MARKET':
+            params['type'] = 'LIMIT'
+            params['priceType'] = 'MARKET'  # Use MARKET priceType for market orders
+        elif order_type.upper() == 'LIMIT':
+            params['type'] = 'LIMIT'
+            params['priceType'] = kwargs.get('priceType', 'INPUT')  # Default to INPUT
+        elif order_type.upper() in ['STOP', 'STOP_MARKET']:
+            params['type'] = 'STOP'
+            params['priceType'] = kwargs.get('priceType', 'INPUT')
+        else:
+            params['type'] = 'LIMIT'  # Default to LIMIT
+            params['priceType'] = 'INPUT'
             
-        params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+        params['origQty'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+        
+        # Add leverage if provided
+        if 'leverage' in kwargs:
+            params['leverage'] = str(kwargs['leverage'])
 
-        # timeInForce is required ONLY for LIMIT orders
-        if order_type.upper() == 'LIMIT':
+        # timeInForce is required for LIMIT orders
+        if params['type'] == 'LIMIT':
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
 
-        # Add price for LIMIT, STOP, TAKE_PROFIT
-        if price and order_type.upper() in ['LIMIT', 'STOP', 'TAKE_PROFIT']:
+        # Add price for LIMIT orders or when priceType is INPUT
+        if price and (params['type'] == 'LIMIT' or params.get('priceType') == 'INPUT'):
             params['price'] = str(price)
 
-        # Add stopPrice for STOP/TP orders
-        if 'stopPrice' in kwargs and order_type.upper() in [
-            'STOP', 'STOP_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET'
-        ]:
-            params['stopPrice'] = str(kwargs['stopPrice'])
-
-        # Reduce-only flag
-        if kwargs.get('reduceOnly'):
-            params['reduceOnly'] = 'true'
-
         # Client order ID
-        params['newClientOrderId'] = kwargs.get('newClientOrderId', str(uuid.uuid4())[:36])
+        params['clientOrderId'] = kwargs.get('clientOrderId', f"client_{int(time.time() * 1000)}")
 
         # recvWindow
         params['recvWindow'] = str(kwargs.get('recvWindow', '5000'))
@@ -263,7 +286,7 @@ class ToobitClient:
         params = {k: str(v) for k, v in params.items()}
 
         formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
-        logging.info(f"[ORDER] Placing {side.upper()} {order_type.upper()} order for {symbol}: {formatted_quantity}")
+        logging.info(f"[ORDER] Placing {params['side']} {params['type']} order for {symbol}: {formatted_quantity}")
 
         # DEBUG: Log the exact parameters being sent to Toobit
         logging.info(f"[DEBUG] Toobit order parameters: {params}")
@@ -305,7 +328,7 @@ class ToobitClient:
         }
 
         try:
-            # 1. Entry order - Use LIMIT at market price since MARKET might not be supported
+            # 1. Entry order - Use proper Toobit format
             if entry_price:
                 main_result = self.place_order(
                     symbol=symbol,
@@ -314,27 +337,22 @@ class ToobitClient:
                     quantity=quantity,
                     price=entry_price,
                     timeInForce="GTC",
+                    priceType="INPUT",
                     recvWindow="5000"
                 )
             else:
-                # Use LIMIT order at current market price (with slight buffer for execution)
+                # Use MARKET order (LIMIT with priceType=MARKET)
                 if not market_price:
-                    raise ValueError("Market price required for immediate execution")
-                
-                market_price_float = float(market_price)
-                # Add small buffer to ensure execution: +0.1% for BUY, -0.1% for SELL
-                if side.upper() == "BUY":
-                    exec_price = market_price_float * 1.001  # Slightly above market
-                else:
-                    exec_price = market_price_float * 0.999  # Slightly below market
+                    raise ValueError("Market price required for market execution")
                     
                 main_result = self.place_order(
                     symbol=symbol,
                     side=side.upper(),
-                    order_type="LIMIT",
+                    order_type="MARKET",  # Will be converted to LIMIT with priceType=MARKET
                     quantity=quantity,
-                    price=str(exec_price),
+                    price=market_price,  # Still need price even for market orders
                     timeInForce="IOC",  # Immediate or Cancel for market-like behavior
+                    priceType="MARKET",
                     recvWindow="5000"
                 )
 
@@ -348,16 +366,17 @@ class ToobitClient:
             # Closing side is always opposite
             close_side = "SELL" if side.upper() == "BUY" else "BUY"
 
-            # 2. Stop Loss
+            # 2. Stop Loss - Use proper close side format
             if stop_loss_price:
+                sl_side = "BUY_CLOSE" if side.upper() in ['SELL', 'SHORT'] else "SELL_CLOSE"
                 sl_result = self.place_order(
                     symbol=symbol,
-                    side=close_side,
-                    order_type="STOP_MARKET",
+                    side=sl_side,
+                    order_type="STOP",
                     quantity=quantity,
-                    stopPrice=stop_loss_price,
-                    reduceOnly=True,
-                    newClientOrderId=str(uuid.uuid4())[:36],
+                    price=stop_loss_price,
+                    priceType="INPUT",
+                    clientOrderId=f"sl_{int(time.time() * 1000)}",
                     recvWindow="5000"
                 )
                 results['sl_order'] = sl_result
@@ -365,14 +384,16 @@ class ToobitClient:
 
             # 3. Take Profit
             if take_profit_price:
+                tp_side = "BUY_CLOSE" if side.upper() in ['SELL', 'SHORT'] else "SELL_CLOSE"
                 tp_result = self.place_order(
                     symbol=symbol,
-                    side=close_side,
-                    order_type="TAKE_PROFIT_MARKET",
+                    side=tp_side,
+                    order_type="LIMIT",
                     quantity=quantity,
-                    stopPrice=take_profit_price,
-                    reduceOnly=True,
-                    newClientOrderId=str(uuid.uuid4())[:36],
+                    price=take_profit_price,
+                    priceType="INPUT",
+                    timeInForce="GTC",
+                    clientOrderId=f"tp_{int(time.time() * 1000)}",
                     recvWindow="5000"
                 )
                 results['tp_order'] = tp_result
@@ -395,8 +416,11 @@ class ToobitClient:
         import uuid
         orders_placed = []
         
-        # Determine the correct side for closing orders (opposite of position side)
-        close_side = "SELL" if side.lower() == "long" else "BUY"
+        # Determine the correct side for closing orders using Toobit format
+        if side.lower() in ['long', 'buy']:
+            close_side = "SELL_CLOSE"
+        else:
+            close_side = "BUY_CLOSE"
         
         try:
             # TP/SL orders temporarily disabled - Toobit uses different TP/SL system
