@@ -4673,6 +4673,9 @@
                 if (modalStatusContainer) modalStatusContainer.innerHTML = successHTML;
                 if (setupContainer) setupContainer.classList.add('hidden');
                 if (modalSetupContainer) modalSetupContainer.classList.add('hidden');
+                
+                // Show and populate testnet toggle section
+                updateTestnetToggleSection(data);
             } else {
                 const noCredsHTML = `
                     <div class="card border-warning">
@@ -4689,6 +4692,9 @@
                 if (modalStatusContainer) modalStatusContainer.innerHTML = noCredsHTML;
                 if (setupContainer) setupContainer.classList.add('hidden');
                 if (modalSetupContainer) modalSetupContainer.classList.add('hidden');
+                
+                // Hide testnet toggle section when no credentials
+                hideTestnetToggleSection();
             }
             } catch (error) {
                 console.error('Error loading credentials status:', error);
@@ -4812,6 +4818,99 @@
             } else {
                 label.textContent = '🔥 Live Mode (Real Trading)';
                 description.textContent = 'Switch to testnet mode for safe testing';
+            }
+        }
+        
+        // Testnet Toggle Functions
+        function updateTestnetToggleSection(data) {
+            const toggleSection = document.getElementById('testnet-toggle-section');
+            if (!toggleSection) return;
+            
+            // Show the section
+            toggleSection.style.display = 'block';
+            
+            // Update toggle switch state
+            const toggleSwitch = document.getElementById('testnet-mode-switch');
+            const currentModeBadge = document.getElementById('current-mode-badge');
+            const currentModeText = document.getElementById('current-mode-text');
+            const modeDescription = document.getElementById('mode-description');
+            const testnetWarning = document.getElementById('testnet-warning');
+            
+            if (toggleSwitch) toggleSwitch.checked = data.testnet_mode;
+            
+            if (data.testnet_mode) {
+                if (currentModeBadge) {
+                    currentModeBadge.className = 'badge bg-warning text-dark';
+                    currentModeBadge.textContent = 'Testnet Mode';
+                }
+                if (currentModeText) currentModeText.textContent = 'Testnet Trading Mode';
+                if (modeDescription) modeDescription.textContent = 'Safe testing with virtual funds';
+            } else {
+                if (currentModeBadge) {
+                    currentModeBadge.className = 'badge bg-success';
+                    currentModeBadge.textContent = 'Live Trading';
+                }
+                if (currentModeText) currentModeText.textContent = 'Live Trading Mode';
+                if (modeDescription) modeDescription.textContent = 'Real money trading with actual market orders';
+            }
+            
+            // Show warning for exchanges that don't support testnet
+            if (testnetWarning) {
+                if (!data.supports_testnet) {
+                    testnetWarning.style.display = 'block';
+                    testnetWarning.innerHTML = '<strong>⚠️ Warning:</strong> ' + 
+                        (data.exchange || 'This exchange').toUpperCase() + ' does not support testnet mode.';
+                    // Disable toggle for exchanges that don't support testnet
+                    if (toggleSwitch) toggleSwitch.disabled = true;
+                } else {
+                    testnetWarning.style.display = 'none';
+                    if (toggleSwitch) toggleSwitch.disabled = false;
+                }
+            }
+        }
+        
+        function hideTestnetToggleSection() {
+            const toggleSection = document.getElementById('testnet-toggle-section');
+            if (toggleSection) {
+                toggleSection.style.display = 'none';
+            }
+        }
+        
+        async function toggleTestnetModeFromModal() {
+            const toggleSwitch = document.getElementById('testnet-mode-switch');
+            if (!toggleSwitch) return;
+            
+            const newTestnetMode = toggleSwitch.checked;
+            
+            try {
+                const response = await fetch('/api/toggle-testnet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: getUserId() || '123456789',
+                        testnet_mode: newTestnetMode
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Show success message
+                    const message = result.warning || result.message;
+                    alert('✅ ' + message);
+                    
+                    // Refresh the credentials status to update the display
+                    loadCredentialsStatus();
+                } else {
+                    // Revert toggle switch and show error
+                    toggleSwitch.checked = !newTestnetMode;
+                    alert('❌ ' + (result.error || 'Failed to change trading mode'));
+                }
+            } catch (error) {
+                // Revert toggle switch and show error
+                toggleSwitch.checked = !newTestnetMode;
+                console.error('Error toggling testnet mode:', error);
+                alert('❌ Error changing trading mode. Please try again.');
             }
         }
 
@@ -6070,6 +6169,35 @@
                         <div class="loading">
                             <div class="spinner-border spinner-border-sm" role="status"></div>
                             Loading credentials status...
+                        </div>
+                    </div>
+                    
+                    <!-- Testnet/Live Mode Toggle -->
+                    <div id="testnet-toggle-section" class="mb-4" style="display: none;">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">Trading Mode</h6>
+                                <span id="current-mode-badge" class="badge bg-success">Live Trading</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong id="current-mode-text">Live Trading Mode</strong>
+                                        <div class="text-muted small" id="mode-description">
+                                            Real money trading with actual market orders
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="testnet-mode-switch" onchange="toggleTestnetModeFromModal()">
+                                        <label class="form-check-label" for="testnet-mode-switch">
+                                            Testnet Mode
+                                        </label>
+                                    </div>
+                                </div>
+                                <div id="testnet-warning" class="alert alert-warning mt-3" style="display: none;">
+                                    <strong>⚠️ Warning:</strong> Some exchanges (like Toobit) don't support testnet mode.
+                                </div>
+                            </div>
                         </div>
                     </div>
 

@@ -593,14 +593,16 @@ class LBankClient:
         # Sort parameters alphabetically (required by LBank)
         sorted_params = dict(sorted(params.items()))
         
-        # Create query string for signature generation
-        query_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
+        # Create query string for signature generation - LBank specific format
+        # Remove empty values and ensure proper encoding
+        filtered_params = {k: str(v) for k, v in sorted_params.items() if v is not None and v != ''}
+        query_string = '&'.join([f"{k}={v}" for k, v in sorted(filtered_params.items())])
         
         # Generate signature
         signature = self._generate_signature(query_string)
         
-        # Add signature to parameters
-        sorted_params['sign'] = signature
+        # Add signature to final parameters
+        filtered_params['sign'] = signature
         
         # Prepare headers
         headers = {
@@ -616,9 +618,9 @@ class LBankClient:
         
         try:
             if method == 'GET':
-                response = self.session.get(url, params=sorted_params, headers=headers, timeout=10)
+                response = self.session.get(url, params=filtered_params, headers=headers, timeout=10)
             elif method == 'POST':
-                response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
+                response = self.session.post(url, data=filtered_params, headers=headers, timeout=10)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
