@@ -8,7 +8,7 @@ import time
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from api.toobit_client import ToobitClient
+from api.unified_exchange_client import ToobitClient
 from api.models import UserCredentials, TradeConfiguration, get_iran_time, utc_to_iran_time
 from config import TimeConfig
 

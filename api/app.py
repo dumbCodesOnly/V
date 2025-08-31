@@ -23,9 +23,7 @@ try:
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from ..scripts.exchange_sync import initialize_sync_service, get_sync_service
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
-    from .toobit_client import ToobitClient
-    from .lbank_client import LBankClient
-    from .exchange_factory import create_exchange_client, create_wrapped_exchange_client
+    from .unified_exchange_client import ToobitClient, LBankClient, create_exchange_client, create_wrapped_exchange_client
     from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 except ImportError:
     # Fall back to absolute import (for direct execution - Replit)
@@ -37,9 +35,7 @@ except ImportError:
     from api.models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from scripts.exchange_sync import initialize_sync_service, get_sync_service
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
-    from api.toobit_client import ToobitClient
-    from api.lbank_client import LBankClient
-    from api.exchange_factory import create_exchange_client, create_wrapped_exchange_client
+    from api.unified_exchange_client import ToobitClient, LBankClient, create_exchange_client, create_wrapped_exchange_client
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 
 from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
