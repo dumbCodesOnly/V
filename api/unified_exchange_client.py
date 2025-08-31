@@ -543,63 +543,95 @@ class LBankClient:
         # Request session for connection pooling
         self.session = requests.Session()
         
-    def _generate_signature(self, query_string: str) -> str:
+    def _generate_signature(self, params_string: str) -> str:
         """
-        Generate MD5 signature according to LBank specification
+        Generate signature for LBank API requests according to official documentation.
         
-        LBank uses MD5 hash for signature generation:
-        1. Sort all parameters alphabetically
-        2. Create query string: param1=value1&param2=value2
-        3. Append secret key: query_string + secret_key
-        4. Generate MD5 hash
+        LBank v2 signature process:
+        1. Create parameter string (sorted alphabetically, excluding 'sign')
+        2. Generate MD5 hash of parameter string (uppercase)
+        3. Sign MD5 hash using HmacSHA256 with secret key
+        4. Base64 encode the signature
         """
-        # Append secret key to query string for MD5 hash
-        string_to_sign = query_string + self.api_secret
-        return hashlib.md5(string_to_sign.encode('utf-8')).hexdigest()
+        import hmac
+        import base64
+        
+        # Step 1: Generate MD5 hash of parameter string (uppercase)
+        md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
+        
+        # Step 2: Sign MD5 hash using HmacSHA256
+        hmac_signature = hmac.new(
+            self.api_secret.encode('utf-8'),
+            md5_hash.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Step 3: Base64 encode the signature
+        signature = base64.b64encode(hmac_signature.encode('utf-8')).decode('utf-8')
+        
+        return signature
     
     def get_server_time(self) -> int:
         """Get server time from LBank for accurate timestamp synchronization"""
         try:
-            # Public endpoint for server time
-            response = self.session.get(f"{self.base_url}/v2/accuracy.do", timeout=5)
+            # Official LBank timestamp endpoint
+            response = self.session.get(f"{self.base_url}/v2/timestamp.do", timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                # LBank returns timestamp in seconds, convert to milliseconds
-                return int(data.get('timestamp', time.time()) * 1000)
+                # LBank returns timestamp - use as-is if in milliseconds
+                timestamp = data.get('data', data.get('timestamp', time.time()))
+                # Ensure timestamp is in milliseconds
+                if timestamp < 1e12:  # If in seconds, convert to milliseconds
+                    timestamp = int(timestamp * 1000)
+                else:
+                    timestamp = int(timestamp)
+                return timestamp
         except Exception as e:
             logging.debug(f"Failed to get LBank server time: {e}")
         
         # Fallback to local time in milliseconds
         return int(time.time() * 1000)
     
+    def _generate_echostr(self) -> str:
+        """Generate random echostr (30-40 alphanumeric characters) as required by LBank"""
+        import random
+        import string
+        
+        length = random.randint(30, 40)
+        chars = string.ascii_letters + string.digits
+        return ''.join(random.choice(chars) for _ in range(length))
+    
     def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Make signed request following LBank official specifications
+        Make signed request following LBank official v2 specifications
         
-        LBank Authentication Process:
-        1. Add api_key and timestamp to parameters
-        2. Sort parameters alphabetically
-        3. Create query string
-        4. Append secret key and generate MD5 signature
+        LBank Authentication Process (v2):
+        1. Add required parameters: api_key, signature_method, timestamp, echostr
+        2. Sort parameters alphabetically (excluding 'sign')
+        3. Create parameter string
+        4. Generate MD5 hash (uppercase) -> Sign with HmacSHA256 -> Base64 encode
         5. Add signature to parameters
         """
         if params is None:
             params = {}
         
-        # Add required api_key and timestamp
+        # Add required parameters for LBank v2
         params['api_key'] = self.api_key
-        params['timestamp'] = str(int(time.time() * 1000))
+        params['signature_method'] = 'HmacSHA256'
+        params['timestamp'] = str(self.get_server_time())  # Use server timestamp
+        params['echostr'] = self._generate_echostr()
         
-        # Sort parameters alphabetically (required by LBank)
+        # Sort parameters alphabetically (excluding 'sign' as per LBank spec)
         sorted_params = dict(sorted(params.items()))
         
-        # Create query string for signature generation - LBank specific format
-        # Remove empty values and ensure proper encoding
+        # Remove empty values and create parameter string
         filtered_params = {k: str(v) for k, v in sorted_params.items() if v is not None and v != ''}
-        query_string = '&'.join([f"{k}={v}" for k, v in sorted(filtered_params.items())])
         
-        # Generate signature
-        signature = self._generate_signature(query_string)
+        # Create parameter string for signature generation (alphabetically sorted)
+        params_string = '&'.join([f"{k}={v}" for k, v in sorted(filtered_params.items())])
+        
+        # Generate signature using the new method
+        signature = self._generate_signature(params_string)
         
         # Add signature to final parameters
         filtered_params['sign'] = signature
@@ -692,8 +724,8 @@ class LBankClient:
     
     # Account Methods
     def get_account_balance(self) -> List[Dict]:
-        """Get futures account balance"""
-        result = self._signed_request('POST', "/v2/user_info.do")
+        """Get futures account balance using LBank v1 API"""
+        result = self._signed_request('POST', "/v1/user_info.do")
         if result and 'info' in result:
             # Convert LBank balance format to match Toobit structure
             balances = []
@@ -709,6 +741,32 @@ class LBankClient:
                     })
             return balances
         return []
+    
+    def get_balance(self) -> Optional[Dict]:
+        """Get account balance in simplified format - compatibility method"""
+        try:
+            result = self._signed_request('POST', "/v1/user_info.do")
+            if result and 'info' in result:
+                info = result['info']
+                
+                # LBank returns balance structure: info -> {asset: {net}, free: {usdt, btc}, freeze: {}}
+                asset_info = info.get('asset', {})
+                free_balances = info.get('free', {})
+                
+                # Calculate total USDT balance (free + equivalent)
+                usdt_free = float(free_balances.get('usdt', 0))
+                net_asset = float(asset_info.get('net', 0))
+                
+                return {
+                    'total_balance': max(net_asset, usdt_free),  # Use the higher value
+                    'available_balance': usdt_free,
+                    'currency': 'USDT'
+                }
+            return None
+        except Exception as e:
+            logging.error(f"Error getting LBank balance: {e}")
+            self.last_error = f"Balance Error: {str(e)}"
+            return None
     
     def get_positions(self) -> List[Dict]:
         """Get all open positions"""
