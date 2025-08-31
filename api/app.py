@@ -1325,7 +1325,8 @@ def test_exchange_connection():
             testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
-        is_connected, message = client.test_connection()
+        is_connected = client.test_connectivity()
+        message = "Connected successfully" if is_connected else "Connection failed"
         
         return jsonify({
             'success': is_connected,
@@ -1569,7 +1570,7 @@ def get_exchange_orders():
             testnet=False  # ALWAYS False for Toobit - no testnet support
         )
         
-        orders = client.get_orders(symbol=symbol, status=status)
+        orders = client.get_order_history(symbol=symbol)
         
         return jsonify({
             'success': True,
@@ -3154,9 +3155,9 @@ def execute_trade():
                 order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
                 order_type = "limit"  # Always use LIMIT for Toobit
                 
-                # DEBUG: Since futures endpoints return 404, try spot order with futures-like parameters
-                logging.warning(f"[DEBUG] Futures endpoints return 404, trying order as-is...")
-                logging.info(f"[DEBUG] Will send order to: /api/v1/futures/order with symbol=BTCUSDT, side=BUY_OPEN")
+                # Convert symbol to Toobit format for proper API call
+                toobit_symbol = client.convert_to_toobit_symbol(config.symbol)
+                logging.info(f"[DEBUG] Will send order to: /api/v1/futures/order with symbol={toobit_symbol}, side={order_side}, quantity={position_size} contracts")
                 
                 if config.entry_type == "market":
                     # For market execution, use LIMIT order at market price with buffer
@@ -4175,15 +4176,19 @@ def reset_trade_history():
         
         # Clear any cached portfolio data manually
         try:
-            from .cache_manager import PortfolioCache
+            try:
+                from api.cache_manager import PortfolioCache
+            except ImportError:
+                PortfolioCache = None
             cache_keys = [
                 f"portfolio_summary_{chat_id}",
                 f"margin_summary_{chat_id}",
                 f"user_positions_{chat_id}"
             ]
-            for key in cache_keys:
-                if hasattr(PortfolioCache, 'cache') and key in PortfolioCache.cache:
-                    del PortfolioCache.cache[key]
+            if PortfolioCache:
+                for key in cache_keys:
+                    if hasattr(PortfolioCache, 'cache') and key in PortfolioCache.cache:
+                        del PortfolioCache.cache[key]
         except ImportError:
             # Cache manager not available, continue without clearing cache
             pass
