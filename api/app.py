@@ -2270,10 +2270,9 @@ def create_auto_trade_from_smc():
         
         # Store the trade configuration (use integer user_id for consistency)
         user_id_int = int(user_id)
-        if user_id_int not in user_trade_configs:
-            user_trade_configs[user_id_int] = {}
-        
         with trade_configs_lock:
+            if user_id_int not in user_trade_configs:
+                user_trade_configs[user_id_int] = {}
             user_trade_configs[user_id_int][trade_id] = trade_config
         
         # Save to database
@@ -2666,12 +2665,12 @@ def api_trading_new():
     trade_id = f"trade_{trade_counter}"
     
     # Create new trade config
-    if chat_id not in user_trade_configs:
-        user_trade_configs[chat_id] = {}
-    
     new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
-    user_trade_configs[chat_id][trade_id] = new_trade
-    user_selected_trade[chat_id] = trade_id
+    with trade_configs_lock:
+        if chat_id not in user_trade_configs:
+            user_trade_configs[chat_id] = {}
+        user_trade_configs[chat_id][trade_id] = new_trade
+        user_selected_trade[chat_id] = trade_id
     
     return jsonify({
         'success': True,
@@ -2809,10 +2808,6 @@ def save_trade():
         chat_id = int(user_id)
         trade_id = trade_data.get('trade_id')
         
-        # Ensure user exists in storage
-        if chat_id not in user_trade_configs:
-            user_trade_configs[chat_id] = {}
-        
         # Create or update trade config
         if trade_id.startswith('new_'):
             # Generate new trade ID
@@ -2820,8 +2815,13 @@ def save_trade():
             trade_counter += 1
             trade_id = str(trade_counter)
         
-        if trade_id not in user_trade_configs[chat_id]:
-            user_trade_configs[chat_id][trade_id] = TradeConfig(trade_id, trade_data.get('name', 'New Trade'))
+        # Ensure user exists in storage and create/update trade config
+        with trade_configs_lock:
+            if chat_id not in user_trade_configs:
+                user_trade_configs[chat_id] = {}
+            
+            if trade_id not in user_trade_configs[chat_id]:
+                user_trade_configs[chat_id][trade_id] = TradeConfig(trade_id, trade_data.get('name', 'New Trade'))
         
         config = user_trade_configs[chat_id][trade_id]
         
@@ -2903,7 +2903,8 @@ def save_trade():
             logging.info(f"Updated risk management parameters for active trade {trade_id}: {', '.join(risk_params_updated)}")
         
         # Set as selected trade for user
-        user_selected_trade[chat_id] = trade_id
+        with trade_configs_lock:
+            user_selected_trade[chat_id] = trade_id
         
         # Save to database
         save_trade_to_db(chat_id, config)
@@ -3376,15 +3377,16 @@ def execute_trade():
         
         # Initialize paper trading balance if needed
         if is_paper_mode:
-            if chat_id not in user_paper_balances:
-                user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
-                logging.info(f"Paper Trading: Initialized balance of ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f} for user {chat_id}")
-            
-            # Check if user has sufficient paper balance
-            if user_paper_balances[chat_id] < config.amount:
-                return jsonify({
-                    'error': f'Insufficient paper trading balance. Available: ${user_paper_balances[chat_id]:,.2f}, Required: ${config.amount:,.2f}'
-                }), 400
+            with paper_balances_lock:
+                if chat_id not in user_paper_balances:
+                    user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+                    logging.info(f"Paper Trading: Initialized balance of ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f} for user {chat_id}")
+                
+                # Check if user has sufficient paper balance
+                if user_paper_balances[chat_id] < config.amount:
+                    return jsonify({
+                        'error': f'Insufficient paper trading balance. Available: ${user_paper_balances[chat_id]:,.2f}, Required: ${config.amount:,.2f}'
+                    }), 400
             
             # Deduct margin from paper balance
             with paper_balances_lock:
@@ -4246,11 +4248,14 @@ def get_paper_balance():
         return jsonify({'error': 'Invalid user ID format'}), 400
     
     # Initialize balance if not exists
-    if chat_id not in user_paper_balances:
-        user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+    with paper_balances_lock:
+        if chat_id not in user_paper_balances:
+            user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+        
+        paper_balance = user_paper_balances[chat_id]
     
     return jsonify({
-        'paper_balance': user_paper_balances[chat_id],
+        'paper_balance': paper_balance,
         'initial_balance': TradingConfig.DEFAULT_TRIAL_BALANCE,
         'currency': 'USDT',
         'timestamp': get_iran_time().isoformat()
@@ -4267,11 +4272,13 @@ def reset_paper_balance():
         return jsonify({'error': 'Invalid user ID format'}), 400
     
     # Reset to initial balance
-    user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+    with paper_balances_lock:
+        user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+        new_balance = user_paper_balances[chat_id]
     
     return jsonify({
         'success': True,
-        'paper_balance': user_paper_balances[chat_id],
+        'paper_balance': new_balance,
         'message': f'Paper trading balance reset to ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}',
         'timestamp': get_iran_time().isoformat()
     })
@@ -6192,8 +6199,9 @@ def handle_callback_query(callback_data, chat_id, user):
                 user_trade_configs[chat_id] = {}
             
             new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
-            user_trade_configs[chat_id][trade_id] = new_trade
-            user_selected_trade[chat_id] = trade_id
+            with trade_configs_lock:
+                user_trade_configs[chat_id][trade_id] = new_trade
+                user_selected_trade[chat_id] = trade_id
             
             return f"✅ Created new position: {new_trade.get_display_name()}", get_positions_menu(chat_id)
             
@@ -6233,7 +6241,8 @@ def handle_callback_query(callback_data, chat_id, user):
         elif callback_data.startswith("select_position_"):
             trade_id = callback_data.replace("select_position_", "")
             if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                user_selected_trade[chat_id] = trade_id
+                with trade_configs_lock:
+                    user_selected_trade[chat_id] = trade_id
                 config = user_trade_configs[chat_id][trade_id]
                 response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
                 return response, get_trade_actions_menu(trade_id)
@@ -6595,9 +6604,10 @@ def handle_delete_trade(chat_id, trade_id):
     if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
         config = user_trade_configs[chat_id][trade_id]
         trade_name = config.get_display_name()
-        del user_trade_configs[chat_id][trade_id]
-        if user_selected_trade.get(chat_id) == trade_id:
-            del user_selected_trade[chat_id]
+        with trade_configs_lock:
+            del user_trade_configs[chat_id][trade_id]
+            if user_selected_trade.get(chat_id) == trade_id:
+                del user_selected_trade[chat_id]
         return f"🗑️ Deleted position: {trade_name}", get_positions_menu(chat_id)
     return "❌ Position not found.", get_positions_menu(chat_id)
 
@@ -6606,7 +6616,8 @@ def handle_delete_trade(chat_id, trade_id):
 def handle_edit_trade(chat_id, trade_id):
     """Handle editing a specific trade"""
     if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-        user_selected_trade[chat_id] = trade_id
+        with trade_configs_lock:
+            user_selected_trade[chat_id] = trade_id
         config = user_trade_configs[chat_id][trade_id]
         response = f"✏️ Editing: {config.get_display_name()}\n\n{config.get_config_summary()}"
         return response, get_trading_menu(chat_id)
@@ -7021,8 +7032,9 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
         if user_id in user_paper_balances:
             # Return margin plus final P&L to balance
             balance_change = config.amount + config.final_pnl
-            user_paper_balances[user_id] += balance_change
-            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+            with paper_balances_lock:
+                user_paper_balances[user_id] += balance_change
+                logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
         
         # Log paper trade closure
         bot_trades.append({
@@ -7092,8 +7104,9 @@ def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
             original_margin = getattr(config, 'original_margin', config.original_amount / config.leverage)
             partial_margin_return = original_margin * (allocation / 100)
             balance_change = partial_margin_return + partial_pnl
-            user_paper_balances[user_id] += balance_change
-            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+            with paper_balances_lock:
+                user_paper_balances[user_id] += balance_change
+                logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
         
         # Log partial closure
         # CRITICAL FIX: Use original position amount for allocation calculation
