@@ -55,8 +55,9 @@ class VercelSyncService:
             # Check if user is in paper trading mode
             # Import in app context to avoid circular imports
             with self.app.app_context():
-                # For Toobit, force disable testnet mode since it's not supported
-                if user_creds and user_creds.exchange_name == 'toobit' and user_creds.testnet_mode:
+                # For Toobit users only, force disable testnet mode since it's not supported
+                if (user_creds and user_creds.exchange_name == 'toobit' and 
+                    user_creds.testnet_mode and user_creds.has_credentials()):
                     user_creds.testnet_mode = False
                     self.db.session.commit()
                     logging.info(f"Disabled testnet mode for Toobit user {user_id} in Vercel environment")

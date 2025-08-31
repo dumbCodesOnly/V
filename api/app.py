@@ -195,49 +195,60 @@ def run_database_migrations():
                 logging.warning(f"SMC signal cache table creation failed (may already exist): {smc_error}")
                 db.session.rollback()
             
-            # Fix Toobit testnet issue for existing data
+            # Fix Toobit testnet issue for existing data (only if Toobit users exist)
             try:
-                db.session.execute(text("""
-                    UPDATE user_credentials 
-                    SET testnet_mode = false 
-                    WHERE exchange_name = 'toobit' AND testnet_mode = true
-                """))
-                db.session.commit()
+                # First check if there are any Toobit users before running fixes
+                toobit_count = db.session.execute(text("""
+                    SELECT COUNT(*) FROM user_credentials 
+                    WHERE exchange_name = 'toobit' AND is_active = true
+                """)).scalar()
                 
-                # Additional Vercel/Neon protection - ensure all Toobit credentials are mainnet
-                toobit_testnet_users = UserCredentials.query.filter_by(
-                    exchange_name='toobit',
-                    testnet_mode=True,
-                    is_active=True
-                ).all()
-                
-                if toobit_testnet_users:
-                    for cred in toobit_testnet_users:
-                        cred.testnet_mode = False
-                        logging.info(f"Vercel/Neon: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                if toobit_count > 0:
+                    # Only run Toobit fixes if there are actual Toobit users
+                    db.session.execute(text("""
+                        UPDATE user_credentials 
+                        SET testnet_mode = false 
+                        WHERE exchange_name = 'toobit' AND testnet_mode = true
+                    """))
+                    db.session.commit()
                     
-                    db.session.commit()
-                    logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
-                
-                logging.info("Fixed Toobit testnet mode for existing credentials")
-                
-                # CRITICAL: Force disable testnet mode for ALL environments (Replit, Vercel, Render)
-                # This addresses persistent testnet issues on Render deployments
-                all_toobit_creds = UserCredentials.query.filter_by(
-                    exchange_name='toobit',
-                    is_active=True
-                ).all()
-                
-                testnet_fixes = 0
-                for cred in all_toobit_creds:
-                    if cred.testnet_mode:
-                        cred.testnet_mode = False
-                        testnet_fixes += 1
-                        logging.warning(f"RENDER FIX: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
-                
-                if testnet_fixes > 0:
-                    db.session.commit()
-                    logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
+                    # Additional Vercel/Neon protection - ensure all Toobit credentials are mainnet
+                    toobit_testnet_users = UserCredentials.query.filter_by(
+                        exchange_name='toobit',
+                        testnet_mode=True,
+                        is_active=True
+                    ).all()
+                    
+                    if toobit_testnet_users:
+                        for cred in toobit_testnet_users:
+                            cred.testnet_mode = False
+                            logging.info(f"Vercel/Neon: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                        
+                        db.session.commit()
+                        logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
+                    
+                    logging.info("Fixed Toobit testnet mode for existing credentials")
+                    
+                    # CRITICAL: Force disable testnet mode for ALL environments (Replit, Vercel, Render)
+                    # This addresses persistent testnet issues on Render deployments
+                    all_toobit_creds = UserCredentials.query.filter_by(
+                        exchange_name='toobit',
+                        is_active=True
+                    ).all()
+                    
+                    testnet_fixes = 0
+                    for cred in all_toobit_creds:
+                        if cred.testnet_mode:
+                            cred.testnet_mode = False
+                            testnet_fixes += 1
+                            logging.warning(f"RENDER FIX: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                    
+                    if testnet_fixes > 0:
+                        db.session.commit()
+                        logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
+                else:
+                    logging.debug("No Toobit users found - skipping Toobit testnet fixes")
+                    
             except Exception as toobit_fix_error:
                 logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
                 db.session.rollback()
