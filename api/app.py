@@ -3122,9 +3122,10 @@ def execute_trade():
                         ]
                     }), 400
                 
-                # Calculate position size in BTC (not margin amount)
-                # For Toobit futures: quantity = margin / current_price (this is the position size in BTC)
-                position_size = round(config.amount / current_market_price, 6)
+                # Calculate position size in BTC for Toobit futures
+                # For Toobit futures: quantity = (margin * leverage) / current_price
+                position_value = config.amount * config.leverage
+                position_size = round(position_value / current_market_price, 6)
                 
                 # Set leverage FIRST before placing order
                 logging.info(f"Setting leverage {config.leverage}x for {config.symbol}")
