@@ -2980,6 +2980,26 @@ def execute_trade():
                     
                     if balance_data:
                         logging.debug("API connection successful")
+                        
+                        # Check what symbols are available on Toobit
+                        try:
+                            exchange_info = client.get_exchange_info()
+                            if exchange_info and 'symbols' in exchange_info:
+                                valid_symbols = [s['symbol'] for s in exchange_info['symbols']]
+                                logging.info(f"[DEBUG] Found {len(valid_symbols)} available symbols")
+                                logging.info(f"[DEBUG] First 10 symbols: {valid_symbols[:10]}")
+                                
+                                if config.symbol not in valid_symbols:
+                                    logging.error(f"[DEBUG] Symbol '{config.symbol}' not found in valid symbols!")
+                                    # Try to find similar symbols
+                                    btc_symbols = [s for s in valid_symbols if 'BTC' in s]
+                                    logging.info(f"[DEBUG] Available BTC symbols: {btc_symbols}")
+                                else:
+                                    logging.info(f"[DEBUG] Symbol '{config.symbol}' is valid!")
+                            else:
+                                logging.warning("[DEBUG] No exchange info or symbols found")
+                        except Exception as e:
+                            logging.error(f"[DEBUG] Failed to get exchange info: {e}")
                     else:
                         logging.warning("Empty balance response from API")
                         
