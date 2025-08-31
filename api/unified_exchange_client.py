@@ -547,11 +547,11 @@ class LBankClient:
         """
         Generate signature for LBank API requests according to official documentation.
         
-        LBank v2 signature process:
+        LBank HmacSHA256 signature process (corrected based on latest docs):
         1. Create parameter string (sorted alphabetically, excluding 'sign')
         2. Generate MD5 hash of parameter string (uppercase)
-        3. Sign MD5 hash using HmacSHA256 with secret key
-        4. Base64 encode the signature
+        3. Sign MD5 hash using HmacSHA256 with secret key (binary digest)
+        4. Base64 encode the binary signature
         """
         import hmac
         import base64
@@ -559,15 +559,15 @@ class LBankClient:
         # Step 1: Generate MD5 hash of parameter string (uppercase)
         md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
         
-        # Step 2: Sign MD5 hash using HmacSHA256
+        # Step 2: Sign MD5 hash using HmacSHA256 (binary digest, not hex)
         hmac_signature = hmac.new(
             self.api_secret.encode('utf-8'),
             md5_hash.encode('utf-8'),
             hashlib.sha256
-        ).hexdigest()
+        ).digest()  # Use digest() for binary, not hexdigest()
         
-        # Step 3: Base64 encode the signature
-        signature = base64.b64encode(hmac_signature.encode('utf-8')).decode('utf-8')
+        # Step 3: Base64 encode the binary signature
+        signature = base64.b64encode(hmac_signature).decode('utf-8')
         
         return signature
     
