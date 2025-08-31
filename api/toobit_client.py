@@ -210,12 +210,10 @@ class ToobitClient:
         params['type'] = order_type.upper()
         params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
         
-        # Add timeInForce - required for all order types on Toobit
+        # Add timeInForce - only for LIMIT orders per Toobit documentation
         if order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
             params['timeInForce'] = kwargs.get('timeInForce', 'GTC')
-        elif order_type.upper() == 'MARKET':
-            # For market orders, Toobit requires timeInForce=IOC (Immediate or Cancel)
-            params['timeInForce'] = 'IOC'
+        # MARKET orders do NOT use timeInForce parameter on Toobit
             
         # Add price for limit orders
         if price and order_type.upper() in ['LIMIT', 'STOP_LIMIT']:
@@ -257,6 +255,9 @@ class ToobitClient:
         
         formatted_quantity = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
         logging.info(f"[ORDER] Placing {side} {order_type} order for {symbol}: {formatted_quantity}")
+        
+        # DEBUG: Log the exact parameters being sent to Toobit
+        logging.info(f"[DEBUG] Toobit order parameters: {params}")
         
         return self._signed_request('POST', f"{self.futures_base}/order", params)
     
