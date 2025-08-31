@@ -70,7 +70,7 @@ class ExchangeClientFactory:
         return exchange_name.lower().strip() in TradingConfig.SUPPORTED_EXCHANGES
 
 
-def create_exchange_client(user_credentials, testnet: bool = None):
+def create_exchange_client(user_credentials, testnet: bool = False):
     """
     Convenience function to create exchange client from UserCredentials object
     
@@ -85,7 +85,7 @@ def create_exchange_client(user_credentials, testnet: bool = None):
         raise ValueError("Invalid or incomplete user credentials")
     
     # Use provided testnet mode or fall back to user's preference
-    use_testnet = testnet if testnet is not None else user_credentials.testnet_mode
+    use_testnet = testnet if testnet is not False else (user_credentials.testnet_mode if user_credentials else False)
     
     # Get exchange name from user credentials, default to toobit
     exchange_name = user_credentials.exchange_name or TradingConfig.DEFAULT_EXCHANGE
@@ -130,18 +130,31 @@ class ExchangeClientWrapper:
         return getattr(self.client, 'testnet', False)
 
 
-def create_wrapped_exchange_client(user_credentials, testnet: bool = None):
+def create_wrapped_exchange_client(user_credentials=None, exchange_name: str = "toobit", testnet: bool = False):
     """
     Create a wrapped exchange client that provides additional functionality
+    Can work with or without user credentials for anonymous access
     
     Args:
-        user_credentials: UserCredentials database object
+        user_credentials: UserCredentials database object (optional)
+        exchange_name: Name of exchange to use (fallback if no credentials)
         testnet: Override testnet mode (optional)
         
     Returns:
         ExchangeClientWrapper instance
     """
-    client = create_exchange_client(user_credentials, testnet)
-    exchange_name = user_credentials.exchange_name or TradingConfig.DEFAULT_EXCHANGE
+    if user_credentials and user_credentials.has_credentials():
+        client = create_exchange_client(user_credentials, testnet)
+        actual_exchange_name = user_credentials.exchange_name or TradingConfig.DEFAULT_EXCHANGE
+    else:
+        # Create anonymous client for public data access
+        client = ExchangeClientFactory.create_client(
+            exchange_name=exchange_name,
+            api_key="",
+            api_secret="",
+            passphrase="",
+            testnet=testnet
+        )
+        actual_exchange_name = exchange_name
     
-    return ExchangeClientWrapper(client, exchange_name)
+    return ExchangeClientWrapper(client, actual_exchange_name)

@@ -480,19 +480,20 @@ def initialize_user_environment(user_id, force_reload=False):
     cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
     if not force_reload and cached_result:
         trade_configs, cache_info = cached_result
-        user_trade_configs[user_id] = trade_configs
-        # Initialize user's selected trade if not exists
-        if user_id not in user_selected_trade:
-            user_selected_trade[user_id] = None
+        with trade_configs_lock:
+            user_trade_configs[user_id] = trade_configs
+            # Initialize user's selected trade if not exists
+            if user_id not in user_selected_trade:
+                user_selected_trade[user_id] = None
 # Cache hit - removed excessive debug logging for cleaner output
         return
     
     # Always load from database for Render or when needed
-    user_trade_configs[user_id] = load_user_trades_from_db(user_id, force_reload)
-    
-    # Initialize user's selected trade if not exists
-    if user_id not in user_selected_trade:
-        user_selected_trade[user_id] = None
+    with trade_configs_lock:
+        user_trade_configs[user_id] = load_user_trades_from_db(user_id, force_reload)
+        # Initialize user's selected trade if not exists
+        if user_id not in user_selected_trade:
+            user_selected_trade[user_id] = None
 
 
 
@@ -2489,8 +2490,9 @@ def margin_data():
     
     # Calculate total realized P&L from closed positions AND partial TP closures from active positions
     total_realized_pnl = 0.0
-    if chat_id in user_trade_configs:
-        for config in user_trade_configs[chat_id].values():
+    with trade_configs_lock:
+        user_configs = user_trade_configs.get(chat_id, {})
+        for config in user_configs.values():
             if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
                 total_realized_pnl += config.final_pnl
             # Also include partial realized P&L from active positions (from partial TPs)
@@ -3478,20 +3480,26 @@ def get_user_credentials():
         user_id = Environment.DEFAULT_TEST_USER_ID  # Demo user
     
     try:
-        # Check enhanced cache first for user credentials
-        cached_result = enhanced_cache.get_user_credentials(str(user_id))
-        if cached_result:
-            cached_creds, cache_info = cached_result
-            # Re-attach the cached object to current session to prevent session binding errors
-            user_creds = db.session.merge(cached_creds)
-            # Retrieved credentials from cache - removed debug log for cleaner output
-        else:
-            # Cache miss - load from database
-            user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
-            # Update cache with fresh data
-            if user_creds:
-                enhanced_cache.set_user_credentials(str(user_id), user_creds)
-                # Credentials cached - removed debug log for cleaner output
+        # Use database session to prevent race conditions
+        with db.session.begin():
+            # Check enhanced cache first for user credentials
+            cached_result = enhanced_cache.get_user_credentials(str(user_id))
+            if cached_result:
+                cached_creds, cache_info = cached_result
+                # Query fresh data to avoid session binding errors in multi-worker environments
+                user_creds = UserCredentials.query.filter_by(
+                    telegram_user_id=str(user_id)
+                ).with_for_update().first()
+                # Retrieved credentials from cache - removed debug log for cleaner output
+            else:
+                # Cache miss - load from database with row-level locking
+                user_creds = UserCredentials.query.filter_by(
+                    telegram_user_id=str(user_id)
+                ).with_for_update().first()
+                # Update cache with fresh data
+                if user_creds:
+                    enhanced_cache.set_user_credentials(str(user_id), user_creds)
+                    # Credentials cached - removed debug log for cleaner output
         
         if user_creds:
             api_key = user_creds.get_api_key()
@@ -5459,10 +5467,12 @@ def calculate_tp_sl_prices_and_amounts(config):
 
 def get_margin_summary(chat_id):
     """Get comprehensive margin summary for a user"""
-    user_trades = user_trade_configs.get(chat_id, {})
+    with trade_configs_lock:
+        user_trades = user_trade_configs.get(chat_id, {})
     
     # Account totals - use paper trading balance
-    initial_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
+    with paper_balances_lock:
+        initial_balance = user_paper_balances.get(chat_id, TradingConfig.DEFAULT_TRIAL_BALANCE)
     total_position_margin = 0.0
     total_unrealized_pnl = 0.0
     total_realized_pnl = 0.0
