@@ -262,7 +262,7 @@ class ToobitClient:
             params['type'] = 'LIMIT'  # Default to LIMIT
             params['priceType'] = 'INPUT'
             
-        params['origQty'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
+        params['quantity'] = f"{float(quantity):.6f}".rstrip('0').rstrip('.')
         
         # Add leverage if provided
         if 'leverage' in kwargs:
