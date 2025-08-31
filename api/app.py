@@ -3019,8 +3019,8 @@ def execute_trade():
                 
                 # Determine order type and parameters
                 # Use LIMIT orders for all trades since Toobit doesn't support MARKET orders
-                # Toobit futures API uses simple BUY/SELL for requests (response will show BUY_OPEN/SELL_OPEN)
-                order_side = "BUY" if config.side == "long" else "SELL"
+                # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
+                order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
                 order_type = "limit"  # Always use LIMIT for Toobit
                 
                 if config.entry_type == "market":
