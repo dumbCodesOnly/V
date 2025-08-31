@@ -2995,7 +2995,21 @@ def execute_trade():
                                     btc_symbols = [s for s in valid_symbols if 'BTC' in s]
                                     logging.info(f"[DEBUG] Available BTC symbols: {btc_symbols}")
                                 else:
-                                    logging.info(f"[DEBUG] Symbol '{config.symbol}' is valid!")
+                                    logging.info(f"[DEBUG] Symbol '{config.symbol}' is valid in SPOT exchange info!")
+                                    logging.warning(f"[DEBUG] But futures order failed - this suggests SPOT vs FUTURES symbol mismatch")
+                                    
+                                    # Log potential futures-style symbols
+                                    perp_symbols = [s for s in valid_symbols if 'PERP' in s or 'SWAP' in s]
+                                    logging.info(f"[DEBUG] Perpetual/Swap symbols found: {perp_symbols[:10]}")
+                                    
+                                    # Try common futures naming patterns
+                                    possible_futures = [
+                                        f"{config.symbol}-PERP",
+                                        f"{config.symbol}-SWAP", 
+                                        f"{config.symbol.replace('USDT', '')}-PERP-USDT",
+                                        f"{config.symbol.replace('USDT', '')}_PERP"
+                                    ]
+                                    logging.info(f"[DEBUG] Possible futures symbols to try: {possible_futures}")
                             else:
                                 logging.warning("[DEBUG] No exchange info or symbols found")
                         except Exception as e:
@@ -3042,6 +3056,10 @@ def execute_trade():
                 # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
                 order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
                 order_type = "limit"  # Always use LIMIT for Toobit
+                
+                # DEBUG: Since futures endpoints return 404, try spot order with futures-like parameters
+                logging.warning(f"[DEBUG] Futures endpoints return 404, trying order as-is...")
+                logging.info(f"[DEBUG] Will send order to: /api/v1/futures/order with symbol=BTCUSDT, side=BUY_OPEN")
                 
                 if config.entry_type == "market":
                     # For market execution, use LIMIT order at market price with buffer
