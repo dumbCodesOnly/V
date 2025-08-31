@@ -489,6 +489,20 @@ class ToobitClient:
         result = self._public_request("/api/v1/ping")
         return result is not None
     
+    def test_connection(self):
+        """Test connection and return status with message - used by exchange sync scripts"""
+        try:
+            if self.test_connectivity():
+                return True, "Connection successful"
+            else:
+                return False, "Connection failed - ping request failed"
+        except Exception as e:
+            return False, f"Connection failed: {str(e)}"
+    
+    def get_orders(self, symbol: Optional[str] = None) -> List[Dict]:
+        """Get orders - alias for get_open_orders used by exchange sync scripts"""
+        return self.get_open_orders(symbol)
+    
     def get_last_error(self) -> Optional[str]:
         """Get the last error message"""
         return self.last_error
@@ -996,6 +1010,25 @@ class LBankClient:
             logging.error(f"Error placing LBank TP/SL orders: {e}")
         
         return orders_placed
+    
+    # Additional compatibility methods to match ToobitClient interface
+    def test_connection(self):
+        """Test connection and return status with message - used by exchange sync scripts"""
+        try:
+            if self.test_connectivity():
+                return True, "Connection successful"
+            else:
+                return False, "Connection failed - ping request failed"
+        except Exception as e:
+            return False, f"Connection failed: {str(e)}"
+    
+    def get_orders(self, symbol: Optional[str] = None) -> List[Dict]:
+        """Get orders - alias for get_order_history used by exchange sync scripts"""
+        if symbol:
+            return self.get_order_history(symbol)
+        else:
+            # LBank doesn't have a generic get all orders method, return empty list
+            return []
 
 
 class ExchangeClientFactory:
