@@ -593,11 +593,12 @@ class LBankClient:
         return int(time.time() * 1000)
     
     def _generate_echostr(self) -> str:
-        """Generate random echostr (30-40 alphanumeric characters) as required by LBank"""
+        """Generate random echostr (exactly 35 alphanumeric characters) as required by LBank"""
         import random
         import string
         
-        length = random.randint(30, 40)
+        # Fixed length for consistency - LBank requires 30-40 chars
+        length = 35
         chars = string.ascii_letters + string.digits
         return ''.join(random.choice(chars) for _ in range(length))
     
@@ -616,11 +617,15 @@ class LBankClient:
         if params is None:
             params = {}
         
+        # Get server timestamp for better synchronization
+        timestamp = str(self.get_server_time())
+        echostr = self._generate_echostr()
+        
         # Add required authentication parameters per LBank spec
         params['api_key'] = self.api_key
         params['signature_method'] = 'HmacSHA256'
-        params['timestamp'] = str(self.get_server_time())
-        params['echostr'] = self._generate_echostr()
+        params['timestamp'] = timestamp
+        params['echostr'] = echostr
         
         # Remove empty values and convert all to strings
         filtered_params = {}
@@ -633,6 +638,10 @@ class LBankClient:
         
         # Create parameter string for signature (key=value&key=value format)
         params_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
+        
+        # Debug logging for signature verification
+        logging.debug(f"LBank signature params: {list(sorted_params.keys())}")
+        logging.debug(f"LBank echostr length: {len(echostr)}")
         
         # Generate signature
         signature = self._generate_signature(params_string)
@@ -1076,9 +1085,27 @@ class LBankClient:
     
     # Utility Methods
     def test_connectivity(self) -> bool:
-        """Test API connectivity"""
-        result = self._public_request("/v2/ping.do")
-        return result is not None
+        """Test API connectivity and authentication"""
+        try:
+            # Test public endpoint first  
+            result = self._public_request("/v2/timestamp.do")
+            if result:
+                logging.debug("LBank public API accessible")
+                
+                # Test authenticated endpoint with debug info
+                logging.debug("Testing LBank authentication...")
+                balance_result = self.get_balance()
+                
+                if balance_result is not None:
+                    logging.debug("LBank authentication successful")
+                    return True
+                else:
+                    logging.warning(f"LBank authentication failed: {self.last_error}")
+                    return False
+            return False
+        except Exception as e:
+            logging.error(f"LBank connectivity test failed: {e}")
+            return False
     
     def get_last_error(self) -> Optional[str]:
         """Get the last error message"""
