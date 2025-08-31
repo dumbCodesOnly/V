@@ -1337,6 +1337,81 @@ def test_exchange_connection():
         logging.error(f"Error testing exchange connection: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/v1/futures/leverage', methods=['POST'])
+def set_futures_leverage():
+    """Set leverage for futures trading on a specific symbol"""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', '').upper()
+        leverage = data.get('leverage')
+        user_id = get_user_id_from_request()
+        
+        # Validation
+        if not symbol:
+            return jsonify({'success': False, 'message': 'Symbol is required'}), 400
+        
+        if not leverage:
+            return jsonify({'success': False, 'message': 'Leverage is required'}), 400
+            
+        try:
+            leverage = int(leverage)
+            if leverage < 1 or leverage > 125:  # Toobit typical range
+                return jsonify({'success': False, 'message': 'Leverage must be between 1 and 125'}), 400
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid leverage value'}), 400
+        
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'success': False, 'message': 'No API credentials found'}), 400
+        
+        # Check if in paper trading mode
+        chat_id = int(user_id)
+        is_paper_mode = determine_trading_mode(chat_id)
+        
+        if is_paper_mode:
+            # In paper mode, just store the preference and return success
+            logging.info(f"Paper mode: Set leverage for {symbol} to {leverage}x for user {chat_id}")
+            return jsonify({
+                'success': True,
+                'message': f'Leverage set to {leverage}x for {symbol} (paper trading mode)',
+                'symbol': symbol,
+                'leverage': leverage,
+                'paper_trading_mode': True
+            })
+        
+        # Live trading mode - make actual API call
+        client = ToobitClient(
+            api_key=user_creds.get_api_key(),
+            api_secret=user_creds.get_api_secret(),
+            passphrase=user_creds.get_passphrase(),
+            testnet=False  # Always mainnet for Toobit
+        )
+        
+        result = client.change_leverage(symbol, leverage)
+        
+        if result:
+            logging.info(f"Successfully set leverage for {symbol} to {leverage}x for user {chat_id}")
+            return jsonify({
+                'success': True,
+                'message': f'Leverage set to {leverage}x for {symbol}',
+                'symbol': symbol,
+                'leverage': leverage,
+                'paper_trading_mode': False,
+                'exchange_response': result
+            })
+        else:
+            error_msg = client.get_last_error() or 'Failed to set leverage'
+            return jsonify({'success': False, 'message': error_msg}), 500
+            
+    except Exception as e:
+        logging.error(f"Error setting leverage: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/exchange/balance')
 def get_exchange_balance():
     """Get account balance - returns paper balance in paper mode, live balance in live mode"""
