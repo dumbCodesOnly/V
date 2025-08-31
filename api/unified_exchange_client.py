@@ -636,10 +636,17 @@ class LBankClient:
         # Add signature to final parameters
         filtered_params['sign'] = signature
         
-        # Prepare headers
+        # Prepare headers - LBank requires specific headers
+        timestamp = filtered_params.get('timestamp')
+        signature_method = filtered_params.get('signature_method')
+        echostr = filtered_params.get('echostr')
+        
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'timestamp': timestamp,
+            'signature_method': signature_method,
+            'echostr': echostr
         }
         
         # Build full URL
