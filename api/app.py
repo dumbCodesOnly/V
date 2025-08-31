@@ -3019,13 +3019,14 @@ def execute_trade():
                 
                 # Determine order type and parameters
                 # Use LIMIT orders for all trades since Toobit doesn't support MARKET orders
-                order_side = "buy" if config.side == "long" else "sell"
+                order_side = "BUY" if config.side == "long" else "SELL"
+                order_type = "limit"  # Always use LIMIT for Toobit
                 
                 if config.entry_type == "market":
                     # For market execution, use LIMIT order at market price with buffer
                     market_price_float = float(current_market_price)
                     # Add small buffer to ensure execution: +0.1% for BUY, -0.1% for SELL
-                    if order_side == "buy":
+                    if order_side == "BUY":
                         exec_price = market_price_float * 1.001  # Slightly above market
                     else:
                         exec_price = market_price_float * 0.999  # Slightly below market
@@ -3033,7 +3034,7 @@ def execute_trade():
                     order_params = {
                         'symbol': config.symbol,
                         'side': order_side,
-                        'order_type': "limit",  # Always use LIMIT for Toobit
+                        'order_type': order_type,
                         'quantity': str(position_size),
                         'price': str(exec_price),
                         'timeInForce': "IOC"  # Immediate or Cancel for market-like behavior
@@ -3043,7 +3044,7 @@ def execute_trade():
                     order_params = {
                         'symbol': config.symbol,
                         'side': order_side,
-                        'order_type': "limit",
+                        'order_type': order_type,
                         'quantity': str(position_size),
                         'price': str(config.entry_price),
                         'timeInForce': "GTC"
