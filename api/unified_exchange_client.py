@@ -210,6 +210,112 @@ class ToobitClient:
                     return pos
         return None
     
+    def get_futures_balance(self) -> List[Dict]:
+        """
+        Get futures account balance using Toobit futures API
+        
+        Official endpoint: GET /api/v1/futures/account
+        Returns futures account info with margin and available balances
+        """
+        try:
+            result = self._signed_request('GET', f"{self.futures_base}/account")
+            
+            if isinstance(result, dict) and 'assets' in result:
+                balances = []
+                assets = result.get('assets', [])
+                if isinstance(assets, list):
+                    for asset_data in assets:
+                        if isinstance(asset_data, dict):
+                            balances.append({
+                                'asset': asset_data.get('asset', ''),
+                                'balance': asset_data.get('walletBalance', '0'),
+                                'availableBalance': asset_data.get('availableBalance', '0'),
+                                'positionMargin': asset_data.get('positionInitialMargin', '0'),
+                                'orderMargin': asset_data.get('openOrderInitialMargin', '0'),
+                                'crossUnRealizedPnl': asset_data.get('crossUnPnl', '0')
+                            })
+                return balances
+            else:
+                logging.warning(f"Toobit futures balance fetch failed: {result}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"Toobit get_futures_balance error: {e}")
+            self.last_error = f"Futures Balance Error: {str(e)}"
+            return []
+    
+    def get_margin_balance(self) -> List[Dict]:
+        """
+        Get margin account balance using Toobit margin API
+        
+        Official endpoint: GET /api/v1/margin/account
+        Returns margin account info with borrowed amounts and available balances
+        """
+        try:
+            result = self._signed_request('GET', f"/api/v1/margin/account")
+            
+            if isinstance(result, dict):
+                balances = []
+                # Handle different response formats
+                if 'userAssets' in result:
+                    assets = result.get('userAssets', [])
+                    if isinstance(assets, list):
+                        for asset_data in assets:
+                            if isinstance(asset_data, dict):
+                                balances.append({
+                                    'asset': asset_data.get('asset', ''),
+                                    'balance': asset_data.get('free', '0'),
+                                    'availableBalance': asset_data.get('free', '0'),
+                                    'borrowed': asset_data.get('borrowed', '0'),
+                                    'interest': asset_data.get('interest', '0'),
+                                    'netAsset': asset_data.get('netAsset', '0')
+                                })
+                elif 'balances' in result:
+                    # Alternative format
+                    assets = result.get('balances', [])
+                    if isinstance(assets, list):
+                        for asset_data in assets:
+                            if isinstance(asset_data, dict):
+                                balances.append({
+                                    'asset': asset_data.get('asset', ''),
+                                    'balance': asset_data.get('free', '0'),
+                                    'availableBalance': asset_data.get('free', '0'),
+                                    'borrowed': '0',  # Default if not provided
+                                    'interest': '0',  # Default if not provided
+                                    'netAsset': asset_data.get('free', '0')
+                                })
+                return balances
+            else:
+                logging.warning(f"Toobit margin balance fetch failed: {result}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"Toobit get_margin_balance error: {e}")
+            self.last_error = f"Margin Balance Error: {str(e)}"
+            return []
+    
+    def get_api_restrictions(self) -> Optional[Dict]:
+        """
+        Get API restrictions using Toobit API key permissions endpoint
+        
+        Official endpoint: GET /api/v1/account/apiRestrictions
+        Returns API key permissions and restrictions
+        """
+        try:
+            result = self._signed_request('GET', "/api/v1/account/apiRestrictions")
+            
+            if isinstance(result, dict):
+                logging.info(f"Toobit API restrictions fetched successfully")
+                return result
+            else:
+                logging.warning(f"Toobit API restrictions fetch failed: {result}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Toobit get_api_restrictions error: {e}")
+            self.last_error = f"API Restrictions Error: {str(e)}"
+            return None
+    
     # Order Methods
     def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
                    price: Optional[str] = None, **kwargs) -> Optional[Dict]:
