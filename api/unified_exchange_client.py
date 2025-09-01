@@ -569,8 +569,16 @@ class LBankClient:
         import hmac
         import hashlib
         
+        # DEBUG: Log the input parameter string
+        logging.debug(f"LBank Signature DEBUG - Input params string: '{params_string}'")
+        logging.debug(f"LBank Signature DEBUG - Params string length: {len(params_string)}")
+        
         # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
         md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
+        logging.debug(f"LBank Signature DEBUG - MD5 hash (UPPERCASE): {md5_hash}")
+        
+        # DEBUG: Log secret key length (not the actual key for security)
+        logging.debug(f"LBank Signature DEBUG - Secret key length: {len(self.api_secret)}")
         
         # Step 2: Sign MD5 hash using HMAC-SHA256 with secret key
         signature = hmac.new(
@@ -578,6 +586,9 @@ class LBankClient:
             md5_hash.encode('utf-8'),
             hashlib.sha256
         ).hexdigest().upper()  # LBank requires UPPERCASE hex digest
+        
+        logging.debug(f"LBank Signature DEBUG - Final signature (UPPERCASE): {signature}")
+        logging.debug(f"LBank Signature DEBUG - Signature length: {len(signature)}")
         
         return signature
     
@@ -632,8 +643,28 @@ class LBankClient:
         # Log request details for debugging
         logging.info(f"LBank SIGNED REQUEST: POST {url}")
         logging.info(f"LBank Request Headers: {headers}")
-        logging.info(f"LBank Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
-        logging.debug(f"LBank Full Payload (without signature): {param_string}")
+        logging.info(f"LBank Original Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
+        
+        # DEBUG: Comprehensive payload debugging
+        logging.debug(f"LBank PAYLOAD DEBUG - Original params: {params}")
+        logging.debug(f"LBank PAYLOAD DEBUG - Auth params: {auth_params}")
+        logging.debug(f"LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
+        logging.debug(f"LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
+        logging.debug(f"LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
+        logging.debug(f"LBank PAYLOAD DEBUG - Final payload (with signature): {sorted_params}")
+        
+        # DEBUG: Parameter validation
+        required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
+        for param in required_params:
+            if param in sorted_params:
+                logging.debug(f"LBank PAYLOAD DEBUG - ✓ Required param '{param}': {sorted_params[param]}")
+            else:
+                logging.error(f"LBank PAYLOAD DEBUG - ✗ Missing required param: {param}")
+                
+        # DEBUG: Check parameter format
+        logging.debug(f"LBank PAYLOAD DEBUG - signature_method value: '{sorted_params.get('signature_method')}'")
+        logging.debug(f"LBank PAYLOAD DEBUG - timestamp format: '{sorted_params.get('timestamp')}'")
+        logging.debug(f"LBank PAYLOAD DEBUG - echostr length: {len(sorted_params.get('echostr', ''))}")
         
         try:
             response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
