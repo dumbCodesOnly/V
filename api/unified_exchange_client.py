@@ -800,27 +800,30 @@ class LBankClient:
         logging.info(f"LBank Request Headers: {headers}")
         logging.info(f"LBank Original Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
         
-        # DEBUG: Comprehensive payload debugging
-        caller_method = inspect.currentframe().f_code.co_name
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Original params: {params}")
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Auth params: {auth_params}")
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
-        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
-        
-        # DEBUG: Parameter validation
-        required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
-        for param in required_params:
-            if param in sorted_params:
-                logging.debug(f"LBank PAYLOAD DEBUG - ✓ Required param '{param}': {sorted_params[param]}")
-            else:
-                logging.error(f"LBank PAYLOAD DEBUG - ✗ Missing required param: {param}")
-                
-        # DEBUG: Check parameter format
-        logging.debug(f"LBank PAYLOAD DEBUG - signature_method value: '{sorted_params.get('signature_method')}'")
-        logging.debug(f"LBank PAYLOAD DEBUG - timestamp format: '{sorted_params.get('timestamp')}'")
-        logging.debug(f"LBank PAYLOAD DEBUG - echostr length: {len(sorted_params.get('echostr', ''))}")
+        # DEBUG: Comprehensive payload debugging (hide details for trade fee endpoint)
+        if 'customer_trade_fee' in endpoint:
+            logging.debug(f"LBank trade fee request: signature validated, {len(sorted_params)} params")
+        else:
+            caller_method = inspect.currentframe().f_code.co_name
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Original params: {params}")
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Auth params: {auth_params}")
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
+            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
+            
+            # DEBUG: Parameter validation
+            required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
+            for param in required_params:
+                if param in sorted_params:
+                    logging.debug(f"LBank PAYLOAD DEBUG - ✓ Required param '{param}': {sorted_params[param]}")
+                else:
+                    logging.error(f"LBank PAYLOAD DEBUG - ✗ Missing required param: {param}")
+                    
+            # DEBUG: Check parameter format
+            logging.debug(f"LBank PAYLOAD DEBUG - signature_method value: '{sorted_params.get('signature_method')}'")
+            logging.debug(f"LBank PAYLOAD DEBUG - timestamp format: '{sorted_params.get('timestamp')}'")
+            logging.debug(f"LBank PAYLOAD DEBUG - echostr length: {len(sorted_params.get('echostr', ''))}")
         
         try:
             response = self.session.post(url, data=final_payload, headers=headers, timeout=10)
