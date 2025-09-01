@@ -1016,7 +1016,10 @@ class LBankClient:
                 if 'data' in result:  # v2 format
                     data = result['data']
                     caller_method = inspect.currentframe().f_code.co_name
-                    logging.debug(f"[{caller_method}] LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
+                    if isinstance(data, list):
+                        logging.debug(f"[{caller_method}] LBank v2 balance data: {len(data)} assets found")
+                    else:
+                        logging.debug(f"[{caller_method}] LBank v2 balance data type: {type(data)}")
                     if isinstance(data, list):
                         for asset_data in data:
                             # Ensure asset_data is a dictionary before calling .get()
@@ -1048,7 +1051,7 @@ class LBankClient:
                                     asset_code = 'USDT'  # Default to USDT as it's the main trading asset
                                 
                                 caller_method = inspect.currentframe().f_code.co_name
-                                logging.debug(f"[{caller_method}] LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
+                                logging.debug(f"[{caller_method}] Processing asset: {asset_code or 'unknown'}")
                                 
                                 if not asset_code:
                                     # If no asset code found, log the full data for debugging
