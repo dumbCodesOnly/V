@@ -854,11 +854,11 @@ class LBankClient:
         try:
             result = self._make_signed_request("/v2/supplement/api_Restrictions.do", {})
             
-            if result and result.get('result') == 'true' and 'data' in result:
+            if isinstance(result, dict) and result.get('result') == 'true' and 'data' in result:
                 logging.info(f"LBank API restrictions fetched successfully")
                 return result['data']  # Return the data part, not the full result
             else:
-                error_msg = result.get('error_code', 'API restrictions fetch failed') if result else 'No response'
+                error_msg = result.get('error_code', 'API restrictions fetch failed') if isinstance(result, dict) and result else 'No response'
                 logging.warning(f"LBank API restrictions fetch failed: {error_msg}")
                 return None
                 
@@ -879,7 +879,11 @@ class LBankClient:
             # Use v1 API for user account information (most stable)
             result = self._make_signed_request("/v2/supplement/user_info.do", {})
             
-            if result and result.get('result') == 'true':
+            logging.debug(f"LBank result type: {type(result)}, is dict: {isinstance(result, dict)}")
+            if isinstance(result, dict):
+                logging.debug(f"LBank result contents: result={result.get('result')}, has data: {'data' in result}")
+            
+            if isinstance(result, dict) and result.get('result') == 'true':
                 balances = []
                 
                 # Handle different response formats for v1 vs v2 endpoints
