@@ -31,3 +31,4 @@ python-telegram-bot
 requests
 sqlalchemy
 werkzeug
+pycryptodome

@@ -556,41 +556,77 @@ class LBankClient:
         """Get current timestamp in milliseconds (LBank requirement)"""
         return str(int(time.time() * 1000))
     
-    def _generate_signature(self, params_string: str) -> str:
-        """
-        Generate HMAC256 signature exactly per LBank official documentation
-        
-        Official LBank HMAC256 Process:
-        1. Create parameter string (sorted alphabetically, no 'sign' parameter)
-        2. Generate MD5 hash of parameter string (UPPERCASE)
-        3. Sign MD5 hash using HMAC-SHA256 with secret key
-        4. Return HEX digest (not Base64 as some exchanges do)
-        """
+    def _detect_signature_method(self) -> str:
+        """Auto-detect signature method based on secret key length (CCXT-style)"""
+        if len(self.api_secret) > 32:
+            return 'RSA'
+        else:
+            return 'HmacSHA256'
+    
+    def _generate_rsa_signature(self, params_string: str) -> str:
+        """Generate RSA signature following official LBank connector implementation"""
+        try:
+            from Crypto.Hash import SHA256
+            from Crypto.PublicKey import RSA
+            from Crypto.Signature import PKCS1_v1_5
+            from base64 import b64encode
+            
+            # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
+            import hashlib
+            md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
+            logging.debug(f"LBank RSA - MD5 hash: {md5_hash}")
+            
+            # Step 2: Format RSA private key
+            private_key = (
+                "-----BEGIN RSA PRIVATE KEY-----\n"
+                + self.api_secret
+                + "\n-----END RSA PRIVATE KEY-----"
+            )
+            
+            # Step 3: Sign using RSA PKCS1_v1_5 with SHA256
+            pri_key = PKCS1_v1_5.new(RSA.importKey(private_key))
+            digest = SHA256.new(md5_hash.encode("utf8"))
+            sign = b64encode(pri_key.sign(digest))
+            
+            signature = sign.decode("utf8")
+            logging.debug(f"LBank RSA - Final signature length: {len(signature)}")
+            return signature
+            
+        except Exception as e:
+            logging.error(f"LBank RSA signature generation failed: {e}")
+            raise
+    
+    def _generate_hmac_signature(self, params_string: str) -> str:
+        """Generate HmacSHA256 signature following official LBank connector implementation"""
         import hmac
         import hashlib
         
         # DEBUG: Log the input parameter string
-        logging.debug(f"LBank Signature DEBUG - Input params string: '{params_string}'")
-        logging.debug(f"LBank Signature DEBUG - Params string length: {len(params_string)}")
+        logging.debug(f"LBank HMAC - Input params string: '{params_string}'")
         
         # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
         md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
-        logging.debug(f"LBank Signature DEBUG - MD5 hash (UPPERCASE): {md5_hash}")
+        logging.debug(f"LBank HMAC - MD5 hash: {md5_hash}")
         
-        # DEBUG: Log secret key length (not the actual key for security)
-        logging.debug(f"LBank Signature DEBUG - Secret key length: {len(self.api_secret)}")
-        
-        # Step 2: Sign MD5 hash using HMAC-SHA256 with secret key
+        # Step 2: Sign MD5 hash using HMAC-SHA256 with secret key (LOWERCASE - per official connector)
         signature = hmac.new(
             self.api_secret.encode('utf-8'),
             md5_hash.encode('utf-8'),
             hashlib.sha256
-        ).hexdigest().upper()  # LBank requires UPPERCASE hex digest
+        ).hexdigest().lower()  # Official LBank connector uses .lower(), not .upper()
         
-        logging.debug(f"LBank Signature DEBUG - Final signature (UPPERCASE): {signature}")
-        logging.debug(f"LBank Signature DEBUG - Signature length: {len(signature)}")
-        
+        logging.debug(f"LBank HMAC - Final signature: {signature}")
         return signature
+    
+    def _generate_signature(self, params_string: str) -> str:
+        """Generate signature using auto-detected method (CCXT-style)"""
+        signature_method = self._detect_signature_method()
+        logging.debug(f"LBank - Auto-detected signature method: {signature_method}")
+        
+        if signature_method == 'RSA':
+            return self._generate_rsa_signature(params_string)
+        else:
+            return self._generate_hmac_signature(params_string)
     
     def _make_signed_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
@@ -609,9 +645,12 @@ class LBankClient:
         timestamp = self._get_server_timestamp()
         echostr = self._generate_echostr()
         
+        # Auto-detect signature method based on secret key length
+        signature_method = self._detect_signature_method()
+        
         auth_params = {
             'api_key': self.api_key,
-            'signature_method': 'HmacSHA256',  # LBank requires exact format
+            'signature_method': signature_method,
             'timestamp': timestamp,
             'echostr': echostr
         }
@@ -631,11 +670,20 @@ class LBankClient:
         # Add signature to final parameters
         sorted_params['sign'] = signature
         
-        # Prepare headers per LBank specification
-        # LBank only requires Content-Type in headers
+        # Prepare headers per official LBank connector
+        # Include signature_method, timestamp, echostr in headers
         headers = {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'signature_method': signature_method,
+            'timestamp': timestamp,
+            'echostr': echostr
         }
+        
+        # Remove these from payload as they're now in headers
+        final_payload = dict(sorted_params)
+        for header_param in ['signature_method', 'timestamp', 'echostr']:
+            if header_param in final_payload:
+                del final_payload[header_param]
         
         # Make POST request with form data
         url = f"{self.base_url}{endpoint}"
@@ -651,7 +699,7 @@ class LBankClient:
         logging.debug(f"LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
         logging.debug(f"LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
         logging.debug(f"LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
-        logging.debug(f"LBank PAYLOAD DEBUG - Final payload (with signature): {sorted_params}")
+        logging.debug(f"LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
         
         # DEBUG: Parameter validation
         required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
@@ -667,7 +715,7 @@ class LBankClient:
         logging.debug(f"LBank PAYLOAD DEBUG - echostr length: {len(sorted_params.get('echostr', ''))}")
         
         try:
-            response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
+            response = self.session.post(url, data=final_payload, headers=headers, timeout=10)
             
             # Log response details
             logging.info(f"LBank Response Status: {response.status_code}")

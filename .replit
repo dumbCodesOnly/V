@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "jq", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
+packages = ["cargo", "gmp", "jq", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
 
 [workflows]
 runButton = "Project"
