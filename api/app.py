@@ -1575,7 +1575,7 @@ def get_exchange_balance():
             
             # Determine balance type for user information
             balance_type = 'futures' if futures_balance else 'spot'
-            balance_source = f"{user_creds.exchange_type.upper()} {balance_type.title()}" if user_creds.exchange_type else f"{balance_type.title()}"
+            balance_source = f"{user_creds.exchange_name.upper()} {balance_type.title()}" if user_creds.exchange_name else f"{balance_type.title()}"
             
             return jsonify({
                 'success': True,
