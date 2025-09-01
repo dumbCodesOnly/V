@@ -964,7 +964,14 @@ class LBankClient:
                     logging.warning("No assets with positive balance found")
                     return []
             else:
-                error_msg = result.get('error_code', 'Balance fetch failed') if result else 'No response'
+                error_msg = 'Balance fetch failed'
+                if result:
+                    if isinstance(result, dict):
+                        error_msg = result.get('error_code', 'Balance fetch failed')
+                    else:
+                        error_msg = f'Unexpected response format: {type(result)}'
+                else:
+                    error_msg = 'No response'
                 logging.warning(f"LBank balance fetch failed: {error_msg}")
                 return []
                 
@@ -990,9 +997,12 @@ class LBankClient:
                         # Find USDT in the data list
                         usdt_data = None
                         for asset in data:
-                            if asset.get('assetCode', '').lower() == 'usdt':
-                                usdt_data = asset
-                                break
+                            # Check networkList for coin type
+                            if 'networkList' in asset and asset['networkList']:
+                                coin = asset['networkList'][0].get('coin', '').lower()
+                                if coin == 'usdt':
+                                    usdt_data = asset
+                                    break
                         
                         if usdt_data:
                             usdt_free = float(usdt_data.get('usableAmt', 0))
