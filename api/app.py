@@ -1578,6 +1578,57 @@ def get_exchange_balance():
             'testnet_mode': False
         }), 500
 
+@app.route('/api/exchange/api-restrictions')
+def get_api_restrictions():
+    """Get API restrictions for the current user's exchange credentials"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        chat_id = int(user_id)
+        
+        # Get user credentials
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        if not user_creds or not user_creds.has_credentials():
+            return jsonify({'error': 'No API credentials found', 'success': False}), 400
+        
+        # Create client and get API restrictions - Dynamic exchange selection
+        try:
+            client = create_exchange_client(user_creds, testnet=False)
+            if not client:
+                return jsonify({'error': 'Failed to create exchange client', 'success': False}), 500
+            
+            # Check if the client has the get_api_restrictions method
+            if hasattr(client, 'get_api_restrictions'):
+                restrictions_data = client.get_api_restrictions()
+            else:
+                return jsonify({'error': 'API restrictions not supported for this exchange', 'success': False}), 400
+                
+        except Exception as client_error:
+            logging.error(f"Error creating client or getting API restrictions: {client_error}")
+            return jsonify({
+                'error': f'Exchange connection failed: {str(client_error)}',
+                'success': False
+            }), 500
+        
+        if restrictions_data:
+            return jsonify({
+                'success': True,
+                'restrictions': restrictions_data,
+                'exchange': user_creds.exchange_name,
+                'timestamp': get_iran_time().isoformat()
+            })
+        else:
+            error_msg = client.get_last_error() if hasattr(client, 'get_last_error') else 'No API restrictions data received'
+            return jsonify({'error': error_msg, 'success': False}), 500
+            
+    except Exception as e:
+        logging.error(f"API restrictions error: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
 @app.route('/api/exchange/positions')
 def get_exchange_positions():
     """Get positions directly from Toobit exchange"""

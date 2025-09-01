@@ -845,6 +845,28 @@ class LBankClient:
         """Get exchange information and trading pairs"""
         return self._public_request("/v2/currencyPairs.do")
     
+    def get_api_restrictions(self) -> Optional[Dict]:
+        """Get API restrictions using LBank v2 supplement API
+        
+        Official endpoint: POST /v2/supplement/api_Restrictions.do
+        Returns API key permissions and restrictions
+        """
+        try:
+            result = self._make_signed_request("/v2/supplement/api_Restrictions.do", {})
+            
+            if result and result.get('result') == 'true' and 'data' in result:
+                logging.info(f"LBank API restrictions fetched successfully")
+                return result['data']  # Return the data part, not the full result
+            else:
+                error_msg = result.get('error_code', 'API restrictions fetch failed') if result else 'No response'
+                logging.warning(f"LBank API restrictions fetch failed: {error_msg}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"LBank get_api_restrictions error: {e}")
+            self.last_error = f"API Restrictions Error: {str(e)}"
+            return None
+    
     # Account Methods
     def get_account_balance(self) -> List[Dict]:
         """
@@ -866,10 +888,34 @@ class LBankClient:
                     logging.debug(f"LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
                     if isinstance(data, list):
                         for asset_data in data:
-                            asset_code = asset_data.get('assetCode', '').upper()
+                            # The response contains networkList which has coin info
+                            # Extract coin from networkList if available, otherwise try other fields
+                            asset_code = ''
+                            if 'networkList' in asset_data and asset_data['networkList']:
+                                asset_code = asset_data['networkList'][0].get('coin', '').upper()
+                            
+                            # Fallback to other possible field names
                             if not asset_code:
+                                asset_code = (
+                                    asset_data.get('assetCode', '') or 
+                                    asset_data.get('coin', '') or 
+                                    asset_data.get('asset', '') or 
+                                    asset_data.get('symbol', '')
+                                ).upper()
+                            
+                            # Last resort: If no coin name found, use the fact that LBank response contains USDT data
+                            # and this is likely the primary trading asset
+                            if not asset_code and ('usableAmt' in asset_data or 'assetAmt' in asset_data):
+                                asset_code = 'USDT'  # Default to USDT as it's the main trading asset
+                            
+                            logging.debug(f"LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
+                            
+                            if not asset_code:
+                                # If no asset code found, log the full data for debugging
+                                logging.debug(f"No asset code found in: {asset_data}")
                                 continue
                             
+                            # Use actual field names from LBank response
                             usable_amt = float(asset_data.get('usableAmt', 0))
                             asset_amt = float(asset_data.get('assetAmt', 0))
                             frozen_amt = asset_amt - usable_amt
@@ -884,6 +930,7 @@ class LBankClient:
                                     'orderMargin': '0',
                                     'crossUnRealizedPnl': '0'
                                 })
+                                logging.debug(f"Added LBank balance: {asset_code} = {asset_amt}")
                 elif 'info' in result:  # v1 format
                     info = result['info']
                     
@@ -910,8 +957,12 @@ class LBankClient:
                                 'crossUnRealizedPnl': '0'
                             })
                 
-                logging.debug(f"LBank balance fetched: {len(balances)} assets")
-                return balances
+                logging.info(f"LBank balance parsing completed. Found {len(balances)} assets with balance > 0")
+                if balances:
+                    return balances
+                else:
+                    logging.warning("No assets with positive balance found")
+                    return []
             else:
                 error_msg = result.get('error_code', 'Balance fetch failed') if result else 'No response'
                 logging.warning(f"LBank balance fetch failed: {error_msg}")
