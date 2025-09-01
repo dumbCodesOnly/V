@@ -645,8 +645,8 @@ class LBankClient:
         timestamp = self._get_server_timestamp()
         echostr = self._generate_echostr()
         
-        # Auto-detect signature method based on secret key length
-        signature_method = self._detect_signature_method()
+        # Force MD5 signature method (HMAC-SHA256) for better compatibility
+        signature_method = 'MD5'  # LBank uses 'MD5' to indicate HMAC-SHA256 signatures
         
         auth_params = {
             'api_key': self.api_key,
@@ -664,8 +664,8 @@ class LBankClient:
         # Create parameter string for signature
         param_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
         
-        # Generate signature
-        signature = self._generate_signature(param_string)
+        # Generate HMAC signature directly (more reliable than auto-detection)
+        signature = self._generate_hmac_signature(param_string)
         
         # Add signature to final parameters
         sorted_params['sign'] = signature
