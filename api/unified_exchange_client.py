@@ -577,7 +577,7 @@ class LBankClient:
             self.api_secret.encode('utf-8'),
             md5_hash.encode('utf-8'),
             hashlib.sha256
-        ).hexdigest()  # LBank uses hex digest, not base64
+        ).hexdigest().upper()  # LBank requires UPPERCASE hex digest
         
         return signature
     
@@ -600,7 +600,7 @@ class LBankClient:
         
         auth_params = {
             'api_key': self.api_key,
-            'signature_method': 'HmacSHA256',
+            'signature_method': 'HmacSHA256',  # LBank requires exact format
             'timestamp': timestamp,
             'echostr': echostr
         }
@@ -621,11 +621,9 @@ class LBankClient:
         sorted_params['sign'] = signature
         
         # Prepare headers per LBank specification
+        # LBank only requires Content-Type in headers
         headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'timestamp': timestamp,
-            'signature_method': 'HmacSHA256',
-            'echostr': echostr
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
         
         # Make POST request with form data
