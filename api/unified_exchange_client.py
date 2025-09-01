@@ -561,7 +561,7 @@ class LBankClient:
         if len(self.api_secret) > 32:
             return 'RSA'
         else:
-            return 'HmacSHA256'
+            return 'MD5'  # LBank expects "MD5" for HMAC-SHA256 signatures
     
     def _generate_rsa_signature(self, params_string: str) -> str:
         """Generate RSA signature following official LBank connector implementation"""
@@ -671,19 +671,12 @@ class LBankClient:
         sorted_params['sign'] = signature
         
         # Prepare headers per official LBank connector
-        # Include signature_method, timestamp, echostr in headers
         headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'signature_method': signature_method,
-            'timestamp': timestamp,
-            'echostr': echostr
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
         
-        # Remove these from payload as they're now in headers
+        # Keep ALL parameters in the payload (signature calculation requires them)
         final_payload = dict(sorted_params)
-        for header_param in ['signature_method', 'timestamp', 'echostr']:
-            if header_param in final_payload:
-                del final_payload[header_param]
         
         # Make POST request with form data
         url = f"{self.base_url}{endpoint}"
