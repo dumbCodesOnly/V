@@ -1008,12 +1008,18 @@ class LBankClient:
                         # Find USDT in the data list
                         usdt_data = None
                         for asset in data:
+                            # Ensure asset is a dictionary before accessing its properties
+                            if not isinstance(asset, dict):
+                                continue
                             # Check networkList for coin type
                             if 'networkList' in asset and asset['networkList']:
-                                coin = asset['networkList'][0].get('coin', '').lower()
-                                if coin == 'usdt':
-                                    usdt_data = asset
-                                    break
+                                # Ensure networkList is a list and has at least one element that's a dict
+                                if isinstance(asset['networkList'], list) and len(asset['networkList']) > 0:
+                                    if isinstance(asset['networkList'][0], dict):
+                                        coin = asset['networkList'][0].get('coin', '').lower()
+                                        if coin == 'usdt':
+                                            usdt_data = asset
+                                            break
                         
                         if usdt_data:
                             usdt_free = float(usdt_data.get('usableAmt', 0))
