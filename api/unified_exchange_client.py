@@ -987,7 +987,9 @@ class LBankClient:
                 return []
                 
         except Exception as e:
+            import traceback
             logging.error(f"LBank get_account_balance error: {e}")
+            logging.error(f"Full traceback: {traceback.format_exc()}")
             self.last_error = f"Balance Error: {str(e)}"
             return []
     
