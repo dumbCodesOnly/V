@@ -1519,13 +1519,39 @@ def get_exchange_balance():
         if not user_creds or not user_creds.has_credentials():
             return jsonify({'error': 'No API credentials found for live trading', 'testnet_mode': False}), 400
         
-        # Create client and get balance - Dynamic exchange selection
+        # Create client and get comprehensive balance - Dynamic exchange selection
         try:
             client = create_exchange_client(user_creds, testnet=False)
             if not client:
                 return jsonify({'error': 'Failed to create exchange client', 'testnet_mode': False}), 500
+            
+            # Get all balance types: spot, futures, and margin
+            spot_balance = client.get_account_balance()
+            
+            # Try to get futures balance (for trading)
+            futures_balance = []
+            if hasattr(client, 'get_futures_balance'):
+                try:
+                    futures_balance = client.get_futures_balance()
+                    logging.info(f"Futures balance fetched: {len(futures_balance)} assets")
+                except Exception as futures_error:
+                    logging.warning(f"Futures balance fetch failed: {futures_error}")
+            
+            # Try to get margin balance
+            margin_balance = []
+            if hasattr(client, 'get_margin_balance'):
+                try:
+                    margin_balance = client.get_margin_balance()
+                    logging.info(f"Margin balance fetched: {len(margin_balance)} assets")
+                except Exception as margin_error:
+                    logging.warning(f"Margin balance fetch failed: {margin_error}")
+            
+            # Use futures balance as primary for trading (if available), otherwise spot
+            balance_data = futures_balance if futures_balance else spot_balance
+            
+            logging.info(f"Balance summary - Spot: {len(spot_balance) if spot_balance else 0}, "
+                        f"Futures: {len(futures_balance)}, Margin: {len(margin_balance)}")
                 
-            balance_data = client.get_account_balance()
         except Exception as client_error:
             logging.error(f"Error creating client or getting balance: {client_error}")
             return jsonify({
@@ -1547,9 +1573,15 @@ def get_exchange_balance():
             used_margin = position_margin + order_margin
             margin_ratio = (used_margin / total_balance * 100) if total_balance > 0 else 0
             
+            # Determine balance type for user information
+            balance_type = 'futures' if futures_balance else 'spot'
+            balance_source = f"{user_creds.exchange_type.upper()} {balance_type.title()}" if user_creds.exchange_type else f"{balance_type.title()}"
+            
             return jsonify({
                 'success': True,
                 'testnet_mode': user_creds.testnet_mode,
+                'balance_type': balance_type,
+                'balance_source': balance_source,
                 'balance': {
                     'total_balance': total_balance,
                     'available_balance': available_balance,
@@ -1559,6 +1591,12 @@ def get_exchange_balance():
                     'unrealized_pnl': unrealized_pnl,
                     'margin_ratio': round(margin_ratio, 2),
                     'asset': usdt_balance.get('asset', 'USDT')
+                },
+                'balance_summary': {
+                    'spot_assets': len(spot_balance) if spot_balance else 0,
+                    'futures_assets': len(futures_balance),
+                    'margin_assets': len(margin_balance),
+                    'primary_balance': balance_type
                 },
                 'raw_data': balance_data,
                 'timestamp': get_iran_time().isoformat()

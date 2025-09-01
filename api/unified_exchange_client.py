@@ -1071,6 +1071,106 @@ class LBankClient:
             return None
     
     
+    def get_futures_balance(self) -> List[Dict]:
+        """
+        Get futures account balance using LBank futures API
+        
+        Official endpoint: POST /v2/futures/user_info.do
+        Returns futures account info with margin and available balances
+        """
+        try:
+            result = self._make_signed_request("/v2/futures/user_info.do", {})
+            
+            logging.debug(f"LBank futures result type: {type(result)}, is dict: {isinstance(result, dict)}")
+            if isinstance(result, dict):
+                logging.debug(f"LBank futures result: result={result.get('result')}, has data: {'data' in result}")
+            
+            if isinstance(result, dict) and result.get('result') == 'true':
+                balances = []
+                
+                # Handle futures balance response format
+                if 'data' in result:
+                    data = result['data']
+                    if isinstance(data, dict):
+                        # Extract futures balance information
+                        if 'asset' in data:
+                            assets = data['asset'] if isinstance(data['asset'], list) else [data['asset']]
+                            for asset_data in assets:
+                                if isinstance(asset_data, dict):
+                                    asset_code = asset_data.get('asset', '').upper()
+                                    if asset_code:
+                                        balances.append({
+                                            'asset': asset_code,
+                                            'balance': str(asset_data.get('balance', 0)),
+                                            'availableBalance': str(asset_data.get('availableBalance', 0)),
+                                            'positionMargin': str(asset_data.get('positionMargin', 0)),
+                                            'orderMargin': str(asset_data.get('orderMargin', 0)),
+                                            'crossUnRealizedPnl': str(asset_data.get('crossUnRealizedPnl', 0))
+                                        })
+                        elif 'balance' in data:
+                            # Single balance format
+                            balances.append({
+                                'asset': 'USDT',
+                                'balance': str(data.get('balance', 0)),
+                                'availableBalance': str(data.get('availableBalance', 0)),
+                                'positionMargin': str(data.get('positionMargin', 0)),
+                                'orderMargin': str(data.get('orderMargin', 0)),
+                                'crossUnRealizedPnl': str(data.get('crossUnRealizedPnl', 0))
+                            })
+                            
+                logging.info(f"LBank futures balance parsing completed. Found {len(balances)} assets")
+                return balances
+            else:
+                error_msg = result.get('error_code', 'Futures balance fetch failed') if isinstance(result, dict) and result else 'No response'
+                logging.warning(f"LBank futures balance fetch failed: {error_msg}")
+                return []
+                
+        except Exception as e:
+            import traceback
+            logging.error(f"LBank get_futures_balance error: {e}")
+            logging.error(f"Full traceback: {traceback.format_exc()}")
+            self.last_error = f"Futures Balance Error: {str(e)}"
+            return []
+
+    def get_margin_balance(self) -> List[Dict]:
+        """
+        Get margin account balance using LBank margin API
+        
+        Official endpoint: POST /v2/supplement/customer_trade_fee.do
+        Returns margin account info with borrowed amounts and available balances
+        """
+        try:
+            result = self._make_signed_request("/v2/supplement/customer_trade_fee.do", {})
+            
+            if isinstance(result, dict) and result.get('result') == 'true':
+                balances = []
+                
+                if 'data' in result:
+                    data = result['data']
+                    # Process margin balance data
+                    if isinstance(data, dict) and 'symbol' in data:
+                        # Extract margin balance information
+                        balances.append({
+                            'asset': 'USDT',
+                            'balance': str(data.get('free', 0)),
+                            'availableBalance': str(data.get('free', 0)),
+                            'borrowed': str(data.get('borrowed', 0)),
+                            'interest': str(data.get('interest', 0)),
+                            'netAsset': str(data.get('netAsset', 0))
+                        })
+                
+                logging.info(f"LBank margin balance parsing completed. Found {len(balances)} assets")
+                return balances
+            else:
+                error_msg = result.get('error_code', 'Margin balance fetch failed') if isinstance(result, dict) and result else 'No response'
+                logging.warning(f"LBank margin balance fetch failed: {error_msg}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"LBank get_margin_balance error: {e}")
+            self.last_error = f"Margin Balance Error: {str(e)}"
+            return []
+
     def get_positions(self) -> List[Dict]:
         """Get all open positions"""
         # LBank futures positions endpoint
