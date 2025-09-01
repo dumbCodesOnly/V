@@ -888,39 +888,48 @@ class LBankClient:
                     logging.debug(f"LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
                     if isinstance(data, list):
                         for asset_data in data:
-                            # The response contains networkList which has coin info
-                            # Extract coin from networkList if available, otherwise try other fields
-                            asset_code = ''
-                            if 'networkList' in asset_data and asset_data['networkList']:
-                                # Ensure networkList[0] is a dictionary before calling .get()
-                                if isinstance(asset_data['networkList'][0], dict):
-                                    asset_code = asset_data['networkList'][0].get('coin', '').upper()
-                            
-                            # Fallback to other possible field names
-                            if not asset_code:
-                                asset_code = (
-                                    asset_data.get('assetCode', '') or 
-                                    asset_data.get('coin', '') or 
-                                    asset_data.get('asset', '') or 
-                                    asset_data.get('symbol', '')
-                                ).upper()
-                            
-                            # Last resort: If no coin name found, use the fact that LBank response contains USDT data
-                            # and this is likely the primary trading asset
-                            if not asset_code and ('usableAmt' in asset_data or 'assetAmt' in asset_data):
-                                asset_code = 'USDT'  # Default to USDT as it's the main trading asset
-                            
-                            logging.debug(f"LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
-                            
-                            if not asset_code:
-                                # If no asset code found, log the full data for debugging
-                                logging.debug(f"No asset code found in: {asset_data}")
+                            # Ensure asset_data is a dictionary before calling .get()
+                            if not isinstance(asset_data, dict):
+                                logging.debug(f"Skipping non-dict asset_data: {type(asset_data)} = {asset_data}")
                                 continue
-                            
-                            # Use actual field names from LBank response
-                            usable_amt = float(asset_data.get('usableAmt', 0))
-                            asset_amt = float(asset_data.get('assetAmt', 0))
-                            frozen_amt = asset_amt - usable_amt
+                            try:
+                                # The response contains networkList which has coin info
+                                # Extract coin from networkList if available, otherwise try other fields
+                                asset_code = ''
+                                if 'networkList' in asset_data and asset_data['networkList']:
+                                    # Ensure networkList[0] exists and is a dictionary before calling .get()
+                                    if isinstance(asset_data['networkList'], list) and len(asset_data['networkList']) > 0:
+                                        if isinstance(asset_data['networkList'][0], dict):
+                                            asset_code = asset_data['networkList'][0].get('coin', '').upper()
+                                
+                                # Fallback to other possible field names
+                                if not asset_code:
+                                    asset_code = (
+                                        asset_data.get('assetCode', '') or 
+                                        asset_data.get('coin', '') or 
+                                        asset_data.get('asset', '') or 
+                                        asset_data.get('symbol', '')
+                                    ).upper()
+                                
+                                # Last resort: If no coin name found, use the fact that LBank response contains USDT data
+                                # and this is likely the primary trading asset
+                                if not asset_code and ('usableAmt' in asset_data or 'assetAmt' in asset_data):
+                                    asset_code = 'USDT'  # Default to USDT as it's the main trading asset
+                                
+                                logging.debug(f"LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
+                                
+                                if not asset_code:
+                                    # If no asset code found, log the full data for debugging
+                                    logging.debug(f"No asset code found in: {asset_data}")
+                                    continue
+                                
+                                # Use actual field names from LBank response
+                                usable_amt = float(asset_data.get('usableAmt', 0))
+                                asset_amt = float(asset_data.get('assetAmt', 0))
+                                frozen_amt = asset_amt - usable_amt
+                            except Exception as e:
+                                logging.debug(f"Error processing asset_data {asset_data}: {e}")
+                                continue
                             
                             # Only include assets with non-zero balance
                             if asset_amt > 0:
