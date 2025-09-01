@@ -832,7 +832,11 @@ class LBankClient:
             if response.status_code == 200:
                 try:
                     result = response.json()
-                    logging.info(f"LBank Response Body: {str(result)[:500]}{'...' if len(str(result)) > 500 else ''}")
+                    # Hide detailed trade fee data from logs to reduce noise
+                    if 'customer_trade_fee' in endpoint and 'data' in result and isinstance(result['data'], list):
+                        logging.info(f"LBank Response Body: {{'result': '{result.get('result')}', 'data': '[{len(result['data'])} trade fee entries hidden]'}}")
+                    else:
+                        logging.info(f"LBank Response Body: {str(result)[:500]}{'...' if len(str(result)) > 500 else ''}")
                     
                     # Handle LBank response format
                     if isinstance(result, dict):
