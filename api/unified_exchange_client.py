@@ -631,76 +631,94 @@ class LBankClient:
         # Make POST request with form data
         url = f"{self.base_url}{endpoint}"
         
+        # Log request details for debugging
+        logging.info(f"LBank SIGNED REQUEST: POST {url}")
+        logging.info(f"LBank Request Headers: {headers}")
+        logging.info(f"LBank Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
+        logging.debug(f"LBank Full Payload (without signature): {param_string}")
+        
         try:
             response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
             
+            # Log response details
+            logging.info(f"LBank Response Status: {response.status_code}")
+            logging.debug(f"LBank Response Headers: {dict(response.headers)}")
+            
             if response.status_code == 200:
-                result = response.json()
-                
-                # Handle LBank response format
-                if isinstance(result, dict):
-                    if result.get('result') == 'true':
-                        return result.get('data', result)
-                    else:
-                        error_code = result.get('error_code', 'Unknown error')
-                        self.last_error = f"LBank Error: {error_code}"
-                        logging.error(f"LBank API error: {error_code}")
-                        return None
-                        
-                return result
+                try:
+                    result = response.json()
+                    logging.info(f"LBank Response Body: {str(result)[:500]}{'...' if len(str(result)) > 500 else ''}")
+                    
+                    # Handle LBank response format
+                    if isinstance(result, dict):
+                        if result.get('result') == 'true':
+                            logging.info(f"LBank API Success for {endpoint}")
+                            return result.get('data', result)
+                        else:
+                            error_code = result.get('error_code', 'Unknown error')
+                            self.last_error = f"LBank Error: {error_code}"
+                            logging.error(f"LBank API error for {endpoint}: {error_code}")
+                            logging.error(f"LBank Error Response: {result}")
+                            return None
+                            
+                    return result
+                except ValueError as json_error:
+                    logging.error(f"LBank JSON decode error: {json_error}")
+                    logging.error(f"LBank Raw response text: {response.text[:500]}")
+                    return None
             else:
                 error_text = response.text[:200]
                 self.last_error = f"HTTP {response.status_code}: {error_text}"
-                logging.error(f"LBank HTTP error {response.status_code}: {error_text}")
+                logging.error(f"LBank HTTP error {response.status_code} for {endpoint}: {error_text}")
+                logging.error(f"LBank Full error response: {response.text}")
                 return None
                 
         except Exception as e:
             self.last_error = f"Request failed: {str(e)}"
-            logging.error(f"LBank request exception: {e}")
+            logging.error(f"LBank request exception for {endpoint}: {e}")
+            logging.error(f"LBank Request details - URL: {url}, Params: {params}")
             return None
     
     def _make_public_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """Make public (non-authenticated) request to LBank"""
         url = f"{self.base_url}{endpoint}"
         
+        # Log request details for debugging
+        logging.info(f"LBank PUBLIC REQUEST: GET {url}")
+        if params:
+            logging.info(f"LBank Request Params: {params}")
+        
         try:
             response = self.session.get(url, params=params, timeout=10)
             
+            # Log response details
+            logging.info(f"LBank Response Status: {response.status_code}")
+            logging.debug(f"LBank Response Headers: {dict(response.headers)}")
+            
             if response.status_code == 200:
-                result = response.json()
-                return result
+                try:
+                    result = response.json()
+                    logging.info(f"LBank Response Body: {str(result)[:500]}{'...' if len(str(result)) > 500 else ''}")
+                    logging.info(f"LBank Public API Success for {endpoint}")
+                    return result
+                except ValueError as json_error:
+                    logging.error(f"LBank JSON decode error: {json_error}")
+                    logging.error(f"LBank Raw response text: {response.text[:500]}")
+                    return None
             else:
                 error_text = response.text[:200]
                 self.last_error = f"HTTP {response.status_code}: {error_text}"
-                logging.error(f"LBank public request error {response.status_code}: {error_text}")
+                logging.error(f"LBank public request error {response.status_code} for {endpoint}: {error_text}")
+                logging.error(f"LBank Full error response: {response.text}")
                 return None
                 
         except Exception as e:
             self.last_error = f"Public request failed: {str(e)}"
-            logging.error(f"LBank public request exception: {e}")
+            logging.error(f"LBank public request exception for {endpoint}: {e}")
+            logging.error(f"LBank Request details - URL: {url}, Params: {params}")
             return None
     
     # Core API Methods - Rewritten from scratch per LBank documentation
-    
-    def test_connectivity(self) -> bool:
-        """Test API connectivity using official LBank ping endpoint"""
-        try:
-            result = self._make_public_request("/v2/supplement/system_ping.do")
-            return result is not None
-        except Exception as e:
-            logging.error(f"LBank connectivity test failed: {e}")
-            return False
-    
-    def get_balance(self) -> Optional[Dict]:
-        """Get account balance using official LBank user_info endpoint"""
-        try:
-            result = self._make_signed_request("/v2/supplement/user_info.do")
-            if result and 'data' in result:
-                return result['data']
-            return result
-        except Exception as e:
-            logging.error(f"LBank get_balance failed: {e}")
-            return None
     
     # Add missing method that's referenced by other methods
     def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -843,6 +861,7 @@ class LBankClient:
             logging.error(f"LBank get_balance error: {e}")
             self.last_error = f"Balance Error: {str(e)}"
             return None
+    
     
     def get_positions(self) -> List[Dict]:
         """Get all open positions"""
