@@ -828,9 +828,13 @@ class LBankClient:
         try:
             response = self.session.post(url, data=final_payload, headers=headers, timeout=10)
             
-            # Log response details
+            # Log response details (clean summary for headers)
             logging.info(f"LBank Response Status: {response.status_code}")
-            logging.debug(f"LBank Response Headers: {dict(response.headers)}")
+            important_headers = {
+                k: v for k, v in response.headers.items() 
+                if k in ['Content-Type', 'X-LBank-RateLimit-Limit', 'X-LBank-RateLimit-Time', 'Server']
+            }
+            logging.debug(f"LBank Response Headers: {important_headers}")
             
             if response.status_code == 200:
                 try:
@@ -883,9 +887,13 @@ class LBankClient:
         try:
             response = self.session.get(url, params=params, timeout=10)
             
-            # Log response details
+            # Log response details (clean summary for headers)
             logging.info(f"LBank Response Status: {response.status_code}")
-            logging.debug(f"LBank Response Headers: {dict(response.headers)}")
+            important_headers = {
+                k: v for k, v in response.headers.items() 
+                if k in ['Content-Type', 'X-LBank-RateLimit-Limit', 'X-LBank-RateLimit-Time', 'Server']
+            }
+            logging.debug(f"LBank Response Headers: {important_headers}")
             
             if response.status_code == 200:
                 try:
