@@ -726,7 +726,7 @@ class LBankClient:
                     if isinstance(result, dict):
                         if result.get('result') == 'true':
                             logging.info(f"LBank API Success for {endpoint}")
-                            return result.get('data', result)
+                            return result
                         else:
                             error_code = result.get('error_code', 'Unknown error')
                             self.last_error = f"LBank Error: {error_code}"
@@ -817,9 +817,7 @@ class LBankClient:
             response = self.session.get(url, params=params, timeout=10)
             if response.status_code == 200:
                 result = response.json()
-                # Handle LBank response format
-                if isinstance(result, dict) and 'data' in result:
-                    return result['data']
+                # Return the full response to maintain consistency
                 return result
             return None
         except Exception as e:
