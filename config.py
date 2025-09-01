@@ -20,14 +20,15 @@ class APIConfig:
     # Endpoint: https://api.toobit.com/api/v1/futures/*
     TOOBIT_FUTURES_PATH = "/api/v1/futures"
     
-    # LBank Exchange - Official API structure
-    LBANK_BASE_URL = "https://api.lbkex.com"
-    LBANK_API_VERSION = "v2"
+    # LBank Exchange - Official Perpetual Futures API structure
+    LBANK_BASE_URL = "https://lbkperp.lbank.com"
+    LBANK_API_VERSION = "v1"
     
-    # LBank API paths
-    LBANK_PUBLIC_PATH = "/v2"         # Public market data
-    LBANK_FUTURES_PATH = "/v2/futures" # Futures trading
-    LBANK_SPOT_PATH = "/v2"           # Spot trading
+    # LBank Perpetual Futures API paths
+    LBANK_PUBLIC_PATH = "/cfd/openApi/v1/pub"    # Public market data
+    LBANK_PRIVATE_PATH = "/cfd/openApi/v1/prv"   # Private account/trading
+    LBANK_FUTURES_PATH = "/cfd/openApi/v1/prv"   # Futures trading compatibility
+    LBANK_SPOT_PATH = "/cfd/openApi/v1/prv"      # Account operations
     
     # Fallback Price APIs  
     BINANCE_BASE_URL = "https://api.binance.com"

@@ -639,9 +639,11 @@ class LBankClient:
         self.api_secret = api_secret
         self.testnet = testnet
         
-        # Official LBank REST API endpoints (from docs)
-        self.base_url = "https://api.lbkex.com"
-        self.futures_base = "/v2/futures"  # For futures trading compatibility
+        # Official LBank Perpetual Futures API endpoints
+        self.base_url = "https://lbkperp.lbank.com"
+        self.public_path = "/cfd/openApi/v1/pub"
+        self.private_path = "/cfd/openApi/v1/prv"
+        self.futures_base = "/cfd/openApi/v1/prv"  # For compatibility
         
         # Track last error for debugging
         self.last_error = None
@@ -650,7 +652,8 @@ class LBankClient:
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'LBank-Python-Client/1.0',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
         })
         
     def _generate_echostr(self) -> str:
@@ -741,13 +744,13 @@ class LBankClient:
     
     def _make_signed_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Make authenticated request to LBank API following official documentation
+        Make authenticated request to LBank Perpetual Futures API following official documentation
         
-        LBank Authentication Requirements:
-        1. All authenticated requests must be POST
-        2. Content-Type: application/x-www-form-urlencoded  
-        3. Required parameters: api_key, signature_method, timestamp, echostr, sign
-        4. Headers: timestamp, signature_method, echostr
+        LBank Perpetual Futures Authentication Requirements:
+        1. All authenticated requests must be POST with JSON body
+        2. Content-Type: application/json
+        3. Headers: timestamp, signature_method, echostr
+        4. Body: JSON with api_key, signature_method, timestamp, echostr, sign + other params
         """
         if params is None:
             params = {}
@@ -756,12 +759,10 @@ class LBankClient:
         timestamp = self._get_server_timestamp()
         echostr = self._generate_echostr()
         
-        # Determine signature method based on endpoint version
-        if '/v2/' in endpoint:
-            signature_method = 'HmacSHA256'  # V2 endpoints require HmacSHA256
-        else:
-            signature_method = 'MD5'  # V1 endpoints use MD5
+        # Use HmacSHA256 as default signature method for perpetual futures
+        signature_method = 'HmacSHA256'
         
+        # Create authentication parameters
         auth_params = {
             'api_key': self.api_key,
             'signature_method': signature_method,
@@ -775,87 +776,64 @@ class LBankClient:
         # Sort parameters alphabetically (critical for signature)
         sorted_params = dict(sorted(all_params.items()))
         
-        # Create parameter string for signature
+        # Create parameter string for signature (as per documentation)
         param_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
         
-        # Generate HMAC signature directly (more reliable than auto-detection)
-        signature = self._generate_hmac_signature(param_string)
+        # Generate signature according to documentation:
+        # 1. MD5 hash of parameter string (uppercase)
+        # 2. Sign the hash with HmacSHA256 (lowercase)
+        import hashlib
+        md5_hash = hashlib.md5(param_string.encode('utf-8')).hexdigest().upper()
         
-        # Add signature to final parameters
-        sorted_params['sign'] = signature
+        import hmac
+        signature = hmac.new(
+            self.api_secret.encode('utf-8'),
+            md5_hash.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest().lower()
         
-        # Prepare headers per official LBank connector
+        # Prepare headers according to documentation
         headers = {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/json',
+            'timestamp': timestamp,
+            'signature_method': signature_method,
+            'echostr': echostr
         }
         
-        # Keep ALL parameters in the payload (signature calculation requires them)
-        final_payload = dict(sorted_params)
+        # Prepare JSON payload with signature
+        payload = dict(sorted_params)
+        payload['sign'] = signature
         
-        # Make POST request with form data
+        # Make POST request to perpetual futures API
         url = f"{self.base_url}{endpoint}"
         
         # Log request details for debugging
-        logging.info(f"LBank SIGNED REQUEST: POST {url}")
-        logging.info(f"LBank Request Headers: {headers}")
-        logging.info(f"LBank Original Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
-        
-        # DEBUG: Comprehensive payload debugging (hide details for trade fee endpoint)
-        if 'customer_trade_fee' in endpoint:
-            logging.debug(f"LBank trade fee request: signature validated, {len(sorted_params)} params")
-        else:
-            caller_method = inspect.currentframe().f_code.co_name
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Original params: {params}")
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Auth params: {auth_params}")
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
-            logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
-            
-            # DEBUG: Parameter validation
-            required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
-            for param in required_params:
-                if param in sorted_params:
-                    logging.debug(f"LBank PAYLOAD DEBUG - ✓ Required param '{param}': {sorted_params[param]}")
-                else:
-                    logging.error(f"LBank PAYLOAD DEBUG - ✗ Missing required param: {param}")
-                    
-            # DEBUG: Check parameter format
-            logging.debug(f"LBank PAYLOAD DEBUG - signature_method value: '{sorted_params.get('signature_method')}'")
-            logging.debug(f"LBank PAYLOAD DEBUG - timestamp format: '{sorted_params.get('timestamp')}'")
-            logging.debug(f"LBank PAYLOAD DEBUG - echostr length: {len(sorted_params.get('echostr', ''))}")
+        logging.info(f"LBank Perpetual Futures SIGNED REQUEST: POST {url}")
+        logging.debug(f"LBank Request Headers: {headers}")
+        logging.debug(f"LBank Request Payload: {payload}")
         
         try:
-            response = self.session.post(url, data=final_payload, headers=headers, timeout=10)
+            response = self.session.post(url, json=payload, headers=headers, timeout=15)
             
-            # Log response details (clean summary for headers)
+            # Log response details
             logging.info(f"LBank Response Status: {response.status_code}")
-            important_headers = {
-                k: v for k, v in response.headers.items() 
-                if k in ['Content-Type', 'X-LBank-RateLimit-Limit', 'X-LBank-RateLimit-Time', 'Server']
-            }
-            logging.debug(f"LBank Response Headers: {important_headers}")
             
             if response.status_code == 200:
                 try:
                     result = response.json()
-                    # Hide detailed trade fee data from logs to reduce noise
-                    if 'customer_trade_fee' in endpoint and 'data' in result and isinstance(result['data'], list):
-                        logging.info(f"LBank Response Body: {{'result': '{result.get('result')}', 'data': '[{len(result['data'])} trade fee entries hidden]'}}")
-                    else:
-                        logging.info(f"LBank Response Body: {str(result)[:500]}{'...' if len(str(result)) > 500 else ''}")
+                    logging.debug(f"LBank Response: {result}")
                     
                     # Handle LBank response format
                     if isinstance(result, dict):
-                        if result.get('result') == 'true':
-                            logging.info(f"LBank API Success for {endpoint}")
+                        if result.get('result') == True or result.get('result') == 'true':
+                            logging.info(f"LBank Perpetual Futures API Success for {endpoint}")
                             return result
                         else:
                             error_code = result.get('error_code', 'Unknown error')
-                            self.last_error = f"LBank Error: {error_code}"
-                            logging.error(f"LBank API error for {endpoint}: {error_code}")
-                            logging.error(f"LBank Error Response: {result}")
-                            return None
+                            error_msg = result.get('msg', 'No message')
+                            self.last_error = f"LBank Error {error_code}: {error_msg}"
+                            logging.error(f"LBank Perpetual Futures API error for {endpoint}: {error_code} - {error_msg}")
+                            return result  # Return the error response for handling
                             
                     return result
                 except ValueError as json_error:
@@ -866,13 +844,11 @@ class LBankClient:
                 error_text = response.text[:200]
                 self.last_error = f"HTTP {response.status_code}: {error_text}"
                 logging.error(f"LBank HTTP error {response.status_code} for {endpoint}: {error_text}")
-                logging.error(f"LBank Full error response: {response.text}")
                 return None
                 
         except Exception as e:
             self.last_error = f"Request failed: {str(e)}"
             logging.error(f"LBank request exception for {endpoint}: {e}")
-            logging.error(f"LBank Request details - URL: {url}, Params: {params}")
             return None
     
     def _make_public_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -1004,7 +980,8 @@ class LBankClient:
             # Use v1 API for user account information (most stable)
             result = self._make_signed_request("/v2/supplement/user_info.do", {})
             
-            caller_method = inspect.currentframe().f_code.co_name
+            frame = inspect.currentframe()
+            caller_method = frame.f_code.co_name if frame else 'unknown'
             logging.debug(f"[{caller_method}] LBank result type: {type(result)}, is dict: {isinstance(result, dict)}")
             if isinstance(result, dict):
                 logging.debug(f"[{caller_method}] LBank result contents: result={result.get('result')}, has data: {'data' in result}")
@@ -1015,7 +992,8 @@ class LBankClient:
                 # Handle different response formats for v1 vs v2 endpoints
                 if 'data' in result:  # v2 format
                     data = result['data']
-                    caller_method = inspect.currentframe().f_code.co_name
+                    frame = inspect.currentframe()
+                    caller_method = frame.f_code.co_name if frame else 'unknown'
                     if isinstance(data, list):
                         logging.debug(f"[{caller_method}] LBank v2 balance data: {len(data)} assets found")
                     else:
@@ -1050,7 +1028,8 @@ class LBankClient:
                                 if not asset_code and ('usableAmt' in asset_data or 'assetAmt' in asset_data):
                                     asset_code = 'USDT'  # Default to USDT as it's the main trading asset
                                 
-                                caller_method = inspect.currentframe().f_code.co_name
+                                frame = inspect.currentframe()
+                                caller_method = frame.f_code.co_name if frame else 'unknown'
                                 logging.debug(f"[{caller_method}] Processing asset: {asset_code or 'unknown'}")
                                 
                                 if not asset_code:
@@ -1076,7 +1055,8 @@ class LBankClient:
                                     'orderMargin': '0',
                                     'crossUnRealizedPnl': '0'
                                 })
-                                caller_method = inspect.currentframe().f_code.co_name
+                                frame = inspect.currentframe()
+                                caller_method = frame.f_code.co_name if frame else 'unknown'
                                 logging.debug(f"[{caller_method}] Added LBank balance: {asset_code} = {asset_amt}")
                 elif 'info' in result:  # v1 format
                     info = result['info']
@@ -1207,114 +1187,228 @@ class LBankClient:
     
     def get_futures_balance(self) -> List[Dict]:
         """
-        Get futures account balance using LBank futures API
+        Get perpetual futures account balance using LBank Perpetual Futures API
         
-        Official endpoint: POST /v2/futures/user_info.do
-        Returns futures account info with margin and available balances
+        Official endpoint: POST /cfd/openApi/v1/prv/account
+        Returns perpetual futures account info with margin and available balances
         """
         try:
-            result = self._make_signed_request("/v2/futures/user_info.do", {})
+            # Use perpetual futures account endpoint
+            result = self._make_signed_request(f"{self.private_path}/account", {
+                'productGroup': 'SwapU'  # USDT-margined perpetual contracts
+            })
             
-            caller_method = inspect.currentframe().f_code.co_name
-            logging.debug(f"[{caller_method}] LBank futures result type: {type(result)}, is dict: {isinstance(result, dict)}")
-            if isinstance(result, dict):
-                logging.debug(f"[{caller_method}] LBank futures result: result={result.get('result')}, has data: {'data' in result}")
+            logging.debug(f"LBank perpetual futures balance result: {result}")
             
-            if isinstance(result, dict) and result.get('result') == 'true':
+            if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
                 balances = []
                 
-                # Handle futures balance response format
+                # Handle perpetual futures balance response format
                 if 'data' in result:
                     data = result['data']
-                    if isinstance(data, dict):
-                        # Extract futures balance information
-                        if 'asset' in data:
-                            assets = data['asset'] if isinstance(data['asset'], list) else [data['asset']]
-                            for asset_data in assets:
-                                if isinstance(asset_data, dict):
-                                    asset_code = asset_data.get('asset', '').upper()
-                                    if asset_code:
-                                        balances.append({
-                                            'asset': asset_code,
-                                            'balance': str(asset_data.get('balance', 0)),
-                                            'availableBalance': str(asset_data.get('availableBalance', 0)),
-                                            'positionMargin': str(asset_data.get('positionMargin', 0)),
-                                            'orderMargin': str(asset_data.get('orderMargin', 0)),
-                                            'crossUnRealizedPnl': str(asset_data.get('crossUnRealizedPnl', 0))
-                                        })
-                        elif 'balance' in data:
-                            # Single balance format
-                            balances.append({
-                                'asset': 'USDT',
-                                'balance': str(data.get('balance', 0)),
-                                'availableBalance': str(data.get('availableBalance', 0)),
-                                'positionMargin': str(data.get('positionMargin', 0)),
-                                'orderMargin': str(data.get('orderMargin', 0)),
-                                'crossUnRealizedPnl': str(data.get('crossUnRealizedPnl', 0))
-                            })
+                    
+                    # Handle different response formats
+                    if isinstance(data, list):
+                        # List of assets
+                        for asset_data in data:
+                            if isinstance(asset_data, dict):
+                                asset_code = asset_data.get('asset', 'USDT').upper()
+                                balances.append({
+                                    'asset': asset_code,
+                                    'balance': str(asset_data.get('balance', 0)),
+                                    'availableBalance': str(asset_data.get('availableBalance', 0)),
+                                    'positionMargin': str(asset_data.get('positionMargin', 0)),
+                                    'orderMargin': str(asset_data.get('orderMargin', 0)),
+                                    'crossUnRealizedPnl': str(asset_data.get('crossUnRealizedPnl', 0))
+                                })
+                    elif isinstance(data, dict):
+                        # Single account data
+                        balances.append({
+                            'asset': 'USDT',
+                            'balance': str(data.get('balance', 0)),
+                            'availableBalance': str(data.get('availableBalance', 0)),
+                            'positionMargin': str(data.get('positionMargin', 0)),
+                            'orderMargin': str(data.get('orderMargin', 0)),
+                            'crossUnRealizedPnl': str(data.get('crossUnRealizedPnl', 0))
+                        })
                             
-                logging.info(f"LBank futures balance parsing completed. Found {len(balances)} assets")
+                logging.info(f"LBank perpetual futures balance: Found {len(balances)} assets")
                 return balances
             else:
-                error_msg = result.get('error_code', 'Futures balance fetch failed') if isinstance(result, dict) and result else 'No response'
-                logging.warning(f"LBank futures balance fetch failed: {error_msg}")
+                error_msg = result.get('error_code', 'Account balance fetch failed') if isinstance(result, dict) and result else 'No response'
+                logging.warning(f"LBank perpetual futures balance failed: {error_msg}")
                 return []
                 
         except Exception as e:
             import traceback
             logging.error(f"LBank get_futures_balance error: {e}")
             logging.error(f"Full traceback: {traceback.format_exc()}")
-            self.last_error = f"Futures Balance Error: {str(e)}"
+            self.last_error = f"Perpetual Futures Balance Error: {str(e)}"
             return []
 
     def get_margin_balance(self) -> List[Dict]:
         """
-        Get margin account balance using LBank margin API
+        Get margin account balance - alias for futures balance in perpetual contracts
         
-        Official endpoint: POST /v2/supplement/customer_trade_fee.do
-        Returns margin account info with borrowed amounts and available balances
+        For perpetual futures, margin and futures balance are the same
+        """
+        return self.get_futures_balance()
+    
+    def set_leverage(self, symbol: str, leverage: int, margin_type: str = 'cross') -> Dict:
+        """
+        Set leverage for a perpetual futures symbol
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+            leverage: Leverage multiplier (1-200)
+            margin_type: 'cross' or 'isolated'
+        
+        Returns:
+            Dict with success status and details
         """
         try:
-            result = self._make_signed_request("/v2/supplement/customer_trade_fee.do", {})
+            # Convert symbol to LBank format
+            lbank_symbol = self.convert_to_lbank_symbol(symbol)
             
-            if isinstance(result, dict) and result.get('result') == 'true':
-                balances = []
-                
-                if 'data' in result:
-                    data = result['data']
-                    # Process margin balance data
-                    if isinstance(data, dict) and 'symbol' in data:
-                        # Extract margin balance information
-                        balances.append({
-                            'asset': 'USDT',
-                            'balance': str(data.get('free', 0)),
-                            'availableBalance': str(data.get('free', 0)),
-                            'borrowed': str(data.get('borrowed', 0)),
-                            'interest': str(data.get('interest', 0)),
-                            'netAsset': str(data.get('netAsset', 0))
-                        })
-                
-                logging.info(f"LBank margin balance parsing completed. Found {len(balances)} assets")
-                return balances
+            params = {
+                'symbol': lbank_symbol,
+                'leverage': leverage,
+                'marginType': margin_type,
+                'productGroup': 'SwapU'
+            }
+            
+            result = self._make_signed_request(f"{self.private_path}/leverage", params)
+            
+            if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
+                logging.info(f"LBank leverage set successfully: {symbol} to {leverage}x {margin_type}")
+                return {
+                    'success': True,
+                    'symbol': symbol,
+                    'leverage': leverage,
+                    'margin_type': margin_type,
+                    'message': 'Leverage updated successfully'
+                }
             else:
-                error_msg = result.get('error_code', 'Margin balance fetch failed') if isinstance(result, dict) and result else 'No response'
-                logging.warning(f"LBank margin balance fetch failed: {error_msg}")
+                error_msg = result.get('error_code', 'Failed to set leverage') if isinstance(result, dict) else 'No response'
+                logging.error(f"LBank set leverage failed: {error_msg}")
+                self.last_error = f"Set Leverage Error: {error_msg}"
+                return {
+                    'success': False,
+                    'error': error_msg
+                }
+                
+        except Exception as e:
+            logging.error(f"LBank set_leverage error: {e}")
+            self.last_error = f"Set Leverage Error: {str(e)}"
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_leverage(self, symbol: str) -> Dict:
+        """
+        Get current leverage for a perpetual futures symbol
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTCUSDT')
+        
+        Returns:
+            Dict with leverage information
+        """
+        try:
+            # Convert symbol to LBank format
+            lbank_symbol = self.convert_to_lbank_symbol(symbol)
+            
+            params = {
+                'symbol': lbank_symbol,
+                'productGroup': 'SwapU'
+            }
+            
+            result = self._make_signed_request(f"{self.private_path}/leverageInfo", params)
+            
+            if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
+                data = result.get('data', {})
+                return {
+                    'success': True,
+                    'symbol': symbol,
+                    'leverage': data.get('leverage', 20),  # Default 20x
+                    'margin_type': data.get('marginType', 'cross'),
+                    'max_leverage': data.get('maxLeverage', 200)
+                }
+            else:
+                error_msg = result.get('error_code', 'Failed to get leverage') if isinstance(result, dict) else 'No response'
+                logging.warning(f"LBank get leverage failed: {error_msg}")
+                self.last_error = f"Get Leverage Error: {error_msg}"
+                return {
+                    'success': False,
+                    'error': error_msg
+                }
+                
+        except Exception as e:
+            logging.error(f"LBank get_leverage error: {e}")
+            self.last_error = f"Get Leverage Error: {str(e)}"
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def get_positions(self) -> List[Dict]:
+        """
+        Get all open perpetual futures positions
+        
+        Returns list of position dictionaries with position information
+        """
+        try:
+            params = {
+                'productGroup': 'SwapU'  # USDT-margined perpetual contracts
+            }
+            
+            result = self._make_signed_request(f"{self.private_path}/positions", params)
+            
+            if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
+                if 'data' in result:
+                    positions = result['data']
+                    if isinstance(positions, list):
+                        # Convert to standard format
+                        standardized_positions = []
+                        for pos in positions:
+                            if isinstance(pos, dict):
+                                standardized_positions.append({
+                                    'symbol': self.convert_from_lbank_symbol(pos.get('symbol', '')),
+                                    'side': pos.get('side', ''),
+                                    'size': pos.get('size', 0),
+                                    'notional': pos.get('notional', 0),
+                                    'markPrice': pos.get('markPrice', 0),
+                                    'entryPrice': pos.get('entryPrice', 0),
+                                    'unrealizedPnl': pos.get('unrealizedPnl', 0),
+                                    'percentage': pos.get('percentage', 0),
+                                    'marginRatio': pos.get('marginRatio', 0),
+                                    'leverage': pos.get('leverage', 20)
+                                })
+                        return standardized_positions
+                    elif isinstance(positions, dict):
+                        # Single position
+                        return [{
+                            'symbol': self.convert_from_lbank_symbol(positions.get('symbol', '')),
+                            'side': positions.get('side', ''),
+                            'size': positions.get('size', 0),
+                            'notional': positions.get('notional', 0),
+                            'markPrice': positions.get('markPrice', 0),
+                            'entryPrice': positions.get('entryPrice', 0),
+                            'unrealizedPnl': positions.get('unrealizedPnl', 0),
+                            'percentage': positions.get('percentage', 0),
+                            'marginRatio': positions.get('marginRatio', 0),
+                            'leverage': positions.get('leverage', 20)
+                        }]
+                return []
+            else:
+                logging.warning(f"LBank get positions failed: {result.get('error_code', 'Unknown error') if isinstance(result, dict) else 'No response'}")
                 return []
                 
         except Exception as e:
-            logging.error(f"LBank get_margin_balance error: {e}")
-            self.last_error = f"Margin Balance Error: {str(e)}"
+            logging.error(f"LBank get_positions error: {e}")
+            self.last_error = f"Get Positions Error: {str(e)}"
             return []
-
-    def get_positions(self) -> List[Dict]:
-        """Get all open positions"""
-        # LBank futures positions endpoint
-        result = self._signed_request('POST', f"{self.futures_base}/positions.do")
-        if result and isinstance(result, list):
-            return result
-        elif result and 'positions' in result:
-            return result['positions']
-        return []
     
     def get_position(self, symbol: str) -> Optional[Dict]:
         """Get specific position by symbol"""
@@ -1355,27 +1449,40 @@ class LBankClient:
                     raise ValueError("Price is required for limit orders")
                 params['price'] = str(price)
             
-            # Place order using v1 API (most stable)
-            result = self._signed_request('POST', "/v1/create_order.do", params)
+            # Add required perpetual futures parameters
+            params.update({
+                'productGroup': 'SwapU',  # USDT-margined perpetual contracts
+                'positionSide': side.upper()  # LONG or SHORT for perpetual futures
+            })
             
-            if result and result.get('result') == 'true' and 'order_id' in result:
-                order_id = result['order_id']
-                logging.info(f"LBank order placed successfully: {order_id}")
+            # Place order using perpetual futures API
+            result = self._make_signed_request(f"{self.private_path}/order", params)
+            
+            if result and (result.get('result') == True or result.get('result') == 'true'):
+                data = result.get('data', {})
+                order_id = data.get('orderId') or data.get('order_id', '')
                 
-                return {
-                    'orderId': str(order_id),
-                    'symbol': symbol,
-                    'side': side.upper(),
-                    'type': order_type.upper(),
-                    'quantity': quantity,
-                    'price': price,
-                    'status': 'NEW'
-                }
-            else:
-                error_msg = result.get('error_code', 'Order placement failed') if result else 'No response'
-                logging.error(f"LBank order failed: {error_msg}")
-                self.last_error = f"Order Error: {error_msg}"
-                return None
+                if order_id:
+                    logging.info(f"LBank perpetual futures order placed successfully: {order_id}")
+                    
+                    return {
+                        'orderId': str(order_id),
+                        'symbol': symbol,
+                        'side': side.upper(),
+                        'type': order_type.upper(),
+                        'quantity': quantity,
+                        'price': price,
+                        'status': 'NEW',
+                        'productGroup': 'SwapU'
+                    }
+            
+            error_msg = result.get('error_code', 'Order placement failed') if result else 'No response'
+            error_detail = result.get('msg', '') if result else ''
+            full_error = f"{error_msg}: {error_detail}" if error_detail else error_msg
+            
+            logging.error(f"LBank perpetual futures order failed: {full_error}")
+            self.last_error = f"Order Error: {full_error}"
+            return None
             
         except Exception as e:
             logging.error(f"LBank place_order exception: {e}")
@@ -1383,35 +1490,54 @@ class LBankClient:
             return None
     
     def cancel_order(self, symbol: str, order_id: str) -> Optional[Dict]:
-        """Cancel an existing order"""
+        """Cancel an existing perpetual futures order"""
         try:
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
             params = {
                 'symbol': lbank_symbol,
-                'order_id': order_id
+                'orderId': order_id,
+                'productGroup': 'SwapU'
             }
             
-            result = self._signed_request('POST', "/v2/cancel_order.do", params)
-            return result
+            result = self._make_signed_request(f"{self.private_path}/cancelOrder", params)
+            
+            if result and (result.get('result') == True or result.get('result') == 'true'):
+                logging.info(f"LBank perpetual futures order cancelled successfully: {order_id}")
+                return result
+            else:
+                error_msg = result.get('error_code', 'Cancel order failed') if result else 'No response'
+                logging.error(f"LBank cancel order failed: {error_msg}")
+                self.last_error = f"Cancel Order Error: {error_msg}"
+                return None
             
         except Exception as e:
             logging.error(f"LBank cancel_order failed: {e}")
+            self.last_error = f"Cancel Order Error: {str(e)}"
             return None
     
     def get_order(self, symbol: str, order_id: str) -> Optional[Dict]:
-        """Get order status"""
+        """Get perpetual futures order status"""
         try:
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
             params = {
                 'symbol': lbank_symbol,
-                'order_id': order_id
+                'orderId': order_id,
+                'productGroup': 'SwapU'
             }
             
-            result = self._signed_request('POST', "/v2/orders_info.do", params)
-            return result
+            result = self._make_signed_request(f"{self.private_path}/orderInfo", params)
+            
+            if result and (result.get('result') == True or result.get('result') == 'true'):
+                return result
+            else:
+                error_msg = result.get('error_code', 'Get order failed') if result else 'No response'
+                logging.warning(f"LBank get order failed: {error_msg}")
+                self.last_error = f"Get Order Error: {error_msg}"
+                return None
             
         except Exception as e:
             logging.error(f"LBank get_order failed: {e}")
+            self.last_error = f"Get Order Error: {str(e)}"
             return None
     
     def get_order_history(self, symbol: Optional[str] = None, limit: int = 50) -> List[Dict]:
@@ -1440,39 +1566,61 @@ class LBankClient:
     
     # Futures-specific methods
     def change_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
-        """Change leverage for futures trading - LBank API doesn't support this endpoint"""
+        """Change leverage for perpetual futures trading using new API"""
         try:
-            # LBank doesn't have a public API for leverage adjustment
-            # According to their docs, leverage must be set in the web interface
-            logging.warning(f"LBank leverage adjustment not available via API - must be set in web interface")
+            result = self.set_leverage(symbol, leverage)
             
-            # Return success response to prevent blocking the app
-            return {
-                'result': 'true',
-                'message': f'Leverage setting not available via LBank API. Please set leverage to {leverage}x for {symbol} manually in the web interface.',
-                'symbol': symbol,
-                'leverage': leverage,
-                'requires_manual_setting': True
-            }
+            if result and result.get('success'):
+                return {
+                    'result': 'true',
+                    'message': f'Leverage set to {leverage}x for {symbol}',
+                    'symbol': symbol,
+                    'leverage': leverage
+                }
+            else:
+                error_msg = result.get('error', 'Failed to set leverage') if result else 'Unknown error'
+                return {
+                    'result': 'false',
+                    'message': f'Failed to set leverage: {error_msg}',
+                    'symbol': symbol,
+                    'leverage': leverage,
+                    'error': error_msg
+                }
             
         except Exception as e:
             logging.error(f"LBank change_leverage failed: {e}")
-            return None
+            return {
+                'result': 'false',
+                'message': f'Failed to set leverage: {str(e)}',
+                'symbol': symbol,
+                'leverage': leverage,
+                'error': str(e)
+            }
     
-    def change_margin_type(self, symbol: str, margin_type: str = "CROSSED") -> Optional[Dict]:
-        """Change margin type (ISOLATED/CROSSED)"""
+    def change_margin_type(self, symbol: str, margin_type: str = "cross") -> Optional[Dict]:
+        """Change margin type for perpetual futures (cross/isolated)"""
         try:
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
             params = {
                 'symbol': lbank_symbol,
-                'marginType': margin_type
+                'marginType': margin_type.lower(),  # 'cross' or 'isolated'
+                'productGroup': 'SwapU'
             }
             
-            result = self._signed_request('POST', f"{self.futures_base}/marginType.do", params)
-            return result
+            result = self._make_signed_request(f"{self.private_path}/marginType", params)
+            
+            if result and (result.get('result') == True or result.get('result') == 'true'):
+                logging.info(f"LBank margin type changed successfully: {symbol} to {margin_type}")
+                return result
+            else:
+                error_msg = result.get('error_code', 'Failed to change margin type') if result else 'No response'
+                logging.error(f"LBank change margin type failed: {error_msg}")
+                self.last_error = f"Change Margin Type Error: {error_msg}"
+                return None
             
         except Exception as e:
             logging.error(f"LBank change_margin_type failed: {e}")
+            self.last_error = f"Change Margin Type Error: {str(e)}"
             return None
     
     def place_futures_trade_with_tp_sl(self, symbol: str, side: str, quantity: str, 
