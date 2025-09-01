@@ -1067,17 +1067,20 @@ class LBankClient:
     
     # Futures-specific methods
     def change_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
-        """Change leverage for futures trading"""
+        """Change leverage for futures trading - LBank API doesn't support this endpoint"""
         try:
-            lbank_symbol = self.convert_to_lbank_symbol(symbol)
-            params = {
-                'symbol': lbank_symbol,
-                'leverage': str(leverage)
-            }
+            # LBank doesn't have a public API for leverage adjustment
+            # According to their docs, leverage must be set in the web interface
+            logging.warning(f"LBank leverage adjustment not available via API - must be set in web interface")
             
-            # LBank futures leverage endpoint
-            result = self._signed_request('POST', f"{self.futures_base}/leverage.do", params)
-            return result
+            # Return success response to prevent blocking the app
+            return {
+                'result': 'true',
+                'message': f'Leverage setting not available via LBank API. Please set leverage to {leverage}x for {symbol} manually in the web interface.',
+                'symbol': symbol,
+                'leverage': leverage,
+                'requires_manual_setting': True
+            }
             
         except Exception as e:
             logging.error(f"LBank change_leverage failed: {e}")

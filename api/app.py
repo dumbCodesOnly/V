@@ -1520,9 +1520,18 @@ def get_exchange_balance():
             return jsonify({'error': 'No API credentials found for live trading', 'testnet_mode': False}), 400
         
         # Create client and get balance - Dynamic exchange selection
-        client = create_exchange_client(user_creds, testnet=False)
-        
-        balance_data = client.get_account_balance()
+        try:
+            client = create_exchange_client(user_creds, testnet=False)
+            if not client:
+                return jsonify({'error': 'Failed to create exchange client', 'testnet_mode': False}), 500
+                
+            balance_data = client.get_account_balance()
+        except Exception as client_error:
+            logging.error(f"Error creating client or getting balance: {client_error}")
+            return jsonify({
+                'error': f'Exchange connection failed: {str(client_error)}',
+                'testnet_mode': False
+            }), 500
         
         if balance_data and isinstance(balance_data, list) and len(balance_data) > 0:
             # Extract USDT balance info from Toobit response
