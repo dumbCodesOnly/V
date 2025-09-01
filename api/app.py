@@ -445,18 +445,23 @@ def determine_trading_mode(user_id):
     """
     Centralized function to determine if user should be in paper trading mode.
     Returns True for paper mode, False for live mode.
+    RENDER OPTIMIZED: Uses credential caching to prevent repeated DB queries.
     """
     try:
         chat_id = int(user_id)
         
-        # Get user credentials
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(user_id),
-            is_active=True
-        ).first()
-        
-        # Check if user has valid credentials
-        has_valid_creds = user_creds and user_creds.has_credentials()
+        # RENDER OPTIMIZATION: Check credential cache first
+        current_time = time.time()
+        if chat_id in user_credentials_cache:
+            cache_entry = user_credentials_cache[chat_id]
+            if current_time - cache_entry['timestamp'] < credentials_cache_ttl:
+                has_valid_creds = cache_entry['has_creds']
+            else:
+                # Cache expired, need to refresh
+                has_valid_creds = _refresh_credential_cache(chat_id)
+        else:
+            # No cache entry, need to check database
+            has_valid_creds = _refresh_credential_cache(chat_id)
         
         # Check if user has explicitly set a paper trading preference
         with user_preferences_lock:
@@ -490,11 +495,37 @@ def determine_trading_mode(user_id):
         # On error, default to paper mode for safety
         return True
 
+def _refresh_credential_cache(chat_id):
+    """Refresh credential cache for a user (RENDER OPTIMIZATION)"""
+    try:
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(chat_id),
+            is_active=True
+        ).first()
+        
+        has_valid_creds = user_creds and user_creds.has_credentials()
+        
+        # Update cache
+        user_credentials_cache[chat_id] = {
+            'has_creds': has_valid_creds,
+            'timestamp': time.time(),
+            'exchange': user_creds.exchange_name if user_creds else None
+        }
+        
+        return has_valid_creds
+    except Exception as e:
+        logging.error(f"Error refreshing credential cache for user {chat_id}: {e}")
+        return False
+
 # Paper trading balance tracking
 user_paper_balances = {}  # {user_id: balance_amount}
 
 # Manual paper trading mode preferences
 user_paper_trading_preferences = {}  # {user_id: True/False}
+
+# RENDER PERFORMANCE OPTIMIZATION: Credential caching to prevent repeated DB queries
+user_credentials_cache = {}  # {user_id: {'has_creds': bool, 'timestamp': time, 'exchange': str}}
+credentials_cache_ttl = 300  # 5 minutes cache for credentials
 
 # Cache for database loads to prevent frequent database hits
 user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
@@ -507,13 +538,14 @@ def initialize_user_environment(user_id, force_reload=False):
     user_id = int(user_id)
     user_id_str = str(user_id)
     
-    # For Render deployment: Always force database reload to prevent worker sync issues
-    from config import Environment
-    if Environment.IS_RENDER:
-        force_reload = True
-    
     # Check enhanced cache first for user trade configurations
     cached_result = enhanced_cache.get_user_trade_configs(user_id_str)
+    
+    # RENDER OPTIMIZATION: Reduce forced reloads, use smart caching instead
+    from config import Environment
+    if Environment.IS_RENDER and not cached_result:
+        # Only force reload if no cache available
+        force_reload = True
     if not force_reload and cached_result:
         trade_configs, cache_info = cached_result
         with trade_configs_lock:
@@ -1762,7 +1794,7 @@ def toggle_paper_trading():
             logging.error(f"Toggle paper trading failed: Invalid user ID format: {user_id}")
             return jsonify({'success': False, 'message': 'Invalid user ID format'}), 400
         
-        # Optimize for Render deployment - minimize database queries
+        # RENDER OPTIMIZATION: Fast in-memory mode switching
         current_paper_mode = user_paper_trading_preferences.get(chat_id, True)  # Default to paper trading
         new_paper_mode = not current_paper_mode
         
@@ -1776,11 +1808,12 @@ def toggle_paper_trading():
                 user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
                 logging.info(f"[RENDER OPTIMIZATION] Set paper balance for user {chat_id}: ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f}")
         
-        # Clear any cached data that might cause lag on mode switch
-        cache_clear_keys = [f"user_positions_{chat_id}", f"portfolio_data_{chat_id}"]
-        for key in cache_clear_keys:
-            if key in globals():
-                del globals()[key]
+        # RENDER OPTIMIZATION: Clear enhanced cache instead of globals
+        enhanced_cache.invalidate_user_data(str(chat_id))
+        
+        # Clear credential cache to force refresh on next check
+        if chat_id in user_credentials_cache:
+            del user_credentials_cache[chat_id]
         
         # Log the mode change
         mode_text = "ENABLED" if new_paper_mode else "DISABLED"
