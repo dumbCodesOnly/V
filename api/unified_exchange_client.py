@@ -892,7 +892,9 @@ class LBankClient:
                             # Extract coin from networkList if available, otherwise try other fields
                             asset_code = ''
                             if 'networkList' in asset_data and asset_data['networkList']:
-                                asset_code = asset_data['networkList'][0].get('coin', '').upper()
+                                # Ensure networkList[0] is a dictionary before calling .get()
+                                if isinstance(asset_data['networkList'][0], dict):
+                                    asset_code = asset_data['networkList'][0].get('coin', '').upper()
                             
                             # Fallback to other possible field names
                             if not asset_code:
