@@ -8,6 +8,8 @@ import hmac
 import logging
 import requests
 import time
+import inspect
+import traceback
 from typing import Optional, Dict, List
 from urllib.parse import urlencode
 import json
@@ -707,12 +709,14 @@ class LBankClient:
         import hmac
         import hashlib
         
-        # DEBUG: Log the input parameter string
-        logging.debug(f"LBank HMAC - Input params string: '{params_string}'")
+        # DEBUG: Log the input parameter string with caller info
+        caller_method = inspect.stack()[1].function if len(inspect.stack()) > 1 else 'unknown'
+        logging.debug(f"[{caller_method}] LBank HMAC - Input params string: '{params_string}'")
         
         # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
         md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
-        logging.debug(f"LBank HMAC - MD5 hash: {md5_hash}")
+        caller_method = inspect.stack()[1].function if len(inspect.stack()) > 1 else 'unknown'
+        logging.debug(f"[{caller_method}] LBank HMAC - MD5 hash: {md5_hash}")
         
         # Step 2: Sign MD5 hash using HMAC-SHA256 with secret key (LOWERCASE - per official connector)
         signature = hmac.new(
@@ -721,7 +725,8 @@ class LBankClient:
             hashlib.sha256
         ).hexdigest().lower()  # Official LBank connector uses .lower(), not .upper()
         
-        logging.debug(f"LBank HMAC - Final signature: {signature}")
+        caller_method = inspect.stack()[1].function if len(inspect.stack()) > 1 else 'unknown'
+        logging.debug(f"[{caller_method}] LBank HMAC - Final signature: {signature}")
         return signature
     
     def _generate_signature(self, params_string: str) -> str:
@@ -796,12 +801,13 @@ class LBankClient:
         logging.info(f"LBank Original Request Params: {', '.join([f'{k}={v}' for k, v in params.items()])}")
         
         # DEBUG: Comprehensive payload debugging
-        logging.debug(f"LBank PAYLOAD DEBUG - Original params: {params}")
-        logging.debug(f"LBank PAYLOAD DEBUG - Auth params: {auth_params}")
-        logging.debug(f"LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
-        logging.debug(f"LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
-        logging.debug(f"LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
-        logging.debug(f"LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
+        caller_method = inspect.currentframe().f_code.co_name
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Original params: {params}")
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Auth params: {auth_params}")
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Merged params (before sort): {all_params}")
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Sorted params (before signature): {dict(sorted(all_params.items()))}")
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Param string for signature: '{param_string}'")
+        logging.debug(f"[{caller_method}] LBank PAYLOAD DEBUG - Final payload (with signature): {final_payload}")
         
         # DEBUG: Parameter validation
         required_params = ['api_key', 'signature_method', 'timestamp', 'echostr', 'sign']
@@ -983,9 +989,10 @@ class LBankClient:
             # Use v1 API for user account information (most stable)
             result = self._make_signed_request("/v2/supplement/user_info.do", {})
             
-            logging.debug(f"LBank result type: {type(result)}, is dict: {isinstance(result, dict)}")
+            caller_method = inspect.currentframe().f_code.co_name
+            logging.debug(f"[{caller_method}] LBank result type: {type(result)}, is dict: {isinstance(result, dict)}")
             if isinstance(result, dict):
-                logging.debug(f"LBank result contents: result={result.get('result')}, has data: {'data' in result}")
+                logging.debug(f"[{caller_method}] LBank result contents: result={result.get('result')}, has data: {'data' in result}")
             
             if isinstance(result, dict) and result.get('result') == 'true':
                 balances = []
@@ -993,7 +1000,8 @@ class LBankClient:
                 # Handle different response formats for v1 vs v2 endpoints
                 if 'data' in result:  # v2 format
                     data = result['data']
-                    logging.debug(f"LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
+                    caller_method = inspect.currentframe().f_code.co_name
+                    logging.debug(f"[{caller_method}] LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
                     if isinstance(data, list):
                         for asset_data in data:
                             # Ensure asset_data is a dictionary before calling .get()
@@ -1024,7 +1032,8 @@ class LBankClient:
                                 if not asset_code and ('usableAmt' in asset_data or 'assetAmt' in asset_data):
                                     asset_code = 'USDT'  # Default to USDT as it's the main trading asset
                                 
-                                logging.debug(f"LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
+                                caller_method = inspect.currentframe().f_code.co_name
+                                logging.debug(f"[{caller_method}] LBank asset_data keys: {list(asset_data.keys())}, asset_code: {asset_code}")
                                 
                                 if not asset_code:
                                     # If no asset code found, log the full data for debugging
@@ -1049,7 +1058,8 @@ class LBankClient:
                                     'orderMargin': '0',
                                     'crossUnRealizedPnl': '0'
                                 })
-                                logging.debug(f"Added LBank balance: {asset_code} = {asset_amt}")
+                                caller_method = inspect.currentframe().f_code.co_name
+                                logging.debug(f"[{caller_method}] Added LBank balance: {asset_code} = {asset_amt}")
                 elif 'info' in result:  # v1 format
                     info = result['info']
                     
@@ -1187,9 +1197,10 @@ class LBankClient:
         try:
             result = self._make_signed_request("/v2/futures/user_info.do", {})
             
-            logging.debug(f"LBank futures result type: {type(result)}, is dict: {isinstance(result, dict)}")
+            caller_method = inspect.currentframe().f_code.co_name
+            logging.debug(f"[{caller_method}] LBank futures result type: {type(result)}, is dict: {isinstance(result, dict)}")
             if isinstance(result, dict):
-                logging.debug(f"LBank futures result: result={result.get('result')}, has data: {'data' in result}")
+                logging.debug(f"[{caller_method}] LBank futures result: result={result.get('result')}, has data: {'data' in result}")
             
             if isinstance(result, dict) and result.get('result') == 'true':
                 balances = []
