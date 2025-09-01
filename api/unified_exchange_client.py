@@ -645,8 +645,11 @@ class LBankClient:
         timestamp = self._get_server_timestamp()
         echostr = self._generate_echostr()
         
-        # Force MD5 signature method (HMAC-SHA256) for better compatibility
-        signature_method = 'MD5'  # LBank uses 'MD5' to indicate HMAC-SHA256 signatures
+        # Determine signature method based on endpoint version
+        if '/v2/' in endpoint:
+            signature_method = 'HmacSHA256'  # V2 endpoints require HmacSHA256
+        else:
+            signature_method = 'MD5'  # V1 endpoints use MD5
         
         auth_params = {
             'api_key': self.api_key,
@@ -854,32 +857,58 @@ class LBankClient:
             # Use v1 API for user account information (most stable)
             result = self._make_signed_request("/v2/supplement/user_info.do", {})
             
-            if result and result.get('result') == 'true' and 'info' in result:
-                info = result['info']
+            if result and result.get('result') == 'true':
                 balances = []
                 
-                # Extract free balances
-                free_balances = info.get('free', {})
-                frozen_balances = info.get('freeze', {})
-                
-                # Process each asset
-                all_assets = set(list(free_balances.keys()) + list(frozen_balances.keys()))
-                
-                for asset in all_assets:
-                    free_amount = float(free_balances.get(asset, 0))
-                    frozen_amount = float(frozen_balances.get(asset, 0))
-                    total_amount = free_amount + frozen_amount
+                # Handle different response formats for v1 vs v2 endpoints
+                if 'data' in result:  # v2 format
+                    data = result['data']
+                    logging.debug(f"LBank v2 response data type: {type(data)}, content: {data[:2] if isinstance(data, list) and len(data) > 0 else data}")
+                    if isinstance(data, list):
+                        for asset_data in data:
+                            asset_code = asset_data.get('assetCode', '').upper()
+                            if not asset_code:
+                                continue
+                            
+                            usable_amt = float(asset_data.get('usableAmt', 0))
+                            asset_amt = float(asset_data.get('assetAmt', 0))
+                            frozen_amt = asset_amt - usable_amt
+                            
+                            # Only include assets with non-zero balance
+                            if asset_amt > 0:
+                                balances.append({
+                                    'asset': asset_code,
+                                    'balance': str(asset_amt),
+                                    'availableBalance': str(usable_amt),
+                                    'positionMargin': str(max(0, frozen_amt)),
+                                    'orderMargin': '0',
+                                    'crossUnRealizedPnl': '0'
+                                })
+                elif 'info' in result:  # v1 format
+                    info = result['info']
                     
-                    # Only include assets with non-zero balance
-                    if total_amount > 0:
-                        balances.append({
-                            'asset': asset.upper(),
-                            'balance': str(total_amount),
-                            'availableBalance': str(free_amount),
-                            'positionMargin': str(frozen_amount),
-                            'orderMargin': '0',
-                            'crossUnRealizedPnl': '0'
-                        })
+                    # Extract free balances
+                    free_balances = info.get('free', {})
+                    frozen_balances = info.get('freeze', {})
+                    
+                    # Process each asset
+                    all_assets = set(list(free_balances.keys()) + list(frozen_balances.keys()))
+                    
+                    for asset in all_assets:
+                        free_amount = float(free_balances.get(asset, 0))
+                        frozen_amount = float(frozen_balances.get(asset, 0))
+                        total_amount = free_amount + frozen_amount
+                        
+                        # Only include assets with non-zero balance
+                        if total_amount > 0:
+                            balances.append({
+                                'asset': asset.upper(),
+                                'balance': str(total_amount),
+                                'availableBalance': str(free_amount),
+                                'positionMargin': str(frozen_amount),
+                                'orderMargin': '0',
+                                'crossUnRealizedPnl': '0'
+                            })
                 
                 logging.debug(f"LBank balance fetched: {len(balances)} assets")
                 return balances
@@ -902,26 +931,53 @@ class LBankClient:
         try:
             result = self._make_signed_request("/v2/supplement/user_info.do", {})
             
-            if result and result.get('result') == 'true' and 'info' in result:
-                info = result['info']
-                
-                # Extract balance data
-                asset_info = info.get('asset', {})
-                free_balances = info.get('free', {})
-                
-                # Get USDT balance (primary trading currency)
-                usdt_free = float(free_balances.get('usdt', 0))
-                usdt_frozen = float(info.get('freeze', {}).get('usdt', 0))
-                usdt_total = usdt_free + usdt_frozen
-                
-                # Use net asset value if available, otherwise USDT balance
-                net_asset = float(asset_info.get('net', usdt_total))
-                
-                return {
-                    'total_balance': max(net_asset, usdt_total),
-                    'available_balance': usdt_free,
-                    'currency': 'USDT'
-                }
+            if result and result.get('result') == 'true':
+                # Handle different response formats for v1 vs v2 endpoints
+                if 'data' in result:  # v2 format
+                    data = result['data']
+                    if isinstance(data, list) and data:
+                        # Find USDT in the data list
+                        usdt_data = None
+                        for asset in data:
+                            if asset.get('assetCode', '').lower() == 'usdt':
+                                usdt_data = asset
+                                break
+                        
+                        if usdt_data:
+                            usdt_free = float(usdt_data.get('usableAmt', 0))
+                            usdt_total = float(usdt_data.get('assetAmt', 0))
+                            usdt_frozen = usdt_total - usdt_free
+                            
+                            return {
+                                'total_balance': usdt_total,
+                                'available_balance': usdt_free,
+                                'currency': 'USDT'
+                            }
+                    return {
+                        'total_balance': 0.0,
+                        'available_balance': 0.0,
+                        'currency': 'USDT'
+                    }
+                elif 'info' in result:  # v1 format
+                    info = result['info']
+                    
+                    # Extract balance data
+                    asset_info = info.get('asset', {})
+                    free_balances = info.get('free', {})
+                    
+                    # Get USDT balance (primary trading currency)
+                    usdt_free = float(free_balances.get('usdt', 0))
+                    usdt_frozen = float(info.get('freeze', {}).get('usdt', 0))
+                    usdt_total = usdt_free + usdt_frozen
+                    
+                    # Use net asset value if available, otherwise USDT balance
+                    net_asset = float(asset_info.get('net', usdt_total))
+                    
+                    return {
+                        'total_balance': max(net_asset, usdt_total),
+                        'available_balance': usdt_free,
+                        'currency': 'USDT'
+                    }
             else:
                 error_msg = result.get('error_code', 'Balance fetch failed') if result else 'No response'
                 logging.warning(f"LBank get_balance failed: {error_msg}")
