@@ -521,177 +521,202 @@ class ToobitClient:
 
 
 class LBankClient:
-    """LBank API client following official documentation specifications"""
+    """
+    LBank API client rewritten from scratch following official documentation
+    Using HMAC256 authentication as per LBank specifications
+    """
     
     def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False):
         self.api_key = api_key
         self.api_secret = api_secret
         self.testnet = testnet
         
-        # Official LBank API endpoints
+        # Official LBank REST API endpoints (from docs)
         self.base_url = "https://api.lbkex.com"
-        self.futures_base = "/v2/futures"  # Futures trading
-        self.spot_base = "/v2"             # Spot trading
+        self.futures_base = "/v2/futures"  # For futures trading compatibility
         
-        # Track last error for better user feedback
+        # Track last error for debugging
         self.last_error = None
-        
-        # LBank supports testnet, but we'll use mainnet for production
-        if testnet:
-            logging.info("LBank testnet mode requested - using mainnet for production trading")
         
         # Request session for connection pooling
         self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'LBank-Python-Client/1.0',
+            'Accept': 'application/json'
+        })
         
+    def _generate_echostr(self) -> str:
+        """Generate random alphanumeric string (30-40 characters) as required by LBank"""
+        import random
+        import string
+        length = random.randint(30, 40)
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+    
+    def _get_server_timestamp(self) -> str:
+        """Get current timestamp in milliseconds (LBank requirement)"""
+        return str(int(time.time() * 1000))
+    
     def _generate_signature(self, params_string: str) -> str:
         """
-        Generate signature for LBank API requests according to official documentation.
+        Generate HMAC256 signature exactly per LBank official documentation
         
-        LBank HmacSHA256 signature process (corrected based on latest docs):
-        1. Create parameter string (sorted alphabetically, excluding 'sign')
-        2. Generate MD5 hash of parameter string (uppercase)
-        3. Sign MD5 hash using HmacSHA256 with secret key (binary digest)
-        4. Base64 encode the binary signature
+        Official LBank HMAC256 Process:
+        1. Create parameter string (sorted alphabetically, no 'sign' parameter)
+        2. Generate MD5 hash of parameter string (UPPERCASE)
+        3. Sign MD5 hash using HMAC-SHA256 with secret key
+        4. Return HEX digest (not Base64 as some exchanges do)
         """
         import hmac
-        import base64
+        import hashlib
         
-        # Step 1: Generate MD5 hash of parameter string (uppercase)
+        # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
         md5_hash = hashlib.md5(params_string.encode('utf-8')).hexdigest().upper()
         
-        # Step 2: Sign MD5 hash using HmacSHA256 (binary digest, not hex)
-        hmac_signature = hmac.new(
+        # Step 2: Sign MD5 hash using HMAC-SHA256 with secret key
+        signature = hmac.new(
             self.api_secret.encode('utf-8'),
             md5_hash.encode('utf-8'),
             hashlib.sha256
-        ).digest()  # Use digest() for binary, not hexdigest()
-        
-        # Step 3: Base64 encode the binary signature
-        signature = base64.b64encode(hmac_signature).decode('utf-8')
+        ).hexdigest()  # LBank uses hex digest, not base64
         
         return signature
     
-    def get_server_time(self) -> int:
-        """Get server time from LBank for accurate timestamp synchronization"""
-        try:
-            # Official LBank timestamp endpoint
-            response = self.session.get(f"{self.base_url}/v2/timestamp.do", timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                # LBank returns timestamp - use as-is if in milliseconds
-                timestamp = data.get('data', data.get('timestamp', time.time()))
-                # Ensure timestamp is in milliseconds
-                if timestamp < 1e12:  # If in seconds, convert to milliseconds
-                    timestamp = int(timestamp * 1000)
-                else:
-                    timestamp = int(timestamp)
-                return timestamp
-        except Exception as e:
-            logging.debug(f"Failed to get LBank server time: {e}")
-        
-        # Fallback to local time in milliseconds
-        return int(time.time() * 1000)
-    
-    def _generate_echostr(self) -> str:
-        """Generate random echostr (exactly 35 alphanumeric characters) as required by LBank"""
-        import random
-        import string
-        
-        # Fixed length for consistency - LBank requires 30-40 chars
-        length = 35
-        chars = string.ascii_letters + string.digits
-        return ''.join(random.choice(chars) for _ in range(length))
-    
-    def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+    def _make_signed_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Make signed request following LBank official documentation format
+        Make authenticated request to LBank API following official documentation
         
-        Official LBank Authentication Process:
-        1. Add required parameters: api_key, signature_method, timestamp, echostr
-        2. Sort parameters alphabetically (excluding 'sign')
-        3. Create parameter string in format: key=value&key=value
-        4. Generate MD5 hash (uppercase) -> Sign with HmacSHA256 -> Base64 encode
-        5. Add 'sign' parameter with signature
-        6. Send as POST with form data and specific headers
+        LBank Authentication Requirements:
+        1. All authenticated requests must be POST
+        2. Content-Type: application/x-www-form-urlencoded  
+        3. Required parameters: api_key, signature_method, timestamp, echostr, sign
+        4. Headers: timestamp, signature_method, echostr
         """
         if params is None:
             params = {}
         
-        # Get server timestamp for better synchronization
-        timestamp = str(self.get_server_time())
+        # Add required authentication parameters
+        timestamp = self._get_server_timestamp()
         echostr = self._generate_echostr()
         
-        # Add required authentication parameters per LBank spec
-        params['api_key'] = self.api_key
-        params['signature_method'] = 'HmacSHA256'
-        params['timestamp'] = timestamp
-        params['echostr'] = echostr
-        
-        # Remove empty values and convert all to strings
-        filtered_params = {}
-        for k, v in params.items():
-            if v is not None and v != '':
-                filtered_params[k] = str(v)
-        
-        # Sort parameters alphabetically by key (critical for signature)
-        sorted_params = dict(sorted(filtered_params.items()))
-        
-        # Create parameter string for signature (key=value&key=value format)
-        params_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
-        
-        # Debug logging for signature verification
-        logging.debug(f"LBank signature params: {list(sorted_params.keys())}")
-        logging.debug(f"LBank echostr length: {len(echostr)}")
-        
-        # Generate signature
-        signature = self._generate_signature(params_string)
-        
-        # Add signature to parameters
-        sorted_params['sign'] = signature
-        
-        # Prepare headers according to LBank specification
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'timestamp': sorted_params['timestamp'],
-            'signature_method': sorted_params['signature_method'],
-            'echostr': sorted_params['echostr']
+        auth_params = {
+            'api_key': self.api_key,
+            'signature_method': 'HmacSHA256',
+            'timestamp': timestamp,
+            'echostr': echostr
         }
         
-        # Build full URL
+        # Merge with provided parameters
+        all_params = {**params, **auth_params}
+        
+        # Sort parameters alphabetically (critical for signature)
+        sorted_params = dict(sorted(all_params.items()))
+        
+        # Create parameter string for signature
+        param_string = '&'.join([f"{k}={v}" for k, v in sorted_params.items()])
+        
+        # Generate signature
+        signature = self._generate_signature(param_string)
+        
+        # Add signature to final parameters
+        sorted_params['sign'] = signature
+        
+        # Prepare headers per LBank specification
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'timestamp': timestamp,
+            'signature_method': 'HmacSHA256',
+            'echostr': echostr
+        }
+        
+        # Make POST request with form data
         url = f"{self.base_url}{endpoint}"
         
-        # Log request for debugging
-        logging.debug(f"LBank {method} {endpoint} with params: {list(sorted_params.keys())}")
-        
         try:
-            # LBank requires POST method with form data
             response = self.session.post(url, data=sorted_params, headers=headers, timeout=10)
             
             if response.status_code == 200:
                 result = response.json()
                 
                 # Handle LBank response format
-                if 'result' in result:
-                    if result['result'] == 'true':
-                        logging.debug(f"LBank API success: {endpoint}")
-                        return result
+                if isinstance(result, dict):
+                    if result.get('result') == 'true':
+                        return result.get('data', result)
                     else:
-                        error_msg = result.get('error_code', result.get('result', 'Unknown error'))
-                        logging.error(f"LBank API error: {error_msg}")
-                        self.last_error = f"LBank Error: {error_msg}"
+                        error_code = result.get('error_code', 'Unknown error')
+                        self.last_error = f"LBank Error: {error_code}"
+                        logging.error(f"LBank API error: {error_code}")
                         return None
-                else:
-                    # Some endpoints return data directly
-                    return result
+                        
+                return result
             else:
-                error_text = response.text[:500]  # Limit error text length
-                logging.error(f"LBank HTTP {response.status_code}: {error_text}")
+                error_text = response.text[:200]
                 self.last_error = f"HTTP {response.status_code}: {error_text}"
+                logging.error(f"LBank HTTP error {response.status_code}: {error_text}")
                 return None
                 
         except Exception as e:
-            logging.error(f"LBank request failed: {str(e)}")
             self.last_error = f"Request failed: {str(e)}"
+            logging.error(f"LBank request exception: {e}")
+            return None
+    
+    def _make_public_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """Make public (non-authenticated) request to LBank"""
+        url = f"{self.base_url}{endpoint}"
+        
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result
+            else:
+                error_text = response.text[:200]
+                self.last_error = f"HTTP {response.status_code}: {error_text}"
+                logging.error(f"LBank public request error {response.status_code}: {error_text}")
+                return None
+                
+        except Exception as e:
+            self.last_error = f"Public request failed: {str(e)}"
+            logging.error(f"LBank public request exception: {e}")
+            return None
+    
+    # Core API Methods - Rewritten from scratch per LBank documentation
+    
+    def test_connectivity(self) -> bool:
+        """Test API connectivity using official LBank ping endpoint"""
+        try:
+            result = self._make_public_request("/v2/supplement/system_ping.do")
+            return result is not None
+        except Exception as e:
+            logging.error(f"LBank connectivity test failed: {e}")
+            return False
+    
+    def get_balance(self) -> Optional[Dict]:
+        """Get account balance using official LBank user_info endpoint"""
+        try:
+            result = self._make_signed_request("/v2/supplement/user_info.do")
+            if result and 'data' in result:
+                return result['data']
+            return result
+        except Exception as e:
+            logging.error(f"LBank get_balance failed: {e}")
+            return None
+    
+    # Add missing method that's referenced by other methods
+    def _signed_request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """Alias for _make_signed_request for backward compatibility"""
+        return self._make_signed_request(endpoint, params)
+    
+    def get_ticker(self, symbol: str) -> Optional[Dict]:
+        """Get ticker information for symbol"""
+        try:
+            lbank_symbol = self.convert_to_lbank_symbol(symbol)
+            result = self._make_public_request("/v2/supplement/ticker/price.do", {
+                'symbol': lbank_symbol
+            })
+            return result
+        except Exception as e:
+            logging.error(f"LBank get_ticker failed: {e}")
             return None
     
     def _public_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -710,14 +735,7 @@ class LBankClient:
             logging.error(f"LBank public request failed: {e}")
             return None
     
-    # Market Data Methods
-    def get_ticker(self, symbol: str) -> Optional[Dict]:
-        """Get 24hr ticker price change statistics"""
-        lbank_symbol = self.convert_to_lbank_symbol(symbol)
-        result = self._public_request("/v2/ticker.do", {"symbol": lbank_symbol})
-        if isinstance(result, list) and len(result) > 0:
-            return result[0]  # LBank returns array, get first item
-        return result
+    # Remove duplicate method - using the new one defined above
     
     def get_ticker_price(self, symbol: str) -> Optional[float]:
         """Get current ticker price for a symbol"""
