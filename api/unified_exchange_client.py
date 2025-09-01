@@ -811,7 +811,7 @@ class LBankClient:
         """
         try:
             # Use v1 API for user account information (most stable)
-            result = self._signed_request('POST', "/v1/user_info.do", {})
+            result = self._make_signed_request("/v1/user_info.do", {})
             
             if result and result.get('result') == 'true' and 'info' in result:
                 info = result['info']
@@ -859,7 +859,7 @@ class LBankClient:
         Returns unified balance format compatible with trading bot expectations
         """
         try:
-            result = self._signed_request('POST', "/v1/user_info.do", {})
+            result = self._make_signed_request("/v1/user_info.do", {})
             
             if result and result.get('result') == 'true' and 'info' in result:
                 info = result['info']
