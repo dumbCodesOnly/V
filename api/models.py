@@ -237,6 +237,9 @@ class TradeConfiguration(db.Model):
         config.final_pnl = self.final_pnl
         config.closed_at = format_iran_time(self.closed_at) if self.closed_at else ""
         
+        # Set exchange (will be determined at execution time, default to toobit)
+        config.exchange = getattr(self, 'exchange', 'toobit')
+        
         # Parse take profits JSON
         if self.take_profits:
             try:

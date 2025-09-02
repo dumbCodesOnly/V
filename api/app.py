@@ -600,7 +600,7 @@ class TradeConfig:
         self.final_pnl = 0.0        # Final P&L when position is closed
         self.closed_at = ""         # Timestamp when position was closed
         self.notes = ""             # Additional notes for the trade
-        
+        self.exchange = ""          # Exchange to use for this trade
     def get_display_name(self):
         if self.symbol and self.side:
             return f"{self.name} ({self.symbol} {self.side.upper()})"
@@ -3137,6 +3137,9 @@ def execute_trade():
             logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
             execution_success = True
             
+            # Set exchange for paper trading (default to toobit if no credentials)
+            config.exchange = user_creds.exchange_name if user_creds else 'toobit'
+            
             # Simulate order placement with paper trading IDs
             mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"
             config.exchange_order_id = mock_order_id
@@ -3173,6 +3176,9 @@ def execute_trade():
                 
                 # Create exchange client (dynamic selection)
                 client = create_exchange_client(user_creds, testnet=False)
+                
+                # Set the exchange name in the config for proper order routing
+                config.exchange = user_creds.exchange_name or 'toobit'
                 
                 # Enhanced connection test with detailed error reporting
                 try:
