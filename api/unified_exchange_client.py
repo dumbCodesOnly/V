@@ -1066,18 +1066,8 @@ class LBankClient:
                 'productGroup': 'SwapU'
             }
             
-            # Try multiple endpoints for leverage setting
+            # Use correct LBank leverage endpoint
             result = self._make_signed_request(f"{self.private_path}/leverage", params)
-            
-            # If primary endpoint fails, try alternatives
-            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
-                logging.warning("LBank primary leverage endpoint failed, trying alternative...")
-                result = self._make_signed_request(f"{self.private_path}/leverageSet", params)
-                
-            # If still failing, try another alternative
-            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
-                logging.warning("LBank second leverage endpoint failed, trying third alternative...")
-                result = self._make_signed_request(f"{self.private_path}/setLeverage", params)
             
             if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
                 logging.info(f"LBank leverage set successfully: {symbol} to {leverage}x {margin_type}")
@@ -1141,18 +1131,8 @@ class LBankClient:
                 'productGroup': 'SwapU'
             }
             
-            # Try multiple endpoints for leverage info
-            result = self._make_signed_request(f"{self.private_path}/leverageInfo", params)
-            
-            # If primary endpoint fails, try alternatives
-            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
-                logging.warning("LBank primary leverage info endpoint failed, trying alternative...")
-                result = self._make_signed_request(f"{self.private_path}/getLeverage", params)
-                
-            # If still failing, try another alternative
-            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
-                logging.warning("LBank second leverage info endpoint failed, trying third alternative...")
-                result = self._make_signed_request(f"{self.private_path}/leverage", params)
+            # Use correct LBank leverage info endpoint
+            result = self._make_signed_request(f"{self.private_path}/leverage", params)
             
             if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
                 data = result.get('data', {})
@@ -1301,13 +1281,8 @@ class LBankClient:
                 'positionSide': side.upper()  # LONG or SHORT for perpetual futures
             })
             
-            # Place order using perpetual futures API - try correct endpoints
-            result = self._make_signed_request(f"{self.private_path}/create_order", params)
-            
-            # If that fails, try alternative endpoint
-            if not result or (isinstance(result, dict) and result.get('error_code') == 405):
-                logging.warning("LBank primary order endpoint failed, trying alternative...")
-                result = self._make_signed_request(f"{self.private_path}/order", params)
+            # Place order using correct LBank endpoint
+            result = self._make_signed_request(f"{self.private_path}/order", params)
             
             if result and (result.get('result') == True or result.get('result') == 'true'):
                 data = result.get('data', {})
@@ -1633,13 +1608,8 @@ class LBankClient:
                     'positionSide': 'SHORT' if side.upper() == "BUY" else 'LONG'  # Closing position
                 }
                 
-                # Try multiple endpoints for TP order placement
-                tp_result = self._make_signed_request(f"{self.private_path}/create_order", tp_params)
-                
-                # If that fails, try alternative endpoint
-                if not tp_result or (isinstance(tp_result, dict) and tp_result.get('error_code') == 405):
-                    logging.warning("LBank primary TP order endpoint failed, trying alternative...")
-                    tp_result = self._make_signed_request(f"{self.private_path}/order", tp_params)
+                # Place TP order using correct LBank endpoint
+                tp_result = self._make_signed_request(f"{self.private_path}/order", tp_params)
                 
                 if tp_result and (tp_result.get('result') == True or tp_result.get('result') == 'true'):
                     data = tp_result.get('data', {})
@@ -1679,13 +1649,8 @@ class LBankClient:
                 sl_params['orderType'] = 'STOP_MARKET'  # Market execution when triggered
                 sl_params['workingType'] = 'MARK_PRICE'  # Use mark price to avoid false triggers
                 
-                # Try multiple endpoints for SL order placement
-                sl_result = self._make_signed_request(f"{self.private_path}/create_order", sl_params)
-                
-                # If that fails, try alternative endpoint
-                if not sl_result or (isinstance(sl_result, dict) and sl_result.get('error_code') == 405):
-                    logging.warning("LBank primary SL order endpoint failed, trying alternative...")
-                    sl_result = self._make_signed_request(f"{self.private_path}/order", sl_params)
+                # Place SL order using correct LBank endpoint
+                sl_result = self._make_signed_request(f"{self.private_path}/order", sl_params)
                 
                 if sl_result and (sl_result.get('result') == True or sl_result.get('result') == 'true'):
                     data = sl_result.get('data', {})

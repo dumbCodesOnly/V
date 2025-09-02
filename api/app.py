@@ -3288,7 +3288,7 @@ def execute_trade():
                 if config.exchange == 'lbank':
                     # For LBank client, use LBank symbol conversion
                     exchange_symbol = getattr(client, 'convert_to_lbank_symbol', lambda x: x)(config.symbol)
-                    endpoint_info = "/cfd/openApi/v1/prv/create_order"
+                    endpoint_info = "/cfd/openApi/v1/prv/order"
                 else:  # toobit
                     # For Toobit client, use Toobit symbol conversion
                     exchange_symbol = getattr(client, 'convert_to_toobit_symbol', lambda x: x)(config.symbol)
