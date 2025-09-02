@@ -1525,32 +1525,9 @@ def get_exchange_balance():
             if not client:
                 return jsonify({'error': 'Failed to create exchange client', 'testnet_mode': False}), 500
             
-            # Get futures balance (perpetual futures trading)
-            spot_balance = client.get_futures_balance()
-            
-            # Try to get futures balance (for trading)
-            futures_balance = []
-            if hasattr(client, 'get_futures_balance'):
-                try:
-                    futures_balance = client.get_futures_balance()
-                    logging.info(f"Futures balance fetched: {len(futures_balance)} assets")
-                except Exception as futures_error:
-                    logging.warning(f"Futures balance fetch failed: {futures_error}")
-            
-            # Try to get margin balance
-            margin_balance = []
-            if hasattr(client, 'get_margin_balance'):
-                try:
-                    margin_balance = client.get_margin_balance()
-                    logging.info(f"Margin balance fetched: {len(margin_balance)} assets")
-                except Exception as margin_error:
-                    logging.warning(f"Margin balance fetch failed: {margin_error}")
-            
-            # Use futures balance as primary for trading (if available), otherwise spot
-            balance_data = futures_balance if futures_balance else spot_balance
-            
-            logging.info(f"Balance summary - Spot: {len(spot_balance) if spot_balance else 0}, "
-                        f"Futures: {len(futures_balance)}, Margin: {len(margin_balance)}")
+            # Get perpetual futures balance
+            balance_data = client.get_futures_balance()
+            logging.info(f"Perpetual futures balance fetched: {len(balance_data) if balance_data else 0} assets")
                 
         except Exception as client_error:
             logging.error(f"Error creating client or getting balance: {client_error}")
@@ -1574,8 +1551,8 @@ def get_exchange_balance():
             margin_ratio = (used_margin / total_balance * 100) if total_balance > 0 else 0
             
             # Determine balance type for user information
-            balance_type = 'futures' if futures_balance else 'spot'
-            balance_source = f"{user_creds.exchange_name.upper()} {balance_type.title()}" if user_creds.exchange_name else f"{balance_type.title()}"
+            balance_type = 'perpetual_futures'
+            balance_source = f"{user_creds.exchange_name.upper()} Perpetual Futures" if user_creds.exchange_name else "Perpetual Futures"
             
             return jsonify({
                 'success': True,
@@ -1593,9 +1570,7 @@ def get_exchange_balance():
                     'asset': usdt_balance.get('asset', 'USDT')
                 },
                 'balance_summary': {
-                    'spot_assets': len(spot_balance) if spot_balance else 0,
-                    'futures_assets': len(futures_balance),
-                    'margin_assets': len(margin_balance),
+                    'futures_assets': len(balance_data) if balance_data else 0,
                     'primary_balance': balance_type
                 },
                 'raw_data': balance_data,
