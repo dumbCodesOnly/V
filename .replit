@@ -16,20 +16,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Telegram Trading Bot"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Start application"
-
-[[workflows.workflow]]
-name = "Telegram Trading Bot"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pip install flask requests aiohttp python-telegram-bot && python app.py"
-waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Start application"
