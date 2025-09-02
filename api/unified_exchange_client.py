@@ -1540,43 +1540,106 @@ class LBankClient:
     def place_multiple_tp_sl_orders(self, symbol: str, side: str, total_quantity: str, 
                                    take_profits: List[Dict], stop_loss_price: Optional[str] = None) -> List[Dict]:
         """
-        Compatibility method to match ToobitClient interface
-        Place multiple TP/SL orders for LBank exchange
+        Place multiple TP/SL orders for LBank perpetual futures
+        
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT')
+            side: Original position side ('BUY' for long, 'SELL' for short)  
+            total_quantity: Total position size
+            take_profits: List of TP configs with 'price' and 'allocation'
+            stop_loss_price: Stop loss trigger price
+            
+        Returns:
+            List of placed order dictionaries
         """
         orders_placed = []
         
         try:
-            # Place take profit orders
+            # Place take profit orders as LIMIT orders to close positions
             for i, tp in enumerate(take_profits):
-                tp_side = "SELL" if side.upper() == "BUY" else "BUY"
-                tp_order = self.place_order(
-                    symbol=symbol,
-                    side=tp_side,
-                    order_type="LIMIT",
-                    quantity=str(float(total_quantity) * tp['allocation'] / 100),
-                    price=str(tp['price'])
-                )
-                if tp_order:
-                    orders_placed.append(tp_order)
-                    logging.info(f"LBank TP{i+1} order placed at {tp['price']} for {tp['allocation']}%")
+                # For closing positions: opposite side to entry
+                tp_side = "sell" if side.upper() == "BUY" else "buy"
+                tp_quantity = float(total_quantity) * tp['allocation'] / 100
+                
+                # Use proper LBank position closing parameters
+                tp_params = {
+                    'symbol': self.convert_to_lbank_symbol(symbol),
+                    'type': tp_side,  # buy/sell in lowercase
+                    'amount': str(tp_quantity),
+                    'price': str(tp['price']),
+                    'productGroup': 'SwapU',
+                    'positionSide': 'SHORT' if side.upper() == "BUY" else 'LONG'  # Closing position
+                }
+                
+                tp_result = self._make_signed_request(f"{self.private_path}/order", tp_params)
+                
+                if tp_result and (tp_result.get('result') == True or tp_result.get('result') == 'true'):
+                    data = tp_result.get('data', {})
+                    order_id = data.get('orderId') or data.get('order_id', '')
+                    
+                    if order_id:
+                        tp_order = {
+                            'orderId': str(order_id),
+                            'symbol': symbol,
+                            'side': tp_side.upper(),
+                            'type': 'LIMIT',
+                            'quantity': str(tp_quantity),
+                            'price': str(tp['price']),
+                            'status': 'NEW',
+                            'orderType': 'TAKE_PROFIT'
+                        }
+                        orders_placed.append(tp_order)
+                        logging.info(f"LBank TP{i+1} order placed: {order_id} at ${tp['price']} for {tp['allocation']}%")
             
-            # Place stop loss order if provided
+            # Place stop loss order as STOP_MARKET for guaranteed execution
             if stop_loss_price:
-                sl_side = "SELL" if side.upper() == "BUY" else "BUY"
-                sl_order = self.place_order(
-                    symbol=symbol,
-                    side=sl_side,
-                    order_type="STOP_LOSS",
-                    quantity=total_quantity,
-                    price=stop_loss_price
-                )
-                if sl_order:
-                    orders_placed.append(sl_order)
-                    logging.info(f"LBank SL order placed at {stop_loss_price}")
+                sl_side = "sell" if side.upper() == "BUY" else "buy"
+                
+                # LBank stop loss parameters for perpetual futures
+                # Try STOP_MARKET first, fallback to regular order with trigger price
+                sl_params = {
+                    'symbol': self.convert_to_lbank_symbol(symbol),
+                    'type': sl_side,  # buy/sell in lowercase
+                    'amount': str(total_quantity),
+                    'productGroup': 'SwapU',
+                    'positionSide': 'SHORT' if side.upper() == "BUY" else 'LONG'  # Closing position
+                }
+                
+                # Add stop price parameters - try different formats for compatibility
+                sl_params['stopPrice'] = str(stop_loss_price)  # Primary trigger price
+                sl_params['trigger_price'] = str(stop_loss_price)  # Alternative format
+                sl_params['orderType'] = 'STOP_MARKET'  # Market execution when triggered
+                sl_params['workingType'] = 'MARK_PRICE'  # Use mark price to avoid false triggers
+                
+                sl_result = self._make_signed_request(f"{self.private_path}/order", sl_params)
+                
+                if sl_result and (sl_result.get('result') == True or sl_result.get('result') == 'true'):
+                    data = sl_result.get('data', {})
+                    order_id = data.get('orderId') or data.get('order_id', '')
+                    
+                    if order_id:
+                        sl_order = {
+                            'orderId': str(order_id),
+                            'symbol': symbol,
+                            'side': sl_side.upper(),
+                            'type': 'STOP_MARKET',
+                            'quantity': str(total_quantity),
+                            'stopPrice': str(stop_loss_price),
+                            'status': 'NEW',
+                            'orderType': 'STOP_LOSS'
+                        }
+                        orders_placed.append(sl_order)
+                        logging.info(f"LBank SL order placed: {order_id} at ${stop_loss_price} (STOP_MARKET)")
+                else:
+                    error_msg = sl_result.get('error_code', 'Stop loss order failed') if sl_result else 'No response'
+                    logging.warning(f"LBank stop loss order failed: {error_msg}")
         
         except Exception as e:
             logging.error(f"Error placing LBank TP/SL orders: {e}")
+            import traceback
+            logging.error(f"Full traceback: {traceback.format_exc()}")
         
+        logging.info(f"LBank TP/SL orders completed: {len(orders_placed)} orders placed")
         return orders_placed
     
     # Additional compatibility methods to match ToobitClient interface
