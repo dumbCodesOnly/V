@@ -983,6 +983,7 @@ class LBankClient:
         try:
             # Use perpetual futures account endpoint - try GET method first
             result = self._make_signed_request(f"{self.private_path}/account", {
+                'asset': 'USDT',         # Required parameter according to LBank docs
                 'productGroup': 'SwapU'  # USDT-margined perpetual contracts
             }, method='GET')
             
