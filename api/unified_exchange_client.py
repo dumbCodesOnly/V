@@ -192,11 +192,7 @@ class ToobitClient:
                 
         return None
     
-    # Account Methods
-    def get_account_balance(self) -> List[Dict]:
-        """Get futures account balance"""
-        result = self._signed_request('GET', f"{self.futures_base}/balance")
-        return result if isinstance(result, list) else []
+    # Account Methods - Perpetual Futures Only
     
     def get_positions(self) -> List[Dict]:
         """Get all positions"""

@@ -1525,8 +1525,8 @@ def get_exchange_balance():
             if not client:
                 return jsonify({'error': 'Failed to create exchange client', 'testnet_mode': False}), 500
             
-            # Get all balance types: spot, futures, and margin
-            spot_balance = client.get_account_balance()
+            # Get futures balance (perpetual futures trading)
+            spot_balance = client.get_futures_balance()
             
             # Try to get futures balance (for trading)
             futures_balance = []
@@ -2573,7 +2573,7 @@ def debug_position_close_test():
             
             # Test basic connection
             logging.debug(f"Testing API connection for user {user_id}")
-            balance = client.get_account_balance()
+            balance = client.get_futures_balance()
             if balance:
                 debug_info['api_connection_test'] = 'Success'
                 debug_info['paper_mode_active'] = False
@@ -3202,7 +3202,7 @@ def execute_trade():
                 # Enhanced connection test with detailed error reporting
                 try:
                     logging.debug("Testing Toobit API connection...")
-                    balance_data = client.get_account_balance()
+                    balance_data = client.get_futures_balance()
                     
                     if balance_data:
                         logging.debug("API connection successful")
@@ -7612,7 +7612,7 @@ def debug_trading_status():
                 client = create_exchange_client(user_creds, testnet=False)
                 
                 # Test connection
-                balance_data = client.get_account_balance()
+                balance_data = client.get_futures_balance()
                 diagnostic_info['toobit_connection'] = {
                     'status': 'success',
                     'has_balance_data': bool(balance_data),
