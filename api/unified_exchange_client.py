@@ -742,7 +742,7 @@ class LBankClient:
         else:
             return self._generate_hmac_signature(params_string)
     
-    def _make_signed_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+    def _make_signed_request(self, endpoint: str, params: Optional[Dict] = None, method: str = 'POST') -> Optional[Dict]:
         """
         Make authenticated request to LBank Perpetual Futures API following official documentation
         
@@ -804,16 +804,21 @@ class LBankClient:
         payload = dict(sorted_params)
         payload['sign'] = signature
         
-        # Make POST request to perpetual futures API
+        # Make signed request to perpetual futures API
         url = f"{self.base_url}{endpoint}"
         
         # Log request details for debugging
-        logging.info(f"LBank Perpetual Futures SIGNED REQUEST: POST {url}")
+        logging.info(f"LBank Perpetual Futures SIGNED REQUEST: {method} {url}")
         logging.debug(f"LBank Request Headers: {headers}")
         logging.debug(f"LBank Request Payload: {payload}")
         
         try:
-            response = self.session.post(url, json=payload, headers=headers, timeout=15)
+            if method.upper() == 'GET':
+                # For GET requests, send parameters in URL query string
+                response = self.session.get(url, params=payload, headers=headers, timeout=15)
+            else:
+                # For POST requests, send as JSON body
+                response = self.session.post(url, json=payload, headers=headers, timeout=15)
             
             # Log response details
             logging.info(f"LBank Response Status: {response.status_code}")
@@ -1193,10 +1198,10 @@ class LBankClient:
         Returns perpetual futures account info with margin and available balances
         """
         try:
-            # Use perpetual futures account endpoint
+            # Use perpetual futures account endpoint - try GET method first
             result = self._make_signed_request(f"{self.private_path}/account", {
                 'productGroup': 'SwapU'  # USDT-margined perpetual contracts
-            })
+            }, method='GET')
             
             logging.debug(f"LBank perpetual futures balance result: {result}")
             
