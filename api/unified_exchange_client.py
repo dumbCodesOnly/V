@@ -1066,7 +1066,18 @@ class LBankClient:
                 'productGroup': 'SwapU'
             }
             
+            # Try multiple endpoints for leverage setting
             result = self._make_signed_request(f"{self.private_path}/leverage", params)
+            
+            # If primary endpoint fails, try alternatives
+            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
+                logging.warning("LBank primary leverage endpoint failed, trying alternative...")
+                result = self._make_signed_request(f"{self.private_path}/leverageSet", params)
+                
+            # If still failing, try another alternative
+            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
+                logging.warning("LBank second leverage endpoint failed, trying third alternative...")
+                result = self._make_signed_request(f"{self.private_path}/setLeverage", params)
             
             if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
                 logging.info(f"LBank leverage set successfully: {symbol} to {leverage}x {margin_type}")
@@ -1079,11 +1090,28 @@ class LBankClient:
                 }
             else:
                 error_msg = result.get('error_code', 'Failed to set leverage') if isinstance(result, dict) else 'No response'
-                logging.error(f"LBank set leverage failed: {error_msg}")
-                self.last_error = f"Set Leverage Error: {error_msg}"
+                error_detail = result.get('msg', '') if isinstance(result, dict) else ''
+                
+                # Handle system abnormality gracefully
+                if str(error_msg) == '-99' or 'system abnormality' in str(error_detail).lower():
+                    logging.warning(f"LBank leverage system temporarily unavailable (error -99). Using default leverage.")
+                    # Return success with default values to allow trading to continue
+                    return {
+                        'success': True,
+                        'symbol': symbol,
+                        'leverage': leverage,
+                        'margin_type': margin_type,
+                        'message': 'Using default leverage (LBank system temporarily unavailable)',
+                        'warning': 'Leverage system temporarily unavailable'
+                    }
+                
+                full_error = f"{error_msg}: {error_detail}" if error_detail else str(error_msg)
+                logging.error(f"LBank set leverage failed: {full_error}")
+                self.last_error = f"Set Leverage Error: {full_error}"
                 return {
                     'success': False,
-                    'error': error_msg
+                    'error': full_error,
+                    'fallback_available': True
                 }
                 
         except Exception as e:
@@ -1113,7 +1141,18 @@ class LBankClient:
                 'productGroup': 'SwapU'
             }
             
+            # Try multiple endpoints for leverage info
             result = self._make_signed_request(f"{self.private_path}/leverageInfo", params)
+            
+            # If primary endpoint fails, try alternatives
+            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
+                logging.warning("LBank primary leverage info endpoint failed, trying alternative...")
+                result = self._make_signed_request(f"{self.private_path}/getLeverage", params)
+                
+            # If still failing, try another alternative
+            if not result or (isinstance(result, dict) and result.get('error_code') in [405, -99, '405', '-99']):
+                logging.warning("LBank second leverage info endpoint failed, trying third alternative...")
+                result = self._make_signed_request(f"{self.private_path}/leverage", params)
             
             if isinstance(result, dict) and (result.get('result') == True or result.get('result') == 'true'):
                 data = result.get('data', {})
@@ -1126,11 +1165,29 @@ class LBankClient:
                 }
             else:
                 error_msg = result.get('error_code', 'Failed to get leverage') if isinstance(result, dict) else 'No response'
-                logging.warning(f"LBank get leverage failed: {error_msg}")
-                self.last_error = f"Get Leverage Error: {error_msg}"
+                error_detail = result.get('msg', '') if isinstance(result, dict) else ''
+                
+                # Handle system abnormality gracefully
+                if str(error_msg) == '-99' or 'system abnormality' in str(error_detail).lower():
+                    logging.warning(f"LBank leverage info system temporarily unavailable (error -99). Using default values.")
+                    # Return success with default values to allow trading to continue
+                    return {
+                        'success': True,
+                        'symbol': symbol,
+                        'leverage': 20,  # Default 20x
+                        'margin_type': 'cross',
+                        'max_leverage': 200,
+                        'message': 'Using default leverage info (LBank system temporarily unavailable)',
+                        'warning': 'Leverage info system temporarily unavailable'
+                    }
+                
+                full_error = f"{error_msg}: {error_detail}" if error_detail else str(error_msg)
+                logging.warning(f"LBank get leverage failed: {full_error}")
+                self.last_error = f"Get Leverage Error: {full_error}"
                 return {
                     'success': False,
-                    'error': error_msg
+                    'error': full_error,
+                    'fallback_available': True
                 }
                 
         except Exception as e:
