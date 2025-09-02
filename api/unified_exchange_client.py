@@ -1777,7 +1777,7 @@ def create_exchange_client(user_credentials, testnet: bool = False):
     # Use provided testnet mode or fall back to user's preference
     use_testnet = testnet if testnet is not False else (user_credentials.testnet_mode if user_credentials else False)
     
-    # Get exchange name from user credentials, default to toobit
+    # Get exchange name from user credentials, default to lbank
     exchange_name = user_credentials.exchange_name or TradingConfig.DEFAULT_EXCHANGE
     
     try:

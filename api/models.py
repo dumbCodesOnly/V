@@ -71,7 +71,7 @@ class UserCredentials(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     telegram_user_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     telegram_username = db.Column(db.String(100))
-    exchange_name = db.Column(db.String(50), default="toobit")  # toobit, binance, etc
+    exchange_name = db.Column(db.String(50), default="lbank")  # toobit, lbank, binance, etc
     
     # Encrypted API credentials
     api_key_encrypted = db.Column(db.Text)
@@ -237,8 +237,8 @@ class TradeConfiguration(db.Model):
         config.final_pnl = self.final_pnl
         config.closed_at = format_iran_time(self.closed_at) if self.closed_at else ""
         
-        # Set exchange (will be determined at execution time, default to toobit)
-        config.exchange = getattr(self, 'exchange', 'toobit')
+        # Set exchange (will be determined at execution time, default to lbank)
+        config.exchange = getattr(self, 'exchange', 'lbank')
         
         # Parse take profits JSON
         if self.take_profits:

@@ -3137,8 +3137,8 @@ def execute_trade():
             logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
             execution_success = True
             
-            # Set exchange for paper trading (default to toobit if no credentials)
-            config.exchange = user_creds.exchange_name if user_creds else 'toobit'
+            # Set exchange for paper trading (default to lbank if no credentials)
+            config.exchange = user_creds.exchange_name if user_creds else 'lbank'
             
             # Simulate order placement with paper trading IDs
             mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"

@@ -167,7 +167,7 @@ class TradingConfig:
     
     # Supported exchanges
     SUPPORTED_EXCHANGES = ["toobit", "lbank"]
-    DEFAULT_EXCHANGE = "toobit"
+    DEFAULT_EXCHANGE = "lbank"
 
 
 # =============================================================================
