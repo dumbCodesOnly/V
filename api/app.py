@@ -3274,15 +3274,27 @@ def execute_trade():
                 else:
                     logging.info(f"Successfully set leverage {config.leverage}x for {config.symbol}")
                 
-                # Determine order type and parameters
-                # Use LIMIT orders for all trades since Toobit doesn't support MARKET orders
-                # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
-                order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
-                order_type = "limit"  # Always use LIMIT for Toobit
+                # Determine order type and parameters based on exchange
+                if config.exchange == 'lbank':
+                    # LBank uses simple buy/sell for perpetual futures
+                    order_side = "buy" if config.side == "long" else "sell"
+                    order_type = "limit"  # LBank supports both limit and market
+                else:  # toobit
+                    # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
+                    order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
+                    order_type = "limit"  # Always use LIMIT for Toobit
                 
-                # Convert symbol to Toobit format for proper API call
-                toobit_symbol = client.convert_to_toobit_symbol(config.symbol)
-                logging.info(f"[DEBUG] Will send order to: /api/v1/futures/order with symbol={toobit_symbol}, side={order_side}, quantity={position_size} contracts")
+                # Convert symbol to exchange format for proper API call
+                if config.exchange == 'lbank':
+                    # For LBank client, use LBank symbol conversion
+                    exchange_symbol = getattr(client, 'convert_to_lbank_symbol', lambda x: x)(config.symbol)
+                    endpoint_info = "/cfd/openApi/v1/prv/create_order"
+                else:  # toobit
+                    # For Toobit client, use Toobit symbol conversion
+                    exchange_symbol = getattr(client, 'convert_to_toobit_symbol', lambda x: x)(config.symbol)
+                    endpoint_info = "/api/v1/futures/order"
+                
+                logging.info(f"[DEBUG] Will send {config.exchange.upper()} order to: {endpoint_info} with symbol={exchange_symbol}, side={order_side}, quantity={position_size} contracts")
                 
                 if config.entry_type == "market":
                     # For market execution, use LIMIT order at market price with buffer
