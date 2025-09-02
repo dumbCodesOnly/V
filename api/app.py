@@ -600,7 +600,7 @@ class TradeConfig:
         self.final_pnl = 0.0        # Final P&L when position is closed
         self.closed_at = ""         # Timestamp when position was closed
         self.notes = ""             # Additional notes for the trade
-        self.exchange = ""          # Exchange to use for this trade
+        self.exchange = "lbank"     # Exchange to use for this trade (default: lbank)
     def get_display_name(self):
         if self.symbol and self.side:
             return f"{self.name} ({self.symbol} {self.side.upper()})"
