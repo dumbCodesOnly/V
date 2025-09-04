@@ -16,6 +16,16 @@ import json
 
 from config import APIConfig, TradingConfig
 
+# Hyperliquid SDK imports
+try:
+    from hyperliquid.info import Info
+    from hyperliquid.exchange import Exchange
+    from hyperliquid.utils import constants
+    HYPERLIQUID_SDK_AVAILABLE = True
+except ImportError:
+    HYPERLIQUID_SDK_AVAILABLE = False
+    logging.warning("Hyperliquid SDK not available. Please install hyperliquid-python-sdk.")
+
 
 class ToobitClient:
     """Toobit API client following official documentation specifications"""
@@ -1701,6 +1711,356 @@ class LBankClient:
             return []
 
 
+class HyperliquidClient:
+    """
+    Hyperliquid DEX client using the official hyperliquid-python-sdk
+    Supports both testnet and mainnet trading on Hyperliquid
+    """
+    
+    def __init__(self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False):
+        if not HYPERLIQUID_SDK_AVAILABLE:
+            raise ImportError("Hyperliquid SDK is required. Please install hyperliquid-python-sdk")
+        
+        # For Hyperliquid, api_key is the account address and api_secret is the private key
+        self.account_address = api_key
+        self.private_key = api_secret
+        self.testnet = testnet
+        
+        # Choose API URL based on testnet mode
+        if testnet:
+            self.base_url = APIConfig.HYPERLIQUID_TESTNET_URL
+        else:
+            self.base_url = APIConfig.HYPERLIQUID_MAINNET_URL
+        
+        # Track last error for better user feedback
+        self.last_error = None
+        
+        # Initialize Hyperliquid clients
+        try:
+            # Info client for market data and account info (no signing required)
+            self.info_client = Info(self.base_url, skip_ws=True)
+            
+            # Exchange client for trading (requires signing)
+            if self.account_address and self.private_key:
+                config = {
+                    "account_address": self.account_address,
+                    "secret_key": self.private_key
+                }
+                self.exchange_client = Exchange(config, self.base_url)
+            else:
+                self.exchange_client = None
+                logging.debug("Hyperliquid client created without trading capabilities (missing credentials)")
+                
+        except Exception as e:
+            self.last_error = f"Failed to initialize Hyperliquid client: {e}"
+            logging.error(self.last_error)
+            raise
+    
+    def _convert_symbol(self, symbol: str) -> str:
+        """Convert standard symbol format to Hyperliquid format"""
+        return TradingConfig.HYPERLIQUID_SYMBOL_MAP.get(symbol, symbol.replace("USDT", ""))
+    
+    def _convert_symbol_back(self, hyperliquid_symbol: str) -> str:
+        """Convert Hyperliquid symbol back to standard format"""
+        # Reverse lookup in the symbol map
+        for standard, hyperliquid in TradingConfig.HYPERLIQUID_SYMBOL_MAP.items():
+            if hyperliquid == hyperliquid_symbol:
+                return standard
+        # If not found, append USDT
+        return f"{hyperliquid_symbol}USDT"
+    
+    def get_ticker(self, symbol: str) -> Optional[Dict]:
+        """Get ticker data for a symbol"""
+        try:
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            
+            # Get L2 book data (contains current price)
+            l2_book = self.info_client.l2_book(hyperliquid_symbol)
+            
+            if not l2_book or 'levels' not in l2_book:
+                self.last_error = f"No ticker data found for {symbol}"
+                return None
+            
+            # Extract bid and ask from L2 book
+            bid_levels = l2_book['levels'][0]  # Bids
+            ask_levels = l2_book['levels'][1]  # Asks
+            
+            if not bid_levels or not ask_levels:
+                self.last_error = f"Incomplete ticker data for {symbol}"
+                return None
+            
+            bid_price = float(bid_levels[0]['px'])
+            ask_price = float(ask_levels[0]['px'])
+            
+            return {
+                'symbol': symbol,
+                'price': (bid_price + ask_price) / 2,  # Mid price
+                'bid': bid_price,
+                'ask': ask_price,
+                'volume': 0,  # Volume data would need additional API call
+                'timestamp': int(time.time() * 1000)
+            }
+            
+        except Exception as e:
+            self.last_error = f"Error getting ticker for {symbol}: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def get_account_balance(self) -> Optional[Dict]:
+        """Get account balance"""
+        try:
+            if not self.account_address:
+                self.last_error = "Account address not provided"
+                return None
+            
+            # Get user state (includes balance)
+            user_state = self.info_client.user_state(self.account_address)
+            
+            if not user_state:
+                self.last_error = "Could not retrieve account balance"
+                return None
+            
+            # Extract balance information
+            margin_summary = user_state.get('marginSummary', {})
+            account_value = float(margin_summary.get('accountValue', 0))
+            
+            return {
+                'balance': account_value,
+                'available_balance': account_value,  # Simplified for now
+                'currency': 'USD'
+            }
+            
+        except Exception as e:
+            self.last_error = f"Error getting account balance: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def get_positions(self) -> List[Dict]:
+        """Get all open positions"""
+        try:
+            if not self.account_address:
+                self.last_error = "Account address not provided"
+                return []
+            
+            # Get user state (includes positions)
+            user_state = self.info_client.user_state(self.account_address)
+            
+            if not user_state:
+                return []
+            
+            positions = []
+            asset_positions = user_state.get('assetPositions', [])
+            
+            for pos in asset_positions:
+                size = float(pos.get('position', {}).get('size', 0))
+                if size != 0:  # Only include non-zero positions
+                    symbol = self._convert_symbol_back(pos.get('position', {}).get('coin', ''))
+                    entry_px = float(pos.get('position', {}).get('entryPx', 0))
+                    
+                    positions.append({
+                        'symbol': symbol,
+                        'size': abs(size),
+                        'side': 'long' if size > 0 else 'short',
+                        'entry_price': entry_px,
+                        'mark_price': entry_px,  # Would need current price for accurate mark
+                        'pnl': float(pos.get('position', {}).get('unrealizedPnl', 0)),
+                        'percentage': 0,  # Calculate based on entry and mark price
+                        'leverage': 1,  # Hyperliquid uses different leverage model
+                        'margin_type': 'cross'
+                    })
+            
+            return positions
+            
+        except Exception as e:
+            self.last_error = f"Error getting positions: {e}"
+            logging.error(self.last_error)
+            return []
+    
+    def place_order(self, symbol: str, side: str, amount: float, price: Optional[float] = None, 
+                   order_type: str = "limit", leverage: int = 1, reduce_only: bool = False) -> Optional[Dict]:
+        """Place an order"""
+        try:
+            if not self.exchange_client:
+                self.last_error = "Exchange client not initialized (missing credentials)"
+                return None
+            
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            is_buy = side.lower() == "buy"
+            
+            if order_type.lower() == "market":
+                # Market order
+                order_result = self.exchange_client.market_order(
+                    coin=hyperliquid_symbol,
+                    is_buy=is_buy,
+                    sz=amount,
+                    reduce_only=reduce_only
+                )
+            else:
+                # Limit order
+                if price is None:
+                    self.last_error = "Price is required for limit orders"
+                    return None
+                
+                order_result = self.exchange_client.order(
+                    coin=hyperliquid_symbol,
+                    is_buy=is_buy,
+                    sz=amount,
+                    limit_px=price,
+                    order_type={"limit": {"tif": "Gtc"}},  # Good till canceled
+                    reduce_only=reduce_only
+                )
+            
+            if order_result and order_result.get('status') == 'ok':
+                return {
+                    'order_id': order_result.get('response', {}).get('data', {}).get('statuses', [{}])[0].get('resting', {}).get('oid'),
+                    'symbol': symbol,
+                    'side': side,
+                    'amount': amount,
+                    'price': price,
+                    'type': order_type,
+                    'status': 'submitted'
+                }
+            else:
+                self.last_error = f"Order failed: {order_result}"
+                return None
+                
+        except Exception as e:
+            self.last_error = f"Error placing order: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def cancel_order(self, order_id: str, symbol: str) -> bool:
+        """Cancel an order"""
+        try:
+            if not self.exchange_client:
+                self.last_error = "Exchange client not initialized (missing credentials)"
+                return False
+            
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            
+            cancel_result = self.exchange_client.cancel_order(
+                coin=hyperliquid_symbol,
+                oid=int(order_id)
+            )
+            
+            return cancel_result and cancel_result.get('status') == 'ok'
+            
+        except Exception as e:
+            self.last_error = f"Error canceling order: {e}"
+            logging.error(self.last_error)
+            return False
+    
+    def get_order_history(self, symbol: str, limit: int = 100) -> List[Dict]:
+        """Get order history for a symbol"""
+        try:
+            if not self.account_address:
+                return []
+            
+            # Get open orders
+            open_orders = self.info_client.open_orders(self.account_address)
+            
+            orders = []
+            for order in open_orders:
+                if order.get('coin') == self._convert_symbol(symbol):
+                    orders.append({
+                        'order_id': order.get('oid'),
+                        'symbol': symbol,
+                        'side': 'buy' if order.get('side') == 'B' else 'sell',
+                        'amount': float(order.get('sz', 0)),
+                        'price': float(order.get('limitPx', 0)),
+                        'filled': float(order.get('sz', 0)) - float(order.get('origSz', 0)),
+                        'status': 'open',
+                        'timestamp': order.get('timestamp', int(time.time() * 1000)),
+                        'type': 'limit'
+                    })
+            
+            return orders[:limit]
+            
+        except Exception as e:
+            self.last_error = f"Error getting order history: {e}"
+            logging.error(self.last_error)
+            return []
+    
+    def set_leverage(self, symbol: str, leverage: int) -> bool:
+        """Set leverage for a symbol (Note: Hyperliquid has different leverage mechanics)"""
+        try:
+            # Hyperliquid handles leverage differently - this is a placeholder
+            # In Hyperliquid, leverage is more about margin requirements and position sizing
+            logging.info(f"Leverage setting requested for {symbol}: {leverage}x (Hyperliquid handles leverage differently)")
+            return True
+            
+        except Exception as e:
+            self.last_error = f"Error setting leverage: {e}"
+            logging.error(self.last_error)
+            return False
+    
+    def get_ticker_price(self, symbol: str) -> Optional[float]:
+        """Get current price for a symbol - simplified version of get_ticker"""
+        try:
+            ticker_data = self.get_ticker(symbol)
+            if ticker_data and 'price' in ticker_data:
+                return float(ticker_data['price'])
+            return None
+        except Exception as e:
+            self.last_error = f"Error getting ticker price for {symbol}: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def test_connectivity(self) -> bool:
+        """Test connectivity to Hyperliquid API"""
+        try:
+            # Test with a simple meta request
+            meta = self.info_client.meta()
+            return meta is not None
+        except Exception as e:
+            self.last_error = f"Connectivity test failed: {e}"
+            return False
+    
+    def test_connection(self):
+        """Test connection and return status with message - used by exchange sync scripts"""
+        try:
+            if self.test_connectivity():
+                return True, "Connection successful"
+            else:
+                return False, "Connection failed - meta request failed"
+        except Exception as e:
+            return False, f"Connection failed: {str(e)}"
+    
+    def get_orders(self, symbol: Optional[str] = None) -> List[Dict]:
+        """Get orders - alias for get_order_history used by exchange sync scripts"""
+        if symbol:
+            return self.get_order_history(symbol)
+        else:
+            # Return orders for all symbols
+            if not self.account_address:
+                return []
+            
+            try:
+                open_orders = self.info_client.open_orders(self.account_address)
+                orders = []
+                
+                for order in open_orders:
+                    symbol = self._convert_symbol_back(order.get('coin', ''))
+                    orders.append({
+                        'order_id': order.get('oid'),
+                        'symbol': symbol,
+                        'side': 'buy' if order.get('side') == 'B' else 'sell',
+                        'amount': float(order.get('sz', 0)),
+                        'price': float(order.get('limitPx', 0)),
+                        'filled': float(order.get('sz', 0)) - float(order.get('origSz', 0)),
+                        'status': 'open',
+                        'timestamp': order.get('timestamp', int(time.time() * 1000)),
+                        'type': 'limit'
+                    })
+                
+                return orders
+                
+            except Exception as e:
+                self.last_error = f"Error getting all orders: {e}"
+                logging.error(self.last_error)
+                return []
+
+
 class ExchangeClientFactory:
     """Factory for creating exchange clients based on user preferences"""
     
@@ -1711,14 +2071,14 @@ class ExchangeClientFactory:
         Create appropriate exchange client based on exchange name
         
         Args:
-            exchange_name: Name of the exchange ('toobit', 'lbank')
-            api_key: API key for authentication
-            api_secret: API secret for authentication
+            exchange_name: Name of the exchange ('toobit', 'lbank', 'hyperliquid')
+            api_key: API key for authentication (for Hyperliquid: account address)
+            api_secret: API secret for authentication (for Hyperliquid: private key)
             passphrase: Passphrase (if required by exchange)
             testnet: Use testnet mode (if supported by exchange)
             
         Returns:
-            Exchange client instance (ToobitClient or LBankClient)
+            Exchange client instance (ToobitClient, LBankClient, or HyperliquidClient)
             
         Raises:
             ValueError: If exchange is not supported
@@ -1741,6 +2101,15 @@ class ExchangeClientFactory:
                 api_secret=api_secret,
                 passphrase=passphrase,
                 testnet=testnet  # LBank supports testnet
+            )
+        
+        elif exchange_name == "hyperliquid":
+            logging.debug(f"Creating HyperliquidClient for exchange: {exchange_name}")
+            return HyperliquidClient(
+                api_key=api_key,
+                api_secret=api_secret,
+                passphrase=passphrase,
+                testnet=testnet  # Hyperliquid supports testnet
             )
         
         else:

@@ -30,6 +30,11 @@ class APIConfig:
     LBANK_FUTURES_PATH = "/cfd/openApi/v1/prv"   # Futures trading compatibility
     LBANK_SPOT_PATH = "/cfd/openApi/v1/prv"      # Account operations
     
+    # Hyperliquid DEX - Official API structure
+    HYPERLIQUID_MAINNET_URL = "https://api.hyperliquid.xyz"
+    HYPERLIQUID_TESTNET_URL = "https://api.hyperliquid-testnet.xyz"
+    HYPERLIQUID_API_VERSION = "v1"
+    
     # Fallback Price APIs  
     BINANCE_BASE_URL = "https://api.binance.com"
     COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
@@ -165,8 +170,22 @@ class TradingConfig:
         "LINKUSDT": "link_usdt"
     }
     
+    # Hyperliquid Symbol Mapping (Standard format -> Hyperliquid format)
+    HYPERLIQUID_SYMBOL_MAP = {
+        "BTCUSDT": "BTC",
+        "ETHUSDT": "ETH",
+        "BNBUSDT": "BNB",
+        "ADAUSDT": "ADA",
+        "XRPUSDT": "XRP",
+        "SOLUSDT": "SOL",
+        "DOTUSDT": "DOT",
+        "DOGEUSDT": "DOGE",
+        "AVAXUSDT": "AVAX",
+        "LINKUSDT": "LINK"
+    }
+    
     # Supported exchanges
-    SUPPORTED_EXCHANGES = ["toobit", "lbank"]
+    SUPPORTED_EXCHANGES = ["toobit", "lbank", "hyperliquid"]
     DEFAULT_EXCHANGE = "lbank"
 
 
@@ -231,6 +250,9 @@ class CircuitBreakerConfig:
     
     CRYPTOCOMPARE_FAILURE_THRESHOLD = 4  # Less sensitive for fallback APIs
     CRYPTOCOMPARE_RECOVERY_TIMEOUT = 45  # Moderate recovery time
+    
+    HYPERLIQUID_FAILURE_THRESHOLD = 3    # More sensitive for exchange operations
+    HYPERLIQUID_RECOVERY_TIMEOUT = 60    # Longer recovery for exchange APIs
 
 
 # =============================================================================

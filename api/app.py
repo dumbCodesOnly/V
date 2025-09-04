@@ -23,7 +23,7 @@ try:
     from .models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from ..scripts.exchange_sync import initialize_sync_service, get_sync_service
     from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
-    from .unified_exchange_client import ToobitClient, LBankClient, create_exchange_client, create_wrapped_exchange_client
+    from .unified_exchange_client import ToobitClient, LBankClient, HyperliquidClient, create_exchange_client, create_wrapped_exchange_client
     from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 except ImportError:
     # Fall back to absolute import (for direct execution - Replit)
@@ -35,7 +35,7 @@ except ImportError:
     from api.models import db, UserCredentials, UserTradingSession, TradeConfiguration, format_iran_time, get_iran_time, utc_to_iran_time
     from scripts.exchange_sync import initialize_sync_service, get_sync_service
     from api.vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
-    from api.unified_exchange_client import ToobitClient, LBankClient, create_exchange_client, create_wrapped_exchange_client
+    from api.unified_exchange_client import ToobitClient, LBankClient, HyperliquidClient, create_exchange_client, create_wrapped_exchange_client
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 
 from api.circuit_breaker import with_circuit_breaker, circuit_manager, CircuitBreakerError
@@ -5115,6 +5115,41 @@ def get_toobit_price(symbol, user_id=None):
         logging.warning(f"Failed to get Toobit price for {symbol}: {e}")
         return None, None
 
+@with_circuit_breaker('hyperliquid_api', failure_threshold=3, recovery_timeout=60)
+def get_hyperliquid_price(symbol, user_id=None):
+    """Get live price directly from Hyperliquid exchange with circuit breaker protection"""
+    try:
+        # Ensure we're in Flask application context
+        if not has_app_context():
+            with app.app_context():
+                return get_hyperliquid_price(symbol, user_id)
+        
+        # Try to get user credentials to use their exchange connection
+        if user_id:
+            user_creds = UserCredentials.query.filter_by(
+                telegram_user_id=str(user_id),
+                is_active=True
+            ).first()
+            
+            if user_creds and user_creds.has_credentials() and user_creds.exchange_name == 'hyperliquid':
+                client = create_exchange_client(user_creds, testnet=False)
+                
+                hyperliquid_price = client.get_ticker_price(symbol)
+                if hyperliquid_price:
+                    return hyperliquid_price, 'hyperliquid'
+        
+        # Fallback: Create anonymous client for public market data
+        # Use wrapped anonymous client that can handle multiple exchanges
+        anonymous_client = create_wrapped_exchange_client(exchange_name="hyperliquid", testnet=False)
+        hyperliquid_price = anonymous_client.get_ticker_price(symbol)
+        if hyperliquid_price:
+            return hyperliquid_price, 'hyperliquid'
+            
+        return None, None
+    except Exception as e:
+        logging.warning(f"Failed to get Hyperliquid price for {symbol}: {e}")
+        return None, None
+
 def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=True):
     """
     Enhanced price fetching that prioritizes the actual trading exchange (Toobit)
@@ -5127,11 +5162,34 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
 # Using cached price - removed debug log for cleaner output
             return price
     
-    # PRIORITY 1: Try Toobit exchange first (where trades are actually executed)
-    if prefer_exchange:
+    # PRIORITY 1: Try user's preferred exchange first (where trades are actually executed)
+    if prefer_exchange and user_id:
+        # Check user's preferred exchange
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=str(user_id),
+            is_active=True
+        ).first()
+        
+        if user_creds and user_creds.exchange_name:
+            if user_creds.exchange_name == 'hyperliquid':
+                hyperliquid_price, source = get_hyperliquid_price(symbol, user_id)
+                if hyperliquid_price:
+                    if use_cache:
+                        enhanced_cache.set_price(symbol, hyperliquid_price, 'hyperliquid')
+                    logging.info(f"Retrieved live price for {symbol} from Hyperliquid exchange: ${hyperliquid_price}")
+                    return hyperliquid_price
+            else:
+                # Default to Toobit for other exchanges (backward compatibility)
+                toobit_price, source = get_toobit_price(symbol, user_id)
+                if toobit_price:
+                    if use_cache:
+                        enhanced_cache.set_price(symbol, toobit_price, 'toobit')
+                    logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
+                    return toobit_price
+    elif prefer_exchange:
+        # Fallback to Toobit if no user_id provided
         toobit_price, source = get_toobit_price(symbol, user_id)
         if toobit_price:
-            # Cache the Toobit price using enhanced cache
             if use_cache:
                 enhanced_cache.set_price(symbol, toobit_price, 'toobit')
             logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
