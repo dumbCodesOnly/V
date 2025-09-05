@@ -269,16 +269,36 @@ class SMCConfig:
     
     # Fair Value Gap (FVG) Detection
     MIN_CANDLESTICKS_FOR_FVG = 3         # Minimum candles needed for FVG detection
+    FVG_ATR_MULTIPLIER = 0.2             # Minimum FVG size as percentage of ATR (20% of ATR)
+    FVG_MAX_AGE_CANDLES = 50             # Maximum age for FVG validity
+    
+    # Order Block Enhancement
+    OB_IMPULSIVE_MOVE_THRESHOLD = 1.5    # Minimum displacement ratio for impulsive exit
+    OB_VOLUME_MULTIPLIER = 1.2           # Minimum volume multiplier vs average
+    OB_MAX_RETEST_COUNT = 2              # Maximum retests before OB becomes invalid
+    OB_DISPLACEMENT_CANDLES = 3          # Candles to check for impulsive displacement
     
     # Liquidity Pool Analysis
     RECENT_SWING_LOOKBACK = 5            # Number of recent swing points to analyze for liquidity
+    LIQUIDITY_SWEEP_WICK_RATIO = 0.3     # Minimum wick size vs candle body for sweep detection
+    LIQUIDITY_CONFIRMATION_CANDLES = 2   # Candles needed for structural confirmation after sweep
     
     # Volume and Range Analysis
     VOLUME_RANGE_LOOKBACK = 10           # Candles to look back for volume/range calculations
     AVG_RANGE_PERIOD = 20                # Period for calculating average price range
+    HIGH_VOLUME_THRESHOLD = 1.5          # Volume threshold for high volume validation
     
     # Trend Analysis
     MIN_PRICES_FOR_TREND = 2             # Minimum price points needed for trend analysis
+    
+    # Multi-Timeframe Confluence
+    TIMEFRAME_ALIGNMENT_REQUIRED = True   # Enforce H1/H4 structure alignment
+    DAILY_BIAS_WEIGHT = 2.0              # Weight multiplier for daily directional bias
+    CONFLUENCE_MIN_SCORE = 3.0           # Minimum confluence score for signal generation
+    
+    # ATR Calculation
+    ATR_PERIOD = 14                      # Period for Average True Range calculation
+    ATR_SMOOTHING_FACTOR = 2.0           # EMA smoothing factor for ATR calculation
 
 
 # =============================================================================

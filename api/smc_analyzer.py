@@ -49,6 +49,10 @@ class OrderBlock:
     direction: str  # 'bullish' or 'bearish'
     strength: float
     tested: bool = False
+    retest_count: int = 0
+    mitigated: bool = False
+    volume_confirmed: bool = False
+    impulsive_exit: bool = False
 
 @dataclass
 class FairValueGap:
@@ -57,6 +61,9 @@ class FairValueGap:
     timestamp: datetime
     direction: str  # 'bullish' or 'bearish'
     filled: bool = False
+    atr_size: float = 0.0
+    alignment_score: float = 0.0
+    age_candles: int = 0
 
 @dataclass
 class LiquidityPool:
@@ -64,6 +71,8 @@ class LiquidityPool:
     type: str  # 'buy_side' or 'sell_side'
     strength: float
     swept: bool = False
+    sweep_confirmed: bool = False
+    sweep_timestamp: datetime = None
 
 @dataclass
 class SMCSignal:
@@ -165,34 +174,47 @@ class SMCAnalyzer:
         return MarketStructure.CONSOLIDATION
     
     def find_order_blocks(self, candlesticks: List[Dict]) -> List[OrderBlock]:
-        """Identify order blocks - areas where institutional orders are likely placed"""
+        """Enhanced order block identification with volume and impulsive move validation"""
         order_blocks = []
         
         if len(candlesticks) < 10:
             return order_blocks
         
-        for i in range(3, len(candlesticks) - 3):
+        # Calculate average volume for filtering
+        volumes = [c['volume'] for c in candlesticks[-20:] if c['volume'] > 0]
+        avg_volume = sum(volumes) / len(volumes) if volumes else 1
+        
+        for i in range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES):
             current = candlesticks[i]
             prev = candlesticks[i-1]
-            next_candle = candlesticks[i+1]
             
-            # Look for strong bullish candles followed by continuation
+            # Volume filter - require above average volume
+            volume_confirmed = current['volume'] >= avg_volume * SMCConfig.OB_VOLUME_MULTIPLIER
+            if not volume_confirmed:
+                continue
+            
+            # Look for strong bullish candles
             if (current['close'] > current['open'] and 
                 current['high'] - current['low'] > (current['open'] - prev['close']) * 2):
                 
-                # Check if next few candles continue the move
+                # Check for impulsive exit (displacement)
+                impulsive_exit = self._check_impulsive_move(candlesticks, i, 'bullish')
+                
+                # Check continuation strength
                 continuation_strength = 0
                 for j in range(i+1, min(i+SMCConfig.CONTINUATION_LOOKAHEAD, len(candlesticks))):
                     if candlesticks[j]['close'] > current['high']:
                         continuation_strength += 1
                 
-                if continuation_strength >= 2:
+                if continuation_strength >= 2 and impulsive_exit:
                     order_block = OrderBlock(
                         price_high=current['high'],
                         price_low=current['low'],
                         timestamp=current['timestamp'],
                         direction='bullish',
-                        strength=continuation_strength / 3.0
+                        strength=continuation_strength / 3.0,
+                        volume_confirmed=volume_confirmed,
+                        impulsive_exit=impulsive_exit
                     )
                     order_blocks.append(order_block)
             
@@ -200,29 +222,38 @@ class SMCAnalyzer:
             elif (current['close'] < current['open'] and 
                   current['high'] - current['low'] > (prev['close'] - current['open']) * 2):
                 
+                # Check for impulsive exit
+                impulsive_exit = self._check_impulsive_move(candlesticks, i, 'bearish')
+                
                 continuation_strength = 0
                 for j in range(i+1, min(i+SMCConfig.CONTINUATION_LOOKAHEAD, len(candlesticks))):
                     if candlesticks[j]['close'] < current['low']:
                         continuation_strength += 1
                 
-                if continuation_strength >= 2:
+                if continuation_strength >= 2 and impulsive_exit:
                     order_block = OrderBlock(
                         price_high=current['high'],
                         price_low=current['low'],
                         timestamp=current['timestamp'],
                         direction='bearish',
-                        strength=continuation_strength / 3.0
+                        strength=continuation_strength / 3.0,
+                        volume_confirmed=volume_confirmed,
+                        impulsive_exit=impulsive_exit
                     )
                     order_blocks.append(order_block)
         
         return order_blocks[-5:]  # Return last 5 order blocks
     
     def find_fair_value_gaps(self, candlesticks: List[Dict]) -> List[FairValueGap]:
-        """Identify Fair Value Gaps (FVGs) - inefficient price movements"""
+        """Enhanced FVG detection with ATR filtering and alignment scoring"""
         fvgs = []
         
         if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_FVG:
             return fvgs
+        
+        # Calculate ATR for gap size filtering
+        atr = self.calculate_atr(candlesticks)
+        min_gap_size = atr * SMCConfig.FVG_ATR_MULTIPLIER
         
         for i in range(1, len(candlesticks) - 1):
             prev_candle = candlesticks[i-1]
@@ -233,27 +264,49 @@ class SMCAnalyzer:
             if (prev_candle['low'] > next_candle['high'] and 
                 current['close'] > current['open']):
                 
-                fvg = FairValueGap(
-                    gap_high=prev_candle['low'],
-                    gap_low=next_candle['high'],
-                    timestamp=current['timestamp'],
-                    direction='bullish'
-                )
-                fvgs.append(fvg)
+                gap_size = prev_candle['low'] - next_candle['high']
+                
+                # Apply ATR filter
+                if gap_size >= min_gap_size:
+                    fvg = FairValueGap(
+                        gap_high=prev_candle['low'],
+                        gap_low=next_candle['high'],
+                        timestamp=current['timestamp'],
+                        direction='bullish',
+                        atr_size=gap_size / atr,
+                        age_candles=0
+                    )
+                    fvgs.append(fvg)
             
             # Bearish FVG: Gap between previous high and next low
             elif (prev_candle['high'] < next_candle['low'] and 
                   current['close'] < current['open']):
                 
-                fvg = FairValueGap(
-                    gap_high=next_candle['low'],
-                    gap_low=prev_candle['high'],
-                    timestamp=current['timestamp'],
-                    direction='bearish'
-                )
-                fvgs.append(fvg)
+                gap_size = next_candle['low'] - prev_candle['high']
+                
+                # Apply ATR filter
+                if gap_size >= min_gap_size:
+                    fvg = FairValueGap(
+                        gap_high=next_candle['low'],
+                        gap_low=prev_candle['high'],
+                        timestamp=current['timestamp'],
+                        direction='bearish',
+                        atr_size=gap_size / atr,
+                        age_candles=0
+                    )
+                    fvgs.append(fvg)
         
-        return fvgs[-10:]  # Return last 10 FVGs
+        # Filter out old FVGs and update age
+        current_time = candlesticks[-1]['timestamp']
+        valid_fvgs = []
+        
+        for fvg in fvgs:
+            age = len([c for c in candlesticks if c['timestamp'] > fvg.timestamp])
+            if age <= SMCConfig.FVG_MAX_AGE_CANDLES:
+                fvg.age_candles = age
+                valid_fvgs.append(fvg)
+        
+        return valid_fvgs[-10:]  # Return last 10 valid FVGs
     
     def find_liquidity_pools(self, candlesticks: List[Dict]) -> List[LiquidityPool]:
         """Identify liquidity pools - areas where stops are likely clustered"""
@@ -313,6 +366,37 @@ class SMCAnalyzer:
         rsi = 100 - (100 / (1 + rs))
         
         return rsi
+    
+    def calculate_atr(self, candlesticks: List[Dict], period: int = SMCConfig.ATR_PERIOD) -> float:
+        """Calculate Average True Range for volatility measurement"""
+        if len(candlesticks) < period + 1:
+            return 0.0
+        
+        true_ranges = []
+        for i in range(1, len(candlesticks)):
+            current = candlesticks[i]
+            prev = candlesticks[i-1]
+            
+            high_low = current['high'] - current['low']
+            high_prev_close = abs(current['high'] - prev['close'])
+            low_prev_close = abs(current['low'] - prev['close'])
+            
+            true_range = max(high_low, high_prev_close, low_prev_close)
+            true_ranges.append(true_range)
+        
+        # Calculate EMA-smoothed ATR
+        if len(true_ranges) < period:
+            return sum(true_ranges) / len(true_ranges)
+        
+        # Initial SMA for first ATR value
+        atr = sum(true_ranges[:period]) / period
+        
+        # Apply EMA smoothing for subsequent values
+        multiplier = SMCConfig.ATR_SMOOTHING_FACTOR / (period + 1)
+        for i in range(period, len(true_ranges)):
+            atr = (true_ranges[i] * multiplier) + (atr * (1 - multiplier))
+        
+        return atr
     
     def calculate_moving_averages(self, candlesticks: List[Dict]) -> Dict[str, float]:
         """Calculate key moving averages for trend analysis"""
@@ -605,3 +689,380 @@ class SMCAnalyzer:
             ema = (price * multiplier) + (ema * (1 - multiplier))
         
         return ema
+    
+    def _check_impulsive_move(self, candlesticks: List[Dict], ob_index: int, direction: str) -> bool:
+        """Check if price exits order block with impulsive displacement"""
+        if ob_index + SMCConfig.OB_DISPLACEMENT_CANDLES >= len(candlesticks):
+            return False
+        
+        ob_candle = candlesticks[ob_index]
+        displacement_candles = candlesticks[ob_index+1:ob_index+1+SMCConfig.OB_DISPLACEMENT_CANDLES]
+        
+        if direction == 'bullish':
+            # Check for strong upward displacement
+            max_high = max(c['high'] for c in displacement_candles)
+            displacement_ratio = (max_high - ob_candle['high']) / (ob_candle['high'] - ob_candle['low'])
+            return displacement_ratio >= SMCConfig.OB_IMPULSIVE_MOVE_THRESHOLD
+        else:
+            # Check for strong downward displacement
+            min_low = min(c['low'] for c in displacement_candles)
+            displacement_ratio = (ob_candle['low'] - min_low) / (ob_candle['high'] - ob_candle['low'])
+            return displacement_ratio >= SMCConfig.OB_IMPULSIVE_MOVE_THRESHOLD
+    
+    def detect_liquidity_sweeps(self, candlesticks: List[Dict]) -> Dict[str, List[Dict]]:
+        """Detect liquidity sweeps - wicks that take out swing highs/lows"""
+        sweeps = {'buy_side': [], 'sell_side': []}
+        
+        if len(candlesticks) < 20:
+            return sweeps
+        
+        swing_highs = self._find_swing_highs(candlesticks)
+        swing_lows = self._find_swing_lows(candlesticks)
+        
+        # Look for buy-side liquidity sweeps (wicks below swing lows)
+        for i, candle in enumerate(candlesticks[-10:], start=len(candlesticks)-10):
+            body_size = abs(candle['close'] - candle['open'])
+            lower_wick = min(candle['open'], candle['close']) - candle['low']
+            
+            # Check if wick is significant
+            if lower_wick >= body_size * SMCConfig.LIQUIDITY_SWEEP_WICK_RATIO:
+                # Check if wick swept below recent swing low
+                for swing in swing_lows[-5:]:
+                    if (swing['index'] < i and 
+                        candle['low'] < swing['low'] and
+                        candle['close'] > swing['low']):
+                        
+                        # Check for structural confirmation
+                        confirmation = self._check_sweep_confirmation(candlesticks, i, 'buy_side')
+                        
+                        sweep = {
+                            'price': swing['low'],
+                            'sweep_candle_index': i,
+                            'sweep_low': candle['low'],
+                            'confirmed': confirmation,
+                            'timestamp': candle['timestamp']
+                        }
+                        sweeps['buy_side'].append(sweep)
+                        break
+        
+        # Look for sell-side liquidity sweeps (wicks above swing highs)
+        for i, candle in enumerate(candlesticks[-10:], start=len(candlesticks)-10):
+            body_size = abs(candle['close'] - candle['open'])
+            upper_wick = candle['high'] - max(candle['open'], candle['close'])
+            
+            # Check if wick is significant
+            if upper_wick >= body_size * SMCConfig.LIQUIDITY_SWEEP_WICK_RATIO:
+                # Check if wick swept above recent swing high
+                for swing in swing_highs[-5:]:
+                    if (swing['index'] < i and 
+                        candle['high'] > swing['high'] and
+                        candle['close'] < swing['high']):
+                        
+                        # Check for structural confirmation
+                        confirmation = self._check_sweep_confirmation(candlesticks, i, 'sell_side')
+                        
+                        sweep = {
+                            'price': swing['high'],
+                            'sweep_candle_index': i,
+                            'sweep_high': candle['high'],
+                            'confirmed': confirmation,
+                            'timestamp': candle['timestamp']
+                        }
+                        sweeps['sell_side'].append(sweep)
+                        break
+        
+        return sweeps
+    
+    def _check_sweep_confirmation(self, candlesticks: List[Dict], sweep_index: int, sweep_type: str) -> bool:
+        """Check for structural confirmation after liquidity sweep"""
+        if sweep_index + SMCConfig.LIQUIDITY_CONFIRMATION_CANDLES >= len(candlesticks):
+            return False
+        
+        confirmation_candles = candlesticks[sweep_index+1:sweep_index+1+SMCConfig.LIQUIDITY_CONFIRMATION_CANDLES]
+        sweep_candle = candlesticks[sweep_index]
+        
+        if sweep_type == 'buy_side':
+            # Look for bullish confirmation after buy-side sweep
+            bullish_count = sum(1 for c in confirmation_candles if c['close'] > c['open'])
+            price_recovery = any(c['close'] > sweep_candle['close'] for c in confirmation_candles)
+            return bullish_count >= 1 and price_recovery
+        else:
+            # Look for bearish confirmation after sell-side sweep
+            bearish_count = sum(1 for c in confirmation_candles if c['close'] < c['open'])
+            price_decline = any(c['close'] < sweep_candle['close'] for c in confirmation_candles)
+            return bearish_count >= 1 and price_decline
+    
+    def check_multi_timeframe_alignment(self, h1_structure: MarketStructure, h4_structure: MarketStructure, d1_structure: MarketStructure = None) -> Dict[str, Any]:
+        """Check alignment between multiple timeframes"""
+        alignment_score = 0.0
+        alignment_details = []
+        
+        # H1 and H4 structure alignment
+        bullish_structures = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
+        bearish_structures = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
+        
+        h1_bullish = h1_structure in bullish_structures
+        h4_bullish = h4_structure in bullish_structures
+        h1_bearish = h1_structure in bearish_structures
+        h4_bearish = h4_structure in bearish_structures
+        
+        # Check H1/H4 alignment
+        if (h1_bullish and h4_bullish) or (h1_bearish and h4_bearish):
+            alignment_score += 2.0
+            alignment_details.append(f"H1 and H4 structures aligned ({h1_structure.value}, {h4_structure.value})")
+        elif h1_structure == MarketStructure.CONSOLIDATION or h4_structure == MarketStructure.CONSOLIDATION:
+            alignment_score += 0.5
+            alignment_details.append("Partial alignment - one timeframe consolidating")
+        else:
+            alignment_details.append("H1/H4 structure conflict - signal filtered")
+            return {
+                'aligned': False,
+                'score': 0.0,
+                'details': alignment_details,
+                'direction': None
+            }
+        
+        # Daily bias confirmation
+        if d1_structure:
+            d1_bullish = d1_structure in bullish_structures
+            d1_bearish = d1_structure in bearish_structures
+            
+            if (h1_bullish and h4_bullish and d1_bullish) or (h1_bearish and h4_bearish and d1_bearish):
+                alignment_score += SMCConfig.DAILY_BIAS_WEIGHT
+                alignment_details.append(f"Daily bias confirms direction ({d1_structure.value})")
+            elif d1_structure == MarketStructure.CONSOLIDATION:
+                alignment_score += 0.5
+                alignment_details.append("Daily consolidation - neutral bias")
+            elif (h1_bullish and h4_bullish and d1_bearish) or (h1_bearish and h4_bearish and d1_bullish):
+                # Strong reversal required against daily bias
+                if alignment_score >= 2.0:  # Strong H1/H4 alignment
+                    alignment_score -= 0.5
+                    alignment_details.append("Counter-trend to daily - requires strong reversal")
+                else:
+                    alignment_details.append("Weak counter-trend signal - filtered")
+                    return {
+                        'aligned': False,
+                        'score': alignment_score,
+                        'details': alignment_details,
+                        'direction': None
+                    }
+        
+        # Determine overall direction
+        direction = None
+        if h1_bullish and h4_bullish:
+            direction = 'long'
+        elif h1_bearish and h4_bearish:
+            direction = 'short'
+        
+        return {
+            'aligned': alignment_score >= SMCConfig.CONFLUENCE_MIN_SCORE,
+            'score': alignment_score,
+            'details': alignment_details,
+            'direction': direction
+        }
+    
+    def generate_enhanced_signal(self, symbol: str, h1_candlesticks: List[Dict], h4_candlesticks: List[Dict] = None, d1_candlesticks: List[Dict] = None) -> Optional[SMCSignal]:
+        """Enhanced SMC signal generation with multi-timeframe analysis and improved filtering"""
+        try:
+            if len(h1_candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_STRUCTURE:
+                return None
+            
+            # Multi-timeframe structure analysis
+            h1_structure = self.detect_market_structure(h1_candlesticks)
+            h4_structure = self.detect_market_structure(h4_candlesticks) if h4_candlesticks else h1_structure
+            d1_structure = self.detect_market_structure(d1_candlesticks) if d1_candlesticks else None
+            
+            if not h1_structure:
+                return None
+            
+            # Check multi-timeframe alignment if required
+            alignment = None
+            if SMCConfig.TIMEFRAME_ALIGNMENT_REQUIRED:
+                alignment = self.check_multi_timeframe_alignment(h1_structure, h4_structure, d1_structure)
+                if not alignment['aligned']:
+                    return None
+            
+            # Enhanced SMC elements analysis
+            order_blocks = self.find_order_blocks(h1_candlesticks)
+            fvgs = self.find_fair_value_gaps(h1_candlesticks)
+            liquidity_pools = self.find_liquidity_pools(h1_candlesticks)
+            liquidity_sweeps = self.detect_liquidity_sweeps(h1_candlesticks)
+            
+            # Calculate ATR for dynamic thresholds
+            atr = self.calculate_atr(h1_candlesticks)
+            
+            # Enhanced confluence scoring
+            confluence_score = 0.0
+            reasoning = []
+            current_price = h1_candlesticks[-1]['close']
+            
+            # Multi-timeframe structure weight
+            if alignment and alignment['aligned']:
+                confluence_score += alignment['score']
+                reasoning.extend(alignment['details'])
+            else:
+                # Single timeframe structure analysis
+                if h1_structure == MarketStructure.BULLISH_BOS:
+                    confluence_score += 0.3
+                    reasoning.append("H1 bullish break of structure")
+                elif h1_structure == MarketStructure.BULLISH_CHoCH:
+                    confluence_score += 0.25
+                    reasoning.append("H1 bullish change of character")
+                elif h1_structure == MarketStructure.BEARISH_BOS:
+                    confluence_score += 0.3
+                    reasoning.append("H1 bearish break of structure")
+                elif h1_structure == MarketStructure.BEARISH_CHoCH:
+                    confluence_score += 0.25
+                    reasoning.append("H1 bearish change of character")
+            
+            # Enhanced order block validation
+            relevant_obs = []
+            for ob in order_blocks:
+                if (not ob.mitigated and ob.volume_confirmed and ob.impulsive_exit and 
+                    ((ob.direction == 'bullish' and current_price >= ob.price_low * 0.995) or 
+                     (ob.direction == 'bearish' and current_price <= ob.price_high * 1.005))):
+                    
+                    confluence_score += 0.25 * ob.strength
+                    relevant_obs.append(ob)
+                    reasoning.append(f"Validated {ob.direction} OB at {ob.price_low:.4f}-{ob.price_high:.4f}")
+            
+            # Enhanced FVG analysis
+            relevant_fvgs = []
+            for fvg in fvgs:
+                if (not fvg.filled and fvg.atr_size >= SMCConfig.FVG_ATR_MULTIPLIER and
+                    ((fvg.direction == 'bullish' and fvg.gap_low <= current_price <= fvg.gap_high) or
+                     (fvg.direction == 'bearish' and fvg.gap_low <= current_price <= fvg.gap_high))):
+                    
+                    age_factor = max(0.5, 1.0 - (fvg.age_candles / SMCConfig.FVG_MAX_AGE_CANDLES))
+                    fvg_weight = 0.2 * fvg.atr_size * age_factor
+                    confluence_score += fvg_weight
+                    relevant_fvgs.append(fvg)
+                    reasoning.append(f"Valid {fvg.direction} FVG (ATR: {fvg.atr_size:.2f})")
+            
+            # Liquidity sweep confirmation
+            sweep_confirmation = 0.0
+            for sweep_type, sweeps in liquidity_sweeps.items():
+                for sweep in sweeps:
+                    if sweep['confirmed']:
+                        sweep_confirmation += 0.3
+                        reasoning.append(f"Confirmed {sweep_type.replace('_', ' ')} sweep")
+                    else:
+                        sweep_confirmation += 0.1
+                        reasoning.append(f"Unconfirmed {sweep_type.replace('_', ' ')} sweep")
+            
+            confluence_score += sweep_confirmation
+            
+            # Volume confirmation
+            recent_volumes = [c['volume'] for c in h1_candlesticks[-5:] if c['volume'] > 0]
+            if recent_volumes:
+                avg_volume = sum(recent_volumes) / len(recent_volumes)
+                current_volume = h1_candlesticks[-1]['volume']
+                if current_volume >= avg_volume * SMCConfig.HIGH_VOLUME_THRESHOLD:
+                    confluence_score += 0.15
+                    reasoning.append(f"High volume confirmation")
+            
+            # Determine signal direction
+            direction = None
+            if alignment and alignment['aligned']:
+                direction = alignment['direction']
+            else:
+                bullish_signals = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
+                bearish_signals = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
+                
+                if h1_structure in bullish_signals:
+                    bullish_obs = [ob for ob in relevant_obs if ob.direction == 'bullish']
+                    bullish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bullish']
+                    if bullish_obs or bullish_fvgs:
+                        direction = 'long'
+                        confluence_score += 0.1
+                
+                elif h1_structure in bearish_signals:
+                    bearish_obs = [ob for ob in relevant_obs if ob.direction == 'bearish']
+                    bearish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bearish']
+                    if bearish_obs or bearish_fvgs:
+                        direction = 'short'
+                        confluence_score += 0.1
+            
+            # Enhanced entry, stop loss, and take profit calculation
+            entry_price = current_price
+            stop_loss = current_price
+            take_profits = []
+            
+            if direction == 'long':
+                if relevant_obs:
+                    entry_price = min(ob.price_high for ob in relevant_obs if ob.direction == 'bullish')
+                elif relevant_fvgs:
+                    entry_price = max(fvg.gap_low for fvg in relevant_fvgs if fvg.direction == 'bullish')
+                
+                # ATR-based stop loss
+                atr_stop = current_price - (atr * 1.5)
+                ob_stop = current_price * 0.98
+                for ob in order_blocks:
+                    if ob.direction == 'bullish' and ob.price_low < current_price:
+                        ob_stop = max(ob_stop, ob.price_low * 0.995)
+                
+                stop_loss = max(atr_stop, ob_stop)
+                take_profits = [
+                    current_price + (atr * 1.0),
+                    current_price + (atr * 2.0),
+                    current_price + (atr * 3.0)
+                ]
+            
+            elif direction == 'short':
+                if relevant_obs:
+                    entry_price = max(ob.price_low for ob in relevant_obs if ob.direction == 'bearish')
+                elif relevant_fvgs:
+                    entry_price = min(fvg.gap_high for fvg in relevant_fvgs if fvg.direction == 'bearish')
+                
+                # ATR-based stop loss
+                atr_stop = current_price + (atr * 1.5)
+                ob_stop = current_price * 1.02
+                for ob in order_blocks:
+                    if ob.direction == 'bearish' and ob.price_high > current_price:
+                        ob_stop = min(ob_stop, ob.price_high * 1.005)
+                
+                stop_loss = min(atr_stop, ob_stop)
+                take_profits = [
+                    current_price - (atr * 1.0),
+                    current_price - (atr * 2.0),
+                    current_price - (atr * 3.0)
+                ]
+            
+            # Enhanced confidence threshold
+            min_confidence = 0.7 if SMCConfig.TIMEFRAME_ALIGNMENT_REQUIRED else 0.6
+            
+            if direction and confluence_score >= min_confidence:
+                risk = abs(entry_price - stop_loss)
+                reward = abs(take_profits[0] - entry_price) if take_profits else risk
+                rr_ratio = reward / risk if risk > 0 else 1.0
+                
+                # Enhanced signal strength
+                if confluence_score >= 4.0:
+                    signal_strength = SignalStrength.VERY_STRONG
+                elif confluence_score >= 3.0:
+                    signal_strength = SignalStrength.STRONG
+                elif confluence_score >= 2.0:
+                    signal_strength = SignalStrength.MODERATE
+                else:
+                    signal_strength = SignalStrength.WEAK
+                
+                final_confidence = min(confluence_score / 5.0, 1.0)
+                
+                return SMCSignal(
+                    symbol=symbol,
+                    direction=direction,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit_levels=take_profits,
+                    confidence=final_confidence,
+                    reasoning=reasoning,
+                    signal_strength=signal_strength,
+                    risk_reward_ratio=rr_ratio,
+                    timestamp=datetime.now()
+                )
+            
+            return None
+            
+        except Exception as e:
+            logging.error(f"Error generating enhanced SMC signal for {symbol}: {e}")
+            return None
