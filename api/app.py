@@ -1693,7 +1693,7 @@ def get_exchange_orders():
         client = create_exchange_client(user_creds, testnet=False)
         
         if symbol:
-            orders = client.get_order_history(symbol=symbol)
+            orders = client.get_order_history(symbol)
         else:
             # For exchanges that support getting all orders without symbol
             try:
@@ -3514,9 +3514,10 @@ def execute_trade():
                                 tp_sl_orders = client.place_multiple_tp_sl_orders(
                                     symbol=config.symbol,
                                     side=order_side,
-                                    total_quantity=str(position_size),
-                                    take_profits=tp_orders_to_place,
-                                    stop_loss_price=sl_price
+                                    amount=float(position_size),
+                                    entry_price=config.entry_price,
+                                    tp_levels=tp_orders_to_place,
+                                    stop_loss_price=float(sl_price) if sl_price else 0.0
                                 )
                                 
                                 config.exchange_tp_sl_orders = tp_sl_orders
@@ -3985,8 +3986,8 @@ def close_trade():
                     symbol=config.symbol,
                     side=close_side,
                     order_type="market",
-                    quantity=str(position_size),
-                    reduceOnly=True
+                    amount=float(position_size),
+                    reduce_only=True
                 )
                 
                 if not close_order:
@@ -4127,8 +4128,8 @@ def close_all_trades():
                         symbol=config.symbol,
                         side=close_side,
                         order_type="market",
-                        quantity=str(config.position_size),
-                        reduceOnly=True
+                        amount=float(config.position_size),
+                        reduce_only=True
                     )
                     
                     if close_order:
@@ -7541,9 +7542,10 @@ def place_exchange_native_orders(config, user_id):
             orders_placed = client.place_multiple_tp_sl_orders(
                 symbol=config.symbol,
                 side=config.side,
-                total_quantity=str(position_size),
-                take_profits=tp_orders,
-                stop_loss_price=sl_price
+                amount=float(position_size),
+                entry_price=config.entry_price,
+                tp_levels=tp_orders,
+                stop_loss_price=float(sl_price) if sl_price else 0.0
             )
         
         logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")

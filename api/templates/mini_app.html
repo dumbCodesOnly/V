@@ -2777,26 +2777,70 @@
             return currentUser?.id || '123456789';
         }
 
-        // API Functions
+        // API Functions with request deduplication
+        const apiCallCache = new Map();
+        const pendingRequests = new Map();
+        
         async function apiCall(endpoint, options = {}) {
+            // Create cache key based on endpoint and method
+            const method = options.method || 'GET';
+            const cacheKey = `${method}:${endpoint}`;
+            
+            // For GET requests, check if we have a recent cached result
+            if (method === 'GET') {
+                const cached = apiCallCache.get(cacheKey);
+                if (cached && Date.now() - cached.timestamp < 1500) { // 1.5 second cache
+                    console.log(`Using cached result for ${endpoint}`);
+                    return cached.data;
+                }
+                
+                // If there's already a pending request for this endpoint, wait for it
+                if (pendingRequests.has(cacheKey)) {
+                    console.log(`Waiting for pending request to ${endpoint}`);
+                    return await pendingRequests.get(cacheKey);
+                }
+            }
+            
             try {
-                const response = await fetch(endpoint, {
+                const requestPromise = fetch(endpoint, {
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Telegram-User-ID': getUserId()
                     },
                     ...options
+                }).then(async response => {
+                    if (!response.ok) {
+                        console.error(`HTTP error! status: ${response.status} for ${endpoint}`);
+                        return null;
+                    }
+                    return await response.json();
                 });
                 
-                if (!response.ok) {
-                    console.error(`HTTP error! status: ${response.status} for ${endpoint}`);
-                    return null; // Return null instead of throwing for HTTP errors
+                // Store pending request to avoid duplicates
+                if (method === 'GET') {
+                    pendingRequests.set(cacheKey, requestPromise);
                 }
                 
-                return await response.json();
+                const result = await requestPromise;
+                
+                // Cache successful GET results
+                if (method === 'GET' && result !== null) {
+                    apiCallCache.set(cacheKey, {
+                        data: result,
+                        timestamp: Date.now()
+                    });
+                }
+                
+                // Clean up pending request
+                if (method === 'GET') {
+                    pendingRequests.delete(cacheKey);
+                }
+                
+                return result;
             } catch (error) {
                 console.error('API call failed:', error);
-                return null; // Return null instead of throwing for network errors
+                pendingRequests.delete(cacheKey);
+                return null;
             }
         }
 
@@ -6212,6 +6256,7 @@
                                     <select class="form-control" id="api-exchange-select">
                                         <option value="toobit">Toobit</option>
                                         <option value="lbank">LBank</option>
+                                        <option value="hyperliquid">Hyperliquid DEX</option>
                                         <option value="binance">Binance</option>
                                         <option value="okx">OKX</option>
                                     </select>

@@ -1775,7 +1775,7 @@ class HyperliquidClient:
             hyperliquid_symbol = self._convert_symbol(symbol)
             
             # Get L2 book data (contains current price)
-            l2_book = self.info_client.l2_book(hyperliquid_symbol)
+            l2_book = self.info_client.l2_snapshot(hyperliquid_symbol)
             
             if not l2_book or 'levels' not in l2_book:
                 self.last_error = f"No ticker data found for {symbol}"
@@ -1890,7 +1890,7 @@ class HyperliquidClient:
             if order_type.lower() == "market":
                 # Market order
                 order_result = self.exchange_client.market_order(
-                    coin=hyperliquid_symbol,
+                    name=hyperliquid_symbol,
                     is_buy=is_buy,
                     sz=amount,
                     reduce_only=reduce_only
@@ -1902,7 +1902,7 @@ class HyperliquidClient:
                     return None
                 
                 order_result = self.exchange_client.order(
-                    coin=hyperliquid_symbol,
+                    name=hyperliquid_symbol,
                     is_buy=is_buy,
                     sz=amount,
                     limit_px=price,
@@ -1939,7 +1939,7 @@ class HyperliquidClient:
             hyperliquid_symbol = self._convert_symbol(symbol)
             
             cancel_result = self.exchange_client.cancel_order(
-                coin=hyperliquid_symbol,
+                name=hyperliquid_symbol,
                 oid=int(order_id)
             )
             
@@ -1981,18 +1981,22 @@ class HyperliquidClient:
             logging.error(self.last_error)
             return []
     
-    def set_leverage(self, symbol: str, leverage: int) -> bool:
-        """Set leverage for a symbol (Note: Hyperliquid has different leverage mechanics)"""
+    def change_leverage(self, symbol: str, leverage: int) -> bool:
+        """Change leverage for a symbol (Note: Hyperliquid has different leverage mechanics)"""
         try:
             # Hyperliquid handles leverage differently - this is a placeholder
             # In Hyperliquid, leverage is more about margin requirements and position sizing
-            logging.info(f"Leverage setting requested for {symbol}: {leverage}x (Hyperliquid handles leverage differently)")
+            logging.info(f"Leverage change requested for {symbol}: {leverage}x (Hyperliquid handles leverage differently)")
             return True
             
         except Exception as e:
-            self.last_error = f"Error setting leverage: {e}"
+            self.last_error = f"Error changing leverage: {e}"
             logging.error(self.last_error)
             return False
+    
+    def set_leverage(self, symbol: str, leverage: int) -> bool:
+        """Set leverage for a symbol (alias for change_leverage)"""
+        return self.change_leverage(symbol, leverage)
     
     def get_ticker_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol - simplified version of get_ticker"""
@@ -2059,6 +2063,348 @@ class HyperliquidClient:
                 self.last_error = f"Error getting all orders: {e}"
                 logging.error(self.last_error)
                 return []
+    
+    def get_last_error(self) -> Optional[str]:
+        """Get the last error message"""
+        return self.last_error
+    
+    def get_futures_balance(self) -> List[Dict]:
+        """Get futures account balance (compatible with other exchanges)"""
+        try:
+            balance_info = self.get_account_balance()
+            if balance_info:
+                return [{
+                    'asset': 'USD',
+                    'balance': balance_info['balance'],
+                    'available_balance': balance_info['available_balance'],
+                    'currency': balance_info['currency']
+                }]
+            return []
+        except Exception as e:
+            self.last_error = f"Error getting futures balance: {e}"
+            logging.error(self.last_error)
+            return []
+    
+    def get_api_restrictions(self) -> Optional[Dict]:
+        """Get API restrictions (placeholder for Hyperliquid)"""
+        try:
+            # Hyperliquid doesn't have traditional API restrictions like CEXs
+            return {
+                'restrictions': [],
+                'trading_enabled': True,
+                'message': 'Hyperliquid DEX - No traditional API restrictions'
+            }
+        except Exception as e:
+            self.last_error = f"Error getting API restrictions: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def get_exchange_info(self) -> Optional[Dict]:
+        """Get exchange information"""
+        try:
+            # Get meta information from Hyperliquid
+            meta = self.info_client.meta()
+            if meta:
+                symbols = []
+                for universe_item in meta.get('universe', []):
+                    symbol = self._convert_symbol_back(universe_item.get('name', ''))
+                    symbols.append({
+                        'symbol': symbol,
+                        'base': universe_item.get('name', ''),
+                        'quote': 'USD',
+                        'active': True
+                    })
+                
+                return {
+                    'exchange': 'hyperliquid',
+                    'symbols': symbols,
+                    'timezone': 'UTC',
+                    'server_time': int(time.time() * 1000)
+                }
+            return None
+        except Exception as e:
+            self.last_error = f"Error getting exchange info: {e}"
+            logging.error(self.last_error)
+            return None
+    
+    def place_multiple_tp_sl_orders(self, symbol: str, side: str, amount: float, 
+                                   entry_price: float, tp_levels: List[Dict], 
+                                   stop_loss_price: float) -> List[Dict]:
+        """
+        Enhanced partial TP/SL implementation for Hyperliquid
+        Places partial take profit orders and manages break-even stop loss
+        """
+        try:
+            orders_placed = []
+            
+            if not self.exchange_client:
+                self.last_error = "Exchange client not initialized (missing credentials)"
+                return orders_placed
+                
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            is_buy = side.lower() in ['buy', 'long']
+            
+            logging.info(f"Hyperliquid: Setting up partial TP/SL system for {symbol} - {side} position of {amount}")
+            
+            # Place main position order first
+            main_order = self.place_order(symbol, side, amount, entry_price, "limit")
+            if main_order:
+                orders_placed.append(main_order)
+                logging.info(f"Main position order placed: {main_order.get('order_id')}")
+            else:
+                logging.error("Failed to place main position order")
+                return orders_placed
+            
+            # ENHANCED: Place partial take profit orders
+            if tp_levels:
+                for i, tp_level in enumerate(tp_levels):
+                    tp_price = float(tp_level.get('price', 0))
+                    tp_allocation = float(tp_level.get('allocation', 0))
+                    
+                    if tp_price > 0 and tp_allocation > 0:
+                        # Calculate partial amount for this TP level
+                        tp_amount = amount * (tp_allocation / 100)
+                        
+                        # Place TP order (opposite side to close position)
+                        tp_side = "sell" if is_buy else "buy"
+                        
+                        try:
+                            tp_order = self.exchange_client.order(
+                                name=hyperliquid_symbol,
+                                is_buy=not is_buy,  # Opposite direction to close
+                                sz=tp_amount,
+                                limit_px=tp_price,
+                                order_type={"limit": {"tif": "Gtc"}},
+                                reduce_only=True
+                            )
+                            
+                            if tp_order and tp_order.get('status') == 'ok':
+                                order_info = {
+                                    'type': 'take_profit',
+                                    'level': i + 1,
+                                    'order_id': tp_order.get('response', {}).get('data', {}).get('statuses', [{}])[0].get('resting', {}).get('oid'),
+                                    'symbol': symbol,
+                                    'side': tp_side,
+                                    'amount': tp_amount,
+                                    'price': tp_price,
+                                    'allocation': tp_allocation,
+                                    'status': 'active',
+                                    'is_breakeven_trigger': tp_level.get('is_breakeven_trigger', i == 0)  # First TP typically triggers breakeven
+                                }
+                                orders_placed.append(order_info)
+                                logging.info(f"TP{i+1} order placed at {tp_price} for {tp_allocation}% allocation")
+                            else:
+                                logging.warning(f"Failed to place TP{i+1} order: {tp_order}")
+                                
+                        except Exception as e:
+                            logging.error(f"Error placing TP{i+1} order: {e}")
+            
+            # ENHANCED: Place initial stop loss order
+            if stop_loss_price > 0:
+                try:
+                    sl_side = "sell" if is_buy else "buy"
+                    
+                    # Use trigger order for stop loss
+                    sl_order = self.exchange_client.order(
+                        name=hyperliquid_symbol,
+                        is_buy=not is_buy,  # Opposite direction to close
+                        sz=amount,  # Full position initially
+                        limit_px=float(stop_loss_price),
+                        order_type={"trigger": {"triggerPx": float(stop_loss_price), "isMarket": True, "tpsl": "sl"}},
+                        reduce_only=True
+                    )
+                    
+                    if sl_order and sl_order.get('status') == 'ok':
+                        sl_info = {
+                            'type': 'stop_loss',
+                            'order_id': sl_order.get('response', {}).get('data', {}).get('statuses', [{}])[0].get('resting', {}).get('oid'),
+                            'symbol': symbol,
+                            'side': sl_side,
+                            'amount': amount,
+                            'price': stop_loss_price,
+                            'status': 'active',
+                            'is_breakeven_eligible': True  # This SL can be moved to break-even
+                        }
+                        orders_placed.append(sl_info)
+                        logging.info(f"Initial stop loss placed at {stop_loss_price}")
+                    else:
+                        logging.warning(f"Failed to place stop loss: {sl_order}")
+                        
+                except Exception as e:
+                    logging.error(f"Error placing stop loss: {e}")
+            
+            # Store order tracking info for break-even management
+            if orders_placed:
+                self._store_order_tracking_info(symbol, orders_placed, entry_price)
+                
+            logging.info(f"Hyperliquid TP/SL setup complete: {len(orders_placed)} orders placed")
+            return orders_placed
+            
+        except Exception as e:
+            self.last_error = f"Error placing TP/SL orders: {e}"
+            logging.error(self.last_error)
+            return []
+    
+    def _store_order_tracking_info(self, symbol: str, orders: List[Dict], entry_price: float):
+        """Store order tracking information for break-even management"""
+        if not hasattr(self, 'active_orders_tracking'):
+            self.active_orders_tracking = {}
+        
+        self.active_orders_tracking[symbol] = {
+            'orders': orders,
+            'entry_price': entry_price,
+            'breakeven_triggered': False,
+            'original_sl_id': None
+        }
+        
+        # Find the original stop loss order ID
+        for order in orders:
+            if order.get('type') == 'stop_loss':
+                self.active_orders_tracking[symbol]['original_sl_id'] = order.get('order_id')
+                break
+    
+    def handle_tp_trigger_and_breakeven(self, symbol: str, tp_level: int) -> bool:
+        """
+        Handle take profit trigger and implement break-even stop loss
+        This should be called when a TP order is filled
+        """
+        try:
+            if not hasattr(self, 'active_orders_tracking') or symbol not in self.active_orders_tracking:
+                logging.warning(f"No order tracking found for {symbol}")
+                return False
+                
+            tracking_info = self.active_orders_tracking[symbol]
+            
+            if tracking_info['breakeven_triggered']:
+                logging.info(f"Break-even already triggered for {symbol}")
+                return True
+                
+            # Find the triggered TP order
+            triggered_tp = None
+            for order in tracking_info['orders']:
+                if order.get('type') == 'take_profit' and order.get('level') == tp_level:
+                    triggered_tp = order
+                    break
+            
+            if not triggered_tp:
+                logging.warning(f"TP{tp_level} order not found for {symbol}")
+                return False
+                
+            # Check if this TP should trigger break-even
+            if triggered_tp.get('is_breakeven_trigger', False):
+                return self._move_sl_to_breakeven(symbol, tracking_info)
+                
+            return True
+            
+        except Exception as e:
+            self.last_error = f"Error handling TP trigger: {e}"
+            logging.error(self.last_error)
+            return False
+    
+    def _move_sl_to_breakeven(self, symbol: str, tracking_info: Dict) -> bool:
+        """Move stop loss to entry price (break-even)"""
+        try:
+            if not self.exchange_client:
+                return False
+                
+            original_sl_id = tracking_info.get('original_sl_id')
+            entry_price = tracking_info.get('entry_price')
+            
+            if not original_sl_id or not entry_price:
+                logging.warning(f"Missing SL ID or entry price for break-even: {symbol}")
+                return False
+                
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            
+            # Cancel the original stop loss order
+            try:
+                cancel_result = self.exchange_client.cancel_order(
+                    name=hyperliquid_symbol,
+                    oid=int(original_sl_id)
+                )
+                
+                if cancel_result and cancel_result.get('status') == 'ok':
+                    logging.info(f"Original SL order {original_sl_id} cancelled for break-even")
+                else:
+                    logging.warning(f"Failed to cancel original SL: {cancel_result}")
+                    
+            except Exception as e:
+                logging.error(f"Error cancelling original SL: {e}")
+            
+            # Place new break-even stop loss at entry price
+            try:
+                # Determine remaining position size (subtract filled TP amounts)
+                remaining_amount = self._calculate_remaining_position_size(symbol, tracking_info)
+                
+                # Determine side (opposite to position direction)
+                position_side = self._get_position_side(symbol, tracking_info)
+                is_buy_position = position_side == 'buy'
+                
+                breakeven_sl_order = self.exchange_client.order(
+                    name=hyperliquid_symbol,
+                    is_buy=not is_buy_position,
+                    sz=remaining_amount,
+                    limit_px=entry_price,
+                    order_type={"trigger": {"triggerPx": entry_price, "isMarket": True, "tpsl": "sl"}},
+                    reduce_only=True
+                )
+                
+                if breakeven_sl_order and breakeven_sl_order.get('status') == 'ok':
+                    new_sl_id = breakeven_sl_order.get('response', {}).get('data', {}).get('statuses', [{}])[0].get('resting', {}).get('oid')
+                    
+                    # Update tracking info
+                    tracking_info['breakeven_triggered'] = True
+                    tracking_info['original_sl_id'] = new_sl_id
+                    
+                    logging.info(f"✅ BREAK-EVEN ACTIVATED: SL moved to entry price {entry_price} for {symbol} (remaining: {remaining_amount})")
+                    return True
+                else:
+                    logging.error(f"Failed to place break-even SL: {breakeven_sl_order}")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"Error placing break-even SL: {e}")
+                return False
+                
+        except Exception as e:
+            self.last_error = f"Error moving SL to break-even: {e}"
+            logging.error(self.last_error)
+            return False
+    
+    def _calculate_remaining_position_size(self, symbol: str, tracking_info: Dict) -> float:
+        """Calculate remaining position size after partial TP executions"""
+        try:
+            # Get current positions from exchange
+            positions = self.get_positions()
+            
+            for pos in positions:
+                if pos.get('symbol') == symbol:
+                    return abs(float(pos.get('size', 0)))
+            
+            # Fallback: calculate based on original amount minus filled TPs
+            original_amount = 0
+            filled_tp_amount = 0
+            
+            for order in tracking_info.get('orders', []):
+                if order.get('type') == 'stop_loss':
+                    original_amount = float(order.get('amount', 0))
+                elif order.get('type') == 'take_profit' and order.get('status') == 'filled':
+                    filled_tp_amount += float(order.get('amount', 0))
+            
+            remaining = original_amount - filled_tp_amount
+            return max(remaining, 0)
+            
+        except Exception as e:
+            logging.error(f"Error calculating remaining position: {e}")
+            return 0
+    
+    def _get_position_side(self, symbol: str, tracking_info: Dict) -> str:
+        """Determine the original position side"""
+        for order in tracking_info.get('orders', []):
+            if order.get('type') == 'stop_loss':
+                # If SL side is sell, original position was buy
+                return 'buy' if order.get('side') == 'sell' else 'sell'
+        return 'buy'  # Default fallback
 
 
 class ExchangeClientFactory:
