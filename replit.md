@@ -4,13 +4,14 @@
 This project is a comprehensive Telegram-based trading bot supporting both Toobit and LBank exchanges for USDT-M futures trading, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes (September 6, 2025)
-- **Implemented Circuit Breaker for Candlestick Data**: Added `@with_circuit_breaker` decorator to `get_candlestick_data` method with failure_threshold=2 and recovery_timeout=60s
-- **Optimized SMC Analysis Rate Limiting**: Replaced individual API calls with proper batch processing and circuit breaker protection
-- **Enhanced Rate Limiting Handling**: Removed fallback approaches in favor of circuit breaker pattern that properly handles 451/429 errors
-- **Improved Multi-Timeframe Processing**: Updated SMC analyzer to use circuit breaker protection and skip remaining timeframes when circuit opens
-- **Added Bulk Symbol Processing**: Created `get_bulk_multi_timeframe_data` method with circuit breaker awareness and proper error handling
-- **Circuit Breaker Integration**: Integrated existing circuit breaker system to prevent cascading failures and allow graceful recovery
-- **Deployment Configuration**: Set up autoscale deployment target with gunicorn for production readiness
+- **Implemented Comprehensive Klines Data Caching System**: Added `KlinesCache` database model with intelligent cache-first approach for candlestick data
+- **Enhanced SMC Analyzer with Smart Caching**: Modified `get_candlestick_data` method to use cache-first strategy with gap detection and automatic TTL management
+- **Advanced Cache Management**: Implemented timeframe-specific cache TTL (15min for 1h, 60min for 4h, 240min for 1d) with data retention policies
+- **Optimized API Call Reduction**: Cache system dramatically reduces Binance API calls by storing and reusing candlestick data intelligently
+- **Extended Cleanup Worker**: Enhanced background worker to clean expired klines cache and old data beyond retention periods
+- **Database Migration Support**: Added automatic table creation and indexing for KlinesCache with proper database migration handling
+- **Circuit Breaker Integration**: Maintained existing circuit breaker system with enhanced cache integration for failure resilience
+- **Performance Optimization**: Implemented bulk data operations and deduplication logic for improved caching efficiency
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
