@@ -11,6 +11,9 @@ import requests
 from dataclasses import dataclass
 from enum import Enum
 
+# Import circuit breaker functionality
+from .circuit_breaker import with_circuit_breaker, CircuitBreakerError
+
 # Import configuration constants
 try:
     from config import SMCConfig
@@ -93,43 +96,113 @@ class SMCAnalyzer:
     def __init__(self):
         self.timeframes = ['1h', '4h', '1d']  # Multiple timeframe analysis
         
+    @with_circuit_breaker('binance_klines_api', failure_threshold=2, recovery_timeout=60)
     def get_candlestick_data(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> List[Dict]:
-        """Get candlestick data from Binance (free API for analysis)"""
-        try:
-            # Convert timeframe to Binance format
-            tf_map = {'1h': '1h', '4h': '4h', '1d': '1d'}
-            interval = tf_map.get(timeframe, '1h')
-            
-            url = f"https://api.binance.com/api/v3/klines"
-            params = {
-                'symbol': symbol,
-                'interval': interval,
-                'limit': limit
+        """Get candlestick data from Binance with circuit breaker protection"""
+        # Convert timeframe to Binance format
+        tf_map = {'1h': '1h', '4h': '4h', '1d': '1d'}
+        interval = tf_map.get(timeframe, '1h')
+        
+        url = f"https://api.binance.com/api/v3/klines"
+        params = {
+            'symbol': symbol,
+            'interval': interval,
+            'limit': limit
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        klines = response.json()
+        
+        # Convert to OHLCV format
+        candlesticks = []
+        for kline in klines:
+            candlestick = {
+                'timestamp': datetime.fromtimestamp(kline[0] / 1000),
+                'open': float(kline[1]),
+                'high': float(kline[2]),
+                'low': float(kline[3]),
+                'close': float(kline[4]),
+                'volume': float(kline[5])
             }
-            
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            
-            klines = response.json()
-            
-            # Convert to OHLCV format
-            candlesticks = []
-            for kline in klines:
-                candlestick = {
-                    'timestamp': datetime.fromtimestamp(kline[0] / 1000),
-                    'open': float(kline[1]),
-                    'high': float(kline[2]),
-                    'low': float(kline[3]),
-                    'close': float(kline[4]),
-                    'volume': float(kline[5])
-                }
-                candlesticks.append(candlestick)
-            
-            return candlesticks
-            
-        except Exception as e:
-            logging.error(f"Failed to get candlestick data for {symbol}: {e}")
-            return []
+            candlesticks.append(candlestick)
+        
+        return candlesticks
+    
+    def get_multi_timeframe_data(self, symbol: str) -> Dict[str, List[Dict]]:
+        """Get candlestick data for multiple timeframes with circuit breaker protection"""
+        timeframe_data = {}
+        timeframe_configs = [
+            ('1h', 100),
+            ('4h', 50), 
+            ('1d', 30)
+        ]
+        
+        logging.info(f"Fetching batch candlestick data for {symbol} across {len(timeframe_configs)} timeframes with circuit breaker")
+        
+        for timeframe, limit in timeframe_configs:
+            try:
+                data = self.get_candlestick_data(symbol, timeframe, limit)
+                timeframe_data[timeframe] = data
+                logging.debug(f"Successfully fetched {len(data)} candles for {symbol} {timeframe}")
+                
+                # Controlled delay between timeframes
+                import time
+                time.sleep(0.2)  # Reduced delay since circuit breaker handles failures
+                
+            except CircuitBreakerError as e:
+                logging.warning(f"Circuit breaker OPEN for {symbol} {timeframe}: {e}")
+                timeframe_data[timeframe] = []
+                # Skip remaining timeframes if circuit breaker is open
+                if len([tf for tf, data in timeframe_data.items() if data]) == 0:
+                    logging.warning(f"Circuit breaker active, skipping remaining timeframes for {symbol}")
+                    break
+                    
+            except Exception as e:
+                logging.error(f"Failed to get {timeframe} data for {symbol}: {e}")
+                timeframe_data[timeframe] = []
+        
+        return timeframe_data
+    
+    @staticmethod
+    def get_bulk_multi_timeframe_data(symbols: List[str]) -> Dict[str, Dict[str, List[Dict]]]:
+        """Get candlestick data for multiple symbols using circuit breaker protection"""
+        import time
+        
+        all_symbol_data = {}
+        analyzer = SMCAnalyzer()
+        
+        logging.info(f"Starting bulk fetch for {len(symbols)} symbols with circuit breaker protection")
+        
+        for i, symbol in enumerate(symbols):
+            try:
+                symbol_data = analyzer.get_multi_timeframe_data(symbol)
+                all_symbol_data[symbol] = symbol_data
+                
+                # Check if we got any data
+                total_candles = sum(len(data) for data in symbol_data.values())
+                if total_candles > 0:
+                    logging.info(f"Completed batch data fetch for {symbol}: {total_candles} total candles")
+                else:
+                    logging.warning(f"No data retrieved for {symbol} - circuit breaker may be active")
+                
+                # Progressive delay between symbols (shorter since circuit breaker handles failures)
+                if i < len(symbols) - 1:  # Don't delay after last symbol
+                    time.sleep(0.3)
+                
+            except CircuitBreakerError as e:
+                logging.warning(f"Circuit breaker blocked request for {symbol}: {e}")
+                all_symbol_data[symbol] = {'1h': [], '4h': [], '1d': []}
+                
+            except Exception as e:
+                logging.error(f"Error in bulk fetch for {symbol}: {e}")
+                all_symbol_data[symbol] = {'1h': [], '4h': [], '1d': []}
+        
+        successful_symbols = len([s for s, data in all_symbol_data.items() 
+                                if any(len(timeframe_data) > 0 for timeframe_data in data.values())])
+        logging.info(f"Completed bulk data fetch: {successful_symbols}/{len(symbols)} symbols successful")
+        return all_symbol_data
     
     def detect_market_structure(self, candlesticks: List[Dict]) -> MarketStructure:
         """Detect current market structure using SMC principles"""
@@ -414,12 +487,15 @@ class SMCAnalyzer:
     def generate_trade_signal(self, symbol: str) -> Optional[SMCSignal]:
         """Generate comprehensive trade signal based on SMC analysis"""
         try:
-            # Get multi-timeframe data
-            h1_data = self.get_candlestick_data(symbol, '1h', 100)
-            h4_data = self.get_candlestick_data(symbol, '4h', 50)
-            d1_data = self.get_candlestick_data(symbol, '1d', 30)
+            # Get multi-timeframe data in batch to reduce API calls
+            timeframe_data = self.get_multi_timeframe_data(symbol)
+            
+            h1_data = timeframe_data.get('1h', [])
+            h4_data = timeframe_data.get('4h', [])
+            d1_data = timeframe_data.get('1d', [])
             
             if not h1_data or not h4_data:
+                logging.warning(f"Insufficient data for {symbol}: h1={len(h1_data)}, h4={len(h4_data)}")
                 return None
             
             current_price = h1_data[-1]['close']

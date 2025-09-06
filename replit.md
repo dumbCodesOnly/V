@@ -3,6 +3,15 @@
 ## Overview
 This project is a comprehensive Telegram-based trading bot supporting both Toobit and LBank exchanges for USDT-M futures trading, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
+## Recent Changes (September 6, 2025)
+- **Implemented Circuit Breaker for Candlestick Data**: Added `@with_circuit_breaker` decorator to `get_candlestick_data` method with failure_threshold=2 and recovery_timeout=60s
+- **Optimized SMC Analysis Rate Limiting**: Replaced individual API calls with proper batch processing and circuit breaker protection
+- **Enhanced Rate Limiting Handling**: Removed fallback approaches in favor of circuit breaker pattern that properly handles 451/429 errors
+- **Improved Multi-Timeframe Processing**: Updated SMC analyzer to use circuit breaker protection and skip remaining timeframes when circuit opens
+- **Added Bulk Symbol Processing**: Created `get_bulk_multi_timeframe_data` method with circuit breaker awareness and proper error handling
+- **Circuit Breaker Integration**: Integrated existing circuit breaker system to prevent cascading failures and allow graceful recovery
+- **Deployment Configuration**: Set up autoscale deployment target with gunicorn for production readiness
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
