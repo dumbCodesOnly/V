@@ -330,6 +330,13 @@ class CacheConfig:
     
     # Hit Rate Calculation
     HIT_RATE_PERCENTAGE_MULTIPLIER = 100 # Multiplier for hit rate percentage calculation
+    
+    # Klines Cache Settings (minutes)
+    KLINES_1H_CACHE_TTL = 15             # 15 minutes cache for 1h timeframe
+    KLINES_4H_CACHE_TTL = 60             # 1 hour cache for 4h timeframe  
+    KLINES_1D_CACHE_TTL = 240            # 4 hours cache for 1d timeframe
+    KLINES_DATA_RETENTION_DAYS = 7       # Keep klines data for 7 days
+    KLINES_CLEANUP_INTERVAL = 3600       # Clean up klines cache every hour (seconds)
 
 
 # =============================================================================
