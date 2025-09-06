@@ -98,8 +98,37 @@ class SMCAnalyzer:
         
     @with_circuit_breaker('binance_klines_api', failure_threshold=2, recovery_timeout=60)
     def get_candlestick_data(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> List[Dict]:
-        """Get candlestick data from Binance with circuit breaker protection"""
-        # Convert timeframe to Binance format
+        """Get candlestick data with cache-first approach and circuit breaker protection"""
+        from .models import KlinesCache
+        from config import CacheConfig
+        
+        # Step 1: Try to get data from cache first
+        try:
+            cached_data = KlinesCache.get_cached_data(symbol, timeframe, limit)
+            if len(cached_data) >= limit:
+                logging.debug(f"CACHE HIT: Using cached data for {symbol} {timeframe} ({len(cached_data)} candles)")
+                return cached_data
+            elif len(cached_data) > 0:
+                logging.debug(f"PARTIAL CACHE HIT: Found {len(cached_data)} cached candles for {symbol} {timeframe}, fetching remaining data")
+        except Exception as e:
+            logging.warning(f"Cache retrieval failed for {symbol} {timeframe}: {e}")
+            cached_data = []
+        
+        # Step 2: Check for data gaps and determine what to fetch
+        try:
+            gap_info = KlinesCache.get_data_gaps(symbol, timeframe, limit)
+            if not gap_info['needs_fetch']:
+                logging.debug(f"CACHE SUFFICIENT: Using existing cached data for {symbol} {timeframe}")
+                return KlinesCache.get_cached_data(symbol, timeframe, limit)
+            
+            fetch_limit = gap_info['fetch_count']
+            logging.info(f"CACHE MISS/PARTIAL: Fetching {fetch_limit} candles for {symbol} {timeframe}")
+            
+        except Exception as e:
+            logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
+            fetch_limit = limit
+        
+        # Step 3: Fetch from Binance API with circuit breaker protection
         tf_map = {'1h': '1h', '4h': '4h', '1d': '1d'}
         interval = tf_map.get(timeframe, '1h')
         
@@ -107,7 +136,7 @@ class SMCAnalyzer:
         params = {
             'symbol': symbol,
             'interval': interval,
-            'limit': limit
+            'limit': fetch_limit
         }
         
         response = requests.get(url, params=params, timeout=10)
@@ -128,7 +157,44 @@ class SMCAnalyzer:
             }
             candlesticks.append(candlestick)
         
-        return candlesticks
+        # Step 4: Cache the fetched data with appropriate TTL
+        try:
+            ttl_config = {
+                '1h': CacheConfig.KLINES_1H_CACHE_TTL,
+                '4h': CacheConfig.KLINES_4H_CACHE_TTL,
+                '1d': CacheConfig.KLINES_1D_CACHE_TTL
+            }
+            cache_ttl = ttl_config.get(timeframe, CacheConfig.KLINES_1H_CACHE_TTL)
+            
+            saved_count = KlinesCache.save_klines_batch(symbol, timeframe, candlesticks, cache_ttl)
+            logging.info(f"CACHE SAVE: Saved {saved_count} candles for {symbol} {timeframe} (TTL: {cache_ttl}m)")
+            
+        except Exception as e:
+            logging.error(f"Failed to cache data for {symbol} {timeframe}: {e}")
+        
+        # Step 5: Return combined data (cached + fetched) if partial hit, else just fetched
+        try:
+            if len(cached_data) > 0 and len(candlesticks) > 0:
+                # Combine and deduplicate data
+                combined_data = cached_data + candlesticks
+                # Remove duplicates based on timestamp
+                seen_timestamps = set()
+                unique_data = []
+                for candle in combined_data:
+                    timestamp_key = candle['timestamp'].isoformat() if isinstance(candle['timestamp'], datetime) else str(candle['timestamp'])
+                    if timestamp_key not in seen_timestamps:
+                        seen_timestamps.add(timestamp_key)
+                        unique_data.append(candle)
+                
+                # Sort by timestamp and limit
+                unique_data.sort(key=lambda x: x['timestamp'])
+                return unique_data[-limit:] if len(unique_data) > limit else unique_data
+            else:
+                return candlesticks
+                
+        except Exception as e:
+            logging.error(f"Error combining cached and fetched data for {symbol} {timeframe}: {e}")
+            return candlesticks
     
     def get_multi_timeframe_data(self, symbol: str) -> Dict[str, List[Dict]]:
         """Get candlestick data for multiple timeframes with circuit breaker protection"""
