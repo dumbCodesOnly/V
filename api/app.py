@@ -1697,7 +1697,7 @@ def get_exchange_orders():
         else:
             # For exchanges that support getting all orders without symbol
             try:
-                orders = client.get_order_history()
+                orders = client.get_order_history(symbol="")
             except TypeError:
                 # If the method requires symbol parameter, return empty list
                 orders = []
@@ -3514,10 +3514,9 @@ def execute_trade():
                                 tp_sl_orders = client.place_multiple_tp_sl_orders(
                                     symbol=config.symbol,
                                     side=order_side,
-                                    amount=float(position_size),
-                                    entry_price=config.entry_price,
-                                    tp_levels=tp_orders_to_place,
-                                    stop_loss_price=float(sl_price) if sl_price else 0.0
+                                    total_quantity=str(position_size),
+                                    take_profits=tp_orders_to_place,
+                                    stop_loss_price=sl_price
                                 )
                                 
                                 config.exchange_tp_sl_orders = tp_sl_orders
@@ -3986,7 +3985,7 @@ def close_trade():
                     symbol=config.symbol,
                     side=close_side,
                     order_type="market",
-                    amount=float(position_size),
+                    quantity=str(position_size),
                     reduce_only=True
                 )
                 
@@ -4128,7 +4127,7 @@ def close_all_trades():
                         symbol=config.symbol,
                         side=close_side,
                         order_type="market",
-                        amount=float(config.position_size),
+                        quantity=str(config.position_size),
                         reduce_only=True
                     )
                     
@@ -7542,10 +7541,9 @@ def place_exchange_native_orders(config, user_id):
             orders_placed = client.place_multiple_tp_sl_orders(
                 symbol=config.symbol,
                 side=config.side,
-                amount=float(position_size),
-                entry_price=config.entry_price,
-                tp_levels=tp_orders,
-                stop_loss_price=float(sl_price) if sl_price else 0.0
+                total_quantity=str(position_size),
+                take_profits=tp_orders,
+                stop_loss_price=sl_price
             )
         
         logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")
