@@ -140,7 +140,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 # Initialize enhanced caching system
-start_cache_cleanup_worker()
+start_cache_cleanup_worker(app)
 logging.info("Enhanced caching system initialized with smart volatility-based TTL")
 
 # Database migration helper
