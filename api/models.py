@@ -426,3 +426,205 @@ class SMCSignalCache(db.Model):
     
     def __repr__(self):
         return f"<SMCSignalCache {self.symbol}: {self.direction} @ {self.entry_price}>"
+
+
+class KlinesCache(db.Model):
+    """Cache candlestick (klines) data to reduce API calls and improve performance"""
+    __tablename__ = 'klines_cache'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    timeframe = db.Column(db.String(10), nullable=False, index=True)  # '1h', '4h', '1d'
+    timestamp = db.Column(db.DateTime, nullable=False, index=True)  # Candlestick timestamp
+    
+    # OHLCV data
+    open = db.Column(db.Float, nullable=False)
+    high = db.Column(db.Float, nullable=False)
+    low = db.Column(db.Float, nullable=False)
+    close = db.Column(db.Float, nullable=False)
+    volume = db.Column(db.Float, nullable=False)
+    
+    # Cache metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    is_complete = db.Column(db.Boolean, default=True)  # False for incomplete candles (current period)
+    
+    # Composite indexes for efficient queries
+    __table_args__ = (
+        db.Index('idx_klines_symbol_timeframe_timestamp', 'symbol', 'timeframe', 'timestamp'),
+        db.Index('idx_klines_expires', 'expires_at'),
+        db.Index('idx_klines_symbol_timeframe_expires', 'symbol', 'timeframe', 'expires_at'),
+    )
+    
+    def is_expired(self):
+        """Check if the cached data has expired"""
+        return datetime.utcnow() > self.expires_at
+    
+    def to_candlestick_dict(self):
+        """Convert database model to candlestick dictionary format"""
+        return {
+            'timestamp': self.timestamp,
+            'open': self.open,
+            'high': self.high,
+            'low': self.low,
+            'close': self.close,
+            'volume': self.volume
+        }
+    
+    @classmethod
+    def get_cached_data(cls, symbol: str, timeframe: str, limit: int = 100, include_incomplete: bool = True):
+        """Get cached candlestick data for symbol and timeframe"""
+        query = cls.query.filter(
+            cls.symbol == symbol,
+            cls.timeframe == timeframe,
+            cls.expires_at > datetime.utcnow()
+        )
+        
+        if not include_incomplete:
+            query = query.filter(cls.is_complete == True)
+        
+        # Get the most recent data, ordered by timestamp
+        cached_data = query.order_by(cls.timestamp.desc()).limit(limit).all()
+        
+        if not cached_data:
+            return []
+        
+        # Convert to list of dictionaries and reverse to get chronological order
+        candlesticks = [candle.to_candlestick_dict() for candle in reversed(cached_data)]
+        return candlesticks
+    
+    @classmethod
+    def save_klines_batch(cls, symbol: str, timeframe: str, candlesticks: list, cache_ttl_minutes: int = 15):
+        """Save a batch of candlestick data to cache"""
+        from sqlalchemy import text
+        
+        expires_at = datetime.utcnow() + timedelta(minutes=cache_ttl_minutes)
+        current_time = datetime.utcnow()
+        
+        # Prepare batch data
+        klines_to_insert = []
+        
+        for candle in candlesticks:
+            # Determine if this is a complete candle (not the current period)
+            candle_time = candle['timestamp']
+            if isinstance(candle_time, datetime):
+                is_current_period = False
+                # Check if this is the most recent candle (within the timeframe period)
+                if timeframe == '1h':
+                    time_diff = (current_time - candle_time).total_seconds()
+                    is_current_period = time_diff < 3600  # Less than 1 hour
+                elif timeframe == '4h':
+                    time_diff = (current_time - candle_time).total_seconds()
+                    is_current_period = time_diff < 14400  # Less than 4 hours
+                elif timeframe == '1d':
+                    time_diff = (current_time - candle_time).total_seconds()
+                    is_current_period = time_diff < 86400  # Less than 1 day
+                
+                is_complete = not is_current_period
+            else:
+                is_complete = True  # Default to complete
+            
+            klines_to_insert.append({
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'timestamp': candle_time,
+                'open': float(candle['open']),
+                'high': float(candle['high']),
+                'low': float(candle['low']),
+                'close': float(candle['close']),
+                'volume': float(candle['volume']),
+                'expires_at': expires_at,
+                'is_complete': is_complete,
+                'created_at': current_time
+            })
+        
+        if klines_to_insert:
+            # Use bulk insert for better performance
+            try:
+                db.session.bulk_insert_mappings(cls, klines_to_insert)
+                db.session.commit()
+                return len(klines_to_insert)
+            except Exception as e:
+                db.session.rollback()
+                # Fall back to individual inserts on conflict
+                inserted_count = 0
+                for kline_data in klines_to_insert:
+                    try:
+                        # Check if already exists
+                        existing = cls.query.filter(
+                            cls.symbol == kline_data['symbol'],
+                            cls.timeframe == kline_data['timeframe'],
+                            cls.timestamp == kline_data['timestamp']
+                        ).first()
+                        
+                        if not existing:
+                            new_kline = cls(**kline_data)
+                            db.session.add(new_kline)
+                            inserted_count += 1
+                        else:
+                            # Update existing incomplete candle
+                            if not existing.is_complete and not kline_data['is_complete']:
+                                existing.open = kline_data['open']
+                                existing.high = kline_data['high']
+                                existing.low = kline_data['low']
+                                existing.close = kline_data['close']
+                                existing.volume = kline_data['volume']
+                                existing.expires_at = expires_at
+                                existing.created_at = current_time
+                                
+                    except Exception as inner_e:
+                        continue
+                
+                db.session.commit()
+                return inserted_count
+        
+        return 0
+    
+    @classmethod
+    def get_data_gaps(cls, symbol: str, timeframe: str, required_count: int):
+        """Identify gaps in cached data to determine what needs to be fetched from API"""
+        # Get the most recent cached complete data
+        latest_complete = cls.query.filter(
+            cls.symbol == symbol,
+            cls.timeframe == timeframe,
+            cls.is_complete == True,
+            cls.expires_at > datetime.utcnow()
+        ).order_by(cls.timestamp.desc()).first()
+        
+        if not latest_complete:
+            # No cached data, need to fetch everything
+            return {'needs_fetch': True, 'fetch_count': required_count, 'has_cached_data': False}
+        
+        # Count available complete data
+        available_count = cls.query.filter(
+            cls.symbol == symbol,
+            cls.timeframe == timeframe,
+            cls.is_complete == True,
+            cls.expires_at > datetime.utcnow()
+        ).count()
+        
+        if available_count >= required_count:
+            # Sufficient cached data available
+            return {'needs_fetch': False, 'fetch_count': 0, 'has_cached_data': True}
+        else:
+            # Need to fetch additional data
+            missing_count = required_count - available_count + 1  # +1 for current incomplete candle
+            return {'needs_fetch': True, 'fetch_count': missing_count, 'has_cached_data': True}
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired klines cache entries"""
+        expired_count = cls.query.filter(cls.expires_at <= datetime.utcnow()).delete()
+        db.session.commit()
+        return expired_count
+    
+    @classmethod
+    def cleanup_old_data(cls, days_to_keep: int = 7):
+        """Remove old klines data beyond retention period"""
+        cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+        old_count = cls.query.filter(cls.created_at <= cutoff_date).delete()
+        db.session.commit()
+        return old_count
+    
+    def __repr__(self):
+        return f"<KlinesCache {self.symbol}:{self.timeframe} @ {self.timestamp}>"
