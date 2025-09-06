@@ -392,24 +392,46 @@ def start_cache_cleanup_worker():
                 # Clean up enhanced cache (price data, user data, etc.)
                 enhanced_cache.cleanup_expired()
                 
-                # Clean up klines cache data
+                # Clean up klines cache data with proper app context
                 try:
                     from .models import KlinesCache, SMCSignalCache
+                    from flask import current_app
                     
-                    # Clean up expired klines cache entries
-                    klines_cleaned = KlinesCache.cleanup_expired()
-                    if klines_cleaned > 0:
-                        logging.info(f"Cleaned up {klines_cleaned} expired klines cache entries")
-                    
-                    # Clean up old klines data beyond retention period
-                    old_klines_cleaned = KlinesCache.cleanup_old_data(CacheConfig.KLINES_DATA_RETENTION_DAYS)
-                    if old_klines_cleaned > 0:
-                        logging.info(f"Cleaned up {old_klines_cleaned} old klines data entries")
-                    
-                    # Clean up expired SMC signals
-                    smc_cleaned = SMCSignalCache.cleanup_expired()
-                    if smc_cleaned > 0:
-                        logging.debug(f"Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                    # Ensure we have the correct app context for database operations
+                    if hasattr(current_app, 'app_context'):
+                        with current_app.app_context():
+                            # Clean up expired klines cache entries
+                            klines_cleaned = KlinesCache.cleanup_expired()
+                            if klines_cleaned > 0:
+                                logging.info(f"Cleaned up {klines_cleaned} expired klines cache entries")
+                            
+                            # Clean up old klines data beyond retention period
+                            old_klines_cleaned = KlinesCache.cleanup_old_data(CacheConfig.KLINES_DATA_RETENTION_DAYS)
+                            if old_klines_cleaned > 0:
+                                logging.info(f"Cleaned up {old_klines_cleaned} old klines data entries")
+                            
+                            # Clean up expired SMC signals
+                            smc_cleaned = SMCSignalCache.cleanup_expired()
+                            if smc_cleaned > 0:
+                                logging.debug(f"Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                    else:
+                        # Fallback: try to get app from the models
+                        try:
+                            from . import app
+                            with app.app_context():
+                                klines_cleaned = KlinesCache.cleanup_expired()
+                                if klines_cleaned > 0:
+                                    logging.info(f"Cleaned up {klines_cleaned} expired klines cache entries")
+                                
+                                old_klines_cleaned = KlinesCache.cleanup_old_data(CacheConfig.KLINES_DATA_RETENTION_DAYS)
+                                if old_klines_cleaned > 0:
+                                    logging.info(f"Cleaned up {old_klines_cleaned} old klines data entries")
+                                
+                                smc_cleaned = SMCSignalCache.cleanup_expired()
+                                if smc_cleaned > 0:
+                                    logging.debug(f"Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                        except Exception as fallback_error:
+                            logging.debug(f"Database cache cleanup skipped (no app context): {fallback_error}")
                         
                 except Exception as db_cleanup_error:
                     logging.error(f"Database cache cleanup error: {db_cleanup_error}")
