@@ -185,10 +185,44 @@ def run_database_migrations():
                     ON smc_signal_cache(symbol, expires_at)
                 """))
                 
+                # Ensure KlinesCache table exists with proper indexes
+                db.session.execute(text("""
+                    CREATE TABLE IF NOT EXISTS klines_cache (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(20) NOT NULL,
+                        timeframe VARCHAR(10) NOT NULL,
+                        timestamp TIMESTAMP NOT NULL,
+                        open FLOAT NOT NULL,
+                        high FLOAT NOT NULL,
+                        low FLOAT NOT NULL,
+                        close FLOAT NOT NULL,
+                        volume FLOAT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        is_complete BOOLEAN DEFAULT TRUE
+                    )
+                """))
+                
+                # Create indexes for efficient klines cache queries
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_timestamp 
+                    ON klines_cache(symbol, timeframe, timestamp)
+                """))
+                
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_klines_expires 
+                    ON klines_cache(expires_at)
+                """))
+                
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_expires 
+                    ON klines_cache(symbol, timeframe, expires_at)
+                """))
+                
                 db.session.commit()
-                logging.info("SMC signal cache table ensured for Vercel/Neon deployment")
+                logging.info("SMC signal cache and KlinesCache tables ensured for deployment")
             except Exception as smc_error:
-                logging.warning(f"SMC signal cache table creation failed (may already exist): {smc_error}")
+                logging.warning(f"Cache table creation failed (may already exist): {smc_error}")
                 db.session.rollback()
             
             # Fix Toobit testnet issue for existing data (only if Toobit users exist)

@@ -385,12 +385,37 @@ class SmartCache:
 enhanced_cache = SmartCache()
 
 def start_cache_cleanup_worker():
-    """Start background worker to clean up expired cache entries"""
+    """Start background worker to clean up expired cache entries including klines data"""
     def cleanup_worker():
         while True:
             try:
+                # Clean up enhanced cache (price data, user data, etc.)
                 enhanced_cache.cleanup_expired()
-                time.sleep(CacheConfig.CLEANUP_INTERVAL)  # Clean up every minute
+                
+                # Clean up klines cache data
+                try:
+                    from .models import KlinesCache, SMCSignalCache
+                    
+                    # Clean up expired klines cache entries
+                    klines_cleaned = KlinesCache.cleanup_expired()
+                    if klines_cleaned > 0:
+                        logging.info(f"Cleaned up {klines_cleaned} expired klines cache entries")
+                    
+                    # Clean up old klines data beyond retention period
+                    old_klines_cleaned = KlinesCache.cleanup_old_data(CacheConfig.KLINES_DATA_RETENTION_DAYS)
+                    if old_klines_cleaned > 0:
+                        logging.info(f"Cleaned up {old_klines_cleaned} old klines data entries")
+                    
+                    # Clean up expired SMC signals
+                    smc_cleaned = SMCSignalCache.cleanup_expired()
+                    if smc_cleaned > 0:
+                        logging.debug(f"Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                        
+                except Exception as db_cleanup_error:
+                    logging.error(f"Database cache cleanup error: {db_cleanup_error}")
+                
+                time.sleep(CacheConfig.CLEANUP_INTERVAL)  # Clean up every 2 minutes by default
+                
             except Exception as e:
                 logging.error(f"Cache cleanup worker error: {e}")
                 time.sleep(CacheConfig.CLEANUP_INTERVAL)
