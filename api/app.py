@@ -3545,13 +3545,36 @@ def execute_trade():
                                 logging.info(f"TP/SL orders configured to place when limit order fills")
                             else:
                                 # For market orders, place TP/SL immediately
-                                tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                    symbol=config.symbol,
-                                    side=order_side,
-                                    total_quantity=str(position_size),
-                                    take_profits=tp_orders_to_place,
-                                    stop_loss_price=sl_price
-                                )
+                                # Handle different exchange client interfaces based on client type
+                                client_type = type(client).__name__
+                                
+                                if 'HyperliquidClient' in client_type:
+                                    # HyperliquidClient expects: amount, entry_price, tp_levels
+                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
+                                        symbol=config.symbol,
+                                        side=order_side,
+                                        amount=float(position_size),
+                                        entry_price=float(config.entry_price),
+                                        tp_levels=tp_orders_to_place
+                                    )
+                                elif 'LBankClient' in client_type:
+                                    # LBankClient expects: amount instead of total_quantity
+                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
+                                        symbol=config.symbol,
+                                        side=order_side,
+                                        amount=str(position_size),
+                                        take_profits=tp_orders_to_place,
+                                        stop_loss_price=sl_price
+                                    )
+                                else:
+                                    # ToobitClient (default) expects: total_quantity, take_profits
+                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
+                                        symbol=config.symbol,
+                                        side=order_side,
+                                        total_quantity=str(position_size),
+                                        take_profits=tp_orders_to_place,
+                                        stop_loss_price=sl_price
+                                    )
                                 
                                 config.exchange_tp_sl_orders = tp_sl_orders
                                 logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
@@ -7572,13 +7595,36 @@ def place_exchange_native_orders(config, user_id):
             orders_placed = []
         else:
             # Place regular TP/SL orders
-            orders_placed = client.place_multiple_tp_sl_orders(
-                symbol=config.symbol,
-                side=config.side,
-                total_quantity=str(position_size),
-                take_profits=tp_orders,
-                stop_loss_price=sl_price
-            )
+            # Handle different exchange client interfaces based on client type
+            client_type = type(client).__name__
+            
+            if 'HyperliquidClient' in client_type:
+                # HyperliquidClient expects: amount, entry_price, tp_levels
+                orders_placed = client.place_multiple_tp_sl_orders(
+                    symbol=config.symbol,
+                    side=config.side,
+                    amount=float(position_size),
+                    entry_price=float(config.entry_price),
+                    tp_levels=tp_orders
+                )
+            elif 'LBankClient' in client_type:
+                # LBankClient expects: amount instead of total_quantity
+                orders_placed = client.place_multiple_tp_sl_orders(
+                    symbol=config.symbol,
+                    side=config.side,
+                    amount=str(position_size),
+                    take_profits=tp_orders,
+                    stop_loss_price=sl_price
+                )
+            else:
+                # ToobitClient (default) expects: total_quantity, take_profits
+                orders_placed = client.place_multiple_tp_sl_orders(
+                    symbol=config.symbol,
+                    side=config.side,
+                    total_quantity=str(position_size),
+                    take_profits=tp_orders,
+                    stop_loss_price=sl_price
+                )
         
         logging.info(f"Placed {len(orders_placed)} exchange-native orders for {config.symbol}")
         
