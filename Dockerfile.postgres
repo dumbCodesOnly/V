@@ -1,0 +1,40 @@
+# PostgreSQL Dockerfile for Render deployment
+# This provides a basic PostgreSQL setup for the trading bot application
+
+FROM postgres:15-alpine
+
+# Set environment variables
+ENV POSTGRES_DB=trading_bot
+ENV POSTGRES_USER=trading_user
+ENV PGDATA=/var/lib/postgresql/data
+
+# Create initialization scripts directory
+RUN mkdir -p /docker-entrypoint-initdb.d
+
+# Copy any initialization scripts (if needed)
+# COPY init-scripts/* /docker-entrypoint-initdb.d/
+
+# Create a directory for custom configuration
+RUN mkdir -p /etc/postgresql
+
+# Add custom PostgreSQL configuration for performance
+RUN echo "# Trading Bot PostgreSQL Configuration" > /etc/postgresql/postgresql.conf && \
+    echo "max_connections = 100" >> /etc/postgresql/postgresql.conf && \
+    echo "shared_buffers = 128MB" >> /etc/postgresql/postgresql.conf && \
+    echo "effective_cache_size = 512MB" >> /etc/postgresql/postgresql.conf && \
+    echo "work_mem = 4MB" >> /etc/postgresql/postgresql.conf && \
+    echo "maintenance_work_mem = 64MB" >> /etc/postgresql/postgresql.conf && \
+    echo "checkpoint_completion_target = 0.7" >> /etc/postgresql/postgresql.conf && \
+    echo "wal_buffers = 16MB" >> /etc/postgresql/postgresql.conf && \
+    echo "default_statistics_target = 100" >> /etc/postgresql/postgresql.conf && \
+    echo "log_statement = 'all'" >> /etc/postgresql/postgresql.conf && \
+    echo "log_duration = on" >> /etc/postgresql/postgresql.conf
+
+# Set proper permissions
+RUN chown -R postgres:postgres /etc/postgresql
+
+# Expose the default PostgreSQL port
+EXPOSE 5432
+
+# Use the default postgres entrypoint
+CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
