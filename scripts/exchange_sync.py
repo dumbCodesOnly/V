@@ -255,14 +255,15 @@ class ExchangeSyncService:
                                     }
                                     logging.info(f"FIXED: Initialized paper SL data for position {trade_id}")
                             
-                            # Get current market price for the symbol
-                            current_price = get_live_market_price(config.symbol)
-                            if current_price and current_price > 0:
-                                config.current_price = current_price
-                                
-                                # Process paper trading position for TP/SL triggers
-                                process_paper_trading_position(user_id, trade_id, config)
-                                paper_positions_processed += 1
+                            # FLASK CONTEXT FIX: Get current market price with app context
+                            with self.app.app_context():
+                                current_price = get_live_market_price(config.symbol)
+                                if current_price and current_price > 0:
+                                    config.current_price = current_price
+                                    
+                                    # Process paper trading position for TP/SL triggers
+                                    process_paper_trading_position(user_id, trade_id, config)
+                                    paper_positions_processed += 1
                         except Exception as position_error:
                             logging.error(f"Error processing paper position {trade_id}: {position_error}")
             
