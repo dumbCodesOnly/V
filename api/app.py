@@ -5221,11 +5221,24 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
     
     # PRIORITY 1: Try user's preferred exchange first (where trades are actually executed)
     if prefer_exchange and user_id:
-        # Check user's preferred exchange
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(user_id),
-            is_active=True
-        ).first()
+        # Check user's preferred exchange - ensure we have Flask app context
+        user_creds = None
+        try:
+            if has_app_context():
+                user_creds = UserCredentials.query.filter_by(
+                    telegram_user_id=str(user_id),
+                    is_active=True
+                ).first()
+            else:
+                # We're running in a background thread, need app context
+                with app.app_context():
+                    user_creds = UserCredentials.query.filter_by(
+                        telegram_user_id=str(user_id),
+                        is_active=True
+                    ).first()
+        except Exception as context_error:
+            logging.debug(f"Database query failed due to context issue: {context_error}")
+            user_creds = None
         
         if user_creds and user_creds.exchange_name:
             if user_creds.exchange_name == 'hyperliquid':
