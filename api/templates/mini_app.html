@@ -121,6 +121,67 @@
             animation: pulse 1s infinite; /* Faster pulse for errors */
         }
 
+        /* Single Page Form Styling */
+        .single-page-form {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        
+        .config-section {
+            background: var(--tg-theme-card-bg);
+            border: 1px solid var(--tg-theme-border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .section-title {
+            color: var(--tg-theme-button-color);
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--tg-theme-border-color);
+        }
+        
+        .form-label.required::after {
+            content: " *";
+            color: var(--tg-theme-danger);
+        }
+        
+        .validation-error {
+            color: var(--tg-theme-danger);
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+            display: none;
+        }
+        
+        .validation-error.show {
+            display: block;
+        }
+        
+        .side-btn.active,
+        .entry-btn.active {
+            background-color: var(--tg-theme-button-color) !important;
+            border-color: var(--tg-theme-button-color) !important;
+            color: white !important;
+        }
+        
+        .modal-lg {
+            max-width: 800px;
+        }
+        
+        @media (max-width: 768px) {
+            .modal-lg {
+                max-width: 95%;
+                margin: 1rem auto;
+            }
+            
+            .single-page-form {
+                max-height: 80vh;
+            }
+        }
+
         /* Enhanced Loading Indicators */
         .loading-overlay {
             position: fixed;
@@ -2546,158 +2607,185 @@
 
     <!-- Trade Configuration Modal -->
     <div class="modal fade" id="tradeModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h6 class="modal-title" id="tradeModalTitle">Configure Trade</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="trade-progress" class="progress-indicator mb-3"></div>
-                    
-                    <!-- Symbol Selection -->
-                    <div id="symbol-step" class="config-step">
-                        <label class="form-label">Trading Pair</label>
-                        <select class="form-control" id="trade-symbol-select">
-                            <option value="">Select Symbol</option>
-                            <option value="BTCUSDT">BTC/USDT</option>
-                            <option value="ETHUSDT">ETH/USDT</option>
-                            <option value="BNBUSDT">BNB/USDT</option>
-                            <option value="ADAUSDT">ADA/USDT</option>
-                            <option value="SOLUSDT">SOL/USDT</option>
-                            <option value="XRPUSDT">XRP/USDT</option>
-                            <option value="DOTUSDT">DOT/USDT</option>
-                            <option value="DOGEUSDT">DOGE/USDT</option>
-                            <option value="LINKUSDT">LINK/USDT</option>
-                            <option value="LTCUSDT">LTC/USDT</option>
-                            <option value="MATICUSDT">MATIC/USDT</option>
-                            <option value="AVAXUSDT">AVAX/USDT</option>
-                            <option value="UNIUSDT">UNI/USDT</option>
-                        </select>
-                    </div>
-
-                    <!-- Side Selection -->
-                    <div id="side-step" class="config-step hidden">
-                        <label class="form-label">Position Side</label>
-                        <div class="two-column-grid">
-                            <button class="btn btn-outline-primary" onclick="setTradeSide('long')">
-                                ▲ Long
-                            </button>
-                            <button class="btn btn-outline-primary" onclick="setTradeSide('short')">
-                                ▼ Short
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Amount & Leverage -->
-                    <div id="amount-step" class="config-step hidden">
-                        <label class="form-label">Margin</label>
-                        <div class="input-group mb-2">
-                            <span class="input-group-text">$</span>
-                            <input type="number" class="form-control" id="amount-input" placeholder="Enter amount" step="0.01">
-                        </div>
-                        <label class="form-label">Leverage</label>
-                        <select class="form-control" id="leverage-select">
-                            <option value="1">1x</option>
-                            <option value="2">2x</option>
-                            <option value="5">5x</option>
-                            <option value="10" selected>10x</option>
-                            <option value="20">20x</option>
-                            <option value="50">50x</option>
-                            <option value="100">100x</option>
-                        </select>
-                    </div>
-
-                    <!-- Entry Configuration -->
-                    <div id="entry-step" class="config-step hidden">
-                        <label class="form-label">Entry Type</label>
-                        <div class="two-column-grid mb-2">
-                            <button class="btn btn-outline-primary" onclick="setEntryType('market')">
-                                ⦿ Market
-                            </button>
-                            <button class="btn btn-outline-primary" onclick="setEntryType('limit')">
-                                ◉ Limit
-                            </button>
-                        </div>
-                        <div id="limit-price-input" class="hidden">
-                            <label class="form-label">Limit Price</label>
-                            <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                <input type="number" class="form-control" id="entry-price" placeholder="Entry price" step="0.0001">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Take Profits -->
-                    <div id="tp-step" class="config-step hidden">
-                        <label class="form-label">Take Profit Levels</label>
-                        <div id="tp-levels">
-                            <div class="input-group mb-2">
-                                <span class="input-group-text">TP1 %</span>
-                                <input type="number" class="form-control tp-percent" data-level="1" placeholder="5" step="0.1">
-                                <span class="input-group-text">Size %</span>
-                                <input type="number" class="form-control tp-allocation" data-level="1" placeholder="30" step="1" oninput="updateAllocationSummary()">
-                            </div>
-                        </div>
-                        <button class="btn btn-outline-primary btn-sm" onclick="addTpLevel()">+ Add TP Level</button>
-                        <div class="mt-2">
-                            <small class="text-muted">Total Position Allocation: <span id="total-allocation">0</span>% (remaining: <span id="remaining-allocation">100</span>%)</small>
-                        </div>
-                    </div>
-
-                    <!-- Stop Loss -->
-                    <div id="sl-step" class="config-step hidden">
-                        <label class="form-label">Stop Loss</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control" id="stop-loss" placeholder="2" step="0.1">
-                            <span class="input-group-text">%</span>
-                        </div>
-                    </div>
-
-                    <!-- Breakeven Settings -->
-                    <div id="breakeven-step" class="config-step hidden">
-                        <label class="form-label">Break-even Settings</label>
-                        <select class="form-control" id="breakeven-select">
-                            <option value="disabled">Disabled</option>
-                            <option value="tp1">After TP1</option>
-                            <option value="tp2">After TP2</option>
-                            <option value="tp3">After TP3</option>
-                        </select>
-                        <small class="text-muted">Move stop loss to break-even after take profit levels</small>
-                    </div>
-
-                    <!-- Trailing Stop Settings -->
-                    <div id="trailing-step" class="config-step hidden">
-                        <label class="form-label">Trailing Stop</label>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="trailing-enabled" onchange="toggleTrailingStop()">
-                            <label class="form-check-label" for="trailing-enabled">
-                                Enable Trailing Stop
-                            </label>
-                        </div>
-                        <div id="trailing-options" class="hidden">
-                            <div class="mb-3">
-                                <label class="form-label">Trail Percentage</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="trail-percentage" placeholder="2" step="0.1" min="0.1">
-                                    <span class="input-group-text">%</span>
+                    <!-- Trade Configuration Form - Single Page -->
+                    <form id="tradeConfigForm" class="single-page-form">
+                        <!-- Basic Configuration Section -->
+                        <div class="config-section mb-4">
+                            <h6 class="section-title">Basic Configuration</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label required">Trading Pair</label>
+                                    <select class="form-control" id="trade-symbol-select" required>
+                                        <option value="">Select Symbol</option>
+                                        <option value="BTCUSDT">BTC/USDT</option>
+                                        <option value="ETHUSDT">ETH/USDT</option>
+                                        <option value="BNBUSDT">BNB/USDT</option>
+                                        <option value="ADAUSDT">ADA/USDT</option>
+                                        <option value="SOLUSDT">SOL/USDT</option>
+                                        <option value="XRPUSDT">XRP/USDT</option>
+                                        <option value="DOTUSDT">DOT/USDT</option>
+                                        <option value="DOGEUSDT">DOGE/USDT</option>
+                                        <option value="LINKUSDT">LINK/USDT</option>
+                                        <option value="LTCUSDT">LTC/USDT</option>
+                                        <option value="MATICUSDT">MATIC/USDT</option>
+                                        <option value="AVAXUSDT">AVAX/USDT</option>
+                                        <option value="UNIUSDT">UNI/USDT</option>
+                                    </select>
+                                    <div class="validation-error" id="symbol-error"></div>
                                 </div>
-                                <small class="text-muted">Percentage to trail behind best price</small>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Activation Price (Optional)</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="number" class="form-control" id="trail-activation" placeholder="45500" step="0.01">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label required">Position Side</label>
+                                    <div class="two-column-grid">
+                                        <button type="button" class="btn btn-outline-primary side-btn" data-side="long" onclick="setTradeSide('long')">
+                                            ▲ Long
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary side-btn" data-side="short" onclick="setTradeSide('short')">
+                                            ▼ Short
+                                        </button>
+                                    </div>
+                                    <div class="validation-error" id="side-error"></div>
                                 </div>
-                                <small class="text-muted">Price at which trailing stop activates</small>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label required">Margin</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="amount-input" placeholder="Enter amount" step="0.01" required>
+                                    </div>
+                                    <div class="validation-error" id="amount-error"></div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Leverage</label>
+                                    <select class="form-control" id="leverage-select">
+                                        <option value="1">1x</option>
+                                        <option value="2">2x</option>
+                                        <option value="5">5x</option>
+                                        <option value="10" selected>10x</option>
+                                        <option value="20">20x</option>
+                                        <option value="50">50x</option>
+                                        <option value="100">100x</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
+
+                        <!-- Entry Configuration Section -->
+                        <div class="config-section mb-4">
+                            <h6 class="section-title">Entry Configuration</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label required">Entry Type</label>
+                                    <div class="two-column-grid">
+                                        <button type="button" class="btn btn-outline-primary entry-btn" data-type="market" onclick="setEntryType('market')">
+                                            ⦿ Market
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary entry-btn" data-type="limit" onclick="setEntryType('limit')">
+                                            ◉ Limit
+                                        </button>
+                                    </div>
+                                    <div class="validation-error" id="entry-type-error"></div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div id="limit-price-input" class="hidden">
+                                        <label class="form-label">Limit Price</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" id="entry-price" placeholder="Entry price" step="0.0001">
+                                        </div>
+                                        <div class="validation-error" id="entry-price-error"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Take Profit & Stop Loss Section -->
+                        <div class="config-section mb-4">
+                            <h6 class="section-title">Risk Management</h6>
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label class="form-label required">Take Profit Levels</label>
+                                    <div id="tp-levels">
+                                        <div class="input-group mb-2">
+                                            <span class="input-group-text">TP1 %</span>
+                                            <input type="number" class="form-control tp-percent" data-level="1" placeholder="5" step="0.1">
+                                            <span class="input-group-text">Size %</span>
+                                            <input type="number" class="form-control tp-allocation" data-level="1" placeholder="30" step="1" oninput="updateAllocationSummary()">
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-primary btn-sm mb-2" onclick="addTpLevel()">+ Add TP Level</button>
+                                    <div class="mt-2">
+                                        <small class="text-muted">Total Position Allocation: <span id="total-allocation">0</span>% (remaining: <span id="remaining-allocation">100</span>%)</small>
+                                    </div>
+                                    <div class="validation-error" id="tp-error"></div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label required">Stop Loss</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="stop-loss" placeholder="2" step="0.1" required>
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    <div class="validation-error" id="sl-error"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Settings Section -->
+                        <div class="config-section">
+                            <h6 class="section-title">Advanced Settings</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Break-even Settings</label>
+                                    <select class="form-control" id="breakeven-select">
+                                        <option value="disabled">Disabled</option>
+                                        <option value="tp1">After TP1</option>
+                                        <option value="tp2">After TP2</option>
+                                        <option value="tp3">After TP3</option>
+                                    </select>
+                                    <small class="text-muted">Move stop loss to break-even after take profit levels</small>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Trailing Stop</label>
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" id="trailing-enabled" onchange="toggleTrailingStop()">
+                                        <label class="form-check-label" for="trailing-enabled">
+                                            Enable Trailing Stop
+                                        </label>
+                                    </div>
+                                    <div id="trailing-options" class="hidden">
+                                        <div class="mb-2">
+                                            <label class="form-label">Trail Percentage</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" id="trail-percentage" placeholder="2" step="0.1" min="0.1">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                            <small class="text-muted">Percentage to trail behind best price</small>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Activation Price (Optional)</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">$</span>
+                                                <input type="number" class="form-control" id="trail-activation" placeholder="45500" step="0.01">
+                                            </div>
+                                            <small class="text-muted">Price at which trailing stop activates</small>
+                                        </div>
+                                    </div>
+                                    <div class="validation-error" id="trailing-error"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-primary" onclick="previousStep()">← Back</button>
-                    <button type="button" class="btn btn-primary" onclick="nextStep()">Next →</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="validateAndSaveTrade()">Save Trade Configuration</button>
                 </div>
             </div>
         </div>
@@ -4355,24 +4443,13 @@
         function updateTradeModal() {
             if (!currentTrade) return;
             
-            // Update progress indicator
-            const progress = getTradeProgress(currentTrade);
-            document.getElementById('trade-progress').innerHTML = progress;
-            
-            // Hide all steps
-            document.querySelectorAll('.config-step').forEach(step => step.classList.add('hidden'));
-            
-            // Show current step
-            const currentStepElement = document.getElementById(configSteps[configStep] + '-step');
-            if (currentStepElement) {
-                currentStepElement.classList.remove('hidden');
-            }
-            
             // Update modal title
-            document.getElementById('tradeModalTitle').textContent = 
-                `${currentTrade.name} - Step ${configStep + 1}/${configSteps.length}`;
+            document.getElementById('tradeModalTitle').textContent = currentTrade.name || 'Configure Trade';
             
-            // Update form values
+            // Clear all validation errors
+            clearAllValidationErrors();
+            
+            // Update form values from currentTrade
             if (currentTrade.symbol) document.getElementById('trade-symbol-select').value = currentTrade.symbol;
             if (currentTrade.amount) document.getElementById('amount-input').value = currentTrade.amount;
             if (currentTrade.leverage) document.getElementById('leverage-select').value = currentTrade.leverage;
@@ -4385,140 +4462,185 @@
             }
             if (currentTrade.trail_percentage) document.getElementById('trail-percentage').value = currentTrade.trail_percentage;
             if (currentTrade.trail_activation_price) document.getElementById('trail-activation').value = currentTrade.trail_activation_price;
+            
+            // Update button states
+            if (currentTrade.side) {
+                document.querySelectorAll('.side-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`[data-side="${currentTrade.side}"]`)?.classList.add('active');
+            }
+            
+            if (currentTrade.entry_type) {
+                document.querySelectorAll('.entry-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector(`[data-type="${currentTrade.entry_type}"]`)?.classList.add('active');
+                if (currentTrade.entry_type === 'limit') {
+                    document.getElementById('limit-price-input').classList.remove('hidden');
+                }
+            }
+            
+            // Update take profit levels
+            if (currentTrade.take_profits && currentTrade.take_profits.length > 0) {
+                updateTakeProfitLevels(currentTrade.take_profits);
+            }
         }
 
-        function nextStep() {
-            if (!validateCurrentStep()) return;
-            
-            if (configStep < configSteps.length - 1) {
-                configStep++;
-                updateTradeModal();
-            } else {
+        // New single-page validation function
+        function validateAndSaveTrade() {
+            if (validateAllFields()) {
+                collectFormData();
                 saveTrade();
             }
         }
 
-        function previousStep() {
-            if (configStep > 0) {
-                configStep--;
-                updateTradeModal();
+        function validateAllFields() {
+            let isValid = true;
+            clearAllValidationErrors();
+
+            // Validate symbol
+            const symbol = document.getElementById('trade-symbol-select').value;
+            if (!symbol) {
+                showValidationError('symbol-error', 'Please select a trading pair');
+                isValid = false;
+            } else {
+                currentTrade.symbol = symbol;
+            }
+
+            // Validate side
+            if (!currentTrade.side) {
+                showValidationError('side-error', 'Please select a position side (Long or Short)');
+                isValid = false;
+            }
+
+            // Validate amount
+            const amount = parseFloat(document.getElementById('amount-input').value);
+            const leverage = parseInt(document.getElementById('leverage-select').value);
+            if (!amount || amount <= 0) {
+                showValidationError('amount-error', 'Please enter a valid amount');
+                isValid = false;
+            } else {
+                currentTrade.amount = amount;
+                currentTrade.leverage = leverage;
+            }
+
+            // Validate entry type
+            if (!currentTrade.entry_type) {
+                showValidationError('entry-type-error', 'Please select an entry type (Market or Limit)');
+                isValid = false;
+            } else if (currentTrade.entry_type === 'limit') {
+                const entryPrice = parseFloat(document.getElementById('entry-price').value);
+                if (!entryPrice || entryPrice <= 0) {
+                    showValidationError('entry-price-error', 'Please enter a valid limit price');
+                    isValid = false;
+                } else {
+                    currentTrade.entry_price = entryPrice;
+                }
+            } else {
+                currentTrade.entry_price = ''; // Clear for market orders
+            }
+
+            // Validate take profits
+            currentTrade.take_profits = [];
+            document.querySelectorAll('#tp-levels .input-group').forEach((group, index) => {
+                const percent = parseFloat(group.querySelector('.tp-percent').value);
+                const allocation = parseFloat(group.querySelector('.tp-allocation').value);
+                if (percent && allocation) {
+                    currentTrade.take_profits.push({ percentage: percent, allocation: allocation });
+                }
+            });
+            if (currentTrade.take_profits.length === 0) {
+                showValidationError('tp-error', 'Please add at least one take profit level');
+                isValid = false;
+            }
+
+            // Validate stop loss
+            const stopLoss = parseFloat(document.getElementById('stop-loss').value);
+            if (!stopLoss || stopLoss <= 0) {
+                showValidationError('sl-error', 'Please set a stop loss percentage');
+                isValid = false;
+            } else {
+                currentTrade.stop_loss_percent = stopLoss;
+            }
+
+            // Validate trailing stop (if enabled)
+            const trailingEnabled = document.getElementById('trailing-enabled').checked;
+            currentTrade.trailing_stop_enabled = trailingEnabled;
+            
+            if (trailingEnabled) {
+                const trailPercent = parseFloat(document.getElementById('trail-percentage').value);
+                if (!trailPercent || trailPercent <= 0) {
+                    showValidationError('trailing-error', 'Please set a trail percentage when trailing stop is enabled');
+                    isValid = false;
+                } else {
+                    currentTrade.trail_percentage = trailPercent;
+                    const activationPrice = parseFloat(document.getElementById('trail-activation').value);
+                    if (activationPrice) {
+                        currentTrade.trail_activation_price = activationPrice;
+                    }
+                }
+            } else {
+                currentTrade.trail_percentage = '';
+                currentTrade.trail_activation_price = '';
+            }
+
+            // Collect breakeven settings
+            const breakeven = document.getElementById('breakeven-select').value;
+            currentTrade.breakeven_after = breakeven;
+
+            return isValid;
+        }
+
+        function collectFormData() {
+            // All data is already collected in validateAllFields()
+            // This function exists for consistency and future extensions
+        }
+
+        function showValidationError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            if (errorElement) {
+                errorElement.textContent = message;
+                errorElement.classList.add('show');
             }
         }
 
-        function validateCurrentStep() {
-            const step = configSteps[configStep];
+        function clearAllValidationErrors() {
+            document.querySelectorAll('.validation-error').forEach(error => {
+                error.classList.remove('show');
+                error.textContent = '';
+            });
+        }
+
+        function updateTakeProfitLevels(takeProfits) {
+            const container = document.getElementById('tp-levels');
+            container.innerHTML = '';
             
-            switch (step) {
-                case 'symbol':
-                    const symbol = document.getElementById('trade-symbol-select').value;
-                    if (!symbol) {
-                        tg.showAlert('Please select a trading pair');
-                        return false;
-                    }
-                    currentTrade.symbol = symbol;
-                    break;
-                    
-                case 'side':
-                    if (!currentTrade.side) {
-                        tg.showAlert('Please select a position side (Long or Short)');
-                        return false;
-                    }
-                    break;
-                    
-                case 'amount':
-                    const amount = parseFloat(document.getElementById('amount-input').value);
-                    const leverage = parseInt(document.getElementById('leverage-select').value);
-                    if (!amount || amount <= 0) {
-                        tg.showAlert('Please enter a valid amount');
-                        return false;
-                    }
-                    currentTrade.amount = amount;
-                    currentTrade.leverage = leverage;
-                    break;
-                    
-                case 'entry':
-                    if (!currentTrade.entry_type) {
-                        tg.showAlert('Please select an entry type (Market or Limit)');
-                        return false;
-                    }
-                    if (currentTrade.entry_type === 'limit') {
-                        const entryPrice = parseFloat(document.getElementById('entry-price').value);
-                        if (!entryPrice || entryPrice <= 0) {
-                            tg.showAlert('Please enter a valid limit price');
-                            return false;
-                        }
-                        currentTrade.entry_price = entryPrice;
-                    } else {
-                        currentTrade.entry_price = ''; // Clear for market orders
-                    }
-                    break;
-                    
-                case 'tp':
-                    // Collect take profit data
-                    currentTrade.take_profits = [];
-                    document.querySelectorAll('#tp-levels .input-group').forEach((group, index) => {
-                        const percent = parseFloat(group.querySelector('.tp-percent').value);
-                        const allocation = parseFloat(group.querySelector('.tp-allocation').value);
-                        if (percent && allocation) {
-                            currentTrade.take_profits.push({ percentage: percent, allocation: allocation });
-                        }
-                    });
-                    if (currentTrade.take_profits.length === 0) {
-                        tg.showAlert('Please add at least one take profit level');
-                        return false;
-                    }
-                    break;
-                    
-                case 'sl':
-                    const stopLoss = parseFloat(document.getElementById('stop-loss').value);
-                    if (!stopLoss || stopLoss <= 0) {
-                        tg.showAlert('Please set a stop loss percentage');
-                        return false;
-                    }
-                    currentTrade.stop_loss_percent = stopLoss;
-                    break;
-                    
-                case 'breakeven':
-                    const breakeven = document.getElementById('breakeven-select').value;
-                    currentTrade.breakeven_after = breakeven;
-                    break;
-                    
-                case 'trailing':
-                    const trailingEnabled = document.getElementById('trailing-enabled').checked;
-                    currentTrade.trailing_stop_enabled = trailingEnabled;
-                    
-                    if (trailingEnabled) {
-                        const trailPercent = parseFloat(document.getElementById('trail-percentage').value);
-                        if (!trailPercent || trailPercent <= 0) {
-                            tg.showAlert('Please set a trail percentage');
-                            return false;
-                        }
-                        currentTrade.trail_percentage = trailPercent;
-                        
-                        const activationPrice = parseFloat(document.getElementById('trail-activation').value);
-                        if (activationPrice) {
-                            currentTrade.trail_activation_price = activationPrice;
-                        }
-                    } else {
-                        currentTrade.trail_percentage = '';
-                        currentTrade.trail_activation_price = '';
-                    }
-                    break;
-            }
+            takeProfits.forEach((tp, index) => {
+                const level = index + 1;
+                const tpRow = document.createElement('div');
+                tpRow.className = 'input-group mb-2';
+                tpRow.innerHTML = `
+                    <span class="input-group-text">TP${level} %</span>
+                    <input type="number" class="form-control tp-percent" data-level="${level}" placeholder="5" step="0.1" value="${tp.percentage}">
+                    <span class="input-group-text">Size %</span>
+                    <input type="number" class="form-control tp-allocation" data-level="${level}" placeholder="30" step="1" value="${tp.allocation}" oninput="updateAllocationSummary()">
+                    ${level > 1 ? '<button type="button" class="btn btn-outline-danger btn-sm" onclick="removeTpLevel(this)">×</button>' : ''}
+                `;
+                container.appendChild(tpRow);
+            });
             
-            return true;
+            updateAllocationSummary();
         }
 
         function setTradeSide(side) {
             currentTrade.side = side;
-            document.querySelectorAll('#side-step .btn').forEach(btn => btn.classList.remove('btn-primary'));
-            event.target.classList.add('btn-primary');
+            // Update button states
+            document.querySelectorAll('.side-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-side="${side}"]`)?.classList.add('active');
         }
 
         function setEntryType(type) {
             currentTrade.entry_type = type;
-            document.querySelectorAll('#entry-step .btn').forEach(btn => btn.classList.remove('btn-primary'));
-            event.target.classList.add('btn-primary');
+            // Update button states
+            document.querySelectorAll('.entry-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-type="${type}"]`)?.classList.add('active');
             
             const limitInput = document.getElementById('limit-price-input');
             if (type === 'limit') {
