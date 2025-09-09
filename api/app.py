@@ -6130,38 +6130,96 @@ def get_leverage_menu():
     keyboard.append([{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}])
     return {"inline_keyboard": keyboard}
 
-def handle_callback_query(callback_data, chat_id, user):
-    """Handle callback query from inline keyboard"""
-    try:
-        # Main menu handlers
-        if callback_data == "main_menu":
-            return "🏠 Main Menu:", get_main_menu()
-        elif callback_data == "menu_trading":
-            config = get_current_trade_config(chat_id)
-            if config:
-                header = config.get_trade_header("Trading Menu")
-                return f"{header}📊 Trading Menu:", get_trading_menu(chat_id)
-            else:
-                return "📊 Trading Menu:\n\nNo trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
-        elif callback_data == "menu_portfolio":
-            return "💼 Portfolio & Analytics:", get_portfolio_menu()
-        elif callback_data == "select_pair":
-            return "💱 Select a trading pair:", get_pairs_menu()
+def _handle_main_menu_callbacks(callback_data, chat_id):
+    """Handle main menu navigation callbacks"""
+    if callback_data == "main_menu":
+        return "🏠 Main Menu:", get_main_menu()
+    elif callback_data == "menu_trading":
+        config = get_current_trade_config(chat_id)
+        if config:
+            header = config.get_trade_header("Trading Menu")
+            return f"{header}📊 Trading Menu:", get_trading_menu(chat_id)
+        else:
+            return "📊 Trading Menu:\n\nNo trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+    elif callback_data == "menu_portfolio":
+        return "💼 Portfolio & Analytics:", get_portfolio_menu()
+    elif callback_data == "select_pair":
+        return "💱 Select a trading pair:", get_pairs_menu()
+    return None
+
+def _handle_api_callbacks(callback_data, chat_id, user):
+    """Handle API credentials management callbacks"""
+    if callback_data.startswith("api_setup_"):
+        exchange = callback_data.replace("api_setup_", "")
+        return start_api_setup(chat_id, user, exchange)
+    elif callback_data == "api_update":
+        return start_api_update(chat_id, user)
+    elif callback_data == "api_toggle_mode":
+        return toggle_api_mode(chat_id, user)
+    elif callback_data == "api_status":
+        return show_credentials_status(chat_id, user)
+    elif callback_data == "api_delete":
+        return delete_user_credentials(chat_id, user)
+    elif callback_data == "api_menu":
+        return show_api_menu(chat_id, user)
+    return None
+
+def _handle_pair_selection_callbacks(callback_data, chat_id):
+    """Handle trading pair selection callbacks"""
+    if callback_data.startswith("pair_"):
+        pair = callback_data.replace("pair_", "").replace("_", "/")
+        symbol = pair.replace("/", "")
+        try:
+            price = get_live_market_price(symbol)
+        except Exception as e:
+            logging.error(f"Error fetching live price for {symbol}: {e}")
+            return f"❌ Could not fetch live price for {pair}. Please try again.", get_pairs_menu()
         
-        # API credentials management callbacks
-        elif callback_data.startswith("api_setup_"):
-            exchange = callback_data.replace("api_setup_", "")
-            return start_api_setup(chat_id, user, exchange)
-        elif callback_data == "api_update":
-            return start_api_update(chat_id, user)
-        elif callback_data == "api_toggle_mode":
-            return toggle_api_mode(chat_id, user)
-        elif callback_data == "api_status":
-            return show_credentials_status(chat_id, user)
-        elif callback_data == "api_delete":
-            return delete_user_credentials(chat_id, user)
-        elif callback_data == "api_menu":
-            return show_api_menu(chat_id, user)
+        if price:
+            # Set the symbol in the current trade if one is selected
+            if chat_id in user_selected_trade:
+                trade_id = user_selected_trade[chat_id]
+                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                    config = user_trade_configs[chat_id][trade_id]
+                    config.symbol = symbol
+                    
+                    # Directly go to trading menu after selecting pair
+                    response = f"✅ Selected trading pair: {pair}\n💰 Current Price: ${price:.4f}\n\n📊 Configure your trade below:"
+                    return response, get_trading_menu(chat_id)
+            else:
+                # If no trade is selected, show the basic pair info and trading menu
+                response = f"💰 {pair} Current Price: ${price:.4f}\n\n📊 Use the trading menu to configure your trade:"
+                return response, get_trading_menu(chat_id)
+        else:
+            return f"❌ Could not fetch price for {pair}", get_pairs_menu()
+    elif callback_data.startswith("set_symbol_"):
+        symbol = callback_data.replace("set_symbol_", "")
+        if chat_id in user_selected_trade:
+            trade_id = user_selected_trade[chat_id]
+            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                config = user_trade_configs[chat_id][trade_id]
+                config.symbol = symbol
+                return f"✅ Set symbol to {symbol}", get_trading_menu(chat_id)
+        return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
+    return None
+
+def handle_callback_query(callback_data, chat_id, user):
+    """Handle callback query from inline keyboard - refactored for better maintainability"""
+    try:
+        # Try main menu callbacks first
+        result = _handle_main_menu_callbacks(callback_data, chat_id)
+        if result:
+            return result
+            
+        # Try API callbacks
+        result = _handle_api_callbacks(callback_data, chat_id, user)
+        if result:
+            return result
+            
+        # Try pair selection callbacks
+        result = _handle_pair_selection_callbacks(callback_data, chat_id)
+        if result:
+            return result
 
         
         # Trading pair selection
