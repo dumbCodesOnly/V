@@ -4638,196 +4638,228 @@ def webhook():
         bot_status['error_count'] += 1
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-def process_command(text, chat_id, user):
-    """Process bot commands"""
-    if not text:
-        return "🤔 I didn't receive any text. Type /help to see available commands.", None
-    
+def _handle_basic_commands(text, user):
+    """Handle basic bot commands like /start and /menu"""
     if text.startswith('/start'):
         welcome_text = f"""🤖 Welcome to Trading Bot, {user.get('first_name', 'User')}!
 
 Use the menu below to navigate:"""
         return welcome_text, get_main_menu()
-    
     elif text.startswith('/menu'):
         return "📋 Main Menu:", get_main_menu()
+    return None, None
+
+def _handle_price_command(text):
+    """Handle /price command for market price lookup"""
+    parts = text.split()
+    if len(parts) < 2:
+        return "❌ Please provide a symbol. Example: /price BTCUSDT", None
     
-    elif text.startswith('/api') or text.startswith('/credentials'):
+    symbol = parts[1].upper()
+    try:
+        start_time = time.time()
+        price = get_live_market_price(symbol, prefer_exchange=True)
+        fetch_time = (time.time() - start_time) * 1000
+        
+        # Get enhanced cache info
+        cache_info = ""
+        cached_result = enhanced_cache.get_price(symbol)
+        if cached_result:
+            _, source, cache_meta = cached_result
+            cache_info = f" (cached, {source})" if cache_meta.get('cached', False) else f" ({source})"
+        else:
+            cache_info = " (live)"
+        
+        return f"💰 {symbol}: ${price:.4f}{cache_info}\n⚡ Fetched in {fetch_time:.0f}ms", None
+    except Exception as e:
+        logging.error(f"Error fetching live price for {symbol}: {e}")
+        return f"❌ Could not fetch live price for {symbol}\nError: {str(e)}", None
+
+def _handle_trade_commands(text, user):
+    """Handle /buy and /sell commands"""
+    parts = text.split()
+    if len(parts) < 3:
+        action = parts[0][1:]  # Remove '/'
+        return f"❌ Please provide symbol and quantity. Example: /{action} BTCUSDT 0.001", None
+    
+    action = parts[0][1:]  # Remove '/'
+    symbol = parts[1].upper()
+    try:
+        quantity = float(parts[2])
+    except ValueError:
+        return "❌ Invalid quantity. Please provide a valid number.", None
+    
+    # Execute trade with live market price
+    try:
+        price = get_live_market_price(symbol)
+    except Exception as e:
+        logging.error(f"Error fetching live price for trade: {e}")
+        return f"❌ Could not fetch live market price for {symbol}", None
+    
+    if price and quantity > 0:
+        # Record the trade
+        trade = {
+            'id': len(bot_trades) + 1,
+            'user_id': str(user.get('id', 'unknown')),
+            'symbol': symbol,
+            'action': action,
+            'quantity': quantity,
+            'price': price,
+            'status': 'executed',
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        bot_trades.append(trade)
+        bot_status['total_trades'] += 1
+        
+        return f"✅ {action.capitalize()} order executed: {quantity} {symbol} at ${price:.4f}", None
+    else:
+        return f"❌ {action.capitalize()} order failed: Invalid symbol or quantity", None
+
+def _handle_trades_command(text, user):
+    """Handle /trades command for trade history"""
+    user_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
+    if not user_trades:
+        return "📈 No recent trades found.", None
+    
+    response = "📈 Recent Trades:\n\n"
+    for trade in user_trades[-5:]:  # Show last 5 trades
+        status_emoji = "✅" if trade['status'] == "executed" else "⏳"
+        response += f"{status_emoji} {trade['action'].upper()} {trade['quantity']} {trade['symbol']}"
+        response += f" @ ${trade['price']:.4f}\n"
+        timestamp = datetime.fromisoformat(trade['timestamp'])
+        response += f"   {timestamp.strftime('%Y-%m-%d %H:%M')}\n\n"
+    
+    return response, None
+
+def process_command(text, chat_id, user):
+    """Process bot commands - refactored for better maintainability"""
+    if not text:
+        return "🤔 I didn't receive any text. Type /help to see available commands.", None
+    
+    # Try basic commands
+    response, keyboard = _handle_basic_commands(text, user)
+    if response:
+        return response, keyboard
+    
+    # Handle API commands
+    if text.startswith('/api') or text.startswith('/credentials'):
         return handle_api_setup_command(text, chat_id, user)
     
-
+    # Handle price command
+    if text.startswith('/price'):
+        return _handle_price_command(text)
     
-    elif text.startswith('/price'):
-        parts = text.split()
-        if len(parts) < 2:
-            return "❌ Please provide a symbol. Example: /price BTCUSDT", None
-        
-        symbol = parts[1].upper()
-        try:
-            start_time = time.time()
-            # For price commands, try Toobit first, then fallback to other sources
-            price = get_live_market_price(symbol, prefer_exchange=True)
-            fetch_time = (time.time() - start_time) * 1000  # Convert to milliseconds
-            
-            # Get enhanced cache info
-            cache_info = ""
-            cached_result = enhanced_cache.get_price(symbol)
-            if cached_result:
-                _, source, cache_meta = cached_result
-                if cache_meta.get('cached', False):
-                    cache_info = f" (cached, {source})"
-                else:
-                    cache_info = f" ({source})"
-            else:
-                cache_info = " (live)"
-            
-            return f"💰 {symbol}: ${price:.4f}{cache_info}\n⚡ Fetched in {fetch_time:.0f}ms", None
-        except Exception as e:
-            logging.error(f"Error fetching live price for {symbol}: {e}")
-            return f"❌ Could not fetch live price for {symbol}\nError: {str(e)}", None
+    # Handle trade commands
+    if text.startswith('/buy') or text.startswith('/sell'):
+        return _handle_trade_commands(text, user)
     
-    elif text.startswith('/buy') or text.startswith('/sell'):
-        parts = text.split()
-        if len(parts) < 3:
-            action = parts[0][1:]  # Remove '/'
-            return f"❌ Please provide symbol and quantity. Example: /{action} BTCUSDT 0.001", None
-        
-        action = parts[0][1:]  # Remove '/'
-        symbol = parts[1].upper()
-        try:
-            quantity = float(parts[2])
-        except ValueError:
-            return "❌ Invalid quantity. Please provide a valid number.", None
-        
-        # Execute trade with live market price
-        try:
-            price = get_live_market_price(symbol)
-        except Exception as e:
-            logging.error(f"Error fetching live price for trade: {e}")
-            return f"❌ Could not fetch live market price for {symbol}", None
-        
-        if price and quantity > 0:
-            # Record the trade
-            trade = {
-                'id': len(bot_trades) + 1,
-                'user_id': str(user.get('id', 'unknown')),
-                'symbol': symbol,
-                'action': action,
-                'quantity': quantity,
-                'price': price,
-                'status': 'executed',
-                'timestamp': datetime.utcnow().isoformat()
-            }
-            bot_trades.append(trade)
-            bot_status['total_trades'] += 1
-            
-            return f"✅ {action.capitalize()} order executed: {quantity} {symbol} at ${price:.4f}", None
-        else:
-            return f"❌ {action.capitalize()} order failed: Invalid symbol or quantity", None
-    
-    elif text.startswith('/portfolio'):
-        # Portfolio functionality is now handled via the positions tab in web interface
+    # Handle portfolio command
+    if text.startswith('/portfolio'):
         return "📊 Check your portfolio in the positions tab of the web interface.", None
     
-    elif text.startswith('/trades'):
-        user_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
-        if not user_trades:
-            return "📈 No recent trades found.", None
-        
-        response = "📈 Recent Trades:\n\n"
-        for trade in user_trades[-5:]:  # Show last 5 trades
-            status_emoji = "✅" if trade['status'] == "executed" else "⏳"
-            response += f"{status_emoji} {trade['action'].upper()} {trade['quantity']} {trade['symbol']}"
-            response += f" @ ${trade['price']:.4f}\n"
-            timestamp = datetime.fromisoformat(trade['timestamp'])
-            response += f"   {timestamp.strftime('%Y-%m-%d %H:%M')}\n\n"
-        
-        return response, None
+    # Handle trades command
+    if text.startswith('/trades'):
+        return _handle_trades_command(text, user)
     
-    else:
-        # Check if it's a numeric input for trade configuration
-        if chat_id in user_selected_trade:
-            trade_id = user_selected_trade[chat_id]
-            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                config = user_trade_configs[chat_id][trade_id]
-                
-                # Try to parse as numeric value for amount/price setting
-                try:
-                    value = float(text)
-                    
-                    # Check if we're expecting trailing stop percentage
-                    if config.waiting_for_trail_percent:
-                        config.trail_percentage = value
-                        config.waiting_for_trail_percent = False
-                        config.trailing_stop_enabled = True
-                        return f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!", get_trailing_stop_menu()
-                    
-                    # Check if we're expecting trailing stop activation price
-                    elif config.waiting_for_trail_activation:
-                        config.trail_activation_price = value
-                        config.waiting_for_trail_activation = False
-                        config.trailing_stop_enabled = True
-                        return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
-                    
-                    # Check if we're expecting an amount input
-                    elif config.amount <= 0:
-                        config.amount = value
-                        header = config.get_trade_header("Amount Set")
-                        return f"{header}✅ Set trade amount to ${value}", get_trading_menu(chat_id)
-                    
-                    # Check if we're expecting a limit price
-                    elif config.waiting_for_limit_price:
-                        config.entry_price = value
-                        config.waiting_for_limit_price = False
-                        return f"✅ Set limit price to ${value:.4f}\n\n🎯 Now let's set your take profits:", get_tp_percentage_input_menu()
-                    
-                    # Check if we're expecting take profit percentages or allocations
-                    elif config.tp_config_step == "percentages":
-                        # Add new take profit percentage
-                        config.take_profits.append({"percentage": value, "allocation": None})
-                        tp_num = len(config.take_profits)
-                        
-                        if tp_num < 3:  # Allow up to 3 TPs
-                            return f"✅ Added TP{tp_num}: {value}%\n\n🎯 Add another TP percentage or continue to allocations:", get_tp_percentage_input_menu()
-                        else:
-                            config.tp_config_step = "allocations"
-                            return f"✅ Added TP{tp_num}: {value}%\n\n📊 Now set position allocation for each TP:", get_tp_allocation_menu(chat_id)
-                    
-                    elif config.tp_config_step == "allocations":
-                        # Set allocation for the next TP that needs it
-                        for tp in config.take_profits:
-                            if tp["allocation"] is None:
-                                tp["allocation"] = value
-                                tp_num = config.take_profits.index(tp) + 1
-                                
-                                # Check if more allocations needed
-                                remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
-                                if remaining:
-                                    return f"✅ Set TP{tp_num} allocation: {value}%\n\n📊 Set allocation for next TP:", get_tp_allocation_menu(chat_id)
-                                else:
-                                    # All allocations set, validate and continue
-                                    total_allocation = sum(tp["allocation"] for tp in config.take_profits)
-                                    if total_allocation > 100:
-                                        return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset allocations:", get_tp_allocation_reset_menu()
-                                    else:
-                                        return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
-                                break
-                    
+    # Handle numeric input for trade configuration
+    result = _handle_numeric_input(text, chat_id)
+    if result:
+        return result
+    
+    # Handle API setup text input
+    if chat_id in user_api_setup_state:
+        return handle_api_text_input(text, chat_id, user)
+    
+    return "🤔 I didn't understand that command. Use the menu buttons to navigate.", get_main_menu()
 
-                    
-                    # Check if we're expecting stop loss
-                    elif config.stop_loss_percent <= 0:
-                        config.stop_loss_percent = value
-                        return f"✅ Set stop loss to {value}%\n\n🎯 Trade configuration complete!", get_trading_menu(chat_id)
-                    
-                except ValueError:
-                    pass
+def _handle_numeric_input(text, chat_id):
+    """Handle numeric input for trade configuration"""
+    if chat_id not in user_selected_trade:
+        return None
+    
+    trade_id = user_selected_trade[chat_id]
+    if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+        return None
+    
+    config = user_trade_configs[chat_id][trade_id]
+    
+    try:
+        value = float(text)
         
-        # Handle API setup text input
-        if chat_id in user_api_setup_state:
-            return handle_api_text_input(text, chat_id, user)
+        # Check if we're expecting trailing stop percentage
+        if config.waiting_for_trail_percent:
+            config.trail_percentage = value
+            config.waiting_for_trail_percent = False
+            config.trailing_stop_enabled = True
+            return f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!", get_trailing_stop_menu()
         
-        return "🤔 I didn't understand that command. Use the menu buttons to navigate.", get_main_menu()
+        # Check if we're expecting trailing stop activation price
+        elif config.waiting_for_trail_activation:
+            config.trail_activation_price = value
+            config.waiting_for_trail_activation = False
+            config.trailing_stop_enabled = True
+            return f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!", get_trailing_stop_menu()
+        
+        # Check if we're expecting an amount input
+        elif config.amount <= 0:
+            config.amount = value
+            header = config.get_trade_header("Amount Set")
+            return f"{header}✅ Set trade amount to ${value}", get_trading_menu(chat_id)
+        
+        # Check if we're expecting a limit price
+        elif config.waiting_for_limit_price:
+            config.entry_price = value
+            config.waiting_for_limit_price = False
+            return f"✅ Set limit price to ${value:.4f}\n\n🎯 Now let's set your take profits:", get_tp_percentage_input_menu()
+        
+        # Handle take profit configuration
+        elif config.tp_config_step == "percentages":
+            return _handle_tp_percentage_input(config, value, chat_id)
+        
+        elif config.tp_config_step == "allocations":
+            return _handle_tp_allocation_input(config, value, chat_id)
+        
+        # Check if we're expecting stop loss
+        elif config.stop_loss_percent <= 0:
+            config.stop_loss_percent = value
+            return f"✅ Set stop loss to {value}%\n\n🎯 Trade configuration complete!", get_trading_menu(chat_id)
+        
+    except ValueError:
+        pass
+    
+    return None
+
+def _handle_tp_percentage_input(config, value, chat_id):
+    """Handle take profit percentage input"""
+    config.take_profits.append({"percentage": value, "allocation": None})
+    tp_num = len(config.take_profits)
+    
+    if tp_num < 3:  # Allow up to 3 TPs
+        return f"✅ Added TP{tp_num}: {value}%\n\n🎯 Add another TP percentage or continue to allocations:", get_tp_percentage_input_menu()
+    else:
+        config.tp_config_step = "allocations"
+        return f"✅ Added TP{tp_num}: {value}%\n\n📊 Now set position allocation for each TP:", get_tp_allocation_menu(chat_id)
+
+def _handle_tp_allocation_input(config, value, chat_id):
+    """Handle take profit allocation input"""
+    for tp in config.take_profits:
+        if tp["allocation"] is None:
+            tp["allocation"] = value
+            tp_num = config.take_profits.index(tp) + 1
+            
+            # Check if more allocations needed
+            remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
+            if remaining:
+                return f"✅ Set TP{tp_num} allocation: {value}%\n\n📊 Set allocation for next TP:", get_tp_allocation_menu(chat_id)
+            else:
+                # All allocations set, validate and continue
+                total_allocation = sum(tp["allocation"] for tp in config.take_profits)
+                if total_allocation > 100:
+                    return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset allocations:", get_tp_allocation_reset_menu()
+                else:
+                    return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+            break
+    return None
 
 def handle_api_setup_command(text, chat_id, user):
     """Handle API setup commands"""
