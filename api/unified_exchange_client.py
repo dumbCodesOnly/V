@@ -522,7 +522,7 @@ class ToobitClient:
         LIMIT, MARKET, STOP_MARKET, TAKE_PROFIT_MARKET
         """
         import uuid
-        results = {
+        results: dict[str, any] = {
             'main_order': None,
             'tp_order': None, 
             'sl_order': None,
@@ -537,8 +537,8 @@ class ToobitClient:
                     symbol=symbol,
                     side=side.upper(),
                     order_type="LIMIT",
-                    quantity=quantity,
-                    price=entry_price,
+                    quantity=float(quantity),
+                    price=float(entry_price),
                     timeInForce="GTC",
                     priceType="INPUT",
                     recvWindow="5000"
@@ -552,8 +552,8 @@ class ToobitClient:
                     symbol=symbol,
                     side=side.upper(),
                     order_type="MARKET",  # Will be converted to LIMIT with priceType=MARKET
-                    quantity=quantity,
-                    price=market_price,  # Still need price even for market orders
+                    quantity=float(quantity),
+                    price=float(market_price),  # Still need price even for market orders
                     timeInForce="IOC",  # Immediate or Cancel for market-like behavior
                     priceType="MARKET",
                     recvWindow="5000"
@@ -576,8 +576,8 @@ class ToobitClient:
                     symbol=symbol,
                     side=sl_side,
                     order_type="STOP",
-                    quantity=quantity,
-                    price=stop_loss_price,
+                    quantity=float(quantity),
+                    price=float(stop_loss_price),
                     priceType="INPUT",
                     newClientOrderId=f"sl{int(time.time() * 1000)}"[:36],
                     recvWindow="5000"
