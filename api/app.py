@@ -46,6 +46,140 @@ def get_user_id_from_request(default_user_id=None):
     """Get user_id from request args with fallback to default"""
     return request.args.get('user_id', default_user_id or Environment.DEFAULT_TEST_USER_ID)
 
+def _should_process_take_profit(config):
+    """Check if take profit monitoring should proceed."""
+    return config.take_profits and config.unrealized_pnl > 0
+
+
+def _calculate_profit_percentage(config):
+    """Calculate current profit percentage based on amount."""
+    return (config.unrealized_pnl / config.amount) * 100
+
+
+def _get_tp_data(tp):
+    """Extract percentage and allocation from TP data."""
+    tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
+    allocation = tp.get('allocation', 0) if isinstance(tp, dict) else 0
+    return tp_percentage, allocation
+
+
+def _log_tp_execution(user_id, trade_id, config, tp_level, profit_percentage, tp_percentage):
+    """Log take profit execution."""
+    logging.warning(
+        f"TAKE-PROFIT {tp_level} TRIGGERED: {config.symbol} {config.side} position for user {user_id} - "
+        f"Profit: {profit_percentage:.2f}% >= {tp_percentage}%"
+    )
+
+
+def _process_full_tp_closure(config, user_id, trade_id, tp_level):
+    """Process full position closure at take profit."""
+    config.status = "stopped"
+    config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+    config.closed_at = get_iran_time().isoformat()
+    config.unrealized_pnl = 0.0
+    
+    save_trade_to_db(user_id, config)
+    
+    # Log trade closure
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(user_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': config.amount,
+        'final_pnl': config.final_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': f'take_profit_{tp_level}_triggered'
+    })
+    
+    logging.info(f"Position auto-closed at TP{tp_level}: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
+    return True
+
+
+def _calculate_partial_pnl(config, tp_level, allocation):
+    """Calculate partial PnL for take profit execution."""
+    tp_calculations = calculate_tp_sl_prices_and_amounts(config)
+    current_tp_data = None
+    for tp_calc in tp_calculations.get('take_profits', []):
+        if tp_calc['level'] == tp_level:
+            current_tp_data = tp_calc
+            break
+    
+    if current_tp_data:
+        return current_tp_data['profit_amount']
+    else:
+        # Fallback to old calculation if TP data not found
+        return config.unrealized_pnl * (allocation / 100)
+
+
+def _handle_breakeven_logic(config, user_id, tp_index):
+    """Handle breakeven stop loss logic after TP1."""
+    breakeven_numeric = 0.0
+    if hasattr(config, 'breakeven_after'):
+        if config.breakeven_after == "tp1":
+            breakeven_numeric = 1.0
+        elif config.breakeven_after == "tp2":
+            breakeven_numeric = 2.0  
+        elif config.breakeven_after == "tp3":
+            breakeven_numeric = 3.0
+        elif isinstance(config.breakeven_after, (int, float)):
+            breakeven_numeric = float(config.breakeven_after)
+    
+    if tp_index == 0 and breakeven_numeric > 0:  # First TP triggered and breakeven enabled
+        if not getattr(config, 'breakeven_sl_triggered', False):
+            original_sl_percent = config.stop_loss_percent
+            config.breakeven_sl_triggered = True
+            config.breakeven_sl_price = config.entry_price
+            logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
+            save_trade_to_db(user_id, config)
+
+
+def _process_partial_tp_closure(config, user_id, trade_id, tp_index, tp_level, allocation):
+    """Process partial position closure at take profit."""
+    # Store original amounts before any TP triggers
+    if not hasattr(config, 'original_amount'):
+        config.original_amount = config.amount
+    if not hasattr(config, 'original_margin'):
+        config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+    
+    partial_pnl = _calculate_partial_pnl(config, tp_level, allocation)
+    remaining_amount = config.amount * ((100 - allocation) / 100)
+    
+    # Log partial closure
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(user_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': config.amount * (allocation / 100),
+        'final_pnl': partial_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': f'partial_take_profit_{tp_level}'
+    })
+    
+    # Update realized P&L with the profit from this TP
+    if not hasattr(config, 'realized_pnl'):
+        config.realized_pnl = 0.0
+    config.realized_pnl += partial_pnl
+    
+    # Update position with remaining amount
+    config.amount = remaining_amount
+    config.unrealized_pnl -= partial_pnl
+    
+    # Remove triggered TP from list safely
+    if tp_index < len(config.take_profits):
+        config.take_profits.pop(tp_index)
+    else:
+        logging.warning(f"TP index {tp_index} out of bounds for {config.symbol}, skipping removal")
+    
+    save_trade_to_db(user_id, config)
+    logging.info(f"Partial TP{tp_level} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
+    
+    _handle_breakeven_logic(config, user_id, tp_index)
+
+
 def _process_take_profit_monitoring(config, user_id, trade_id):
     """
     Process take profit monitoring and execution for a position.
@@ -54,127 +188,23 @@ def _process_take_profit_monitoring(config, user_id, trade_id):
     Returns:
         bool: True if position was closed, False if still active
     """
-    if not (config.take_profits and config.unrealized_pnl > 0):
+    if not _should_process_take_profit(config):
         return False
     
-    # Calculate current profit percentage based on margin
-    profit_percentage = (config.unrealized_pnl / config.amount) * 100
+    profit_percentage = _calculate_profit_percentage(config)
     
     # Check each TP level
     for i, tp in enumerate(config.take_profits):
-        tp_percentage = tp.get('percentage', 0) if isinstance(tp, dict) else tp
-        allocation = tp.get('allocation', 0) if isinstance(tp, dict) else 0
+        tp_percentage, allocation = _get_tp_data(tp)
         
         if tp_percentage > 0 and profit_percentage >= tp_percentage:
-            # Take profit target hit!
-            logging.warning(f"TAKE-PROFIT {i+1} TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Profit: {profit_percentage:.2f}% >= {tp_percentage}%")
+            tp_level = i + 1
+            _log_tp_execution(user_id, trade_id, config, tp_level, profit_percentage, tp_percentage)
             
             if allocation >= 100:
-                # Full position close
-                config.status = "stopped"
-                # Include both unrealized P&L and any realized P&L from partial TPs
-                config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
-                config.closed_at = get_iran_time().isoformat()
-                config.unrealized_pnl = 0.0
-                
-                # Save to database
-                save_trade_to_db(user_id, config)
-                
-                # Log trade closure
-                bot_trades.append({
-                    'id': len(bot_trades) + 1,
-                    'user_id': str(user_id),
-                    'trade_id': trade_id,
-                    'symbol': config.symbol,
-                    'side': config.side,
-                    'amount': config.amount,
-                    'final_pnl': config.final_pnl,
-                    'timestamp': get_iran_time().isoformat(),
-                    'status': f'take_profit_{i+1}_triggered'
-                })
-                
-                logging.info(f"Position auto-closed at TP{i+1}: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
-                return True  # Position closed
+                return _process_full_tp_closure(config, user_id, trade_id, tp_level)
             else:
-                # Partial close - CRITICAL FIX: Store original amounts before any TP triggers
-                if not hasattr(config, 'original_amount'):
-                    config.original_amount = config.amount
-                if not hasattr(config, 'original_margin'):
-                    config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
-                    
-                # FIXED: Calculate partial profit based on original position and correct allocation
-                tp_calculations = calculate_tp_sl_prices_and_amounts(config)
-                current_tp_data = None
-                for tp_calc in tp_calculations.get('take_profits', []):
-                    if tp_calc['level'] == i + 1:
-                        current_tp_data = tp_calc
-                        break
-                
-                if current_tp_data:
-                    partial_pnl = current_tp_data['profit_amount']
-                else:
-                    # Fallback to old calculation if TP data not found
-                    partial_pnl = config.unrealized_pnl * (allocation / 100)
-                    
-                remaining_amount = config.amount * ((100 - allocation) / 100)
-                
-                # Log partial closure
-                bot_trades.append({
-                    'id': len(bot_trades) + 1,
-                    'user_id': str(user_id),
-                    'trade_id': trade_id,
-                    'symbol': config.symbol,
-                    'side': config.side,
-                    'amount': config.amount * (allocation / 100),
-                    'final_pnl': partial_pnl,
-                    'timestamp': get_iran_time().isoformat(),
-                    'status': f'partial_take_profit_{i+1}'
-                })
-                
-                # Update realized P&L with the profit from this TP
-                if not hasattr(config, 'realized_pnl'):
-                    config.realized_pnl = 0.0
-                config.realized_pnl += partial_pnl
-                
-                # Update position with remaining amount
-                config.amount = remaining_amount
-                config.unrealized_pnl -= partial_pnl
-                
-                # Remove triggered TP from list safely
-                if i < len(config.take_profits):
-                    config.take_profits.pop(i)
-                else:
-                    # TP already removed or index out of bounds
-                    logging.warning(f"TP index {i} out of bounds for {config.symbol}, skipping removal")
-                
-                # Save partial closure to database
-                save_trade_to_db(user_id, config)
-                
-                logging.info(f"Partial TP{i+1} triggered: {config.symbol} {config.side} - Closed {allocation}% for ${partial_pnl:.2f}")
-                
-                # Auto move SL to break-even after first TP (TP1) if enabled
-                # Convert string breakeven values to numeric for comparison
-                breakeven_numeric = 0.0
-                if hasattr(config, 'breakeven_after'):
-                    if config.breakeven_after == "tp1":
-                        breakeven_numeric = 1.0
-                    elif config.breakeven_after == "tp2":
-                        breakeven_numeric = 2.0  
-                    elif config.breakeven_after == "tp3":
-                        breakeven_numeric = 3.0
-                    elif isinstance(config.breakeven_after, (int, float)):
-                        breakeven_numeric = float(config.breakeven_after)
-                
-                if i == 0 and breakeven_numeric > 0:  # First TP triggered and breakeven enabled
-                    if not getattr(config, 'breakeven_sl_triggered', False):
-                        # Move stop loss to entry price (break-even)
-                        original_sl_percent = config.stop_loss_percent
-                        # Set a special flag to indicate break-even stop loss
-                        config.breakeven_sl_triggered = True
-                        config.breakeven_sl_price = config.entry_price
-                        logging.info(f"AUTO BREAK-EVEN: Moving SL to entry price after TP1 - was {original_sl_percent}%, now break-even")
-                        save_trade_to_db(user_id, config)
-                
+                _process_partial_tp_closure(config, user_id, trade_id, i, tp_level, allocation)
                 break  # Only trigger one TP level at a time
     
     return False  # Position still active
