@@ -10,9 +10,88 @@ import requests
 import time
 import inspect
 import traceback
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Protocol, runtime_checkable, Any
 from urllib.parse import urlencode
 import json
+
+
+@runtime_checkable
+class ExchangeTradeProtocol(Protocol):
+    """Protocol defining the unified interface for exchange trading operations."""
+    
+    def place_order(
+        self, 
+        symbol: str, 
+        side: str, 
+        quantity: float, 
+        price: Optional[float] = None,
+        order_type: str = "MARKET"
+    ) -> Optional[Dict[str, Any]]:
+        """Place a single order with unified parameters."""
+        ...
+    
+    def place_futures_trade_with_tp_sl(
+        self,
+        symbol: str,
+        side: str,
+        total_quantity: float,
+        leverage: int,
+        take_profits: List[Dict[str, Any]],
+        stop_loss_price: Optional[float] = None,
+        entry_price: Optional[float] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Place a complete futures trade with TP/SL using unified parameters."""
+        ...
+    
+    def get_account_balance(self) -> Optional[Dict[str, Any]]:
+        """Get account balance in unified format."""
+        ...
+    
+    def get_positions(self) -> List[Dict[str, Any]]:
+        """Get positions in unified format."""
+        ...
+
+
+class OrderParameterAdapter:
+    """Adapter to convert between unified parameters and exchange-specific formats."""
+    
+    @staticmethod
+    def to_exchange_params(
+        exchange_type: str,
+        **unified_params: Any
+    ) -> Dict[str, Any]:
+        """Convert unified parameters to exchange-specific format."""
+        
+        if exchange_type.lower() == "toobit":
+            # ToobitClient expects: quantity, price, order_type
+            return {
+                "symbol": unified_params.get("symbol"),
+                "side": unified_params.get("side"),
+                "quantity": unified_params.get("total_quantity", unified_params.get("quantity")),
+                "price": unified_params.get("entry_price", unified_params.get("price")),
+                "order_type": unified_params.get("order_type", "MARKET")
+            }
+        elif exchange_type.lower() == "lbank":
+            # LBankClient expects: amount (not quantity), price, order_type
+            return {
+                "symbol": unified_params.get("symbol"),
+                "side": unified_params.get("side"),
+                "amount": unified_params.get("total_quantity", unified_params.get("quantity")),
+                "price": unified_params.get("entry_price", unified_params.get("price")),
+                "order_type": unified_params.get("order_type", "MARKET")
+            }
+        elif exchange_type.lower() == "hyperliquid":
+            # HyperliquidClient expects: amount (mapped to sz), price (mapped to limit_px)
+            return {
+                "symbol": unified_params.get("symbol"),
+                "side": unified_params.get("side"),
+                "amount": unified_params.get("total_quantity", unified_params.get("quantity")),
+                "price": unified_params.get("entry_price", unified_params.get("price")),
+                "order_type": unified_params.get("order_type", "limit")
+            }
+        
+        # Default fallback
+        return unified_params
 
 from config import APIConfig, TradingConfig
 

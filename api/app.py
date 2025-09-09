@@ -3545,33 +3545,50 @@ def execute_trade():
                                 logging.info(f"TP/SL orders configured to place when limit order fills")
                             else:
                                 # For market orders, place TP/SL immediately
-                                # Handle different exchange client interfaces based on client type
-                                client_type = type(client).__name__
+                                # Use Protocol-based unified interface for all exchange clients
+                                from api.unified_exchange_client import OrderParameterAdapter
                                 
-                                if 'HyperliquidClient' in client_type:
-                                    # HyperliquidClient expects: amount, entry_price, tp_levels
+                                client_type = type(client).__name__.lower()
+                                exchange_name = "toobit"  # Default
+                                if 'lbank' in client_type:
+                                    exchange_name = "lbank"
+                                elif 'hyperliquid' in client_type:
+                                    exchange_name = "hyperliquid"
+                                
+                                # Convert to unified parameters
+                                unified_params = OrderParameterAdapter.to_exchange_params(
+                                    exchange_name,
+                                    symbol=config.symbol,
+                                    side=order_side,
+                                    total_quantity=float(position_size),
+                                    entry_price=float(config.entry_price),
+                                    take_profits=tp_orders_to_place,
+                                    stop_loss_price=sl_price
+                                )
+                                
+                                # Call with the proper parameters for each exchange
+                                if 'hyperliquid' in client_type:
                                     tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=config.symbol,
-                                        side=order_side,
-                                        amount=float(position_size),
+                                        symbol=unified_params["symbol"],
+                                        side=unified_params["side"],
+                                        amount=unified_params["amount"],
                                         entry_price=float(config.entry_price),
                                         tp_levels=tp_orders_to_place
                                     )
-                                elif 'LBankClient' in client_type:
-                                    # LBankClient expects: amount instead of total_quantity
+                                elif 'lbank' in client_type:
                                     tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=config.symbol,
-                                        side=order_side,
-                                        amount=str(position_size),
+                                        symbol=unified_params["symbol"],
+                                        side=unified_params["side"],
+                                        amount=str(unified_params["amount"]),
                                         take_profits=tp_orders_to_place,
                                         stop_loss_price=sl_price
                                     )
                                 else:
-                                    # ToobitClient (default) expects: total_quantity, take_profits
+                                    # ToobitClient
                                     tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=config.symbol,
-                                        side=order_side,
-                                        total_quantity=str(position_size),
+                                        symbol=unified_params["symbol"],
+                                        side=unified_params["side"],
+                                        quantity=str(unified_params["quantity"]),
                                         take_profits=tp_orders_to_place,
                                         stop_loss_price=sl_price
                                     )
@@ -4038,13 +4055,41 @@ def close_trade():
                     position_size = config.amount * config.leverage
                     logging.warning(f"[RENDER CLOSE] Calculated position size: {position_size} from amount: {config.amount} * leverage: {config.leverage}")
                 
-                close_order = client.place_order(
+                # Use Protocol-based unified interface
+                from api.unified_exchange_client import OrderParameterAdapter
+                
+                client_type = type(client).__name__.lower()
+                exchange_name = "toobit"  # Default
+                if 'lbank' in client_type:
+                    exchange_name = "lbank"
+                elif 'hyperliquid' in client_type:
+                    exchange_name = "hyperliquid"
+                
+                unified_params = OrderParameterAdapter.to_exchange_params(
+                    exchange_name,
                     symbol=config.symbol,
                     side=close_side,
-                    order_type="market",
-                    quantity=str(position_size),
-                    reduce_only=True
+                    quantity=float(position_size),
+                    order_type="market"
                 )
+                
+                if 'lbank' in client_type or 'hyperliquid' in client_type:
+                    close_order = client.place_order(
+                        symbol=unified_params["symbol"],
+                        side=unified_params["side"],
+                        amount=unified_params["amount"],
+                        order_type=unified_params["order_type"],
+                        reduce_only=True
+                    )
+                else:
+                    # ToobitClient
+                    close_order = client.place_order(
+                        symbol=unified_params["symbol"],
+                        side=unified_params["side"],
+                        quantity=str(unified_params["quantity"]),
+                        order_type=unified_params["order_type"],
+                        reduce_only=True
+                    )
                 
                 if not close_order:
                     # Get specific error from ToobitClient if available
@@ -7608,33 +7653,48 @@ def place_exchange_native_orders(config, user_id):
             orders_placed = []
         else:
             # Place regular TP/SL orders
-            # Handle different exchange client interfaces based on client type
-            client_type = type(client).__name__
+            # Use Protocol-based unified interface for all exchange clients
+            from api.unified_exchange_client import OrderParameterAdapter
             
-            if 'HyperliquidClient' in client_type:
-                # HyperliquidClient expects: amount, entry_price, tp_levels
+            client_type = type(client).__name__.lower()
+            exchange_name = "toobit"  # Default
+            if 'lbank' in client_type:
+                exchange_name = "lbank"
+            elif 'hyperliquid' in client_type:
+                exchange_name = "hyperliquid"
+            
+            unified_params = OrderParameterAdapter.to_exchange_params(
+                exchange_name,
+                symbol=config.symbol,
+                side=config.side,
+                total_quantity=float(position_size),
+                entry_price=float(config.entry_price),
+                take_profits=tp_orders,
+                stop_loss_price=sl_price
+            )
+            
+            if 'hyperliquid' in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=config.symbol,
-                    side=config.side,
-                    amount=float(position_size),
+                    symbol=unified_params["symbol"],
+                    side=unified_params["side"],
+                    amount=unified_params["amount"],
                     entry_price=float(config.entry_price),
                     tp_levels=tp_orders
                 )
-            elif 'LBankClient' in client_type:
-                # LBankClient expects: amount instead of total_quantity
+            elif 'lbank' in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=config.symbol,
-                    side=config.side,
-                    amount=str(position_size),
+                    symbol=unified_params["symbol"],
+                    side=unified_params["side"],
+                    amount=str(unified_params["amount"]),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price
                 )
             else:
-                # ToobitClient (default) expects: total_quantity, take_profits
+                # ToobitClient
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=config.symbol,
-                    side=config.side,
-                    total_quantity=str(position_size),
+                    symbol=unified_params["symbol"],
+                    side=unified_params["side"],
+                    quantity=str(unified_params["quantity"]),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price
                 )
