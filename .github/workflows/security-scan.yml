@@ -1,0 +1,98 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans every day at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety pip-audit semgrep
+    
+    - name: Run Bandit Security Analysis
+      run: |
+        echo "Running Bandit security analysis..."
+        bandit -r . -x instance,attached_assets,docs -f json -o bandit-report.json || true
+        bandit -r . -x instance,attached_assets,docs || true
+    
+    - name: Run Safety Dependency Check
+      run: |
+        echo "Checking dependencies for known security vulnerabilities..."
+        safety check --json --output safety-report.json || true
+        safety check || true
+    
+    - name: Run pip-audit Vulnerability Scanner
+      run: |
+        echo "Running pip-audit vulnerability scanner..."
+        pip-audit --format=json --output=pip-audit-report.json || true
+        pip-audit || true
+    
+    - name: Run Semgrep Security Rules
+      run: |
+        echo "Running Semgrep security rules..."
+        semgrep --config=auto --json --output=semgrep-report.json . || true
+        semgrep --config=auto . || true
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+          pip-audit-report.json
+          semgrep-report.json
+    
+    - name: Create Security Summary
+      if: always()
+      run: |
+        echo "# Security Scan Summary" > security-summary.md
+        echo "" >> security-summary.md
+        echo "## Reports Generated:" >> security-summary.md
+        echo "- Bandit (Python security linting)" >> security-summary.md
+        echo "- Safety (Dependency vulnerability check)" >> security-summary.md
+        echo "- pip-audit (Python package vulnerability scanner)" >> security-summary.md
+        echo "- Semgrep (Static analysis security rules)" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "Check the artifacts for detailed reports." >> security-summary.md
+    
+    - name: Upload Security Summary
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-summary
+        path: security-summary.md
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for secret scanning
+    
+    - name: Run TruffleHog Secret Scanner
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified

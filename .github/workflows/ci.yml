@@ -1,0 +1,217 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11, 3.12]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .[dev]
+    
+    - name: Run Black (Code Formatting Check)
+      run: |
+        black --check --diff .
+    
+    - name: Run isort (Import Sorting Check)
+      run: |
+        isort --check-only --diff .
+    
+    - name: Run Flake8 (Linting)
+      run: |
+        flake8 --statistics --tee --output-file=flake8-report.txt .
+    
+    - name: Upload Flake8 Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: flake8-report-${{ matrix.python-version }}
+        path: flake8-report.txt
+    
+    - name: Run MyPy (Type Checking)
+      run: |
+        mypy --install-types --non-interactive .
+        mypy . --html-report mypy-report
+    
+    - name: Upload MyPy Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: mypy-report-${{ matrix.python-version }}
+        path: mypy-report/
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Run Bandit (Security Linting)
+      run: |
+        bandit -r . -x instance,attached_assets,docs -f json -o bandit-report.json
+        bandit -r . -x instance,attached_assets,docs
+    
+    - name: Upload Bandit Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: bandit-security-report
+        path: bandit-report.json
+    
+    - name: Run Safety (Dependency Security Check)
+      run: |
+        safety check --json --output safety-report.json
+        safety check
+    
+    - name: Upload Safety Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: safety-report
+        path: safety-report.json
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install pip-audit
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-audit
+    
+    - name: Run pip-audit (Vulnerability Scanner)
+      run: |
+        pip-audit --format=json --output=pip-audit-report.json
+        pip-audit
+    
+    - name: Upload pip-audit Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pip-audit-report
+        path: pip-audit-report.json
+
+  test-imports:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11, 3.12]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Test critical imports
+      run: |
+        python -c "import config; print('✓ Config module imports successfully')"
+        python -c "from api import models; print('✓ Models import successfully')"
+        python -c "from api.unified_exchange_client import ToobitClient, LBankClient; print('✓ Exchange clients import successfully')"
+        python -c "from scripts.exchange_sync import initialize_sync_service; print('✓ Exchange sync imports successfully')"
+        
+    - name: Validate Flask app structure
+      run: |
+        python -c "from api.app import app; print('✓ Flask app imports successfully')"
+        python -c "from main import app; print('✓ Main app entry point works')"
+
+  code-complexity:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install complexity tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install radon xenon
+    
+    - name: Run Radon (Complexity Analysis)
+      run: |
+        radon cc . --json > radon-complexity.json
+        radon cc . --min C
+        radon mi . --json > radon-maintainability.json
+        radon mi . --min C
+    
+    - name: Upload Complexity Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: complexity-reports
+        path: |
+          radon-complexity.json
+          radon-maintainability.json
+    
+    - name: Run Xenon (Complexity Threshold Check)
+      run: |
+        xenon --max-absolute C --max-modules B --max-average B .
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [code-quality, security-scan, dependency-check, test-imports, code-complexity]
+    if: always()
+    
+    steps:
+    - name: Print Summary
+      run: |
+        echo "## CI/CD Pipeline Summary"
+        echo "Code Quality: ${{ needs.code-quality.result }}"
+        echo "Security Scan: ${{ needs.security-scan.result }}"
+        echo "Dependency Check: ${{ needs.dependency-check.result }}"
+        echo "Import Tests: ${{ needs.test-imports.result }}"
+        echo "Code Complexity: ${{ needs.code-complexity.result }}"
