@@ -46,6 +46,116 @@ def get_user_id_from_request(default_user_id=None):
     """Get user_id from request args with fallback to default"""
     return request.args.get('user_id', default_user_id or Environment.DEFAULT_TEST_USER_ID)
 
+def _validate_credentials_and_create_client(user_creds, user_id):
+    """
+    Validate user credentials and create exchange client for trading.
+    Returns tuple: (client, error_response) where error_response is None on success.
+    """
+    try:
+        # Enhanced credential debugging for Render
+        api_key = user_creds.get_api_key()
+        api_secret = user_creds.get_api_secret()
+        passphrase = user_creds.get_passphrase()
+        
+        # Debug credential validation (without exposing actual values)
+        logging.debug(f"Processing API credentials for user {user_id}")
+        
+        if not api_key or not api_secret:
+            error_msg = f"[RENDER ERROR] Missing credentials - API Key: {'✓' if api_key else '✗'}, API Secret: {'✓' if api_secret else '✗'}"
+            logging.error(error_msg)
+            return None, jsonify({
+                'error': 'Invalid API credentials. Please check your Toobit API key and secret in the API Keys menu.',
+                'debug_info': {
+                    'has_api_key': bool(api_key),
+                    'has_api_secret': bool(api_secret),
+                    'credential_lengths': {
+                        'api_key': len(api_key) if api_key else 0,
+                        'api_secret': len(api_secret) if api_secret else 0
+                    }
+                }
+            }), 400
+        
+        # Create exchange client (dynamic selection)
+        client = create_exchange_client(user_creds, testnet=False)
+        
+        # Enhanced connection test with detailed error reporting
+        try:
+            logging.debug("Testing Toobit API connection...")
+            balance_data = client.get_futures_balance()
+            
+            if balance_data:
+                logging.debug("API connection successful")
+                
+                # Check what symbols are available on Toobit
+                try:
+                    exchange_info = client.get_exchange_info()
+                    if exchange_info and 'symbols' in exchange_info:
+                        valid_symbols = [s['symbol'] for s in exchange_info['symbols']]
+                        logging.info(f"[DEBUG] Found {len(valid_symbols)} available symbols")
+                        logging.info(f"[DEBUG] First 10 symbols: {valid_symbols[:10]}")
+                        
+                        # This symbol validation is for debugging but doesn't affect execution
+                        
+                except Exception as e:
+                    logging.error(f"[DEBUG] Failed to get exchange info: {e}")
+            else:
+                logging.warning("Empty balance response from API")
+                
+        except Exception as conn_error:
+            error_details = {
+                'error_type': type(conn_error).__name__,
+                'error_message': str(conn_error),
+                'last_client_error': getattr(client, 'last_error', None)
+            }
+            
+            logging.error(f"API connection failed: {conn_error}")
+            
+            # Provide user-friendly error messages based on error type
+            if 'unauthorized' in str(conn_error).lower() or '401' in str(conn_error):
+                user_message = 'Invalid API credentials. Please verify your Toobit API key and secret.'
+            elif 'forbidden' in str(conn_error).lower() or '403' in str(conn_error):
+                user_message = 'API access forbidden. Please check your Toobit API permissions for futures trading.'
+            elif 'timeout' in str(conn_error).lower():
+                user_message = 'Connection timeout. Please try again.'
+            else:
+                user_message = f'Exchange connection failed: {str(conn_error)}'
+            
+            return None, jsonify({
+                'error': user_message,
+                'debug_info': error_details,
+                'troubleshooting': [
+                    'Verify your Toobit API key and secret are correct',
+                    'Ensure your API key has futures trading permissions',
+                    'Check if your Toobit account is verified and funded',
+                    'Make sure you copied the full API key without spaces'
+                ]
+            }), 400
+        
+        return client, None
+        
+    except Exception as e:
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'last_client_error': getattr(client, 'last_error', None) if 'client' in locals() else None
+        }
+        
+        logging.error(f"[RENDER TRADING ERROR] Credential validation failed: {error_details}")
+        
+        # Import stack trace for detailed debugging
+        import traceback
+        logging.error(f"[RENDER STACK TRACE] {traceback.format_exc()}")
+        
+        return None, jsonify({
+            'error': f'Credential validation failed: {str(e)}',
+            'debug_info': error_details,
+            'troubleshooting': [
+                'Check your internet connection',
+                'Verify your Toobit API credentials are active',
+                'Try refreshing the page and attempting the trade again'
+            ]
+        }), 500
+
 # Configure logging using centralized config
 logging.basicConfig(level=getattr(logging, get_log_level()))
 
@@ -3211,109 +3321,15 @@ def execute_trade():
             if not user_creds or not user_creds.has_credentials():
                 return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
             
+            # Validate credentials and create exchange client
+            client, error_response = _validate_credentials_and_create_client(user_creds, user_id)
+            if error_response is not None:
+                return error_response
+            
+            # Set the exchange name in the config for proper order routing
+            config.exchange = user_creds.exchange_name or 'toobit'
+            
             try:
-                # Enhanced credential debugging for Render
-                api_key = user_creds.get_api_key()
-                api_secret = user_creds.get_api_secret()
-                passphrase = user_creds.get_passphrase()
-                
-                # Debug credential validation (without exposing actual values)
-                logging.debug(f"Processing API credentials for user {user_id}")
-                
-                if not api_key or not api_secret:
-                    error_msg = f"[RENDER ERROR] Missing credentials - API Key: {'✓' if api_key else '✗'}, API Secret: {'✓' if api_secret else '✗'}"
-                    logging.error(error_msg)
-                    return jsonify({
-                        'error': 'Invalid API credentials. Please check your Toobit API key and secret in the API Keys menu.',
-                        'debug_info': {
-                            'has_api_key': bool(api_key),
-                            'has_api_secret': bool(api_secret),
-                            'credential_lengths': {
-                                'api_key': len(api_key) if api_key else 0,
-                                'api_secret': len(api_secret) if api_secret else 0
-                            }
-                        }
-                    }), 400
-                
-                # Create exchange client (dynamic selection)
-                client = create_exchange_client(user_creds, testnet=False)
-                
-                # Set the exchange name in the config for proper order routing
-                config.exchange = user_creds.exchange_name or 'toobit'
-                
-                # Enhanced connection test with detailed error reporting
-                try:
-                    logging.debug("Testing Toobit API connection...")
-                    balance_data = client.get_futures_balance()
-                    
-                    if balance_data:
-                        logging.debug("API connection successful")
-                        
-                        # Check what symbols are available on Toobit
-                        try:
-                            exchange_info = client.get_exchange_info()
-                            if exchange_info and 'symbols' in exchange_info:
-                                valid_symbols = [s['symbol'] for s in exchange_info['symbols']]
-                                logging.info(f"[DEBUG] Found {len(valid_symbols)} available symbols")
-                                logging.info(f"[DEBUG] First 10 symbols: {valid_symbols[:10]}")
-                                
-                                if config.symbol not in valid_symbols:
-                                    logging.error(f"[DEBUG] Symbol '{config.symbol}' not found in valid symbols!")
-                                    # Try to find similar symbols
-                                    btc_symbols = [s for s in valid_symbols if 'BTC' in s]
-                                    logging.info(f"[DEBUG] Available BTC symbols: {btc_symbols}")
-                                else:
-                                    logging.info(f"[DEBUG] Symbol '{config.symbol}' is valid in SPOT exchange info!")
-                                    logging.warning(f"[DEBUG] But futures order failed - this suggests SPOT vs FUTURES symbol mismatch")
-                                    
-                                    # Log potential futures-style symbols
-                                    perp_symbols = [s for s in valid_symbols if 'PERP' in s or 'SWAP' in s]
-                                    logging.info(f"[DEBUG] Perpetual/Swap symbols found: {perp_symbols[:10]}")
-                                    
-                                    # Try common futures naming patterns
-                                    possible_futures = [
-                                        f"{config.symbol}-PERP",
-                                        f"{config.symbol}-SWAP", 
-                                        f"{config.symbol.replace('USDT', '')}-PERP-USDT",
-                                        f"{config.symbol.replace('USDT', '')}_PERP"
-                                    ]
-                                    logging.info(f"[DEBUG] Possible futures symbols to try: {possible_futures}")
-                            else:
-                                logging.warning("[DEBUG] No exchange info or symbols found")
-                        except Exception as e:
-                            logging.error(f"[DEBUG] Failed to get exchange info: {e}")
-                    else:
-                        logging.warning("Empty balance response from API")
-                        
-                except Exception as conn_error:
-                    error_details = {
-                        'error_type': type(conn_error).__name__,
-                        'error_message': str(conn_error),
-                        'last_client_error': getattr(client, 'last_error', None)
-                    }
-                    
-                    logging.error(f"API connection failed: {conn_error}")
-                    
-                    # Provide user-friendly error messages based on error type
-                    if 'unauthorized' in str(conn_error).lower() or '401' in str(conn_error):
-                        user_message = 'Invalid API credentials. Please verify your Toobit API key and secret.'
-                    elif 'forbidden' in str(conn_error).lower() or '403' in str(conn_error):
-                        user_message = 'API access forbidden. Please check your Toobit API permissions for futures trading.'
-                    elif 'timeout' in str(conn_error).lower():
-                        user_message = 'Connection timeout. Please try again.'
-                    else:
-                        user_message = f'Exchange connection failed: {str(conn_error)}'
-                    
-                    return jsonify({
-                        'error': user_message,
-                        'debug_info': error_details,
-                        'troubleshooting': [
-                            'Verify your Toobit API key and secret are correct',
-                            'Ensure your API key has futures trading permissions',
-                            'Check if your Toobit account is verified and funded',
-                            'Make sure you copied the full API key without spaces'
-                        ]
-                    }), 400
                 
                 # Calculate quantity for Toobit futures (contract numbers)
                 # For Toobit: 1 contract = 0.001 BTC, so quantity = (BTC_amount / 0.001)
