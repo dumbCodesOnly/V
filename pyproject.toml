@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "trading-bot"
 version = "0.1.0"
@@ -105,3 +109,14 @@ disallow_untyped_defs = false
 warn_return_any = false
 
 # Flake8 configuration would go in setup.cfg or .flake8 file
+
+# Setuptools configuration for package discovery
+[tool.setuptools]
+packages = ["api", "scripts"]
+
+[tool.setuptools.package-dir]
+"" = "."
+
+# Exclude non-Python directories from package discovery
+[tool.setuptools.exclude-package-data]
+"*" = ["instance/*", "attached_assets/*", "docs/*", "*.sql", "*.db", "*.csv", "*.txt", "*.md"]
