@@ -51,7 +51,7 @@ jobs:
         semgrep --config=auto . || true
     
     - name: Upload Security Reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-reports
@@ -75,7 +75,7 @@ jobs:
         echo "Check the artifacts for detailed reports." >> security-summary.md
     
     - name: Upload Security Summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-summary
