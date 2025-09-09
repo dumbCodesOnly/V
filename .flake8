@@ -1,0 +1,35 @@
+[flake8]
+max-line-length = 88
+extend-ignore = 
+    # E203: whitespace before ':'
+    E203,
+    # E501: line too long (handled by black)
+    E501,
+    # W503: line break before binary operator
+    W503,
+    # F401: imported but unused (handled by isort)
+    F401,
+    # E402: module level import not at top of file
+    E402
+exclude = 
+    .git,
+    __pycache__,
+    .mypy_cache,
+    .pytest_cache,
+    .venv,
+    instance,
+    attached_assets,
+    docs,
+    build,
+    dist,
+    *.egg-info
+per-file-ignores =
+    # __init__.py files can have unused imports
+    __init__.py:F401
+    # config.py can have long lines for URLs and constants
+    config.py:E501
+    # Allow unused imports in API modules during development
+    api/*.py:F401
+max-complexity = 12
+import-order-style = google
+docstring-convention = google
