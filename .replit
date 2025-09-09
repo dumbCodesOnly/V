@@ -16,15 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Trading Bot Web App"
+args = "Trading Expert Web App"
 
 [[workflows.workflow]]
-name = "Trading Bot Web App"
+name = "Trading Expert Web App"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python main.py"
+args = "SESSION_SECRET=\"replit-session-secret-12345\" python main.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
