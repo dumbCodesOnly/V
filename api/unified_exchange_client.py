@@ -522,7 +522,7 @@ class ToobitClient:
         LIMIT, MARKET, STOP_MARKET, TAKE_PROFIT_MARKET
         """
         import uuid
-        results: dict[str, any] = {
+        results: Dict[str, Any] = {
             'main_order': None,
             'tp_order': None, 
             'sl_order': None,
