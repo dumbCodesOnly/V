@@ -43,3 +43,8 @@ flask-sqlalchemy
 gunicorn
 psycopg2-binary
 uv
+email_validator
+flask
+flask-sqlalchemy
+gunicorn
+psycopg2-binary
