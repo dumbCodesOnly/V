@@ -3,6 +3,9 @@ Centralized Configuration for Toobit Trading Bot
 All constants, magic numbers, timeouts, and API endpoints are defined here
 """
 import os
+import logging
+from typing import Optional, Dict, Any, Union
+from urllib.parse import urlparse
 
 # =============================================================================
 # API ENDPOINTS AND URLS
@@ -404,26 +407,45 @@ class AppDefaults:
 # =============================================================================
 # CONVENIENCE ACCESS METHODS
 # =============================================================================
-def get_api_timeout(api_type="default"):
-    """Get timeout for specific API type"""
-    timeouts = {
+def get_api_timeout(api_type: str = "default") -> int:
+    """Get timeout for specific API type.
+    
+    Args:
+        api_type: Type of API operation ("default", "price", etc.)
+        
+    Returns:
+        Timeout value in seconds
+    """
+    timeouts: Dict[str, int] = {
         "default": TimeConfig.DEFAULT_API_TIMEOUT,
         "price": TimeConfig.PRICE_API_TIMEOUT,
     }
     return timeouts.get(api_type, TimeConfig.DEFAULT_API_TIMEOUT)
 
-def get_cache_ttl(cache_type="price"):
-    """Get cache TTL for specific cache type"""
-    ttls = {
+
+def get_cache_ttl(cache_type: str = "price") -> int:
+    """Get cache TTL for specific cache type.
+    
+    Args:
+        cache_type: Type of cache ("price", "user", etc.)
+        
+    Returns:
+        TTL value in seconds
+    """
+    ttls: Dict[str, int] = {
         "price": TimeConfig.PRICE_CACHE_TTL,
         "user": TimeConfig.USER_DATA_CACHE_TTL,
     }
     return ttls.get(cache_type, TimeConfig.PRICE_CACHE_TTL)
 
-def get_database_url():
-    """Get database URL with proper formatting and validation"""
-    import logging
-    database_url = os.environ.get("DATABASE_URL")
+
+def get_database_url() -> Optional[str]:
+    """Get database URL with proper formatting and validation.
+    
+    Returns:
+        Validated database URL string or None if invalid/missing
+    """
+    database_url: Optional[str] = os.environ.get("DATABASE_URL")
     
     if not database_url:
         return None
@@ -437,7 +459,6 @@ def get_database_url():
     
     # Validate the URL format
     try:
-        from urllib.parse import urlparse
         parsed = urlparse(database_url)
         
         # Check if it's a valid database URL
@@ -456,8 +477,13 @@ def get_database_url():
         logging.error(f"Error parsing database URL: {e}")
         return None
 
-def get_log_level():
-    """Get appropriate log level for current environment"""
+
+def get_log_level() -> str:
+    """Get appropriate log level for current environment.
+    
+    Returns:
+        Log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
     if Environment.IS_VERCEL or Environment.IS_RENDER:
         return LoggingConfig.VERCEL_LOG_LEVEL  # Use production log level for both
     return LoggingConfig.REPLIT_LOG_LEVEL
