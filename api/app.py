@@ -5285,63 +5285,125 @@ def get_hyperliquid_price(symbol, user_id=None):
         logging.warning(f"Failed to get Hyperliquid price for {symbol}: {e}")
         return None, None
 
-def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=True):
-    """
-    Enhanced price fetching that prioritizes the actual trading exchange (Toobit)
-    """
-    # Check enhanced cache first
-    if use_cache:
-        cached_result = enhanced_cache.get_price(symbol)
-        if cached_result:
-            price, source, cache_info = cached_result
-# Using cached price - removed debug log for cleaner output
-            return price
+def _get_user_credentials_safe(user_id):
+    """Safely get user credentials with proper app context handling"""
+    if not user_id:
+        return None
     
-    # PRIORITY 1: Try user's preferred exchange first (where trades are actually executed)
-    if prefer_exchange and user_id:
-        # Check user's preferred exchange - ensure we have Flask app context
-        user_creds = None
-        try:
-            if has_app_context():
-                user_creds = UserCredentials.query.filter_by(
+    try:
+        if has_app_context():
+            return UserCredentials.query.filter_by(
+                telegram_user_id=str(user_id),
+                is_active=True
+            ).first()
+        else:
+            # We're running in a background thread, need app context
+            with app.app_context():
+                return UserCredentials.query.filter_by(
                     telegram_user_id=str(user_id),
                     is_active=True
                 ).first()
-            else:
-                # We're running in a background thread, need app context
-                with app.app_context():
-                    user_creds = UserCredentials.query.filter_by(
-                        telegram_user_id=str(user_id),
-                        is_active=True
-                    ).first()
-        except Exception as context_error:
-            logging.debug(f"Database query failed due to context issue: {context_error}")
-            user_creds = None
-        
-        if user_creds and user_creds.exchange_name:
-            if user_creds.exchange_name == 'hyperliquid':
-                hyperliquid_price, source = get_hyperliquid_price(symbol, user_id)
-                if hyperliquid_price:
-                    if use_cache:
-                        enhanced_cache.set_price(symbol, hyperliquid_price, 'hyperliquid')
-                    logging.info(f"Retrieved live price for {symbol} from Hyperliquid exchange: ${hyperliquid_price}")
-                    return hyperliquid_price
-            else:
-                # Default to Toobit for other exchanges (backward compatibility)
-                toobit_price, source = get_toobit_price(symbol, user_id)
-                if toobit_price:
-                    if use_cache:
-                        enhanced_cache.set_price(symbol, toobit_price, 'toobit')
-                    logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
-                    return toobit_price
-    elif prefer_exchange:
-        # Fallback to Toobit if no user_id provided
+    except Exception as context_error:
+        logging.debug(f"Database query failed due to context issue: {context_error}")
+        return None
+
+def _try_preferred_exchange(symbol, user_id, use_cache):
+    """Try to get price from user's preferred exchange"""
+    user_creds = _get_user_credentials_safe(user_id)
+    
+    if not (user_creds and user_creds.exchange_name):
+        return None
+    
+    if user_creds.exchange_name == 'hyperliquid':
+        hyperliquid_price, source = get_hyperliquid_price(symbol, user_id)
+        if hyperliquid_price:
+            if use_cache:
+                enhanced_cache.set_price(symbol, hyperliquid_price, 'hyperliquid')
+            logging.info(f"Retrieved live price for {symbol} from Hyperliquid exchange: ${hyperliquid_price}")
+            return hyperliquid_price
+    else:
+        # Default to Toobit for other exchanges (backward compatibility)
         toobit_price, source = get_toobit_price(symbol, user_id)
         if toobit_price:
             if use_cache:
                 enhanced_cache.set_price(symbol, toobit_price, 'toobit')
             logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
             return toobit_price
+    
+    return None
+
+def _try_fallback_exchange(symbol, user_id, use_cache):
+    """Try fallback to Toobit if no user_id provided"""
+    toobit_price, source = get_toobit_price(symbol, user_id)
+    if toobit_price:
+        if use_cache:
+            enhanced_cache.set_price(symbol, toobit_price, 'toobit')
+        logging.info(f"Retrieved live price for {symbol} from Toobit exchange: ${toobit_price}")
+        return toobit_price
+    return None
+
+def _try_concurrent_apis(symbol, api_priority, api_functions):
+    """Try concurrent API requests for faster response"""
+    futures = {}
+    
+    # Submit requests to top 2 performing APIs concurrently
+    for api_name in api_priority[:2]:
+        if api_name in api_functions:
+            future = price_executor.submit(api_functions[api_name], symbol)
+            futures[future] = api_name
+    
+    # Wait for first successful response
+    try:
+        for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
+            try:
+                price, source = future.result()
+                return price, source
+            except CircuitBreakerError as e:
+                logging.warning(f"{futures[future]} circuit breaker is open: {str(e)}")
+                continue
+            except Exception as e:
+                logging.warning(f"{futures[future]} API failed for {symbol}: {str(e)}")
+                continue
+    except Exception as e:
+        logging.warning(f"Concurrent API requests timed out for {symbol}")
+    
+    return None, None
+
+def _try_sequential_apis(symbol, api_priority, api_functions):
+    """Try remaining APIs sequentially if concurrent requests failed"""
+    for api_name in api_priority[2:]:
+        if api_name in api_functions:
+            try:
+                price_result = api_functions[api_name](symbol)
+                if price_result and len(price_result) == 2:
+                    return price_result
+            except CircuitBreakerError as e:
+                logging.warning(f"{api_name} circuit breaker is open: {str(e)}")
+                continue
+            except Exception as e:
+                logging.warning(f"{api_name} API failed for {symbol}: {str(e)}")
+                continue
+    return None, None
+
+def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=True):
+    """Enhanced price fetching - refactored for better maintainability"""
+    # Check enhanced cache first
+    if use_cache:
+        cached_result = enhanced_cache.get_price(symbol)
+        if cached_result:
+            price, source, cache_info = cached_result
+            return price
+    
+    # PRIORITY 1: Try user's preferred exchange first
+    if prefer_exchange and user_id:
+        exchange_price = _try_preferred_exchange(symbol, user_id, use_cache)
+        if exchange_price:
+            return exchange_price
+    elif prefer_exchange:
+        # Fallback to Toobit if no user_id provided
+        exchange_price = _try_fallback_exchange(symbol, user_id, use_cache)
+        if exchange_price:
+            return exchange_price
     
     # Get optimal API order based on performance
     api_priority = get_api_priority()
@@ -5354,49 +5416,11 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
     }
     
     # Try concurrent requests for faster response
-    futures = {}
-    
-    # Submit requests to top 2 performing APIs concurrently
-    for api_name in api_priority[:2]:
-        if api_name in api_functions:
-            future = price_executor.submit(api_functions[api_name], symbol)
-            futures[future] = api_name
-    
-    # Wait for first successful response
-    success_price = None
-    success_source = None
-    
-    try:
-        for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
-            try:
-                price, source = future.result()
-                success_price = price
-                success_source = source
-                break
-            except CircuitBreakerError as e:
-                logging.warning(f"{futures[future]} circuit breaker is open: {str(e)}")
-                continue
-            except Exception as e:
-                logging.warning(f"{futures[future]} API failed for {symbol}: {str(e)}")
-                continue
-    except Exception as e:
-        logging.warning(f"Concurrent API requests timed out for {symbol}")
+    success_price, success_source = _try_concurrent_apis(symbol, api_priority, api_functions)
     
     # If concurrent requests failed, try remaining APIs sequentially
     if success_price is None:
-        for api_name in api_priority[2:]:
-            if api_name in api_functions:
-                try:
-                    price_result = api_functions[api_name](symbol)
-                    if price_result and len(price_result) == 2:
-                        success_price, success_source = price_result
-                        break
-                except CircuitBreakerError as e:
-                    logging.warning(f"{api_name} circuit breaker is open: {str(e)}")
-                    continue
-                except Exception as e:
-                    logging.warning(f"{api_name} API failed for {symbol}: {str(e)}")
-                    continue
+        success_price, success_source = _try_sequential_apis(symbol, api_priority, api_functions)
     
     if success_price is None:
         # No emergency fallback needed - enhanced cache handles stale data automatically
