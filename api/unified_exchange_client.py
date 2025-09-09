@@ -404,8 +404,8 @@ class ToobitClient:
             return None
     
     # Order Methods
-    def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
-                   price: Optional[str] = None, **kwargs) -> Optional[Dict]:
+    def place_order(self, symbol: str, side: str, quantity: float, 
+                   price: Optional[float] = None, order_type: str = "MARKET", **kwargs) -> Optional[Dict]:
         """
         Place a new order following Toobit specifications
         
@@ -1336,8 +1336,8 @@ class LBankClient:
         return None
     
     # Order Methods
-    def place_order(self, symbol: str, side: str, order_type: str, quantity: str, 
-                   price: Optional[str] = None, **kwargs) -> Optional[Dict]:
+    def place_order(self, symbol: str, side: str, quantity: float, 
+                   price: Optional[float] = None, order_type: str = "MARKET", **kwargs) -> Optional[Dict]:
         """
         Place a new order following LBank v1 API specifications
         
@@ -1955,8 +1955,8 @@ class HyperliquidClient:
             logging.error(self.last_error)
             return []
     
-    def place_order(self, symbol: str, side: str, amount: float, price: Optional[float] = None, 
-                   order_type: str = "limit", leverage: int = 1, reduce_only: bool = False) -> Optional[Dict]:
+    def place_order(self, symbol: str, side: str, quantity: float, price: Optional[float] = None, 
+                   order_type: str = "MARKET", leverage: int = 1, reduce_only: bool = False) -> Optional[Dict]:
         """Place an order"""
         try:
             if not self.exchange_client:
@@ -1971,7 +1971,7 @@ class HyperliquidClient:
                 order_result = self.exchange_client.market_order(
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
-                    sz=amount,
+                    sz=quantity,
                     reduce_only=reduce_only
                 )
             else:
@@ -1983,7 +1983,7 @@ class HyperliquidClient:
                 order_result = self.exchange_client.order(
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
-                    sz=amount,
+                    sz=quantity,
                     limit_px=price,
                     order_type={"limit": {"tif": "Gtc"}},  # Good till canceled
                     reduce_only=reduce_only
@@ -1994,7 +1994,7 @@ class HyperliquidClient:
                     'order_id': order_result.get('response', {}).get('data', {}).get('statuses', [{}])[0].get('resting', {}).get('oid'),
                     'symbol': symbol,
                     'side': side,
-                    'amount': amount,
+                    'amount': quantity,
                     'price': price,
                     'type': order_type,
                     'status': 'submitted'
