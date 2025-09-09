@@ -461,7 +461,7 @@ bot_status = {
 }
 
 # User state tracking for API setup
-user_api_setup_state = {}  # {user_id: {'step': 'api_key|api_secret|passphrase', 'exchange': 'toobit'}}
+user_api_setup_state: dict[str, dict[str, str]] = {}  # {user_id: {'step': 'api_key|api_secret|passphrase', 'exchange': 'toobit'}}
 
 # Thread locks for global state to prevent race conditions
 trade_configs_lock = threading.RLock()
@@ -472,8 +472,8 @@ user_preferences_lock = threading.RLock()
 bot_status_lock = threading.RLock()
 
 # Multi-trade management storage
-user_trade_configs = {}  # {user_id: {trade_id: TradeConfig}}
-user_selected_trade = {}  # {user_id: trade_id}
+user_trade_configs: dict[int, dict[str, any]] = {}  # {user_id: {trade_id: TradeConfig}}
+user_selected_trade: dict[int, str | None] = {}  # {user_id: trade_id}
 
 def determine_trading_mode(user_id):
     """
@@ -552,17 +552,17 @@ def _refresh_credential_cache(chat_id):
         return False
 
 # Paper trading balance tracking
-user_paper_balances = {}  # {user_id: balance_amount}
+user_paper_balances: dict[int, float] = {}  # {user_id: balance_amount}
 
 # Manual paper trading mode preferences
-user_paper_trading_preferences = {}  # {user_id: True/False}
+user_paper_trading_preferences: dict[int, bool] = {}  # {user_id: True/False}
 
 # RENDER PERFORMANCE OPTIMIZATION: Credential caching to prevent repeated DB queries
-user_credentials_cache = {}  # {user_id: {'has_creds': bool, 'timestamp': time, 'exchange': str}}
+user_credentials_cache: dict[int, dict[str, any]] = {}  # {user_id: {'has_creds': bool, 'timestamp': time, 'exchange': str}}
 credentials_cache_ttl = 300  # 5 minutes cache for credentials
 
 # Cache for database loads to prevent frequent database hits
-user_data_cache = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
+user_data_cache: dict[int, dict[str, any]] = {}  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
 cache_ttl = get_cache_ttl("user")  # Cache TTL in seconds for Vercel optimization
 trade_counter = 0
 
@@ -2009,13 +2009,15 @@ def get_bot_status():
     # Add API performance metrics
     bot_status['api_performance'] = {}
     for api_name, metrics in api_performance_metrics.items():
-        if metrics['requests'] > 0:
+        if metrics['requests'] is not None and metrics['requests'] > 0:
             success_rate = (metrics['successes'] / metrics['requests']) * 100
+            avg_response_time = metrics.get('avg_response_time', 0)
+            last_success = metrics.get('last_success')
             bot_status['api_performance'][api_name] = {
                 'success_rate': round(success_rate, 2),
-                'avg_response_time': round(metrics['avg_response_time'], 3),
+                'avg_response_time': round(avg_response_time, 3),
                 'total_requests': metrics['requests'],
-                'last_success': metrics['last_success'].isoformat() if metrics['last_success'] else None
+                'last_success': last_success.isoformat() if last_success else None
             }
         else:
             bot_status['api_performance'][api_name] = {
@@ -5067,23 +5069,29 @@ price_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="price_api
 def update_api_metrics(api_name, success, response_time):
     """Update API performance metrics"""
     metrics = api_performance_metrics[api_name]
-    metrics['requests'] += 1
+    current_requests = metrics.get('requests', 0)
+    metrics['requests'] = current_requests + 1
     if success:
-        metrics['successes'] += 1
+        current_successes = metrics.get('successes', 0)
+        metrics['successes'] = current_successes + 1
         metrics['last_success'] = datetime.utcnow()
         # Update rolling average response time
-        if metrics['avg_response_time'] == 0:
+        current_avg = metrics.get('avg_response_time', 0)
+        if current_avg == 0:
             metrics['avg_response_time'] = response_time
         else:
-            metrics['avg_response_time'] = (metrics['avg_response_time'] * 0.8) + (response_time * 0.2)
+            metrics['avg_response_time'] = (current_avg * 0.8) + (response_time * 0.2)
 
 def get_api_priority():
     """Get API priority based on performance metrics"""
     apis = []
     for api_name, metrics in api_performance_metrics.items():
-        if metrics['requests'] > 0:
-            success_rate = metrics['successes'] / metrics['requests']
-            score = success_rate * 100 - metrics['avg_response_time']
+        requests_count = metrics.get('requests', 0)
+        if requests_count is not None and requests_count > 0:
+            successes_count = metrics.get('successes', 0)
+            avg_response_time = metrics.get('avg_response_time', 0)
+            success_rate = successes_count / requests_count
+            score = success_rate * 100 - (avg_response_time or 0)
             apis.append((api_name, score))
         else:
             apis.append((api_name, 50))  # Default score for untested APIs
