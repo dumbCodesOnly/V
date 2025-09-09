@@ -46,6 +46,81 @@ def get_user_id_from_request(default_user_id=None):
     """Get user_id from request args with fallback to default"""
     return request.args.get('user_id', default_user_id or Environment.DEFAULT_TEST_USER_ID)
 
+def _monitor_all_active_positions():
+    """
+    Monitor all active positions regardless of credentials.
+    Updates prices, calculates P&L, and checks for trigger alerts.
+    
+    Returns:
+        dict: Monitoring results with processed count and status
+    """
+    all_positions_processed = 0
+    monitoring_result = {'processed': 0, 'status': 'inactive'}
+    
+    try:
+        # Get all active positions from database
+        all_active_trades = TradeConfiguration.query.filter_by(status='active').all()
+        
+        if all_active_trades:
+            logging.info(f"HEALTH CHECK: Found {len(all_active_trades)} active positions for monitoring")
+            for trade in all_active_trades:
+                logging.info(f"HEALTH CHECK: Processing position {trade.trade_id} ({trade.symbol}) for user {trade.telegram_user_id}")
+        
+        for trade in all_active_trades:
+            try:
+                user_id = trade.telegram_user_id
+                
+                # Update price for the symbol (works without credentials)
+                if trade.symbol:
+                    current_price = get_live_market_price(
+                        trade.symbol, 
+                        use_cache=True, 
+                        user_id=user_id
+                    )
+                    
+                    if current_price and current_price > 0:
+                        # Update current price in database
+                        trade.current_price = current_price
+                        
+                        # Calculate P&L and check TP/SL triggers (works for all positions)
+                        if trade.entry_price and trade.entry_price > 0:
+                            # Calculate unrealized P&L
+                            if trade.side == 'long':
+                                price_change = (current_price - trade.entry_price) / trade.entry_price
+                            else:  # short
+                                price_change = (trade.entry_price - current_price) / trade.entry_price
+                            
+                            # Update unrealized P&L
+                            position_value = trade.amount * trade.leverage
+                            trade.unrealized_pnl = position_value * price_change
+                            
+                            # Check for TP/SL triggers (basic monitoring without executing trades)
+                            # For now, just log potential trigger events for monitoring
+                            check_position_trigger_alerts(trade, current_price)
+                        
+                        all_positions_processed += 1
+                        logging.debug(f"HEALTH CHECK: Successfully processed position {trade.trade_id} - Price: ${current_price}, P&L: ${trade.unrealized_pnl:.2f}")
+                        
+            except Exception as e:
+                logging.warning(f"Position monitoring failed for trade {trade.trade_id}: {e}")
+        
+        # Commit price and P&L updates
+        if all_positions_processed > 0:
+            db.session.commit()
+            logging.info(f"HEALTH CHECK: Committed price updates for {all_positions_processed} positions")
+            
+        monitoring_result = {
+            'processed': all_positions_processed,
+            'status': 'active' if all_positions_processed > 0 else 'no_active_positions'
+        }
+        
+    except Exception as e:
+        logging.warning(f"All positions monitoring failed: {e}")
+        db.session.rollback()
+    
+    return monitoring_result
+
+
 def _validate_credentials_and_create_client(user_creds, user_id):
     """
     Validate user credentials and create exchange client for trading.
@@ -1128,67 +1203,7 @@ def trigger_core_monitoring():
     
     try:
         # ALL POSITIONS MONITORING: Monitor positions for ALL users regardless of credentials
-        all_positions_processed = 0
-        try:
-            # Get all active positions from database
-            all_active_trades = TradeConfiguration.query.filter_by(status='active').all()
-            
-            if all_active_trades:
-                logging.info(f"HEALTH CHECK: Found {len(all_active_trades)} active positions for monitoring")
-                for trade in all_active_trades:
-                    logging.info(f"HEALTH CHECK: Processing position {trade.trade_id} ({trade.symbol}) for user {trade.telegram_user_id}")
-            
-            for trade in all_active_trades:
-                try:
-                    user_id = trade.telegram_user_id
-                    
-                    # Update price for the symbol (works without credentials)
-                    if trade.symbol:
-                        current_price = get_live_market_price(
-                            trade.symbol, 
-                            use_cache=True, 
-                            user_id=user_id
-                        )
-                        
-                        if current_price and current_price > 0:
-                            # Update current price in database
-                            trade.current_price = current_price
-                            
-                            # Calculate P&L and check TP/SL triggers (works for all positions)
-                            if trade.entry_price and trade.entry_price > 0:
-                                # Calculate unrealized P&L
-                                if trade.side == 'long':
-                                    price_change = (current_price - trade.entry_price) / trade.entry_price
-                                else:  # short
-                                    price_change = (trade.entry_price - current_price) / trade.entry_price
-                                
-                                # Update unrealized P&L
-                                position_value = trade.amount * trade.leverage
-                                trade.unrealized_pnl = position_value * price_change
-                                
-                                # Check for TP/SL triggers (basic monitoring without executing trades)
-                                # For now, just log potential trigger events for monitoring
-                                check_position_trigger_alerts(trade, current_price)
-                            
-                            all_positions_processed += 1
-                            logging.debug(f"HEALTH CHECK: Successfully processed position {trade.trade_id} - Price: ${current_price}, P&L: ${trade.unrealized_pnl:.2f}")
-                            
-                except Exception as e:
-                    logging.warning(f"Position monitoring failed for trade {trade.trade_id}: {e}")
-            
-            # Commit price and P&L updates
-            if all_positions_processed > 0:
-                db.session.commit()
-                logging.info(f"HEALTH CHECK: Committed price updates for {all_positions_processed} positions")
-                
-            monitoring_results['all_positions_monitoring'] = {
-                'processed': all_positions_processed,
-                'status': 'active' if all_positions_processed > 0 else 'no_active_positions'
-            }
-            
-        except Exception as e:
-            logging.warning(f"All positions monitoring failed: {e}")
-            db.session.rollback()
+        monitoring_results['all_positions_monitoring'] = _monitor_all_active_positions()
         
         # REAL TRADING MONITORING: Sync users with active positions
         if os.environ.get("VERCEL"):
