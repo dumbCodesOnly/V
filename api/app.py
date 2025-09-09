@@ -2965,109 +2965,134 @@ def trade_config():
     
     return jsonify({'error': 'Trade not found'}), 404
 
+def _validate_save_trade_request(data):
+    """Validate save trade request"""
+    user_id = data.get('user_id')
+    trade_data = data.get('trade')
+    
+    if not user_id or not trade_data:
+        return None, None, None, {'error': 'User ID and trade data required'}, 400
+    
+    chat_id = int(user_id)
+    trade_id = trade_data.get('trade_id')
+    
+    # Create or update trade config
+    if trade_id.startswith('new_'):
+        global trade_counter
+        trade_counter += 1
+        trade_id = str(trade_counter)
+    
+    return chat_id, trade_id, trade_data, None, None
+
+def _ensure_trade_config_exists(chat_id, trade_id, trade_data):
+    """Ensure trade config exists in storage"""
+    with trade_configs_lock:
+        if chat_id not in user_trade_configs:
+            user_trade_configs[chat_id] = {}
+        
+        if trade_id not in user_trade_configs[chat_id]:
+            user_trade_configs[chat_id][trade_id] = TradeConfig(trade_id, trade_data.get('name', 'New Trade'))
+    
+    return user_trade_configs[chat_id][trade_id]
+
+def _check_active_trade_restrictions(config, trade_data, trade_id):
+    """Check if core parameters are being modified for active trades"""
+    is_active_trade = config.status in ['active', 'pending']
+    
+    if not is_active_trade:
+        return False, []
+    
+    core_param_changes = []
+    
+    if 'symbol' in trade_data and trade_data['symbol'] != config.symbol:
+        core_param_changes.append('symbol')
+    if 'side' in trade_data and trade_data['side'] != config.side:
+        core_param_changes.append('side')
+    if 'amount' in trade_data and abs(float(trade_data['amount']) - float(config.amount)) > 0.0001:
+        core_param_changes.append('amount')
+    if 'leverage' in trade_data and int(trade_data['leverage']) != int(config.leverage):
+        core_param_changes.append('leverage')
+    if 'entry_type' in trade_data and trade_data['entry_type'] != config.entry_type:
+        core_param_changes.append('entry_type')
+    if 'entry_price' in trade_data:
+        new_entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
+        current_entry_price = float(config.entry_price) if config.entry_price else 0.0
+        if abs(new_entry_price - current_entry_price) > 0.0001:
+            core_param_changes.append('entry_price')
+    
+    return is_active_trade, core_param_changes
+
+def _update_core_parameters(config, trade_data):
+    """Update core trading parameters for non-active trades"""
+    if 'symbol' in trade_data:
+        config.symbol = trade_data['symbol']
+    if 'side' in trade_data:
+        config.side = trade_data['side']
+    if 'amount' in trade_data:
+        config.amount = float(trade_data['amount'])
+    if 'leverage' in trade_data:
+        config.leverage = int(trade_data['leverage'])
+    if 'entry_type' in trade_data:
+        config.entry_type = trade_data['entry_type']
+    if 'entry_price' in trade_data:
+        config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
+
+def _update_risk_parameters(config, trade_data):
+    """Update risk management parameters (always allowed)"""
+    risk_params_updated = []
+    
+    if 'take_profits' in trade_data:
+        config.take_profits = trade_data['take_profits']
+        risk_params_updated.append('take_profits')
+    if 'stop_loss_percent' in trade_data:
+        config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else 0.0
+        risk_params_updated.append('stop_loss')
+    if 'breakeven_after' in trade_data:
+        config.breakeven_after = trade_data['breakeven_after']
+        risk_params_updated.append('breakeven')
+    if 'trailing_stop_enabled' in trade_data:
+        config.trailing_stop_enabled = bool(trade_data['trailing_stop_enabled'])
+        risk_params_updated.append('trailing_stop')
+    if 'trail_percentage' in trade_data:
+        config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else 0.0
+        risk_params_updated.append('trailing_percentage')
+    if 'trail_activation_price' in trade_data:
+        config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else 0.0
+        risk_params_updated.append('trailing_activation')
+    
+    return risk_params_updated
+
 @app.route('/api/save-trade', methods=['POST'])
 def save_trade():
-    """Save or update trade configuration"""
+    """Save or update trade configuration - refactored for better maintainability"""
     try:
         data = request.get_json()
-        user_id = data.get('user_id')
-        trade_data = data.get('trade')
         
-        if not user_id or not trade_data:
-            return jsonify({'error': 'User ID and trade data required'}), 400
+        # Validate request
+        chat_id, trade_id, trade_data, error, status_code = _validate_save_trade_request(data)
+        if error:
+            return jsonify(error), status_code
         
-        chat_id = int(user_id)
-        trade_id = trade_data.get('trade_id')
+        # Ensure trade config exists
+        config = _ensure_trade_config_exists(chat_id, trade_id, trade_data)
         
-        # Create or update trade config
-        if trade_id.startswith('new_'):
-            # Generate new trade ID
-            global trade_counter
-            trade_counter += 1
-            trade_id = str(trade_counter)
+        # Check active trade restrictions
+        is_active_trade, core_param_changes = _check_active_trade_restrictions(config, trade_data, trade_id)
         
-        # Ensure user exists in storage and create/update trade config
-        with trade_configs_lock:
-            if chat_id not in user_trade_configs:
-                user_trade_configs[chat_id] = {}
-            
-            if trade_id not in user_trade_configs[chat_id]:
-                user_trade_configs[chat_id][trade_id] = TradeConfig(trade_id, trade_data.get('name', 'New Trade'))
+        if is_active_trade and core_param_changes:
+            logging.warning(f"Attempted to modify core parameters {core_param_changes} for active trade {trade_id}. Changes rejected for safety.")
+            return jsonify({
+                'error': f"Cannot modify core trade parameters ({', '.join(core_param_changes)}) for active trades. Only take profits, stop loss, break-even, and trailing stop can be modified.",
+                'active_trade': True,
+                'rejected_changes': core_param_changes,
+                'message': 'For active positions, you can only edit risk management settings (TP/SL levels, breakeven, trailing stop).'
+            }), 400
         
-        config = user_trade_configs[chat_id][trade_id]
+        # Update parameters based on trade status
+        if not is_active_trade:
+            _update_core_parameters(config, trade_data)
         
-        # SAFETY CHECK: Prevent re-execution of active trades by restricting core parameter modifications
-        is_active_trade = config.status in ['active', 'pending']
-        
-        if is_active_trade:
-            # For active/pending trades, only allow risk management parameter modifications
-            # Check if core parameters are actually being CHANGED (not just present in request)
-            core_param_changes = []
-            
-            if 'symbol' in trade_data and trade_data['symbol'] != config.symbol:
-                core_param_changes.append('symbol')
-            if 'side' in trade_data and trade_data['side'] != config.side:
-                core_param_changes.append('side')
-            if 'amount' in trade_data and abs(float(trade_data['amount']) - float(config.amount)) > 0.0001:
-                core_param_changes.append('amount')
-            if 'leverage' in trade_data and int(trade_data['leverage']) != int(config.leverage):
-                core_param_changes.append('leverage')
-            if 'entry_type' in trade_data and trade_data['entry_type'] != config.entry_type:
-                core_param_changes.append('entry_type')
-            if 'entry_price' in trade_data:
-                new_entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
-                current_entry_price = float(config.entry_price) if config.entry_price else 0.0
-                # Use a small tolerance for float comparison to avoid precision issues
-                if abs(new_entry_price - current_entry_price) > 0.0001:
-                    logging.debug(f"Entry price change detected for trade {trade_id}: {current_entry_price} -> {new_entry_price}")
-                    core_param_changes.append('entry_price')
-            
-            if core_param_changes:
-                logging.warning(f"Attempted to modify core parameters {core_param_changes} for active trade {trade_id}. Changes rejected for safety.")
-                return jsonify({
-                    'error': f"Cannot modify core trade parameters ({', '.join(core_param_changes)}) for active trades. Only take profits, stop loss, break-even, and trailing stop can be modified.",
-                    'active_trade': True,
-                    'rejected_changes': core_param_changes,
-                    'message': 'For active positions, you can only edit risk management settings (TP/SL levels, breakeven, trailing stop).'
-                }), 400
-            
-            logging.info(f"Allowing risk management parameter modifications for active trade {trade_id} (core parameters unchanged)")
-        else:
-                # For non-active trades, allow all parameter updates
-            if 'symbol' in trade_data:
-                config.symbol = trade_data['symbol']
-            if 'side' in trade_data:
-                config.side = trade_data['side']
-            if 'amount' in trade_data:
-                config.amount = float(trade_data['amount'])
-            if 'leverage' in trade_data:
-                config.leverage = int(trade_data['leverage'])
-            if 'entry_type' in trade_data:
-                config.entry_type = trade_data['entry_type']
-            if 'entry_price' in trade_data:
-                config.entry_price = float(trade_data['entry_price']) if trade_data['entry_price'] else 0.0
-        # Risk management parameters - always allowed for all trade statuses
-        risk_params_updated = []
-        if 'take_profits' in trade_data:
-            config.take_profits = trade_data['take_profits']
-            risk_params_updated.append('take_profits')
-        if 'stop_loss_percent' in trade_data:
-            config.stop_loss_percent = float(trade_data['stop_loss_percent']) if trade_data['stop_loss_percent'] else 0.0
-            risk_params_updated.append('stop_loss')
-        
-        # Update breakeven and trailing stop settings
-        if 'breakeven_after' in trade_data:
-            config.breakeven_after = trade_data['breakeven_after']
-            risk_params_updated.append('breakeven')
-        if 'trailing_stop_enabled' in trade_data:
-            config.trailing_stop_enabled = bool(trade_data['trailing_stop_enabled'])
-            risk_params_updated.append('trailing_stop')
-        if 'trail_percentage' in trade_data:
-            config.trail_percentage = float(trade_data['trail_percentage']) if trade_data['trail_percentage'] else 0.0
-            risk_params_updated.append('trailing_percentage')
-        if 'trail_activation_price' in trade_data:
-            config.trail_activation_price = float(trade_data['trail_activation_price']) if trade_data['trail_activation_price'] else 0.0
-            risk_params_updated.append('trailing_activation')
+        risk_params_updated = _update_risk_parameters(config, trade_data)
         
         # Log risk management updates for active trades
         if is_active_trade and risk_params_updated:
