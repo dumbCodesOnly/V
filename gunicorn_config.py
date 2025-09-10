@@ -1,6 +1,7 @@
 """
 Gunicorn configuration optimized for different deployment environments
 """
+
 import os
 import multiprocessing
 
@@ -30,8 +31,8 @@ else:
     worker_connections = 100
 
 # Worker configuration
-timeout = 60   # seconds - reduced for faster response
-keepalive = 2   # seconds - shorter keepalive
+timeout = 60  # seconds - reduced for faster response
+keepalive = 2  # seconds - shorter keepalive
 max_requests = 500  # Reduced to prevent memory bloat
 max_requests_jitter = 25
 
@@ -66,9 +67,9 @@ if IS_RENDER:
     worker_tmp_dir = "/tmp"  # Use /tmp instead of /dev/shm for compatibility
     forwarded_allow_ips = "*"
     secure_scheme_headers = {
-        'X-FORWARDED-PROTOCOL': 'ssl',
-        'X-FORWARDED-PROTO': 'https',
-        'X-FORWARDED-SSL': 'on'
+        "X-FORWARDED-PROTOCOL": "ssl",
+        "X-FORWARDED-PROTO": "https",
+        "X-FORWARDED-SSL": "on",
     }
     # Add memory optimization
     worker_rlimit_as = 512 * 1024 * 1024  # 512MB memory limit per worker
