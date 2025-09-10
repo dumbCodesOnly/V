@@ -1349,6 +1349,206 @@ def database_status():
             'timestamp': get_iran_time().isoformat()
         }), 500
 
+def _handle_real_trading_sync():
+    """Handle real trading synchronization based on environment."""
+    result = {'processed': 0, 'status': 'not_available'}
+    
+    try:
+        if os.environ.get("VERCEL"):
+            result = _handle_vercel_trading_sync()
+        else:
+            result = _handle_background_trading_sync()
+    except Exception as e:
+        logging.warning(f"Real trading sync failed: {e}")
+        result['error'] = str(e)
+    
+    return result
+
+
+def _handle_vercel_trading_sync():
+    """Handle trading sync for Vercel serverless environment."""
+    sync_service = get_vercel_sync_service()
+    if not sync_service:
+        return {'processed': 0, 'status': 'service_unavailable'}
+    
+    users_with_creds = UserCredentials.query.filter_by(is_active=True).all()
+    synced_users = 0
+    
+    for user_creds in users_with_creds:
+        user_id = user_creds.telegram_user_id
+        active_trades = TradeConfiguration.query.filter_by(
+            telegram_user_id=user_id,
+            status='active'
+        ).count()
+        
+        if active_trades > 0 and sync_service.should_sync_user(str(user_id)):
+            try:
+                result = sync_service.sync_user_on_request(str(user_id))
+                if result.get('success'):
+                    synced_users += 1
+            except Exception as e:
+                logging.warning(f"Health sync failed for user {user_id}: {e}")
+    
+    return {
+        'processed': synced_users,
+        'status': 'active' if synced_users > 0 else 'no_active_positions'
+    }
+
+
+def _handle_background_trading_sync():
+    """Handle trading sync for regular background environments."""
+    sync_service = get_sync_service()
+    if not sync_service or not hasattr(sync_service, '_sync_all_users'):
+        return {'processed': 0, 'status': 'service_unavailable'}
+    
+    try:
+        logging.info("HEALTH CHECK: Triggering background sync for all users with active positions")
+        sync_service._sync_all_users()
+        logging.info("HEALTH CHECK: Background sync completed successfully")
+        return {'processed': 1, 'status': 'triggered'}
+    except Exception as e:
+        logging.warning(f"Background sync trigger failed: {e}")
+        return {'processed': 0, 'status': 'failed', 'error': str(e)}
+
+
+def _handle_paper_trading_monitoring():
+    """Handle monitoring of paper trading positions."""
+    paper_positions_processed = 0
+    
+    try:
+        # Monitor in-memory paper trading configs
+        paper_positions_processed += _monitor_memory_paper_positions()
+        
+        # Monitor database paper trading positions
+        paper_positions_processed += _monitor_database_paper_positions()
+        
+    except Exception as e:
+        logging.warning(f"Paper trading monitoring failed: {e}")
+    
+    return {
+        'processed': paper_positions_processed,
+        'status': 'active' if paper_positions_processed > 0 else 'no_active_positions'
+    }
+
+
+def _monitor_memory_paper_positions():
+    """Monitor in-memory paper trading positions."""
+    processed = 0
+    
+    for user_id, configs in user_trade_configs.items():
+        for trade_id, config in configs.items():
+            if (hasattr(config, 'paper_trading_mode') and 
+                config.paper_trading_mode and 
+                config.status == 'active'):
+                
+                try:
+                    if config.symbol:
+                        current_price = get_live_market_price(
+                            config.symbol, 
+                            use_cache=True, 
+                            user_id=user_id
+                        )
+                        if current_price:
+                            config.current_price = current_price
+                            process_paper_trading_position(user_id, trade_id, config)
+                            processed += 1
+                except Exception as e:
+                    logging.warning(f"Paper position processing failed for {config.symbol}: {e}")
+    
+    return processed
+
+
+def _monitor_database_paper_positions():
+    """Monitor database paper trading positions."""
+    processed = 0
+    
+    db_active_trades = TradeConfiguration.query.filter_by(status='active').all()
+    for trade in db_active_trades:
+        user_id = trade.telegram_user_id
+        
+        # Check if user has no credentials or is in paper mode
+        user_creds = UserCredentials.query.filter_by(
+            telegram_user_id=user_id,
+            is_active=True
+        ).first()
+        
+        # If no credentials or manual paper mode, treat as paper trading
+        is_paper_mode = (not user_creds or 
+                       not user_creds.has_credentials() or
+                       user_paper_trading_preferences.get(user_id, True))
+        
+        if is_paper_mode and trade.symbol:
+            try:
+                current_price = get_live_market_price(
+                    trade.symbol, 
+                    use_cache=True, 
+                    user_id=user_id
+                )
+                if current_price and current_price > 0:
+                    processed += 1
+                    logging.debug(f"Paper monitoring for {trade.trade_id}: price ${current_price}")
+            except Exception as e:
+                logging.warning(f"Paper trading monitoring failed for DB trade {trade.trade_id}: {e}")
+    
+    return processed
+
+
+def _handle_price_updates_monitoring():
+    """Handle price updates for active symbols."""
+    price_updates = 0
+    
+    try:
+        active_symbols = _collect_active_symbols()
+        
+        # Update prices for all active symbols
+        for symbol in active_symbols:
+            try:
+                price = get_live_market_price(symbol, use_cache=True)
+                if price:
+                    price_updates += 1
+            except Exception as e:
+                logging.warning(f"Price update failed for {symbol}: {e}")
+        
+    except Exception as e:
+        logging.warning(f"Price updates failed: {e}")
+    
+    return {
+        'symbols_updated': price_updates,
+        'status': 'active' if price_updates > 0 else 'no_active_symbols'
+    }
+
+
+def _collect_active_symbols():
+    """Collect all symbols from active trades."""
+    active_symbols = set()
+    
+    # Collect symbols from in-memory active trades
+    for user_id, configs in user_trade_configs.items():
+        for config in configs.values():
+            if config.status == 'active' and config.symbol:
+                active_symbols.add(config.symbol)
+    
+    # Also check database for real trading positions
+    active_db_trades = TradeConfiguration.query.filter_by(status='active').all()
+    for trade in active_db_trades:
+        if trade.symbol:
+            active_symbols.add(trade.symbol)
+    
+    return active_symbols
+
+
+def _calculate_monitoring_summary(monitoring_results):
+    """Calculate final monitoring summary."""
+    total_activity = (monitoring_results['real_trading_sync']['processed'] + 
+                     monitoring_results['paper_trading_monitoring']['processed'] + 
+                     monitoring_results['price_updates']['symbols_updated'])
+    
+    monitoring_results['overall_status'] = 'active' if total_activity > 0 else 'monitoring_idle'
+    
+    logging.info(f"Health monitoring completed: {total_activity} operations processed")
+    return monitoring_results
+
+
 def trigger_core_monitoring():
     """
     Trigger core monitoring functionalities including:
@@ -1370,153 +1570,16 @@ def trigger_core_monitoring():
         monitoring_results['all_positions_monitoring'] = _monitor_all_active_positions()
         
         # REAL TRADING MONITORING: Sync users with active positions
-        if os.environ.get("VERCEL"):
-            # Use Vercel sync service for serverless environment
-            sync_service = get_vercel_sync_service()
-            if sync_service:
-                # Get all users with credentials and active trades
-                users_with_creds = UserCredentials.query.filter_by(is_active=True).all()
-                synced_users = 0
-                for user_creds in users_with_creds:
-                    user_id = user_creds.telegram_user_id
-                    active_trades = TradeConfiguration.query.filter_by(
-                        telegram_user_id=user_id,
-                        status='active'
-                    ).count()
-                    
-                    if active_trades > 0 and sync_service.should_sync_user(str(user_id)):
-                        try:
-                            result = sync_service.sync_user_on_request(str(user_id))
-                            if result.get('success'):
-                                synced_users += 1
-                        except Exception as e:
-                            logging.warning(f"Health sync failed for user {user_id}: {e}")
-                
-                monitoring_results['real_trading_sync'] = {
-                    'processed': synced_users,
-                    'status': 'active' if synced_users > 0 else 'no_active_positions'
-                }
-        else:
-            # Use background sync service for regular environments
-            sync_service = get_sync_service()
-            if sync_service and hasattr(sync_service, '_sync_all_users'):
-                try:
-                    logging.info("HEALTH CHECK: Triggering background sync for all users with active positions")
-                    sync_service._sync_all_users()
-                    monitoring_results['real_trading_sync'] = {
-                        'processed': 1,
-                        'status': 'triggered'
-                    }
-                    logging.info("HEALTH CHECK: Background sync completed successfully")
-                except Exception as e:
-                    logging.warning(f"Background sync trigger failed: {e}")
+        monitoring_results['real_trading_sync'] = _handle_real_trading_sync()
         
-        # PAPER TRADING MONITORING: Process all paper trading positions (including users without credentials)
-        paper_positions_processed = 0
-        try:
-            # Monitor in-memory paper trading configs
-            for user_id, configs in user_trade_configs.items():
-                for trade_id, config in configs.items():
-                    if (hasattr(config, 'paper_trading_mode') and 
-                        config.paper_trading_mode and 
-                        config.status == 'active'):
-                        
-                        try:
-                            # Update current price
-                            if config.symbol:
-                                current_price = get_live_market_price(
-                                    config.symbol, 
-                                    use_cache=True, 
-                                    user_id=user_id
-                                )
-                                if current_price:
-                                    config.current_price = current_price
-                                    
-                                    # Process paper trading position
-                                    process_paper_trading_position(user_id, trade_id, config)
-                                    paper_positions_processed += 1
-                        except Exception as e:
-                            logging.warning(f"Paper position processing failed for {config.symbol}: {e}")
-            
-            # Also monitor database positions that might be in paper trading mode
-            # Get all active trades again for paper trading check
-            db_active_trades = TradeConfiguration.query.filter_by(status='active').all()
-            for trade in db_active_trades:
-                user_id = trade.telegram_user_id
-                
-                # Check if user has no credentials or is in paper mode
-                user_creds = UserCredentials.query.filter_by(
-                    telegram_user_id=user_id,
-                    is_active=True
-                ).first()
-                
-                # If no credentials or manual paper mode, treat as paper trading
-                is_paper_mode = (not user_creds or 
-                               not user_creds.has_credentials() or
-                               user_paper_trading_preferences.get(user_id, True))
-                
-                if is_paper_mode and trade.symbol:
-                    try:
-                        current_price = get_live_market_price(
-                            trade.symbol, 
-                            use_cache=True, 
-                            user_id=user_id
-                        )
-                        if current_price and current_price > 0:
-                            # Simulate paper trading TP/SL monitoring
-                            paper_positions_processed += 1
-                            logging.debug(f"Paper monitoring for {trade.trade_id}: price ${current_price}")
-                    except Exception as e:
-                        logging.warning(f"Paper trading monitoring failed for DB trade {trade.trade_id}: {e}")
-            
-            monitoring_results['paper_trading_monitoring'] = {
-                'processed': paper_positions_processed,
-                'status': 'active' if paper_positions_processed > 0 else 'no_active_positions'
-            }
-        except Exception as e:
-            logging.warning(f"Paper trading monitoring failed: {e}")
+        # PAPER TRADING MONITORING: Process all paper trading positions
+        monitoring_results['paper_trading_monitoring'] = _handle_paper_trading_monitoring()
         
         # PRICE UPDATES: Update prices for active symbols
-        price_updates = 0
-        try:
-            active_symbols = set()
-            
-            # Collect symbols from active trades
-            for user_id, configs in user_trade_configs.items():
-                for config in configs.values():
-                    if config.status == 'active' and config.symbol:
-                        active_symbols.add(config.symbol)
-            
-            # Also check database for real trading positions
-            active_db_trades = TradeConfiguration.query.filter_by(status='active').all()
-            for trade in active_db_trades:
-                if trade.symbol:
-                    active_symbols.add(trade.symbol)
-            
-            # Update prices for all active symbols
-            for symbol in active_symbols:
-                try:
-                    price = get_live_market_price(symbol, use_cache=True)
-                    if price:
-                        price_updates += 1
-                except Exception as e:
-                    logging.warning(f"Price update failed for {symbol}: {e}")
-            
-            monitoring_results['price_updates'] = {
-                'symbols_updated': price_updates,
-                'status': 'active' if price_updates > 0 else 'no_active_symbols'
-            }
-        except Exception as e:
-            logging.warning(f"Price updates failed: {e}")
+        monitoring_results['price_updates'] = _handle_price_updates_monitoring()
         
-        # Summary status
-        total_activity = (monitoring_results['real_trading_sync']['processed'] + 
-                         monitoring_results['paper_trading_monitoring']['processed'] + 
-                         monitoring_results['price_updates']['symbols_updated'])
-        
-        monitoring_results['overall_status'] = 'active' if total_activity > 0 else 'monitoring_idle'
-        
-        logging.info(f"Health monitoring completed: {total_activity} operations processed")
+        # Calculate summary
+        monitoring_results = _calculate_monitoring_summary(monitoring_results)
         
     except Exception as e:
         logging.error(f"Core monitoring trigger failed: {e}")
