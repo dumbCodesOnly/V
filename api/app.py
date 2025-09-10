@@ -5690,12 +5690,11 @@ def get_live_market_price(symbol, use_cache=True, user_id=None, prefer_exchange=
     logging.info(f"Retrieved live price for {symbol} from {success_source}: ${success_price}")
     return success_price
 
-def update_all_positions_with_live_data(user_id=None):
-    """Enhanced batch update using Toobit exchange prices for accurate trading data"""
-    # Collect unique symbols for batch processing - ONLY for active positions
+def _collect_symbols_for_batch_update():
+    """Collect unique symbols and position configs for batch processing."""
     symbols_to_update = set()
     position_configs = []
-    paper_trading_configs = []  # Separate tracking for paper trades
+    paper_trading_configs = []
     
     for uid, trades in user_trade_configs.items():
         for trade_id, config in trades.items():
@@ -5708,7 +5707,11 @@ def update_all_positions_with_live_data(user_id=None):
                 if getattr(config, 'paper_trading_mode', False):
                     paper_trading_configs.append((uid, trade_id, config))
     
-    # Batch fetch prices for all symbols concurrently from Toobit exchange
+    return symbols_to_update, position_configs, paper_trading_configs
+
+
+def _batch_fetch_symbol_prices(symbols_to_update, user_id=None):
+    """Batch fetch prices for all symbols concurrently."""
     symbol_prices = {}
     if symbols_to_update:
         futures = {}
@@ -5730,7 +5733,137 @@ def update_all_positions_with_live_data(user_id=None):
                 if cached_result:
                     symbol_prices[symbol] = cached_result[0]  # Get price from cache result
     
-    # Update all positions with fetched prices
+    return symbol_prices
+
+
+def _process_pending_limit_orders(user_id, trade_id, config):
+    """Process pending limit orders for execution."""
+    if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
+        should_execute = False
+        if config.side == "long":
+            if config.entry_price <= config.current_price:
+                # Long limit (buy limit): executes when market drops to or below limit price
+                should_execute = config.current_price <= config.entry_price
+            else:
+                # Long stop (buy stop): executes when market rises to or above stop price  
+                should_execute = config.current_price >= config.entry_price
+        elif config.side == "short":
+            if config.entry_price >= config.current_price:
+                # Short limit (sell limit): executes when market rises to or above limit price
+                should_execute = config.current_price >= config.entry_price
+            else:
+                # Short stop (sell stop): executes when market drops to or below stop price
+                should_execute = config.current_price <= config.entry_price
+        
+        if should_execute:
+            # Execute the pending limit order
+            config.status = "active"
+            config.position_margin = calculate_position_margin(config.amount, config.leverage)
+            config.position_value = config.amount * config.leverage
+            config.position_size = config.position_value / config.entry_price
+            config.unrealized_pnl = 0.0
+            
+            trading_mode = "Paper" if getattr(config, 'paper_trading_mode', False) else "Live"
+            logging.info(f"{trading_mode} Trading: Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
+            
+            # For paper trading, initialize TP/SL monitoring after limit order execution
+            if getattr(config, 'paper_trading_mode', False):
+                initialize_paper_trading_monitoring(config)
+            
+            # Log trade execution
+            bot_trades.append({
+                'id': len(bot_trades) + 1,
+                'user_id': str(user_id),
+                'trade_id': trade_id,
+                'symbol': config.symbol,
+                'side': config.side,
+                'amount': config.amount,
+                'leverage': config.leverage,
+                'entry_price': config.entry_price,
+                'timestamp': get_iran_time().isoformat(),
+                'status': f'executed_{"paper" if getattr(config, "paper_trading_mode", False) else "live"}',
+                'trading_mode': trading_mode.lower()
+            })
+            
+            bot_status['total_trades'] += 1
+            return True
+    return False
+
+
+def _process_stop_loss_monitoring(user_id, trade_id, config):
+    """Process stop loss monitoring for active positions."""
+    if not (config.status in ["active", "configured"] and config.entry_price and config.current_price):
+        return False
+        
+    stop_loss_triggered = False
+    
+    # Check break-even stop loss first
+    if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered and hasattr(config, 'breakeven_sl_price'):
+        # Break-even stop loss - trigger when price moves against position from entry price
+        if config.side == "long" and config.current_price <= config.breakeven_sl_price:
+            stop_loss_triggered = True
+            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} <= Break-even ${config.breakeven_sl_price}")
+        elif config.side == "short" and config.current_price >= config.breakeven_sl_price:
+            stop_loss_triggered = True
+            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} >= Break-even ${config.breakeven_sl_price}")
+    
+    # Check regular stop loss if break-even not triggered
+    elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
+        # Calculate current loss percentage based on margin
+        loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
+        
+        if loss_percentage >= config.stop_loss_percent:
+            stop_loss_triggered = True
+            logging.warning(f"STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Loss: {loss_percentage:.2f}% >= {config.stop_loss_percent}%")
+    
+    if stop_loss_triggered:
+        # Close the position
+        config.status = "stopped"
+        # Include both unrealized P&L and any realized P&L from partial TPs
+        config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+        config.closed_at = get_iran_time().isoformat()
+        config.unrealized_pnl = 0.0
+        
+        # Save to database
+        save_trade_to_db(user_id, config)
+        
+        # Log trade closure
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(user_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'final_pnl': config.final_pnl,
+            'timestamp': get_iran_time().isoformat(),
+            'status': 'stop_loss_triggered'
+        })
+        
+        logging.info(f"Position auto-closed: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
+        return True
+    
+    return False
+
+
+def _update_position_pnl(config):
+    """Update unrealized P&L for active positions."""
+    if config.status in ["active", "configured"] and config.entry_price and config.current_price:
+        config.unrealized_pnl = calculate_unrealized_pnl(
+            config.entry_price, config.current_price,
+            config.amount, config.leverage, config.side
+        )
+
+
+def update_all_positions_with_live_data(user_id=None):
+    """Enhanced batch update using Toobit exchange prices for accurate trading data - refactored for better maintainability"""
+    # Collect symbols and position configurations for batch processing
+    symbols_to_update, position_configs, paper_trading_configs = _collect_symbols_for_batch_update()
+    
+    # Batch fetch prices for all symbols concurrently
+    symbol_prices = _batch_fetch_symbol_prices(symbols_to_update, user_id)
+    
+    # Update all positions with fetched prices using focused helper functions
     for user_id, trade_id, config in position_configs:
         if config.symbol in symbol_prices:
             try:
@@ -5740,117 +5873,21 @@ def update_all_positions_with_live_data(user_id=None):
                 if getattr(config, 'paper_trading_mode', False):
                     process_paper_trading_position(user_id, trade_id, config)
                 
-                # Check pending limit orders for execution (both real and paper)
-                if config.status == "pending" and config.entry_type == "limit" and config.entry_price > 0:
-                    should_execute = False
-                    if config.side == "long":
-                        if config.entry_price <= config.current_price:
-                            # Long limit (buy limit): executes when market drops to or below limit price
-                            should_execute = config.current_price <= config.entry_price
-                        else:
-                            # Long stop (buy stop): executes when market rises to or above stop price  
-                            should_execute = config.current_price >= config.entry_price
-                    elif config.side == "short":
-                        if config.entry_price >= config.current_price:
-                            # Short limit (sell limit): executes when market rises to or above limit price
-                            should_execute = config.current_price >= config.entry_price
-                        else:
-                            # Short stop (sell stop): executes when market drops to or below stop price
-                            should_execute = config.current_price <= config.entry_price
-                    
-                    if should_execute:
-                        # Execute the pending limit order
-                        config.status = "active"
-                        config.position_margin = calculate_position_margin(config.amount, config.leverage)
-                        config.position_value = config.amount * config.leverage
-                        config.position_size = config.position_value / config.entry_price
-                        config.unrealized_pnl = 0.0
-                        
-                        trading_mode = "Paper" if getattr(config, 'paper_trading_mode', False) else "Live"
-                        logging.info(f"{trading_mode} Trading: Limit order executed: {config.symbol} {config.side} at ${config.entry_price} (market reached: ${config.current_price})")
-                        
-                        # For paper trading, initialize TP/SL monitoring after limit order execution
-                        if getattr(config, 'paper_trading_mode', False):
-                            initialize_paper_trading_monitoring(config)
-                        
-                        # Log trade execution
-                        bot_trades.append({
-                            'id': len(bot_trades) + 1,
-                            'user_id': str(user_id),
-                            'trade_id': trade_id,
-                            'symbol': config.symbol,
-                            'side': config.side,
-                            'amount': config.amount,
-                            'leverage': config.leverage,
-                            'entry_price': config.entry_price,
-                            'timestamp': get_iran_time().isoformat(),
-                            'status': f'executed_{"paper" if getattr(config, "paper_trading_mode", False) else "live"}',
-                            'trading_mode': trading_mode.lower()
-                        })
-                        
-                        bot_status['total_trades'] += 1
+                # Process pending limit orders for execution
+                if _process_pending_limit_orders(user_id, trade_id, config):
+                    continue  # Skip further processing if limit order was executed
                 
-                # Recalculate P&L for active positions and configured trades with entry prices
-                # Skip comprehensive monitoring for paper trades as they have dedicated processing
-                if ((config.status in ["active", "configured"]) and config.entry_price and config.current_price and 
-                    not getattr(config, 'paper_trading_mode', False)):
-                    config.unrealized_pnl = calculate_unrealized_pnl(
-                        config.entry_price, config.current_price,
-                        config.amount, config.leverage, config.side
-                    )
+                # Update P&L for non-paper trading positions
+                if not getattr(config, 'paper_trading_mode', False):
+                    _update_position_pnl(config)
                     
-                    # Check stop-loss threshold (Enhanced with break-even logic)
-                    stop_loss_triggered = False
-                    
-                    # Check break-even stop loss first
-                    if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered and hasattr(config, 'breakeven_sl_price'):
-                        # Break-even stop loss - trigger when price moves against position from entry price
-                        if config.side == "long" and config.current_price <= config.breakeven_sl_price:
-                            stop_loss_triggered = True
-                            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} <= Break-even ${config.breakeven_sl_price}")
-                        elif config.side == "short" and config.current_price >= config.breakeven_sl_price:
-                            stop_loss_triggered = True
-                            logging.warning(f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} >= Break-even ${config.breakeven_sl_price}")
-                    
-                    # Check regular stop loss if break-even not triggered
-                    elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
-                        # Calculate current loss percentage based on margin
-                        loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
-                        
-                        if loss_percentage >= config.stop_loss_percent:
-                            stop_loss_triggered = True
-                            logging.warning(f"STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Loss: {loss_percentage:.2f}% >= {config.stop_loss_percent}%")
-                    
-                    if stop_loss_triggered:
-                        # Close the position
-                        config.status = "stopped"
-                        # Include both unrealized P&L and any realized P&L from partial TPs
-                        config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
-                        config.closed_at = get_iran_time().isoformat()
-                        config.unrealized_pnl = 0.0
-                        
-                        # Save to database
-                        save_trade_to_db(user_id, config)
-                        
-                        # Log trade closure
-                        bot_trades.append({
-                            'id': len(bot_trades) + 1,
-                            'user_id': str(user_id),
-                            'trade_id': trade_id,
-                            'symbol': config.symbol,
-                            'side': config.side,
-                            'amount': config.amount,
-                            'final_pnl': config.final_pnl,
-                            'timestamp': get_iran_time().isoformat(),
-                            'status': 'stop_loss_triggered'
-                        })
-                        
-                        logging.info(f"Position auto-closed: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}")
+                    # Process stop loss monitoring
+                    if _process_stop_loss_monitoring(user_id, trade_id, config):
+                        continue  # Position was closed by stop loss
                     
                     # Check take profit targets
                     elif _process_take_profit_monitoring(config, user_id, trade_id):
-                        # Position was closed by take profit, skip further processing
-                        continue
+                        continue  # Position was closed by take profit
                     
             except Exception as e:
                 logging.warning(f"Failed to update live data for {config.symbol} (user {user_id}): {e}")
