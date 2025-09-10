@@ -1673,49 +1673,101 @@ def api_health_check():
             'timestamp': get_iran_time().isoformat()
         }), 503
 
+def _validate_trade_for_alerts(trade):
+    """Validate trade data for trigger alert checking."""
+    return trade.entry_price and trade.entry_price > 0
+
+
+def _check_stop_loss_trigger(trade, current_price):
+    """Check if stop loss should trigger for the trade."""
+    if trade.stop_loss_percent <= 0:
+        return
+    
+    if trade.side == 'long':
+        sl_price = trade.entry_price * (1 - trade.stop_loss_percent / 100)
+        if current_price <= sl_price:
+            logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
+    else:  # short
+        sl_price = trade.entry_price * (1 + trade.stop_loss_percent / 100)
+        if current_price >= sl_price:
+            logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
+
+
+def _parse_take_profits(trade):
+    """Parse take profit data from trade configuration."""
+    if not trade.take_profits:
+        return []
+    
+    import json
+    try:
+        tps = json.loads(trade.take_profits) if isinstance(trade.take_profits, str) else trade.take_profits
+        return tps if isinstance(tps, list) else []
+    except:
+        return []  # Skip if TP format is invalid
+
+
+def _calculate_tp_price(trade, tp_percentage):
+    """Calculate take profit price based on trade side and percentage."""
+    if trade.side == 'long':
+        return trade.entry_price * (1 + tp_percentage / 100)
+    else:  # short
+        return trade.entry_price * (1 - tp_percentage / 100)
+
+
+def _check_tp_trigger(trade, current_price, tp_price, tp_index):
+    """Check if a specific take profit should trigger."""
+    trigger_condition = (
+        (trade.side == 'long' and current_price >= tp_price) or 
+        (trade.side == 'short' and current_price <= tp_price)
+    )
+    
+    if trigger_condition:
+        logging.info(f"MONITORING ALERT: TP{tp_index+1} trigger detected for {trade.trade_id} at {current_price}")
+
+
+def _check_take_profit_triggers(trade, current_price):
+    """Check all take profit triggers for the trade."""
+    tps = _parse_take_profits(trade)
+    
+    for i, tp in enumerate(tps):
+        tp_percentage = tp.get('percentage', 0)
+        tp_price = _calculate_tp_price(trade, tp_percentage)
+        _check_tp_trigger(trade, current_price, tp_price, i)
+
+
+def _calculate_profit_percentage(trade, current_price):
+    """Calculate current profit percentage for the trade."""
+    if trade.side == 'long':
+        return ((current_price - trade.entry_price) / trade.entry_price) * 100
+    else:  # short
+        return ((trade.entry_price - current_price) / trade.entry_price) * 100
+
+
+def _check_breakeven_trigger(trade, current_price):
+    """Check if break-even should trigger for the trade."""
+    if not (trade.breakeven_after > 0 and not trade.breakeven_sl_triggered):
+        return
+    
+    profit_percent = _calculate_profit_percentage(trade, current_price)
+    
+    if profit_percent >= trade.breakeven_after:
+        logging.info(f"MONITORING ALERT: Break-even trigger detected for {trade.trade_id} - profit: {profit_percent:.2f}%")
+
+
 def check_position_trigger_alerts(trade, current_price):
     """Check for potential TP/SL triggers and log monitoring alerts"""
     try:
-        if not trade.entry_price or trade.entry_price <= 0:
+        if not _validate_trade_for_alerts(trade):
             return
         
         # Check stop loss trigger
-        if trade.stop_loss_percent > 0:
-            if trade.side == 'long':
-                sl_price = trade.entry_price * (1 - trade.stop_loss_percent / 100)
-                if current_price <= sl_price:
-                    logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
-            else:  # short
-                sl_price = trade.entry_price * (1 + trade.stop_loss_percent / 100)
-                if current_price >= sl_price:
-                    logging.info(f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}")
+        _check_stop_loss_trigger(trade, current_price)
         
         # Check take profit triggers
-        if trade.take_profits:
-            import json
-            try:
-                tps = json.loads(trade.take_profits) if isinstance(trade.take_profits, str) else trade.take_profits
-                for i, tp in enumerate(tps):
-                    tp_price = trade.entry_price * (1 + tp.get('percentage', 0) / 100)
-                    if trade.side == 'short':
-                        tp_price = trade.entry_price * (1 - tp.get('percentage', 0) / 100)
-                    
-                    if ((trade.side == 'long' and current_price >= tp_price) or 
-                        (trade.side == 'short' and current_price <= tp_price)):
-                        logging.info(f"MONITORING ALERT: TP{i+1} trigger detected for {trade.trade_id} at {current_price}")
-            except:
-                pass  # Skip if TP format is invalid
+        _check_take_profit_triggers(trade, current_price)
         
         # Check break-even trigger
-        if (trade.breakeven_after > 0 and not trade.breakeven_sl_triggered):
-            profit_percent = 0
-            if trade.side == 'long':
-                profit_percent = ((current_price - trade.entry_price) / trade.entry_price) * 100
-            else:  # short
-                profit_percent = ((trade.entry_price - current_price) / trade.entry_price) * 100
-            
-            if profit_percent >= trade.breakeven_after:
-                logging.info(f"MONITORING ALERT: Break-even trigger detected for {trade.trade_id} - profit: {profit_percent:.2f}%")
+        _check_breakeven_trigger(trade, current_price)
                 
     except Exception as e:
         logging.warning(f"Position trigger alert check failed for {trade.trade_id}: {e}")
