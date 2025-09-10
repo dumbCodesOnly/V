@@ -3410,85 +3410,264 @@ def save_trade():
         logging.error(f"Error saving trade: {str(e)}")
         return jsonify({'error': 'Failed to save trade configuration'}), 500
 
+def _validate_execute_trade_request(data):
+    """Validate execute trade request data and extract user_id and trade_id."""
+    user_id = data.get('user_id')
+    trade_id = data.get('trade_id')
+    
+    if not user_id:
+        return None, None, jsonify(create_validation_error("User ID", None, "A valid user ID is required")), 400
+    
+    if not trade_id:
+        return None, None, jsonify(create_validation_error("Trade ID", None, "A valid trade ID is required")), 400
+    
+    return user_id, trade_id, None, None
+
+
+def _get_and_validate_trade_config(chat_id, trade_id):
+    """Get and validate trade configuration exists and is complete."""
+    if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
+        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        error = TradingError(
+            category=ErrorCategory.VALIDATION_ERROR,
+            severity=ErrorSeverity.MEDIUM,
+            technical_message=f"Trade {trade_id} not found for user {chat_id}",
+            user_message="The trade configuration you're trying to execute was not found.",
+            suggestions=[
+                "Check that the trade ID is correct",
+                "Refresh the page to reload your trades",
+                "Create a new trade configuration if needed"
+            ]
+        )
+        return None, jsonify(error.to_dict()), 404
+    
+    config = user_trade_configs[chat_id][trade_id]
+    
+    # Validate configuration completeness
+    if not config.is_complete():
+        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        error = TradingError(
+            category=ErrorCategory.VALIDATION_ERROR,
+            severity=ErrorSeverity.HIGH,
+            technical_message=f"Incomplete trade configuration for {config.symbol}",
+            user_message="Your trade setup is missing some important information.",
+            suggestions=[
+                "Check that you've set the trading symbol",
+                "Verify you've selected long or short direction",
+                "Make sure you've set the trade amount",
+                "Ensure take profit and stop loss are configured"
+            ]
+        )
+        return None, jsonify(error.to_dict()), 400
+    
+    return config, None, None
+
+
+def _setup_exchange_client_and_mode(chat_id, config):
+    """Set up exchange client and determine trading mode."""
+    # Check if user is in paper trading mode
+    user_creds = UserCredentials.query.filter_by(
+        telegram_user_id=str(chat_id),
+        is_active=True
+    ).first()
+    
+    # Use centralized trading mode detection
+    is_paper_mode = determine_trading_mode(chat_id)
+    
+    if is_paper_mode:
+        # Set exchange for paper trading (default to lbank if no credentials)
+        config.exchange = user_creds.exchange_name if user_creds else 'lbank'
+        return None, is_paper_mode, user_creds, None, None
+    else:
+        # REAL TRADING - Validate credentials and create exchange client
+        if not user_creds or not user_creds.has_credentials():
+            return None, is_paper_mode, user_creds, jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
+        
+        # Validate credentials and create exchange client
+        client, error_response = _validate_credentials_and_create_client(user_creds, chat_id)
+        if error_response is not None:
+            return None, is_paper_mode, user_creds, error_response, None
+        
+        # Set the exchange name in the config for proper order routing
+        config.exchange = user_creds.exchange_name or 'toobit'
+        return client, is_paper_mode, user_creds, None, None
+
+
+def _execute_real_trading_order(client, config, current_market_price):
+    """Execute real trading order on exchange."""
+    try:
+        # Calculate quantity for exchange (contract numbers)
+        position_value = config.amount * config.leverage
+        btc_amount = position_value / current_market_price
+        # Convert to contract numbers: 1 contract = 0.001 BTC for Toobit
+        contract_quantity = round(btc_amount / 0.001)
+        position_size = contract_quantity
+        
+        # Set leverage FIRST before placing order
+        logging.info(f"Setting leverage {config.leverage}x for {config.symbol}")
+        leverage_result = client.change_leverage(config.symbol, config.leverage)
+        if not leverage_result:
+            error_msg = client.get_last_error() or 'Failed to set leverage'
+            logging.error(f"Failed to set leverage: {error_msg}")
+            return False, jsonify({
+                'error': f'Failed to set leverage: {error_msg}',
+                'troubleshooting': [
+                    'Check if the symbol supports the specified leverage',
+                    'Verify you have no open positions that would conflict',
+                    'Ensure your account has sufficient margin'
+                ]
+            }), 500
+        else:
+            logging.info(f"Successfully set leverage {config.leverage}x for {config.symbol}")
+        
+        # Determine order type and parameters based on exchange
+        if config.exchange == 'lbank':
+            # LBank uses simple buy/sell for perpetual futures
+            order_side = "buy" if config.side == "long" else "sell"
+            order_type = "limit"
+        else:  # toobit
+            # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
+            order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
+            order_type = "limit"
+        
+        # Convert symbol to exchange format for proper API call
+        if config.exchange == 'lbank':
+            exchange_symbol = getattr(client, 'convert_to_lbank_symbol', lambda x: x)(config.symbol)
+            endpoint_info = "/cfd/openApi/v1/prv/order"
+        else:  # toobit
+            exchange_symbol = getattr(client, 'convert_to_toobit_symbol', lambda x: x)(config.symbol)
+            endpoint_info = "/api/v1/futures/order"
+        
+        logging.info(f"[DEBUG] Will send {config.exchange.upper()} order to: {endpoint_info} with symbol={exchange_symbol}, side={order_side}, quantity={position_size} contracts")
+        
+        # Prepare order parameters based on entry type
+        if config.entry_type == "market":
+            # For market execution, use LIMIT order at market price with buffer
+            market_price_float = float(current_market_price)
+            if order_side == "BUY":
+                exec_price = market_price_float * 1.001  # Slightly above market
+            else:
+                exec_price = market_price_float * 0.999  # Slightly below market
+                
+            order_params = {
+                'symbol': config.symbol,
+                'side': order_side,
+                'order_type': order_type,
+                'quantity': str(position_size),
+                'price': str(exec_price),
+                'timeInForce': "IOC"  # Immediate or Cancel for market-like behavior
+            }
+        else:
+            # Standard limit order
+            order_params = {
+                'symbol': config.symbol,
+                'side': order_side,
+                'order_type': order_type,
+                'quantity': str(position_size),
+                'price': str(config.entry_price),
+                'timeInForce': "GTC"
+            }
+        
+        order_result = client.place_order(**order_params)
+        
+        if not order_result:
+            error_details = {
+                'client_last_error': getattr(client, 'last_error', None),
+                'order_params': {
+                    'symbol': config.symbol,
+                    'side': order_side,
+                    'type': order_type,
+                    'quantity_calculated': round(position_size, 6)
+                }
+            }
+            
+            logging.error(f"Order placement failed: {error_details.get('client_last_error', 'Unknown error')}")
+            
+            return False, jsonify({
+                'error': 'Failed to place order on exchange. Please check the details below.',
+                'debug_info': error_details,
+                'troubleshooting': [
+                    'Check if you have sufficient balance for this trade',
+                    'Verify the symbol is supported on Toobit futures',
+                    'Ensure your position size meets minimum requirements',
+                    'Check if there are any trading restrictions on your account'
+                ]
+            }), 500
+        
+        logging.info(f"Order placed on exchange: {order_result}")
+        
+        # Store exchange order ID
+        config.exchange_order_id = order_result.get('orderId')
+        config.exchange_client_order_id = order_result.get('clientOrderId')
+        
+        return True, None, None
+        
+    except Exception as e:
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'client_last_error': getattr(client, 'last_error', None) if client else None,
+            'trade_config': {
+                'symbol': config.symbol,
+                'side': config.side,
+                'amount': config.amount,
+                'leverage': config.leverage,
+                'entry_type': config.entry_type
+            }
+        }
+        
+        logging.error(f"[RENDER TRADING ERROR] Exchange order placement failed: {error_details}")
+        
+        # Import stack trace for detailed debugging
+        import traceback
+        logging.error(f"[RENDER STACK TRACE] {traceback.format_exc()}")
+        
+        return False, jsonify({
+            'error': f'Trading execution failed: {str(e)}',
+            'debug_info': error_details,
+            'troubleshooting': [
+                'Check your internet connection',
+                'Verify your exchange API credentials are active',
+                'Ensure you have sufficient account balance',
+                'Try refreshing the page and attempting the trade again'
+            ]
+        }), 500
+
+
 @app.route('/api/execute-trade', methods=['POST'])
 def execute_trade():
     """Execute a trade configuration"""
     user_id = None
     try:
         data = request.get_json() or {}
-        user_id = data.get('user_id')
-        trade_id = data.get('trade_id')
         
+        # Validate request data
+        user_id, trade_id, error_response, status_code = _validate_execute_trade_request(data)
+        if error_response:
+            return error_response, status_code
+            
         logging.info(f"Execute trade request: user_id={user_id}, trade_id={trade_id}")
-        
-        if not user_id:
-            return jsonify(create_validation_error("User ID", None, "A valid user ID is required")), 400
-        
-        if not trade_id:
-            return jsonify(create_validation_error("Trade ID", None, "A valid trade ID is required")), 400
-        
         chat_id = int(user_id)
         
-        if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
-            error = TradingError(
-                category=ErrorCategory.VALIDATION_ERROR,
-                severity=ErrorSeverity.MEDIUM,
-                technical_message=f"Trade {trade_id} not found for user {chat_id}",
-                user_message="The trade configuration you're trying to execute was not found.",
-                suggestions=[
-                    "Check that the trade ID is correct",
-                    "Refresh the page to reload your trades",
-                    "Create a new trade configuration if needed"
-                ]
-            )
-            return jsonify(error.to_dict()), 404
+        # Get and validate trade configuration
+        config, error_response, status_code = _get_and_validate_trade_config(chat_id, trade_id)
+        if error_response:
+            return error_response, status_code
         
-        config = user_trade_configs[chat_id][trade_id]
-        
-        # Validate configuration
-        if not config.is_complete():
-            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
-            error = TradingError(
-                category=ErrorCategory.VALIDATION_ERROR,
-                severity=ErrorSeverity.HIGH,
-                technical_message=f"Incomplete trade configuration for {config.symbol}",
-                user_message="Your trade setup is missing some important information.",
-                suggestions=[
-                    "Check that you've set the trading symbol",
-                    "Verify you've selected long or short direction",
-                    "Make sure you've set the trade amount",
-                    "Ensure take profit and stop loss are configured"
-                ]
-            )
-            return jsonify(error.to_dict()), 400
-        
-        # Get current market price from Toobit exchange (where trade will be executed)
+        # Get current market price from exchange (where trade will be executed)
         current_market_price = get_live_market_price(config.symbol, user_id=chat_id, prefer_exchange=True)
         
-        # For limit orders, we'll place them directly on the exchange and let the exchange handle execution
-        # No need to monitor prices manually - the exchange will execute when price is reached
-        
-        # Check if user is in paper trading mode
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id),
-            is_active=True
-        ).first()
-        
-        # Default to paper mode for safety - only use live trading when explicitly disabled
-        # Use centralized trading mode detection
-        is_paper_mode = determine_trading_mode(chat_id)
+        # Set up exchange client and determine trading mode
+        client, is_paper_mode, user_creds, error_response, status_code = _setup_exchange_client_and_mode(chat_id, config)
+        if error_response:
+            return error_response, status_code
         
         execution_success = False
-        client = None  # Initialize client variable
         
         if is_paper_mode:
             # PAPER TRADING MODE - Simulate execution with real price monitoring
             logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
             execution_success = True
-            
-            # Set exchange for paper trading (default to lbank if no credentials)
-            config.exchange = user_creds.exchange_name if user_creds else 'lbank'
             
             # Simulate order placement with paper trading IDs
             mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"
@@ -3496,159 +3675,10 @@ def execute_trade():
             config.exchange_client_order_id = f"paper_client_{mock_order_id}"
             
         else:
-            # REAL TRADING - Execute on Toobit exchange
-            if not user_creds or not user_creds.has_credentials():
-                return jsonify({'error': 'API credentials required for real trading. Please set up your Toobit API keys.'}), 400
-            
-            # Validate credentials and create exchange client
-            client, error_response = _validate_credentials_and_create_client(user_creds, user_id)
-            if error_response is not None:
-                return error_response
-            
-            # Set the exchange name in the config for proper order routing
-            config.exchange = user_creds.exchange_name or 'toobit'
-            
-            try:
-                
-                # Calculate quantity for Toobit futures (contract numbers)
-                # For Toobit: 1 contract = 0.001 BTC, so quantity = (BTC_amount / 0.001)
-                # First calculate BTC position size: (margin * leverage) / price
-                position_value = config.amount * config.leverage
-                btc_amount = position_value / current_market_price
-                # Convert to contract numbers: 1 contract = 0.001 BTC
-                contract_quantity = round(btc_amount / 0.001)
-                position_size = contract_quantity
-                
-                # Set leverage FIRST before placing order
-                logging.info(f"Setting leverage {config.leverage}x for {config.symbol}")
-                leverage_result = client.change_leverage(config.symbol, config.leverage)
-                if not leverage_result:
-                    error_msg = client.get_last_error() or 'Failed to set leverage'
-                    logging.error(f"Failed to set leverage: {error_msg}")
-                    return jsonify({
-                        'error': f'Failed to set leverage: {error_msg}',
-                        'troubleshooting': [
-                            'Check if the symbol supports the specified leverage',
-                            'Verify you have no open positions that would conflict',
-                            'Ensure your account has sufficient margin'
-                        ]
-                    }), 500
-                else:
-                    logging.info(f"Successfully set leverage {config.leverage}x for {config.symbol}")
-                
-                # Determine order type and parameters based on exchange
-                if config.exchange == 'lbank':
-                    # LBank uses simple buy/sell for perpetual futures
-                    order_side = "buy" if config.side == "long" else "sell"
-                    order_type = "limit"  # LBank supports both limit and market
-                else:  # toobit
-                    # Toobit futures requires specific position actions: BUY_OPEN/SELL_OPEN for opening positions
-                    order_side = "BUY_OPEN" if config.side == "long" else "SELL_OPEN"
-                    order_type = "limit"  # Always use LIMIT for Toobit
-                
-                # Convert symbol to exchange format for proper API call
-                if config.exchange == 'lbank':
-                    # For LBank client, use LBank symbol conversion
-                    exchange_symbol = getattr(client, 'convert_to_lbank_symbol', lambda x: x)(config.symbol)
-                    endpoint_info = "/cfd/openApi/v1/prv/order"
-                else:  # toobit
-                    # For Toobit client, use Toobit symbol conversion
-                    exchange_symbol = getattr(client, 'convert_to_toobit_symbol', lambda x: x)(config.symbol)
-                    endpoint_info = "/api/v1/futures/order"
-                
-                logging.info(f"[DEBUG] Will send {config.exchange.upper()} order to: {endpoint_info} with symbol={exchange_symbol}, side={order_side}, quantity={position_size} contracts")
-                
-                if config.entry_type == "market":
-                    # For market execution, use LIMIT order at market price with buffer
-                    market_price_float = float(current_market_price)
-                    # Add small buffer to ensure execution: +0.1% for BUY, -0.1% for SELL
-                    if order_side == "BUY":
-                        exec_price = market_price_float * 1.001  # Slightly above market
-                    else:
-                        exec_price = market_price_float * 0.999  # Slightly below market
-                        
-                    order_params = {
-                        'symbol': config.symbol,
-                        'side': order_side,
-                        'order_type': order_type,
-                        'quantity': str(position_size),
-                        'price': str(exec_price),
-                        'timeInForce': "IOC"  # Immediate or Cancel for market-like behavior
-                    }
-                else:
-                    # Standard limit order
-                    order_params = {
-                        'symbol': config.symbol,
-                        'side': order_side,
-                        'order_type': order_type,
-                        'quantity': str(position_size),
-                        'price': str(config.entry_price),
-                        'timeInForce': "GTC"
-                    }
-                
-                order_result = client.place_order(**order_params)
-                
-                if not order_result:
-                    error_details = {
-                        'client_last_error': getattr(client, 'last_error', None),
-                        'order_params': {
-                            'symbol': config.symbol,
-                            'side': order_side,
-                            'type': order_type,
-                            'quantity_calculated': round(position_size, 6)
-                        }
-                    }
-                    
-                    logging.error(f"Order placement failed: {error_details.get('client_last_error', 'Unknown error')}")
-                    
-                    return jsonify({
-                        'error': 'Failed to place order on exchange. Please check the details below.',
-                        'debug_info': error_details,
-                        'troubleshooting': [
-                            'Check if you have sufficient balance for this trade',
-                            'Verify the symbol is supported on Toobit futures',
-                            'Ensure your position size meets minimum requirements',
-                            'Check if there are any trading restrictions on your account'
-                        ]
-                    }), 500
-                
-                execution_success = True
-                logging.info(f"Order placed on Toobit: {order_result}")
-                
-                # Store exchange order ID
-                config.exchange_order_id = order_result.get('orderId')
-                config.exchange_client_order_id = order_result.get('clientOrderId')
-                
-            except Exception as e:
-                error_details = {
-                    'error_type': type(e).__name__,
-                    'error_message': str(e),
-                    'client_last_error': getattr(client, 'last_error', None) if client else None,
-                    'trade_config': {
-                        'symbol': config.symbol,
-                        'side': config.side,
-                        'amount': config.amount,
-                        'leverage': config.leverage,
-                        'entry_type': config.entry_type
-                    }
-                }
-                
-                logging.error(f"[RENDER TRADING ERROR] Exchange order placement failed: {error_details}")
-                
-                # Import stack trace for detailed debugging
-                import traceback
-                logging.error(f"[RENDER STACK TRACE] {traceback.format_exc()}")
-                
-                return jsonify({
-                    'error': f'Trading execution failed: {str(e)}',
-                    'debug_info': error_details,
-                    'troubleshooting': [
-                        'Check your internet connection',
-                        'Verify your Toobit API credentials are active',
-                        'Ensure you have sufficient account balance',
-                        'Try refreshing the page and attempting the trade again'
-                    ]
-                }), 500
+            # REAL TRADING - Execute on exchange
+            execution_success, error_response, status_code = _execute_real_trading_order(client, config, current_market_price)
+            if not execution_success:
+                return error_response, status_code
         
         # Calculate common values needed for both paper and real trading
         position_value = config.amount * config.leverage
