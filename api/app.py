@@ -3060,17 +3060,21 @@ def api_positions():
     return margin_data()
 
 @app.route('/api/positions/live-update')
-def live_position_update():
-    """Get only current prices and P&L for active positions (lightweight update)"""
+def _validate_and_get_user_id():
+    """Validate and extract user ID from request."""
     user_id = request.args.get('user_id')
     if not user_id or user_id == 'undefined':
         user_id = Environment.DEFAULT_TEST_USER_ID
     
     try:
         chat_id = int(user_id)
+        return chat_id, None
     except ValueError:
-        return jsonify({'error': 'Invalid user ID format'}), 400
-    
+        return None, jsonify({'error': 'Invalid user ID format'}), 400
+
+
+def _handle_environment_sync(user_id, chat_id):
+    """Handle environment-specific synchronization."""
     # For Vercel: Trigger on-demand sync if needed
     if os.environ.get("VERCEL"):
         sync_service = get_vercel_sync_service()
@@ -3083,8 +3087,106 @@ def live_position_update():
     
     # For live updates, ensure user is initialized from cache (no DB hit unless on Render)
     initialize_user_environment(chat_id, force_reload=force_reload)
+
+
+def _check_paper_trading_positions(chat_id):
+    """Check if user has paper trading positions that need full monitoring."""
+    for trade_id, config in user_trade_configs.get(chat_id, {}).items():
+        if config.status == "active" and getattr(config, 'paper_trading_mode', False):
+            return True
+    return False
+
+
+def _select_update_strategy(chat_id):
+    """Select appropriate position update strategy."""
+    has_paper_trades = _check_paper_trading_positions(chat_id)
     
-    # Only proceed if user has trades loaded
+    if has_paper_trades or Environment.IS_RENDER:
+        # Run full position updates for paper trading or Render (includes TP/SL monitoring)
+        update_all_positions_with_live_data(chat_id)
+    else:
+        # Use optimized lightweight monitoring - only checks break-even positions  
+        update_positions_lightweight()
+
+
+def _calculate_position_metrics(config):
+    """Calculate ROE and price change percentage for a position."""
+    roe_percentage = 0.0
+    price_change_percentage = 0.0
+    
+    if config.entry_price and config.current_price and config.entry_price > 0:
+        raw_change = (config.current_price - config.entry_price) / config.entry_price
+        price_change_percentage = raw_change * 100
+        
+        # Apply side adjustment for ROE calculation
+        if config.side == "short":
+            roe_percentage = -raw_change * config.leverage * 100
+        else:
+            roe_percentage = raw_change * config.leverage * 100
+    
+    return round(roe_percentage, 2), round(price_change_percentage, 2)
+
+
+def _build_live_position_data(chat_id):
+    """Build live position data for active and pending positions."""
+    live_data = {}
+    total_unrealized_pnl = 0.0
+    active_positions_count = 0
+    
+    if chat_id not in user_trade_configs:
+        return live_data, total_unrealized_pnl, active_positions_count
+    
+    for trade_id, config in user_trade_configs[chat_id].items():
+        if config.status in ["active", "pending"] and config.symbol:
+            roe_percentage, price_change_percentage = _calculate_position_metrics(config)
+            
+            live_data[trade_id] = {
+                'current_price': config.current_price,
+                'unrealized_pnl': config.unrealized_pnl,
+                'realized_pnl': getattr(config, 'realized_pnl', 0) or 0,
+                'total_pnl': (config.unrealized_pnl or 0) + (getattr(config, 'realized_pnl', 0) or 0),
+                'roe_percentage': roe_percentage,
+                'price_change_percentage': price_change_percentage,
+                'status': config.status
+            }
+            
+            if config.status == "active":
+                total_unrealized_pnl += config.unrealized_pnl
+                active_positions_count += 1
+            elif config.status == "pending":
+                active_positions_count += 1
+    
+    return live_data, total_unrealized_pnl, active_positions_count
+
+
+def _calculate_total_realized_pnl(chat_id):
+    """Calculate total realized P&L from closed and active positions."""
+    total_realized_pnl = 0.0
+    
+    if chat_id not in user_trade_configs:
+        return total_realized_pnl
+    
+    for config in user_trade_configs[chat_id].values():
+        if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
+            total_realized_pnl += config.final_pnl
+        # Also include partial realized P&L from active positions (from partial TPs)
+        elif config.status == "active" and hasattr(config, 'realized_pnl') and config.realized_pnl is not None:
+            total_realized_pnl += config.realized_pnl
+    
+    return total_realized_pnl
+
+
+def live_position_update():
+    """Get only current prices and P&L for active positions (lightweight update)"""
+    # Validate and get user ID
+    chat_id, error_response = _validate_and_get_user_id()
+    if error_response:
+        return error_response
+    
+    # Handle environment-specific synchronization
+    _handle_environment_sync(str(chat_id), chat_id)
+    
+    # Check if user has trades loaded
     if chat_id not in user_trade_configs:
         return jsonify({
             'positions': {},
@@ -3094,67 +3196,14 @@ def live_position_update():
             'update_type': 'live_prices'
         })
     
-    # Check if user has paper trading positions that need full monitoring for TP/SL triggers
-    has_paper_trades = False
-    for trade_id, config in user_trade_configs.get(chat_id, {}).items():
-        if config.status == "active" and getattr(config, 'paper_trading_mode', False):
-            has_paper_trades = True
-            break
+    # Select appropriate update strategy
+    _select_update_strategy(chat_id)
     
-    if has_paper_trades or Environment.IS_RENDER:
-        # Run full position updates for paper trading or Render (includes TP/SL monitoring)
-        update_all_positions_with_live_data(chat_id)
-    else:
-        # Use optimized lightweight monitoring - only checks break-even positions  
-        update_positions_lightweight()
+    # Build live position data
+    live_data, total_unrealized_pnl, active_positions_count = _build_live_position_data(chat_id)
     
-    # Return only essential price and P&L data for fast updates
-    live_data = {}
-    total_unrealized_pnl = 0.0
-    active_positions_count = 0
-    
-    if chat_id in user_trade_configs:
-        for trade_id, config in user_trade_configs[chat_id].items():
-            if config.status in ["active", "pending"] and config.symbol:
-                # Calculate percentage change and ROE
-                roe_percentage = 0.0
-                price_change_percentage = 0.0
-                
-                if config.entry_price and config.current_price and config.entry_price > 0:
-                    raw_change = (config.current_price - config.entry_price) / config.entry_price
-                    price_change_percentage = raw_change * 100
-                    
-                    # Apply side adjustment for ROE calculation
-                    if config.side == "short":
-                        roe_percentage = -raw_change * config.leverage * 100
-                    else:
-                        roe_percentage = raw_change * config.leverage * 100
-                
-                live_data[trade_id] = {
-                    'current_price': config.current_price,
-                    'unrealized_pnl': config.unrealized_pnl,
-                    'realized_pnl': getattr(config, 'realized_pnl', 0) or 0,
-                    'total_pnl': (config.unrealized_pnl or 0) + (getattr(config, 'realized_pnl', 0) or 0),
-                    'roe_percentage': round(roe_percentage, 2),
-                    'price_change_percentage': round(price_change_percentage, 2),
-                    'status': config.status
-                }
-                
-                if config.status == "active":
-                    total_unrealized_pnl += config.unrealized_pnl
-                    active_positions_count += 1
-                elif config.status == "pending":
-                    active_positions_count += 1
-    
-    # Calculate total realized P&L from closed positions for comprehensive total
-    total_realized_pnl = 0.0
-    if chat_id in user_trade_configs:
-        for config in user_trade_configs[chat_id].values():
-            if config.status == "stopped" and hasattr(config, 'final_pnl') and config.final_pnl is not None:
-                total_realized_pnl += config.final_pnl
-            # Also include partial realized P&L from active positions (from partial TPs)
-            elif config.status == "active" and hasattr(config, 'realized_pnl') and config.realized_pnl is not None:
-                total_realized_pnl += config.realized_pnl
+    # Calculate total realized P&L
+    total_realized_pnl = _calculate_total_realized_pnl(chat_id)
     
     # Calculate total P&L (realized + unrealized)
     total_pnl = total_realized_pnl + total_unrealized_pnl
