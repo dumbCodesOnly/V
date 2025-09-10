@@ -6388,6 +6388,158 @@ def _handle_pair_selection_callbacks(callback_data, chat_id):
         return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
     return None
 
+
+def _handle_portfolio_overview(chat_id):
+    """Handle portfolio overview callback with comprehensive portfolio display."""
+    # Update all positions with live market data before displaying
+    update_positions_lightweight()
+    
+    user_trades = user_trade_configs.get(chat_id, {})
+    margin_data = get_margin_summary(chat_id)
+    
+    response = "📊 **PORTFOLIO & MARGIN OVERVIEW**\n"
+    response += "=" * 40 + "\n\n"
+    
+    # Account Summary - Comprehensive View
+    response += "💼 **ACCOUNT SUMMARY**\n"
+    response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
+    response += f"Total Margin Used: ${margin_data['total_margin']:,.2f}\n"
+    response += f"Free Margin: ${margin_data['free_margin']:,.2f}\n"
+    response += f"Floating P&L: ${margin_data['unrealized_pnl']:+,.2f}\n"
+    
+    if margin_data['margin_level'] > 0:
+        response += f"Margin Level: {margin_data['margin_level']:.1f}%\n"
+    else:
+        response += f"Margin Level: ∞ (No positions)\n"
+    response += "\n"
+    
+    # Risk Assessment
+    response += "⚠️ **RISK ASSESSMENT**\n"
+    if margin_data['total_margin'] > 0:
+        margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
+        response += f"Margin Utilization: {margin_ratio:.1f}%\n"
+        
+        if margin_ratio > 80:
+            response += "Risk Level: 🔴 HIGH RISK - Consider reducing positions\n"
+        elif margin_ratio > 50:
+            response += "Risk Level: 🟡 MEDIUM RISK - Monitor closely\n"
+        else:
+            response += "Risk Level: 🟢 LOW RISK - Safe margin levels\n"
+    else:
+        response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
+    response += "\n"
+    
+    # Holdings & Position Details
+    active_positions = [config for config in user_trades.values() if config.status == "active"]
+    configured_positions = [config for config in user_trades.values() if config.status == "configured"]
+    closed_positions = [config for config in user_trades.values() if config.status == "stopped"]
+    
+    response += "📊 **ACTIVE POSITIONS**\n"
+    if active_positions:
+        total_value = sum(config.amount or 0 for config in active_positions)
+        response += f"Count: {len(active_positions)} | Total Value: ${total_value:,.2f}\n"
+        response += "-" * 35 + "\n"
+        
+        for config in active_positions:
+            if config.symbol and config.amount:
+                pnl_emoji = "🟢" if config.unrealized_pnl >= 0 else "🔴"
+                response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
+                response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
+                response += f"   Margin Used: ${config.position_margin:,.2f}\n"
+                response += f"   Entry: ${config.entry_price or 0:.4f} | Current: ${config.current_price:.4f}\n"
+                response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n\n"
+    else:
+        response += "No active positions\n\n"
+    
+    # Add configured and closed position summaries
+    if configured_positions:
+        response += "📋 **CONFIGURED POSITIONS**\n"
+        response += f"Ready to Execute: {len(configured_positions)}\n"
+        for config in configured_positions:
+            if config.symbol:
+                response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
+        response += "\n"
+    
+    # Closed positions history (limited to last 5)
+    if closed_positions:
+        response += "📚 **CLOSED POSITIONS HISTORY**\n"
+        response += f"Total Closed: {len(closed_positions)}\n"
+        response += "-" * 35 + "\n"
+        
+        for config in closed_positions[-5:]:  # Show last 5 closed positions
+            if config.symbol and config.amount:
+                # Get final PnL from bot_trades
+                closed_trade = next((trade for trade in bot_trades if trade.get('trade_id') == config.trade_id and trade.get('user_id') == str(chat_id)), None)
+                final_pnl = closed_trade.get('final_pnl', 0) if closed_trade else 0
+                pnl_emoji = "🟢" if final_pnl >= 0 else "🔴"
+                
+                response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
+                response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
+                response += f"   Entry: ${config.entry_price or 0:.4f}\n"
+                response += f"   Final P&L: ${final_pnl:+,.2f}\n"
+                
+                # Add timestamp if available
+                if closed_trade and 'timestamp' in closed_trade:
+                    timestamp = datetime.fromisoformat(closed_trade['timestamp'])
+                    iran_time = utc_to_iran_time(timestamp)
+                    if iran_time:
+                        response += f"   Closed: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n"
+                response += "\n"
+        
+        if len(closed_positions) > 5:
+            response += f"... and {len(closed_positions) - 5} more closed positions\n\n"
+    else:
+        response += "📚 **CLOSED POSITIONS HISTORY**\n"
+        response += "No closed positions yet\n\n"
+    
+    # Portfolio Statistics
+    all_positions = len(user_trades)
+    if all_positions > 0:
+        response += "📈 **PORTFOLIO STATISTICS**\n"
+        response += f"Total Positions: {all_positions} | Active: {len(active_positions)} | Configured: {len(configured_positions)}\n"
+        
+        # Calculate portfolio diversity
+        symbols = set(config.symbol for config in user_trades.values() if config.symbol)
+        response += f"Unique Symbols: {len(symbols)}\n"
+        
+        # Symbol breakdown for active positions
+        if active_positions:
+            symbol_breakdown = {}
+            for config in active_positions:
+                if config.symbol:
+                    if config.symbol not in symbol_breakdown:
+                        symbol_breakdown[config.symbol] = 0
+                    symbol_breakdown[config.symbol] += 1
+            
+            if len(symbol_breakdown) > 1:
+                response += "Symbol Distribution: "
+                response += " | ".join([f"{sym}({count})" for sym, count in sorted(symbol_breakdown.items())])
+                response += "\n"
+    
+    return response, get_portfolio_menu()
+
+
+def _handle_quick_price_check():
+    """Handle quick price check callback."""
+    response = "💰 Live Price Check:\n\n"
+    symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT"]
+    for symbol in symbols:
+        try:
+            price = get_live_market_price(symbol)
+            response += f"{symbol}: ${price:.4f}\n"
+        except Exception as e:
+            logging.error(f"Error fetching live price for {symbol}: {e}")
+            response += f"{symbol}: ❌ Price unavailable\n"
+    
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "🔄 Refresh Prices", "callback_data": "quick_price"}],
+            [{"text": "💱 Select Pair for Trading", "callback_data": "select_pair"}],
+            [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
+        ]
+    }
+    return response, keyboard
+
 def handle_callback_query(callback_data, chat_id, user):
     """Handle callback query from inline keyboard - refactored for better maintainability"""
     try:
@@ -6405,176 +6557,10 @@ def handle_callback_query(callback_data, chat_id, user):
         result = _handle_pair_selection_callbacks(callback_data, chat_id)
         if result:
             return result
-
         
-        # Trading pair selection
-        elif callback_data.startswith("pair_"):
-            pair = callback_data.replace("pair_", "").replace("_", "/")
-            symbol = pair.replace("/", "")
-            try:
-                price = get_live_market_price(symbol)
-            except Exception as e:
-                logging.error(f"Error fetching live price for {symbol}: {e}")
-                return f"❌ Could not fetch live price for {pair}. Please try again.", get_pairs_menu()
-            
-            if price:
-                # Set the symbol in the current trade if one is selected
-                if chat_id in user_selected_trade:
-                    trade_id = user_selected_trade[chat_id]
-                    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                        config = user_trade_configs[chat_id][trade_id]
-                        config.symbol = symbol
-                        
-                        # Directly go to trading menu after selecting pair
-                        response = f"✅ Selected trading pair: {pair}\n💰 Current Price: ${price:.4f}\n\n📊 Configure your trade below:"
-                        return response, get_trading_menu(chat_id)
-                else:
-                    # If no trade is selected, show the basic pair info and trading menu
-                    response = f"💰 {pair} Current Price: ${price:.4f}\n\n📊 Use the trading menu to configure your trade:"
-                    return response, get_trading_menu(chat_id)
-            else:
-                return f"❌ Could not fetch price for {pair}", get_pairs_menu()
-        
-        # Set symbol for current trade (keeping this for compatibility)
-        elif callback_data.startswith("set_symbol_"):
-            symbol = callback_data.replace("set_symbol_", "")
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    config.symbol = symbol
-                    return f"✅ Set symbol to {symbol}", get_trading_menu(chat_id)
-            return "❌ No trade selected. Please create or select a trade first.", get_trading_menu(chat_id)
-        
-        # Portfolio handlers - Unified Portfolio & Margin Overview
+        # Portfolio handlers - use helper function
         elif callback_data == "portfolio_overview":
-            # Update all positions with live market data before displaying
-            # Use optimized lightweight monitoring - dramatically reduces server load
-            update_positions_lightweight()
-            
-            user_trades = user_trade_configs.get(chat_id, {})
-            margin_data = get_margin_summary(chat_id)
-            
-            response = "📊 **PORTFOLIO & MARGIN OVERVIEW**\n"
-            response += "=" * 40 + "\n\n"
-            
-            # Account Summary - Comprehensive View
-            response += "💼 **ACCOUNT SUMMARY**\n"
-            response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
-            response += f"Total Margin Used: ${margin_data['total_margin']:,.2f}\n"
-            response += f"Free Margin: ${margin_data['free_margin']:,.2f}\n"
-            response += f"Floating P&L: ${margin_data['unrealized_pnl']:+,.2f}\n"
-            
-            if margin_data['margin_level'] > 0:
-                response += f"Margin Level: {margin_data['margin_level']:.1f}%\n"
-            else:
-                response += f"Margin Level: ∞ (No positions)\n"
-            response += "\n"
-            
-            # Risk Assessment
-            response += "⚠️ **RISK ASSESSMENT**\n"
-            if margin_data['total_margin'] > 0:
-                margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
-                response += f"Margin Utilization: {margin_ratio:.1f}%\n"
-                
-                if margin_ratio > 80:
-                    response += "Risk Level: 🔴 HIGH RISK - Consider reducing positions\n"
-                elif margin_ratio > 50:
-                    response += "Risk Level: 🟡 MEDIUM RISK - Monitor closely\n"
-                else:
-                    response += "Risk Level: 🟢 LOW RISK - Safe margin levels\n"
-            else:
-                response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
-            response += "\n"
-            
-            # Holdings & Position Details
-            active_positions = [config for config in user_trades.values() if config.status == "active"]
-            configured_positions = [config for config in user_trades.values() if config.status == "configured"]
-            closed_positions = [config for config in user_trades.values() if config.status == "stopped"]
-            
-            response += "📊 **ACTIVE POSITIONS**\n"
-            if active_positions:
-                total_value = sum(config.amount or 0 for config in active_positions)
-                response += f"Count: {len(active_positions)} | Total Value: ${total_value:,.2f}\n"
-                response += "-" * 35 + "\n"
-                
-                for config in active_positions:
-                    if config.symbol and config.amount:
-                        pnl_emoji = "🟢" if config.unrealized_pnl >= 0 else "🔴"
-                        response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
-                        response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
-                        response += f"   Margin Used: ${config.position_margin:,.2f}\n"
-                        response += f"   Entry: ${config.entry_price or 0:.4f} | Current: ${config.current_price:.4f}\n"
-                        response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n\n"
-            else:
-                response += "No active positions\n\n"
-            
-            # Configured Positions Summary
-            if configured_positions:
-                response += "📋 **CONFIGURED POSITIONS**\n"
-                response += f"Ready to Execute: {len(configured_positions)}\n"
-                for config in configured_positions:
-                    if config.symbol:
-                        response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
-                response += "\n"
-            
-            # Closed Positions History
-            if closed_positions:
-                response += "📚 **CLOSED POSITIONS HISTORY**\n"
-                response += f"Total Closed: {len(closed_positions)}\n"
-                response += "-" * 35 + "\n"
-                
-                for config in closed_positions[-5:]:  # Show last 5 closed positions
-                    if config.symbol and config.amount:
-                        # Get final PnL from bot_trades
-                        closed_trade = next((trade for trade in bot_trades if trade.get('trade_id') == config.trade_id and trade.get('user_id') == str(chat_id)), None)
-                        final_pnl = closed_trade.get('final_pnl', 0) if closed_trade else 0
-                        pnl_emoji = "🟢" if final_pnl >= 0 else "🔴"
-                        
-                        response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
-                        response += f"   Amount: ${config.amount:,.2f} | Leverage: {config.leverage}x\n"
-                        response += f"   Entry: ${config.entry_price or 0:.4f}\n"
-                        response += f"   Final P&L: ${final_pnl:+,.2f}\n"
-                        
-                        # Add timestamp if available
-                        if closed_trade and 'timestamp' in closed_trade:
-                            timestamp = datetime.fromisoformat(closed_trade['timestamp'])
-                            iran_time = utc_to_iran_time(timestamp)
-                            if iran_time:
-                                response += f"   Closed: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n"
-                        response += "\n"
-                
-                if len(closed_positions) > 5:
-                    response += f"... and {len(closed_positions) - 5} more closed positions\n\n"
-            else:
-                response += "📚 **CLOSED POSITIONS HISTORY**\n"
-                response += "No closed positions yet\n\n"
-            
-            # Portfolio Statistics
-            all_positions = len(user_trades)
-            if all_positions > 0:
-                response += "📈 **PORTFOLIO STATISTICS**\n"
-                response += f"Total Positions: {all_positions} | Active: {len(active_positions)} | Configured: {len(configured_positions)}\n"
-                
-                # Calculate portfolio diversity
-                symbols = set(config.symbol for config in user_trades.values() if config.symbol)
-                response += f"Unique Symbols: {len(symbols)}\n"
-                
-                # Symbol breakdown for active positions
-                if active_positions:
-                    symbol_breakdown = {}
-                    for config in active_positions:
-                        if config.symbol:
-                            if config.symbol not in symbol_breakdown:
-                                symbol_breakdown[config.symbol] = 0
-                            symbol_breakdown[config.symbol] += 1
-                    
-                    if len(symbol_breakdown) > 1:
-                        response += "Symbol Distribution: "
-                        response += " | ".join([f"{sym}({count})" for sym, count in sorted(symbol_breakdown.items())])
-                        response += "\n"
-            
-            return response, get_portfolio_menu()
+            return _handle_portfolio_overview(chat_id)
         elif callback_data == "recent_trades":
             user_trades = user_trade_configs.get(chat_id, {})
             executed_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
@@ -6715,26 +6701,9 @@ def handle_callback_query(callback_data, chat_id, user):
             
             return response, get_portfolio_menu()
         
-        # Quick price check
+        # Quick price check - use helper function  
         elif callback_data == "quick_price":
-            response = "💰 Live Price Check:\n\n"
-            symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT"]
-            for symbol in symbols:
-                try:
-                    price = get_live_market_price(symbol)
-                    response += f"{symbol}: ${price:.4f}\n"
-                except Exception as e:
-                    logging.error(f"Error fetching live price for {symbol}: {e}")
-                    response += f"{symbol}: ❌ Price unavailable\n"
-            
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔄 Refresh Prices", "callback_data": "quick_price"}],
-                    [{"text": "💱 Select Pair for Trading", "callback_data": "select_pair"}],
-                    [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}]
-                ]
-            }
-            return response, keyboard
+            return _handle_quick_price_check()
         
         # Multi-trade management handlers
         elif callback_data == "menu_positions":
