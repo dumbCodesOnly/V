@@ -6926,6 +6926,68 @@ def _handle_portfolio_callbacks(callback_data, chat_id, user):
     return None
 
 
+def _format_executed_trades_section(executed_trades):
+    """Format executed trades section for recent trades display."""
+    if not executed_trades:
+        return ""
+    
+    section = "✅ **EXECUTED TRADES**\n"
+    for trade in executed_trades[-5:]:  # Last 5 executed
+        status_emoji = "✅" if trade['status'] == "executed" else "⏳"
+        section += f"{status_emoji} {trade['action'].upper()} {trade['symbol']}\n"
+        section += f"   Quantity: {trade['quantity']:.4f}\n"
+        section += f"   Price: ${trade['price']:.4f}\n"
+        if 'leverage' in trade:
+            section += f"   Leverage: {trade['leverage']}x\n"
+        timestamp = datetime.fromisoformat(trade['timestamp'])
+        iran_time = utc_to_iran_time(timestamp)
+        if iran_time:
+            section += f"   Time: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n\n"
+    return section
+
+
+def _format_active_positions_section(active_positions):
+    """Format active positions section for recent trades display."""
+    if not active_positions:
+        return ""
+    
+    section = f"🟢 Active ({len(active_positions)}):\n"
+    for config in active_positions:
+        if config.symbol:
+            pnl_info = ""
+            if hasattr(config, 'unrealized_pnl') and config.unrealized_pnl != 0:
+                pnl_emoji = "📈" if config.unrealized_pnl >= 0 else "📉"
+                pnl_info = f" {pnl_emoji} ${config.unrealized_pnl:+.2f}"
+            section += f"   • {config.symbol} {config.side.upper()}: ${config.amount or 0:,.2f}{pnl_info}\n"
+    section += "\n"
+    return section
+
+
+def _format_configured_positions_section(configured_positions):
+    """Format configured positions section for recent trades display."""
+    if not configured_positions:
+        return ""
+    
+    section = f"🟡 Ready to Execute ({len(configured_positions)}):\n"
+    for config in configured_positions:
+        if config.symbol:
+            section += f"   • {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
+    section += "\n"
+    return section
+
+
+def _format_trading_summary(total_executed, total_positions):
+    """Format trading summary section for recent trades display."""
+    section = "📋 **TRADING SUMMARY**\n"
+    section += f"Total Executed Trades: {total_executed}\n"
+    section += f"Total Positions Created: {total_positions}\n"
+    
+    if total_executed == 0 and total_positions == 0:
+        section += "\n💡 No trading activity yet. Create your first position to get started!"
+    
+    return section
+
+
 def _handle_recent_trades_callback(chat_id, user):
     """Handle recent trades callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
@@ -6934,55 +6996,21 @@ def _handle_recent_trades_callback(chat_id, user):
     response = "📈 **RECENT TRADING ACTIVITY**\n"
     response += "=" * 35 + "\n\n"
     
-    # Show executed trades from bot_trades
-    if executed_trades:
-        response += "✅ **EXECUTED TRADES**\n"
-        for trade in executed_trades[-5:]:  # Last 5 executed
-            status_emoji = "✅" if trade['status'] == "executed" else "⏳"
-            response += f"{status_emoji} {trade['action'].upper()} {trade['symbol']}\n"
-            response += f"   Quantity: {trade['quantity']:.4f}\n"
-            response += f"   Price: ${trade['price']:.4f}\n"
-            if 'leverage' in trade:
-                response += f"   Leverage: {trade['leverage']}x\n"
-            timestamp = datetime.fromisoformat(trade['timestamp'])
-            iran_time = utc_to_iran_time(timestamp)
-            if iran_time:
-                response += f"   Time: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n\n"
+    # Add sections using helper functions
+    response += _format_executed_trades_section(executed_trades)
     
-    # Show current position status
     if user_trades:
         response += "📊 **CURRENT POSITIONS**\n"
         active_positions = [config for config in user_trades.values() if config.status == "active"]
         configured_positions = [config for config in user_trades.values() if config.status == "configured"]
         
-        if active_positions:
-            response += f"🟢 Active ({len(active_positions)}):\n"
-            for config in active_positions:
-                if config.symbol:
-                    pnl_info = ""
-                    if hasattr(config, 'unrealized_pnl') and config.unrealized_pnl != 0:
-                        pnl_emoji = "📈" if config.unrealized_pnl >= 0 else "📉"
-                        pnl_info = f" {pnl_emoji} ${config.unrealized_pnl:+.2f}"
-                    response += f"   • {config.symbol} {config.side.upper()}: ${config.amount or 0:,.2f}{pnl_info}\n"
-            response += "\n"
-        
-        if configured_positions:
-            response += f"🟡 Ready to Execute ({len(configured_positions)}):\n"
-            for config in configured_positions:
-                if config.symbol:
-                    response += f"   • {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
-            response += "\n"
+        response += _format_active_positions_section(active_positions)
+        response += _format_configured_positions_section(configured_positions)
     
-    # Trading summary
+    # Add trading summary
     total_executed = len(executed_trades)
     total_positions = len(user_trades)
-    
-    response += "📋 **TRADING SUMMARY**\n"
-    response += f"Total Executed Trades: {total_executed}\n"
-    response += f"Total Positions Created: {total_positions}\n"
-    
-    if total_executed == 0 and total_positions == 0:
-        response += "\n💡 No trading activity yet. Create your first position to get started!"
+    response += _format_trading_summary(total_executed, total_positions)
     
     return response, get_portfolio_menu()
 
