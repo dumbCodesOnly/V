@@ -20,3 +20,21 @@ pip-audit>=2.9.0
 
 # Code formatting and security tools
 black>=25.1.0
+email_validator
+flask
+flask-sqlalchemy
+gunicorn
+psycopg2-binary
+aiohttp
+cryptography
+email-validator
+flask
+flask-sqlalchemy
+gunicorn
+hyperliquid-python-sdk
+psycopg2-binary
+pycryptodome
+python-telegram-bot
+requests
+sqlalchemy
+werkzeug
