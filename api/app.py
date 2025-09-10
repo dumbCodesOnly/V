@@ -6426,19 +6426,9 @@ def _handle_pair_selection_callbacks(callback_data, chat_id):
     return None
 
 
-def _handle_portfolio_overview(chat_id):
-    """Handle portfolio overview callback with comprehensive portfolio display."""
-    # Update all positions with live market data before displaying
-    update_positions_lightweight()
-    
-    user_trades = user_trade_configs.get(chat_id, {})
-    margin_data = get_margin_summary(chat_id)
-    
-    response = "📊 **PORTFOLIO & MARGIN OVERVIEW**\n"
-    response += "=" * 40 + "\n\n"
-    
-    # Account Summary - Comprehensive View
-    response += "💼 **ACCOUNT SUMMARY**\n"
+def _format_account_summary(margin_data):
+    """Format account summary section."""
+    response = "💼 **ACCOUNT SUMMARY**\n"
     response += f"Account Balance: ${margin_data['account_balance']:,.2f}\n"
     response += f"Total Margin Used: ${margin_data['total_margin']:,.2f}\n"
     response += f"Free Margin: ${margin_data['free_margin']:,.2f}\n"
@@ -6449,9 +6439,12 @@ def _handle_portfolio_overview(chat_id):
     else:
         response += f"Margin Level: ∞ (No positions)\n"
     response += "\n"
-    
-    # Risk Assessment
-    response += "⚠️ **RISK ASSESSMENT**\n"
+    return response
+
+
+def _format_risk_assessment(margin_data):
+    """Format risk assessment section."""
+    response = "⚠️ **RISK ASSESSMENT**\n"
     if margin_data['total_margin'] > 0:
         margin_ratio = margin_data['total_margin'] / margin_data['account_balance'] * 100
         response += f"Margin Utilization: {margin_ratio:.1f}%\n"
@@ -6465,13 +6458,12 @@ def _handle_portfolio_overview(chat_id):
     else:
         response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
     response += "\n"
-    
-    # Holdings & Position Details
-    active_positions = [config for config in user_trades.values() if config.status == "active"]
-    configured_positions = [config for config in user_trades.values() if config.status == "configured"]
-    closed_positions = [config for config in user_trades.values() if config.status == "stopped"]
-    
-    response += "📊 **ACTIVE POSITIONS**\n"
+    return response
+
+
+def _format_active_positions(active_positions):
+    """Format active positions section."""
+    response = "📊 **ACTIVE POSITIONS**\n"
     if active_positions:
         total_value = sum(config.amount or 0 for config in active_positions)
         response += f"Count: {len(active_positions)} | Total Value: ${total_value:,.2f}\n"
@@ -6487,19 +6479,27 @@ def _handle_portfolio_overview(chat_id):
                 response += f"   P&L: ${config.unrealized_pnl:+,.2f}\n\n"
     else:
         response += "No active positions\n\n"
+    return response
+
+
+def _format_configured_positions(configured_positions):
+    """Format configured positions section."""
+    if not configured_positions:
+        return ""
     
-    # Add configured and closed position summaries
-    if configured_positions:
-        response += "📋 **CONFIGURED POSITIONS**\n"
-        response += f"Ready to Execute: {len(configured_positions)}\n"
-        for config in configured_positions:
-            if config.symbol:
-                response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
-        response += "\n"
-    
-    # Closed positions history (limited to last 5)
+    response = "📋 **CONFIGURED POSITIONS**\n"
+    response += f"Ready to Execute: {len(configured_positions)}\n"
+    for config in configured_positions:
+        if config.symbol:
+            response += f"• {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
+    response += "\n"
+    return response
+
+
+def _format_closed_positions_history(closed_positions, chat_id):
+    """Format closed positions history section."""
     if closed_positions:
-        response += "📚 **CLOSED POSITIONS HISTORY**\n"
+        response = "📚 **CLOSED POSITIONS HISTORY**\n"
         response += f"Total Closed: {len(closed_positions)}\n"
         response += "-" * 35 + "\n"
         
@@ -6526,32 +6526,62 @@ def _handle_portfolio_overview(chat_id):
         if len(closed_positions) > 5:
             response += f"... and {len(closed_positions) - 5} more closed positions\n\n"
     else:
-        response += "📚 **CLOSED POSITIONS HISTORY**\n"
+        response = "📚 **CLOSED POSITIONS HISTORY**\n"
         response += "No closed positions yet\n\n"
-    
-    # Portfolio Statistics
+    return response
+
+
+def _format_portfolio_statistics(user_trades, active_positions, configured_positions):
+    """Format portfolio statistics section."""
     all_positions = len(user_trades)
-    if all_positions > 0:
-        response += "📈 **PORTFOLIO STATISTICS**\n"
-        response += f"Total Positions: {all_positions} | Active: {len(active_positions)} | Configured: {len(configured_positions)}\n"
+    if all_positions == 0:
+        return ""
+    
+    response = "📈 **PORTFOLIO STATISTICS**\n"
+    response += f"Total Positions: {all_positions} | Active: {len(active_positions)} | Configured: {len(configured_positions)}\n"
+    
+    # Calculate portfolio diversity
+    symbols = set(config.symbol for config in user_trades.values() if config.symbol)
+    response += f"Unique Symbols: {len(symbols)}\n"
+    
+    # Symbol breakdown for active positions
+    if active_positions:
+        symbol_breakdown = {}
+        for config in active_positions:
+            if config.symbol:
+                symbol_breakdown[config.symbol] = symbol_breakdown.get(config.symbol, 0) + 1
         
-        # Calculate portfolio diversity
-        symbols = set(config.symbol for config in user_trades.values() if config.symbol)
-        response += f"Unique Symbols: {len(symbols)}\n"
-        
-        # Symbol breakdown for active positions
-        if active_positions:
-            symbol_breakdown = {}
-            for config in active_positions:
-                if config.symbol:
-                    if config.symbol not in symbol_breakdown:
-                        symbol_breakdown[config.symbol] = 0
-                    symbol_breakdown[config.symbol] += 1
-            
-            if len(symbol_breakdown) > 1:
-                response += "Symbol Distribution: "
-                response += " | ".join([f"{sym}({count})" for sym, count in sorted(symbol_breakdown.items())])
-                response += "\n"
+        if len(symbol_breakdown) > 1:
+            response += "Symbol Distribution: "
+            response += " | ".join([f"{sym}({count})" for sym, count in sorted(symbol_breakdown.items())])
+            response += "\n"
+    
+    return response
+
+
+def _handle_portfolio_overview(chat_id):
+    """Handle portfolio overview callback with comprehensive portfolio display."""
+    # Update all positions with live market data before displaying
+    update_positions_lightweight()
+    
+    user_trades = user_trade_configs.get(chat_id, {})
+    margin_data = get_margin_summary(chat_id)
+    
+    # Categorize positions
+    active_positions = [config for config in user_trades.values() if config.status == "active"]
+    configured_positions = [config for config in user_trades.values() if config.status == "configured"]
+    closed_positions = [config for config in user_trades.values() if config.status == "stopped"]
+    
+    # Build response using helper functions
+    response = "📊 **PORTFOLIO & MARGIN OVERVIEW**\n"
+    response += "=" * 40 + "\n\n"
+    
+    response += _format_account_summary(margin_data)
+    response += _format_risk_assessment(margin_data)
+    response += _format_active_positions(active_positions)
+    response += _format_configured_positions(configured_positions)
+    response += _format_closed_positions_history(closed_positions, chat_id)
+    response += _format_portfolio_statistics(user_trades, active_positions, configured_positions)
     
     return response, get_portfolio_menu()
 
