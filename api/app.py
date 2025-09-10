@@ -7674,89 +7674,148 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
 # OPTIMIZED TRADING SYSTEM - Exchange-Native Orders with Lightweight Monitoring
 # ============================================================================
 
+def _validate_paper_trading_data(config, user_id, trade_id):
+    """Validate paper trading position data."""
+    logging.debug(f"[RENDER PAPER DEBUG] Processing position for user {user_id}, trade {trade_id}")
+    
+    if not config.entry_price or not config.current_price:
+        logging.warning(f"[RENDER PAPER] Missing price data - Entry: {getattr(config, 'entry_price', None)}, Current: {getattr(config, 'current_price', None)}")
+        return False
+    
+    return True
+
+
+def _calculate_paper_pnl(config):
+    """Calculate unrealized P&L for paper trading position."""
+    try:
+        config.unrealized_pnl = calculate_unrealized_pnl(
+            config.entry_price, config.current_price,
+            config.amount, config.leverage, config.side
+        )
+        logging.debug(f"[RENDER PAPER] P&L calculated: ${config.unrealized_pnl:.2f} for {config.symbol}")
+        return True
+    except Exception as pnl_error:
+        logging.error(f"[RENDER PAPER ERROR] Failed to calculate P&L: {pnl_error}")
+        return False
+
+
+def _check_paper_breakeven_stop_loss(config):
+    """Check if break-even stop loss should be triggered."""
+    if not (hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered):
+        return False
+    
+    price_tolerance = 0.0001  # 0.01% tolerance for floating point precision
+    
+    if config.side == "long" and config.current_price <= (config.entry_price * (1 - price_tolerance)):
+        logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} LONG - Current: ${config.current_price:.4f} <= Entry: ${config.entry_price:.4f}")
+        return True
+    elif config.side == "short" and config.current_price >= (config.entry_price * (1 + price_tolerance)):
+        logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} SHORT - Current: ${config.current_price:.4f} >= Entry: ${config.entry_price:.4f}")
+        return True
+    
+    return False
+
+
+def _check_paper_regular_stop_loss(config):
+    """Check if regular stop loss should be triggered."""
+    if config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
+        loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
+        return loss_percentage >= config.stop_loss_percent
+    
+    return False
+
+
+def _check_paper_stop_loss(config, user_id, trade_id):
+    """Check if any stop loss condition is met."""
+    if not (hasattr(config, 'paper_sl_data') and not config.paper_sl_data.get('triggered', False)):
+        return False
+    
+    # Check break-even stop loss first
+    if _check_paper_breakeven_stop_loss(config):
+        execute_paper_stop_loss(user_id, trade_id, config)
+        return True
+    
+    # Check regular stop loss
+    if _check_paper_regular_stop_loss(config):
+        execute_paper_stop_loss(user_id, trade_id, config)
+        return True
+    
+    return False
+
+
+def _check_paper_take_profits(config, user_id, trade_id):
+    """Check if any take profit levels should be triggered."""
+    if not (hasattr(config, 'paper_tp_levels') and config.unrealized_pnl > 0):
+        return
+    
+    profit_percentage = (config.unrealized_pnl / config.amount) * 100
+    
+    # Check each TP level (in order)
+    for i, tp_level in enumerate(config.paper_tp_levels):
+        if not tp_level.get('triggered', False) and profit_percentage >= tp_level['percentage']:
+            execute_paper_take_profit(user_id, trade_id, config, i, tp_level)
+            break  # Only trigger one TP at a time
+
+
+def _calculate_breakeven_threshold(config):
+    """Calculate the breakeven threshold based on configuration."""
+    breakeven_threshold = 0
+    
+    # Handle different breakeven trigger types
+    if isinstance(config.breakeven_after, (int, float)):
+        breakeven_threshold = config.breakeven_after
+    elif str(config.breakeven_after).lower() == "tp1":
+        # Check if first TP has been triggered by looking at paper_tp_levels
+        if hasattr(config, 'paper_tp_levels') and config.paper_tp_levels:
+            first_tp = config.paper_tp_levels[0]
+            if first_tp.get('triggered', False):
+                breakeven_threshold = first_tp.get('percentage', 0)
+            else:
+                # TP1 not triggered yet, don't activate breakeven
+                breakeven_threshold = 0
+        elif hasattr(config, 'take_profits') and config.take_profits:
+            # Fallback to original TP configuration
+            breakeven_threshold = config.take_profits[0].get('percentage', 0)
+    
+    return breakeven_threshold
+
+
+def _check_paper_breakeven_trigger(config, user_id):
+    """Check if break-even should be triggered."""
+    if not (hasattr(config, 'breakeven_after') and config.breakeven_after and 
+            not getattr(config, 'breakeven_sl_triggered', False) and config.unrealized_pnl > 0):
+        return
+    
+    profit_percentage = (config.unrealized_pnl / config.amount) * 100
+    breakeven_threshold = _calculate_breakeven_threshold(config)
+    
+    if breakeven_threshold > 0 and profit_percentage >= breakeven_threshold:
+        config.breakeven_sl_triggered = True
+        config.breakeven_sl_price = config.entry_price
+        save_trade_to_db(user_id, config)
+        logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} at {profit_percentage:.2f}% profit - SL moved to entry price")
+
+
 def process_paper_trading_position(user_id, trade_id, config):
     """Enhanced paper trading monitoring with real price-based TP/SL simulation"""
     try:
-        # Enhanced logging for Render paper trading debugging
-        logging.debug(f"[RENDER PAPER DEBUG] Processing position for user {user_id}, trade {trade_id}")
-        
-        if not config.entry_price or not config.current_price:
-            logging.warning(f"[RENDER PAPER] Missing price data - Entry: {getattr(config, 'entry_price', None)}, Current: {getattr(config, 'current_price', None)}")
+        # Validate paper trading data
+        if not _validate_paper_trading_data(config, user_id, trade_id):
             return
         
         # Calculate unrealized P&L
-        try:
-            config.unrealized_pnl = calculate_unrealized_pnl(
-                config.entry_price, config.current_price,
-                config.amount, config.leverage, config.side
-            )
-            logging.debug(f"[RENDER PAPER] P&L calculated: ${config.unrealized_pnl:.2f} for {config.symbol}")
-        except Exception as pnl_error:
-            logging.error(f"[RENDER PAPER ERROR] Failed to calculate P&L: {pnl_error}")
+        if not _calculate_paper_pnl(config):
             return
         
-        # Check paper trading stop loss
-        if hasattr(config, 'paper_sl_data') and not config.paper_sl_data.get('triggered', False):
-            stop_loss_triggered = False
-            
-            # Check break-even stop loss first
-            if hasattr(config, 'breakeven_sl_triggered') and config.breakeven_sl_triggered:
-                # FIXED: Correct breakeven logic - trigger when price moves against position from entry
-                price_tolerance = 0.0001  # 0.01% tolerance for floating point precision
-                if config.side == "long" and config.current_price <= (config.entry_price * (1 - price_tolerance)):
-                    stop_loss_triggered = True
-                    logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} LONG - Current: ${config.current_price:.4f} <= Entry: ${config.entry_price:.4f}")
-                elif config.side == "short" and config.current_price >= (config.entry_price * (1 + price_tolerance)):
-                    stop_loss_triggered = True
-                    logging.info(f"BREAKEVEN SL TRIGGERED: {config.symbol} SHORT - Current: ${config.current_price:.4f} >= Entry: ${config.entry_price:.4f}")
-            # Check regular stop loss
-            elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
-                loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
-                if loss_percentage >= config.stop_loss_percent:
-                    stop_loss_triggered = True
-            
-            if stop_loss_triggered:
-                execute_paper_stop_loss(user_id, trade_id, config)
-                return  # Position closed, no further processing
+        # Check paper trading stop loss - exit early if triggered
+        if _check_paper_stop_loss(config, user_id, trade_id):
+            return  # Position closed, no further processing
         
         # Check paper trading take profits
-        if hasattr(config, 'paper_tp_levels') and config.unrealized_pnl > 0:
-            profit_percentage = (config.unrealized_pnl / config.amount) * 100
-            
-            # Check each TP level (in order)
-            for i, tp_level in enumerate(config.paper_tp_levels):
-                if not tp_level.get('triggered', False) and profit_percentage >= tp_level['percentage']:
-                    execute_paper_take_profit(user_id, trade_id, config, i, tp_level)
-                    break  # Only trigger one TP at a time
+        _check_paper_take_profits(config, user_id, trade_id)
         
-        # FIXED: Check break-even trigger for paper trades - improved logic
-        if (hasattr(config, 'breakeven_after') and config.breakeven_after and 
-            not getattr(config, 'breakeven_sl_triggered', False) and config.unrealized_pnl > 0):
-            
-            profit_percentage = (config.unrealized_pnl / config.amount) * 100
-            breakeven_threshold = 0
-            
-            # Handle different breakeven trigger types
-            if isinstance(config.breakeven_after, (int, float)):
-                breakeven_threshold = config.breakeven_after
-            elif str(config.breakeven_after).lower() == "tp1":
-                # Check if first TP has been triggered by looking at paper_tp_levels
-                if hasattr(config, 'paper_tp_levels') and config.paper_tp_levels:
-                    first_tp = config.paper_tp_levels[0]
-                    if first_tp.get('triggered', False):
-                        breakeven_threshold = first_tp.get('percentage', 0)
-                    else:
-                        # TP1 not triggered yet, don't activate breakeven
-                        breakeven_threshold = 0
-                elif hasattr(config, 'take_profits') and config.take_profits:
-                    # Fallback to original TP configuration
-                    breakeven_threshold = config.take_profits[0].get('percentage', 0)
-            
-            if breakeven_threshold > 0 and profit_percentage >= breakeven_threshold:
-                config.breakeven_sl_triggered = True
-                config.breakeven_sl_price = config.entry_price
-                save_trade_to_db(user_id, config)
-                logging.info(f"Paper Trading: Break-even triggered for {config.symbol} {config.side} at {profit_percentage:.2f}% profit - SL moved to entry price")
+        # Check break-even trigger
+        _check_paper_breakeven_trigger(config, user_id)
         
     except Exception as e:
         logging.error(f"[RENDER PAPER ERROR] Paper trading position processing failed for {getattr(config, 'symbol', 'unknown')}: {e}")
