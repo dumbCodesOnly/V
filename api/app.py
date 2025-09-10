@@ -4634,119 +4634,177 @@ def close_trade():
         logging.error(f"Error closing trade: {str(e)}")
         return jsonify({'error': 'Failed to close trade'}), 500
 
+def _validate_close_all_trades_request(data):
+    """Validate close all trades request data."""
+    user_id = data.get('user_id')
+    
+    if not user_id:
+        return None, jsonify({'error': 'User ID required'}), 400
+    
+    try:
+        chat_id = int(user_id)
+    except ValueError:
+        return None, jsonify({'error': 'Invalid user ID format'}), 400
+    
+    return chat_id, None, None
+
+
+def _find_active_trades(chat_id):
+    """Find all active trades for a user."""
+    if chat_id not in user_trade_configs:
+        return []
+    
+    active_trades = []
+    for trade_id, config in user_trade_configs[chat_id].items():
+        if config.status == "active":
+            active_trades.append((trade_id, config))
+    
+    return active_trades
+
+
+def _prepare_bulk_trade_closure(chat_id):
+    """Prepare for bulk trade closure by determining mode and creating client."""
+    # Get user credentials to determine if we're in paper mode or real trading
+    user_creds = UserCredentials.query.filter_by(
+        telegram_user_id=str(chat_id),
+        is_active=True
+    ).first()
+    
+    # Use centralized trading mode detection
+    is_paper_mode = determine_trading_mode(chat_id)
+    
+    client = None
+    if not is_paper_mode and user_creds and user_creds.has_credentials():
+        # Create exchange client for real trading (dynamic selection)
+        client = create_exchange_client(user_creds, testnet=False)
+    
+    return is_paper_mode, client
+
+
+def _close_individual_paper_trade(chat_id, trade_id, config):
+    """Close a single paper trade."""
+    logging.info(f"Closing paper trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
+    
+    # Simulate cancelling paper TP/SL orders
+    if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+        cancelled_orders = len(config.exchange_tp_sl_orders)
+        logging.info(f"Simulated cancellation of {cancelled_orders} TP/SL orders for trade {trade_id} in paper mode")
+
+
+def _close_individual_real_trade(client, trade_id, config):
+    """Close a single real trade on the exchange."""
+    if client is None:
+        logging.warning(f"No client available for trade {trade_id} - falling back to paper mode")
+        return False
+    
+    close_side = "sell" if config.side == "long" else "buy"
+    close_order = client.place_order(
+        symbol=config.symbol,
+        side=close_side,
+        order_type="market",
+        quantity=str(config.position_size),
+        reduce_only=True
+    )
+    
+    if close_order:
+        logging.info(f"Position closed on exchange: {close_order}")
+        
+        # Cancel any remaining TP/SL orders on exchange
+        if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
+            for tp_sl_order in config.exchange_tp_sl_orders:
+                order_id = tp_sl_order.get('order', {}).get('orderId')
+                if order_id:
+                    try:
+                        client.cancel_order(symbol=config.symbol, order_id=str(order_id))
+                    except Exception as cancel_error:
+                        logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
+        return True
+    else:
+        logging.warning(f"Failed to close position for trade {trade_id} - exchange order failed")
+        return False
+
+
+def _finalize_individual_trade_closure(chat_id, trade_id, config):
+    """Finalize closure of an individual trade."""
+    # Update trade configuration
+    final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+    config.status = "stopped"
+    config.final_pnl = final_pnl
+    config.closed_at = get_iran_time().isoformat()
+    config.unrealized_pnl = 0.0
+    
+    # Save updated status to database
+    save_trade_to_db(chat_id, config)
+    
+    # Log trade closure
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(chat_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': config.amount,
+        'final_pnl': final_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': 'closed'
+    })
+    
+    return final_pnl
+
+
+def _process_bulk_trade_closures(chat_id, active_trades, is_paper_mode, client):
+    """Process closure of multiple trades."""
+    closed_count = 0
+    total_final_pnl = 0.0
+    
+    # Close each active trade
+    for trade_id, config in active_trades:
+        try:
+            if is_paper_mode:
+                # Handle paper trade closure
+                _close_individual_paper_trade(chat_id, trade_id, config)
+            else:
+                # Handle real trade closure
+                if not _close_individual_real_trade(client, trade_id, config):
+                    continue
+            
+            # Finalize trade closure
+            final_pnl = _finalize_individual_trade_closure(chat_id, trade_id, config)
+            
+            closed_count += 1
+            total_final_pnl += final_pnl
+            
+        except Exception as trade_error:
+            logging.error(f"Error closing trade {trade_id}: {str(trade_error)}")
+            continue
+    
+    return closed_count, total_final_pnl
+
+
 @app.route('/api/close-all-trades', methods=['POST'])
 def close_all_trades():
     """Close all active trades for a user"""
     try:
         data = request.get_json()
-        user_id = data.get('user_id')
         
-        if not user_id:
-            return jsonify({'error': 'User ID required'}), 400
+        # Validate request
+        chat_id, error_response, status_code = _validate_close_all_trades_request(data)
+        if error_response:
+            return error_response, status_code
         
-        chat_id = int(user_id)
-        
-        if chat_id not in user_trade_configs:
-            return jsonify({'success': True, 'message': 'No trades to close', 'closed_count': 0})
-        
-        # Find all active trades
-        active_trades = []
-        for trade_id, config in user_trade_configs[chat_id].items():
-            if config.status == "active":
-                active_trades.append((trade_id, config))
+        # Find active trades
+        active_trades = _find_active_trades(chat_id)
         
         if not active_trades:
             return jsonify({'success': True, 'message': 'No active trades to close', 'closed_count': 0})
         
-        closed_count = 0
-        total_final_pnl = 0.0
+        # Prepare for bulk closure
+        is_paper_mode, client = _prepare_bulk_trade_closure(chat_id)
         
-        # Get user credentials to determine if we're in paper mode or real trading
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id),
-            is_active=True
-        ).first()
-        
-        # Default to paper mode if no credentials exist
-        # Use centralized trading mode detection
-        is_paper_mode = determine_trading_mode(chat_id)
-        
-        client = None
-        if not is_paper_mode and user_creds and user_creds.has_credentials():
-            # Create exchange client for real trading (dynamic selection)
-            client = create_exchange_client(user_creds, testnet=False)
-        
-        # Close each active trade
-        for trade_id, config in active_trades:
-            try:
-                if is_paper_mode:
-                    # PAPER TRADING - Simulate closing the position
-                    logging.info(f"Closing paper trade {trade_id} for user {chat_id}: {config.symbol} {config.side}")
-                    
-                    # Simulate cancelling paper TP/SL orders
-                    if hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                        cancelled_orders = len(config.exchange_tp_sl_orders)
-                        logging.info(f"Simulated cancellation of {cancelled_orders} TP/SL orders for trade {trade_id} in paper mode")
-                else:
-                    # REAL TRADING - Close position on exchange
-                    if client is None:
-                        logging.warning(f"No client available for trade {trade_id} - falling back to paper mode")
-                        continue
-                    
-                    close_side = "sell" if config.side == "long" else "buy"
-                    close_order = client.place_order(
-                        symbol=config.symbol,
-                        side=close_side,
-                        order_type="market",
-                        quantity=str(config.position_size),
-                        reduce_only=True
-                    )
-                    
-                    if close_order:
-                        logging.info(f"Position closed on Toobit: {close_order}")
-                        
-                        # Cancel any remaining TP/SL orders on exchange
-                        if client and hasattr(config, 'exchange_tp_sl_orders') and config.exchange_tp_sl_orders:
-                            for tp_sl_order in config.exchange_tp_sl_orders:
-                                order_id = tp_sl_order.get('order', {}).get('orderId')
-                                if order_id:
-                                    try:
-                                        client.cancel_order(symbol=config.symbol, order_id=str(order_id))
-                                    except Exception as cancel_error:
-                                        logging.warning(f"Failed to cancel order {order_id}: {cancel_error}")
-                    else:
-                        logging.warning(f"Failed to close position for trade {trade_id} - exchange order failed")
-                        continue
-                
-                # Update trade configuration
-                final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
-                config.status = "stopped"
-                config.final_pnl = final_pnl
-                config.closed_at = get_iran_time().isoformat()
-                config.unrealized_pnl = 0.0
-                
-                # Save updated status to database
-                save_trade_to_db(chat_id, config)
-                
-                # Log trade closure
-                bot_trades.append({
-                    'id': len(bot_trades) + 1,
-                    'user_id': str(chat_id),
-                    'trade_id': trade_id,
-                    'symbol': config.symbol,
-                    'side': config.side,
-                    'amount': config.amount,
-                    'final_pnl': final_pnl,
-                    'timestamp': get_iran_time().isoformat(),
-                    'status': 'closed'
-                })
-                
-                closed_count += 1
-                total_final_pnl += final_pnl
-                
-            except Exception as trade_error:
-                logging.error(f"Error closing trade {trade_id}: {str(trade_error)}")
-                continue
+        # Process all trade closures
+        closed_count, total_final_pnl = _process_bulk_trade_closures(
+            chat_id, active_trades, is_paper_mode, client
+        )
         
         return jsonify({
             'success': True,
