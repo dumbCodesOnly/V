@@ -3111,7 +3111,6 @@ def api_positions():
     """Get positions for the web app - alias for margin-data"""
     return margin_data()
 
-@app.route('/api/positions/live-update')
 def _validate_and_get_user_id():
     """Validate and extract user ID from request."""
     user_id = request.args.get('user_id')
@@ -3228,6 +3227,7 @@ def _calculate_total_realized_pnl(chat_id):
     return total_realized_pnl
 
 
+@app.route('/api/positions/live-update')
 def live_position_update():
     """Get only current prices and P&L for active positions (lightweight update)"""
     # Validate and get user ID
