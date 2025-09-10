@@ -985,22 +985,33 @@ class SMCAnalyzer:
             price_decline = any(c['close'] < sweep_candle['close'] for c in confirmation_candles)
             return bearish_count >= 1 and price_decline
     
-    def check_multi_timeframe_alignment(self, h1_structure: MarketStructure, h4_structure: MarketStructure, d1_structure: MarketStructure = None) -> Dict[str, Any]:
-        """Check alignment between multiple timeframes"""
-        alignment_score = 0.0
-        alignment_details = []
-        
-        # H1 and H4 structure alignment
+    def _categorize_structures(self, h1_structure: MarketStructure, h4_structure: MarketStructure, d1_structure: MarketStructure = None) -> Dict[str, bool]:
+        """Categorize structure types for each timeframe."""
         bullish_structures = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
         bearish_structures = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
         
-        h1_bullish = h1_structure in bullish_structures
-        h4_bullish = h4_structure in bullish_structures
-        h1_bearish = h1_structure in bearish_structures
-        h4_bearish = h4_structure in bearish_structures
+        result = {
+            'h1_bullish': h1_structure in bullish_structures,
+            'h1_bearish': h1_structure in bearish_structures,
+            'h4_bullish': h4_structure in bullish_structures,
+            'h4_bearish': h4_structure in bearish_structures
+        }
+        
+        if d1_structure:
+            result.update({
+                'd1_bullish': d1_structure in bullish_structures,
+                'd1_bearish': d1_structure in bearish_structures
+            })
+        
+        return result
+    
+    def _analyze_h1_h4_alignment(self, h1_structure: MarketStructure, h4_structure: MarketStructure, categories: Dict[str, bool]) -> Dict[str, Any]:
+        """Analyze alignment between H1 and H4 timeframes."""
+        alignment_score = 0.0
+        alignment_details = []
         
         # Check H1/H4 alignment
-        if (h1_bullish and h4_bullish) or (h1_bearish and h4_bearish):
+        if (categories['h1_bullish'] and categories['h4_bullish']) or (categories['h1_bearish'] and categories['h4_bearish']):
             alignment_score += 2.0
             alignment_details.append(f"H1 and H4 structures aligned ({h1_structure.value}, {h4_structure.value})")
         elif h1_structure == MarketStructure.CONSOLIDATION or h4_structure == MarketStructure.CONSOLIDATION:
@@ -1009,50 +1020,94 @@ class SMCAnalyzer:
         else:
             alignment_details.append("H1/H4 structure conflict - signal filtered")
             return {
-                'aligned': False,
+                'conflict': True,
                 'score': 0.0,
-                'details': alignment_details,
-                'direction': None
+                'details': alignment_details
             }
         
-        # Daily bias confirmation
-        if d1_structure:
-            d1_bullish = d1_structure in bullish_structures
-            d1_bearish = d1_structure in bearish_structures
-            
-            if (h1_bullish and h4_bullish and d1_bullish) or (h1_bearish and h4_bearish and d1_bearish):
-                alignment_score += SMCConfig.DAILY_BIAS_WEIGHT
-                alignment_details.append(f"Daily bias confirms direction ({d1_structure.value})")
-            elif d1_structure == MarketStructure.CONSOLIDATION:
-                alignment_score += 0.5
-                alignment_details.append("Daily consolidation - neutral bias")
-            elif (h1_bullish and h4_bullish and d1_bearish) or (h1_bearish and h4_bearish and d1_bullish):
-                # Strong reversal required against daily bias
-                if alignment_score >= 2.0:  # Strong H1/H4 alignment
-                    alignment_score -= 0.5
-                    alignment_details.append("Counter-trend to daily - requires strong reversal")
-                else:
-                    alignment_details.append("Weak counter-trend signal - filtered")
-                    return {
-                        'aligned': False,
-                        'score': alignment_score,
-                        'details': alignment_details,
-                        'direction': None
-                    }
-        
-        # Determine overall direction
-        direction = None
-        if h1_bullish and h4_bullish:
-            direction = 'long'
-        elif h1_bearish and h4_bearish:
-            direction = 'short'
-        
         return {
-            'aligned': alignment_score >= SMCConfig.CONFLUENCE_MIN_SCORE,
+            'conflict': False,
             'score': alignment_score,
-            'details': alignment_details,
+            'details': alignment_details
+        }
+    
+    def _analyze_daily_bias_confirmation(self, d1_structure: MarketStructure, categories: Dict[str, bool], current_score: float) -> Dict[str, Any]:
+        """Analyze daily bias confirmation and its impact."""
+        alignment_score = current_score
+        alignment_details = []
+        
+        if not d1_structure:
+            return {'score': alignment_score, 'details': alignment_details, 'filtered': False}
+        
+        # All timeframes aligned
+        if ((categories['h1_bullish'] and categories['h4_bullish'] and categories['d1_bullish']) or 
+            (categories['h1_bearish'] and categories['h4_bearish'] and categories['d1_bearish'])):
+            alignment_score += SMCConfig.DAILY_BIAS_WEIGHT
+            alignment_details.append(f"Daily bias confirms direction ({d1_structure.value})")
+        
+        # Daily consolidation
+        elif d1_structure == MarketStructure.CONSOLIDATION:
+            alignment_score += 0.5
+            alignment_details.append("Daily consolidation - neutral bias")
+        
+        # Counter-trend to daily
+        elif ((categories['h1_bullish'] and categories['h4_bullish'] and categories['d1_bearish']) or 
+              (categories['h1_bearish'] and categories['h4_bearish'] and categories['d1_bullish'])):
+            # Strong reversal required against daily bias
+            if alignment_score >= 2.0:  # Strong H1/H4 alignment
+                alignment_score -= 0.5
+                alignment_details.append("Counter-trend to daily - requires strong reversal")
+            else:
+                alignment_details.append("Weak counter-trend signal - filtered")
+                return {'score': alignment_score, 'details': alignment_details, 'filtered': True}
+        
+        return {'score': alignment_score, 'details': alignment_details, 'filtered': False}
+    
+    def _determine_alignment_direction(self, categories: Dict[str, bool]) -> str:
+        """Determine overall direction from structure alignment."""
+        if categories['h1_bullish'] and categories['h4_bullish']:
+            return 'long'
+        elif categories['h1_bearish'] and categories['h4_bearish']:
+            return 'short'
+        return None
+    
+    def _create_alignment_result(self, aligned: bool, score: float, details: list, direction: str) -> Dict[str, Any]:
+        """Create standardized alignment result."""
+        return {
+            'aligned': aligned,
+            'score': score,
+            'details': details,
             'direction': direction
         }
+    
+    def check_multi_timeframe_alignment(self, h1_structure: MarketStructure, h4_structure: MarketStructure, d1_structure: MarketStructure = None) -> Dict[str, Any]:
+        """Check alignment between multiple timeframes"""
+        # Categorize structure types
+        categories = self._categorize_structures(h1_structure, h4_structure, d1_structure)
+        
+        # Analyze H1/H4 alignment
+        h1_h4_result = self._analyze_h1_h4_alignment(h1_structure, h4_structure, categories)
+        if h1_h4_result['conflict']:
+            return self._create_alignment_result(False, h1_h4_result['score'], h1_h4_result['details'], None)
+        
+        # Analyze daily bias confirmation
+        daily_result = self._analyze_daily_bias_confirmation(d1_structure, categories, h1_h4_result['score'])
+        if daily_result['filtered']:
+            return self._create_alignment_result(False, daily_result['score'], 
+                                               h1_h4_result['details'] + daily_result['details'], None)
+        
+        # Determine overall direction
+        direction = self._determine_alignment_direction(categories)
+        
+        # Combine all details
+        all_details = h1_h4_result['details'] + daily_result['details']
+        
+        return self._create_alignment_result(
+            daily_result['score'] >= SMCConfig.CONFLUENCE_MIN_SCORE,
+            daily_result['score'],
+            all_details,
+            direction
+        )
     
     def _analyze_enhanced_confluence(self, h1_candlesticks: List[Dict], order_blocks, fvgs, liquidity_sweeps, alignment, h1_structure):
         """Analyze confluence factors for enhanced signal generation."""
