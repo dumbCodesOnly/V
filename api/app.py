@@ -7979,150 +7979,199 @@ def execute_paper_stop_loss(user_id, trade_id, config):
     
     logging.info(f"Paper Trading: Stop loss triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
 
+def _execute_full_paper_tp_closure(user_id, trade_id, config, tp_level):
+    """Handle full position closure (100% allocation)."""
+    config.status = "stopped"
+    config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
+    config.closed_at = get_iran_time().isoformat()
+    config.unrealized_pnl = 0.0
+    
+    # Mark TP as triggered
+    tp_level['triggered'] = True
+    
+    save_trade_to_db(user_id, config)
+    
+    # Update paper trading balance
+    if user_id in user_paper_balances:
+        # Return margin plus final P&L to balance
+        balance_change = config.amount + config.final_pnl
+        with paper_balances_lock:
+            user_paper_balances[user_id] += balance_change
+            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+    
+    # Log paper trade closure
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(user_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': config.amount,
+        'final_pnl': config.final_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': f'paper_take_profit_{tp_level["level"]}_triggered',
+        'trading_mode': 'paper'
+    })
+    
+    logging.info(f"Paper Trading: TP{tp_level['level']} triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
+
+
+def _prepare_partial_paper_tp_closure(config):
+    """Prepare configuration for partial position closure."""
+    # Store original amounts before any TP triggers to preserve correct calculations
+    if not hasattr(config, 'original_amount'):
+        config.original_amount = config.amount
+    if not hasattr(config, 'original_margin'):
+        config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+
+
+def _calculate_partial_tp_profit(config, tp_index, allocation):
+    """Calculate partial profit based on TP calculations and allocation."""
+    # Use TP calculation data for accurate profit amounts
+    tp_calculations = calculate_tp_sl_prices_and_amounts(config)
+    current_tp_data = None
+    for tp_calc in tp_calculations.get('take_profits', []):
+        if tp_calc['level'] == tp_index + 1:
+            current_tp_data = tp_calc
+            break
+    
+    if current_tp_data:
+        partial_pnl = current_tp_data['profit_amount']
+    else:
+        # Fallback calculation
+        partial_pnl = config.unrealized_pnl * (allocation / 100)
+    
+    return partial_pnl
+
+
+def _update_partial_tp_position(config, allocation, partial_pnl, tp_level, tp_index):
+    """Update position configuration after partial TP execution."""
+    remaining_amount = config.amount * ((100 - allocation) / 100)
+    
+    # Update realized P&L
+    if not hasattr(config, 'realized_pnl'):
+        config.realized_pnl = 0.0
+    config.realized_pnl += partial_pnl
+    
+    # Update position with remaining amount  
+    config.amount = remaining_amount
+    config.unrealized_pnl -= partial_pnl
+    
+    # Mark TP as triggered
+    tp_level['triggered'] = True
+    
+    # Remove triggered TP from list safely
+    if tp_index < len(config.take_profits):
+        config.take_profits.pop(tp_index)
+    else:
+        # TP already removed, find and remove by level instead
+        config.take_profits = [tp for tp in config.take_profits if not (isinstance(tp, dict) and tp.get('level') == tp_level.get('level'))]
+
+
+def _update_paper_balance_partial_tp(user_id, config, allocation, partial_pnl):
+    """Update paper balance for partial TP closure."""
+    if user_id in user_paper_balances:
+        # Use original margin amount for correct balance calculation
+        original_margin = getattr(config, 'original_margin', config.original_amount / config.leverage)
+        partial_margin_return = original_margin * (allocation / 100)
+        balance_change = partial_margin_return + partial_pnl
+        with paper_balances_lock:
+            user_paper_balances[user_id] += balance_change
+            logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
+
+
+def _log_partial_tp_closure(user_id, trade_id, config, tp_level, allocation, partial_pnl):
+    """Log partial TP closure to bot trades."""
+    # Use original position amount for allocation calculation
+    closed_amount = config.original_amount * (allocation / 100)
+    bot_trades.append({
+        'id': len(bot_trades) + 1,
+        'user_id': str(user_id),
+        'trade_id': trade_id,
+        'symbol': config.symbol,
+        'side': config.side,
+        'amount': closed_amount,
+        'final_pnl': partial_pnl,
+        'timestamp': get_iran_time().isoformat(),
+        'status': f'paper_partial_take_profit_{tp_level["level"]}',
+        'trading_mode': 'paper'
+    })
+    
+    logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% (${closed_amount:.2f}) for ${partial_pnl:.2f}")
+
+
+def _determine_breakeven_trigger_level(config):
+    """Determine break-even trigger level from configuration."""
+    if not (hasattr(config, 'breakeven_after') and config.breakeven_after):
+        return None
+    
+    if isinstance(config.breakeven_after, (int, float)):
+        # Numeric values: 1.0 = TP1, 2.0 = TP2, 3.0 = TP3
+        if config.breakeven_after == 1.0:
+            return 1
+        elif config.breakeven_after == 2.0:
+            return 2
+        elif config.breakeven_after == 3.0:
+            return 3
+    elif isinstance(config.breakeven_after, str):
+        # String values: "tp1", "tp2", "tp3"
+        if config.breakeven_after == "tp1":
+            return 1
+        elif config.breakeven_after == "tp2":
+            return 2
+        elif config.breakeven_after == "tp3":
+            return 3
+    
+    return None
+
+
+def _handle_breakeven_trigger(user_id, config, tp_level):
+    """Handle break-even trigger after TP execution."""
+    breakeven_trigger_level = _determine_breakeven_trigger_level(config)
+    
+    # Trigger break-even if current TP level matches configured break-even level
+    if (breakeven_trigger_level and tp_level['level'] == breakeven_trigger_level and 
+        not getattr(config, 'breakeven_sl_triggered', False)):
+        config.breakeven_sl_triggered = True
+        config.breakeven_sl_price = config.entry_price
+        save_trade_to_db(user_id, config)
+        logging.info(f"Paper Trading: Auto break-even triggered after TP{breakeven_trigger_level} - SL moved to entry price {config.entry_price}")
+        logging.info(f"Paper Trading: Break-even breakeven_after value was: {config.breakeven_after} (type: {type(config.breakeven_after)})")
+
+
+def _execute_partial_paper_tp_closure(user_id, trade_id, config, tp_index, tp_level, allocation):
+    """Handle partial position closure (< 100% allocation)."""
+    # Prepare configuration for partial closure
+    _prepare_partial_paper_tp_closure(config)
+    
+    # Calculate partial profit
+    partial_pnl = _calculate_partial_tp_profit(config, tp_index, allocation)
+    
+    # Update position configuration
+    _update_partial_tp_position(config, allocation, partial_pnl, tp_level, tp_index)
+    
+    save_trade_to_db(user_id, config)
+    
+    # Update paper balance
+    _update_paper_balance_partial_tp(user_id, config, allocation, partial_pnl)
+    
+    # Log partial closure
+    _log_partial_tp_closure(user_id, trade_id, config, tp_level, allocation, partial_pnl)
+    
+    # Handle break-even trigger
+    _handle_breakeven_trigger(user_id, config, tp_level)
+
+
 def execute_paper_take_profit(user_id, trade_id, config, tp_index, tp_level):
     """Execute paper trading take profit"""
     allocation = tp_level['allocation']
     
     if allocation >= 100:
         # Full position close
-        config.status = "stopped"
-        config.final_pnl = config.unrealized_pnl + getattr(config, 'realized_pnl', 0.0)
-        config.closed_at = get_iran_time().isoformat()
-        config.unrealized_pnl = 0.0
-        
-        # Mark TP as triggered
-        tp_level['triggered'] = True
-        
-        save_trade_to_db(user_id, config)
-        
-        # Update paper trading balance
-        if user_id in user_paper_balances:
-            # Return margin plus final P&L to balance
-            balance_change = config.amount + config.final_pnl
-            with paper_balances_lock:
-                user_paper_balances[user_id] += balance_change
-                logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
-        
-        # Log paper trade closure
-        bot_trades.append({
-            'id': len(bot_trades) + 1,
-            'user_id': str(user_id),
-            'trade_id': trade_id,
-            'symbol': config.symbol,
-            'side': config.side,
-            'amount': config.amount,
-            'final_pnl': config.final_pnl,
-            'timestamp': get_iran_time().isoformat(),
-            'status': f'paper_take_profit_{tp_level["level"]}_triggered',
-            'trading_mode': 'paper'
-        })
-        
-        logging.info(f"Paper Trading: TP{tp_level['level']} triggered - {config.symbol} {config.side} closed with P&L: ${config.final_pnl:.2f}")
+        _execute_full_paper_tp_closure(user_id, trade_id, config, tp_level)
     else:
         # Partial close
-        # CRITICAL FIX: Store original amounts before any TP triggers to preserve correct calculations
-        if not hasattr(config, 'original_amount'):
-            config.original_amount = config.amount
-        if not hasattr(config, 'original_margin'):
-            config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
-        
-        # FIXED: Calculate partial profit based on original position and correct allocation
-        # Use TP calculation data for accurate profit amounts
-        tp_calculations = calculate_tp_sl_prices_and_amounts(config)
-        current_tp_data = None
-        for tp_calc in tp_calculations.get('take_profits', []):
-            if tp_calc['level'] == tp_index + 1:
-                current_tp_data = tp_calc
-                break
-        
-        if current_tp_data:
-            partial_pnl = current_tp_data['profit_amount']
-        else:
-            # Fallback calculation
-            partial_pnl = config.unrealized_pnl * (allocation / 100)
-            
-        remaining_amount = config.amount * ((100 - allocation) / 100)
-        
-        # Update realized P&L
-        if not hasattr(config, 'realized_pnl'):
-            config.realized_pnl = 0.0
-        config.realized_pnl += partial_pnl
-        
-        # Update position with remaining amount  
-        config.amount = remaining_amount
-        config.unrealized_pnl -= partial_pnl
-        
-        # Mark TP as triggered
-        tp_level['triggered'] = True
-        
-        # Remove triggered TP from list safely
-        if tp_index < len(config.take_profits):
-            config.take_profits.pop(tp_index)
-        else:
-            # TP already removed, find and remove by level instead
-            config.take_profits = [tp for tp in config.take_profits if not (isinstance(tp, dict) and tp.get('level') == tp_level.get('level'))]
-        
-        save_trade_to_db(user_id, config)
-        
-        # Update paper trading balance for partial closure
-        if user_id in user_paper_balances:
-            # FIXED: Use original margin amount for correct balance calculation
-            # Return partial margin plus partial P&L to balance
-            original_margin = getattr(config, 'original_margin', config.original_amount / config.leverage)
-            partial_margin_return = original_margin * (allocation / 100)
-            balance_change = partial_margin_return + partial_pnl
-            with paper_balances_lock:
-                user_paper_balances[user_id] += balance_change
-                logging.info(f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}")
-        
-        # Log partial closure
-        # CRITICAL FIX: Use original position amount for allocation calculation
-        # This ensures TP2 closes 25% of ORIGINAL position, not 25% of remaining position
-        closed_amount = config.original_amount * (allocation / 100)
-        bot_trades.append({
-            'id': len(bot_trades) + 1,
-            'user_id': str(user_id),
-            'trade_id': trade_id,
-            'symbol': config.symbol,
-            'side': config.side,
-            'amount': closed_amount,
-            'final_pnl': partial_pnl,
-            'timestamp': get_iran_time().isoformat(),
-            'status': f'paper_partial_take_profit_{tp_level["level"]}',
-            'trading_mode': 'paper'
-        })
-        
-        logging.info(f"Paper Trading: Partial TP{tp_level['level']} triggered - {config.symbol} {config.side} closed {allocation}% (${closed_amount:.2f}) for ${partial_pnl:.2f}")
-        
-        # FIXED: Auto-trigger break-even after specified TP level if configured
-        # Handle both numeric (1.0, 2.0, 3.0) and string values ("tp1", "tp2", "tp3")
-        breakeven_trigger_level = None
-        if hasattr(config, 'breakeven_after') and config.breakeven_after:
-            if isinstance(config.breakeven_after, (int, float)):
-                # Numeric values: 1.0 = TP1, 2.0 = TP2, 3.0 = TP3
-                if config.breakeven_after == 1.0:
-                    breakeven_trigger_level = 1
-                elif config.breakeven_after == 2.0:
-                    breakeven_trigger_level = 2
-                elif config.breakeven_after == 3.0:
-                    breakeven_trigger_level = 3
-            elif isinstance(config.breakeven_after, str):
-                # String values: "tp1", "tp2", "tp3"
-                if config.breakeven_after == "tp1":
-                    breakeven_trigger_level = 1
-                elif config.breakeven_after == "tp2":
-                    breakeven_trigger_level = 2
-                elif config.breakeven_after == "tp3":
-                    breakeven_trigger_level = 3
-        
-        # Trigger break-even if current TP level matches configured break-even level
-        if (breakeven_trigger_level and tp_level['level'] == breakeven_trigger_level and 
-            not getattr(config, 'breakeven_sl_triggered', False)):
-            config.breakeven_sl_triggered = True
-            config.breakeven_sl_price = config.entry_price
-            save_trade_to_db(user_id, config)
-            logging.info(f"Paper Trading: Auto break-even triggered after TP{breakeven_trigger_level} - SL moved to entry price {config.entry_price}")
-            logging.info(f"Paper Trading: Break-even breakeven_after value was: {config.breakeven_after} (type: {type(config.breakeven_after)})")
+        _execute_partial_paper_tp_closure(user_id, trade_id, config, tp_index, tp_level, allocation)
 
 def initialize_paper_trading_monitoring(config):
     """Initialize paper trading monitoring after position opens"""
