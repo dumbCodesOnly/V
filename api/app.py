@@ -11,6 +11,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from flask import Flask, has_app_context, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
