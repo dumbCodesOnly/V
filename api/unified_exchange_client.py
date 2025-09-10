@@ -841,28 +841,34 @@ class LBankClient:
             import hashlib
             from base64 import b64encode
 
-            from Crypto.Hash import SHA256
-            from Crypto.PublicKey import RSA
-            from Crypto.Signature import PKCS1_v1_5
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import padding
 
             md5_hash = hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
             logging.debug(f"LBank RSA - MD5 hash: {md5_hash}")
 
             # Step 2: Format RSA private key
-            private_key = (
+            private_key_pem = (
                 "-----BEGIN RSA PRIVATE KEY-----\n"
                 + self.api_secret
                 + "\n-----END RSA PRIVATE KEY-----"
             )
 
             # Step 3: Sign using RSA PKCS1_v1_5 with SHA256
-            pri_key = PKCS1_v1_5.new(RSA.importKey(private_key))
-            digest = SHA256.new(md5_hash.encode("utf8"))
-            sign = b64encode(pri_key.sign(digest))
-
-            signature = sign.decode("utf8")
-            logging.debug(f"LBank RSA - Final signature length: {len(signature)}")
-            return signature
+            private_key = serialization.load_pem_private_key(
+                private_key_pem.encode(), password=None
+            )
+            
+            signature = private_key.sign(
+                md5_hash.encode("utf8"),
+                padding.PKCS1v15(),
+                hashes.SHA256()
+            )
+            
+            sign = b64encode(signature)
+            signature_str = sign.decode("utf8")
+            logging.debug(f"LBank RSA - Final signature length: {len(signature_str)}")
+            return signature_str
 
         except Exception as e:
             logging.error(f"LBank RSA signature generation failed: {e}")
