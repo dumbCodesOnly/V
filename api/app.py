@@ -3634,9 +3634,301 @@ def _execute_real_trading_order(client, config, current_market_price):
         }), 500
 
 
+def _handle_paper_trading_execution(config, chat_id):
+    """Handle paper trading execution setup."""
+    logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
+    
+    # Simulate order placement with paper trading IDs
+    mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"
+    config.exchange_order_id = mock_order_id
+    config.exchange_client_order_id = f"paper_client_{mock_order_id}"
+    
+    # Mark as paper trading and initialize monitoring
+    config.paper_trading_mode = True
+    if config.entry_type == "market":
+        initialize_paper_trading_monitoring(config)
+    logging.info(f"Paper Trading: Position opened for {config.symbol} {config.side} - Real-time monitoring enabled")
+    
+    return True
+
+
+def _configure_trade_position(config, current_market_price):
+    """Configure trade position details and pricing."""
+    # Calculate common values needed for both paper and real trading
+    position_value = config.amount * config.leverage
+    position_size = round(position_value / current_market_price, 6)
+    
+    # Update trade configuration - status depends on order type
+    if config.entry_type == "limit":
+        config.status = "pending"  # Limit orders start as pending until filled
+    else:
+        config.status = "active"   # Market orders are immediately active
+    
+    # Store original amounts when trade is first executed for TP calculations
+    if not hasattr(config, 'original_amount'):
+        config.original_amount = config.amount
+    if not hasattr(config, 'original_margin'):
+        config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
+        
+    config.position_margin = calculate_position_margin(config.amount, config.leverage)
+    config.position_value = position_value
+    config.position_size = position_size
+    
+    # Set prices based on order type
+    if config.entry_type == "market" or config.entry_price is None:
+        config.current_price = current_market_price
+        config.entry_price = current_market_price
+    else:
+        config.current_price = current_market_price
+    
+    config.unrealized_pnl = 0.0
+    
+    return position_size
+
+
+def _setup_paper_tp_sl_orders(config, tp_sl_data):
+    """Set up simulated TP/SL orders for paper trading."""
+    if not config.take_profits or not tp_sl_data.get('take_profits'):
+        return []
+        
+    mock_tp_sl_orders = []
+    config.paper_tp_levels = []
+    
+    for i, tp_data in enumerate(tp_sl_data['take_profits']):
+        mock_order_id = f"paper_tp_{i+1}_{uuid.uuid4().hex[:6]}"
+        mock_tp_sl_orders.append(mock_order_id)
+        config.paper_tp_levels.append({
+            'order_id': mock_order_id,
+            'level': i + 1,
+            'price': tp_data['price'],
+            'percentage': tp_data['percentage'],
+            'allocation': tp_data['allocation'],
+            'triggered': False
+        })
+    
+    if config.stop_loss_percent > 0:
+        sl_order_id = f"paper_sl_{uuid.uuid4().hex[:6]}"
+        mock_tp_sl_orders.append(sl_order_id)
+        config.paper_sl_data = {
+            'order_id': sl_order_id,
+            'price': tp_sl_data['stop_loss']['price'],
+            'percentage': config.stop_loss_percent,
+            'triggered': False
+        }
+    
+    return mock_tp_sl_orders
+
+
+def _place_real_tp_sl_orders(client, config, tp_sl_data, position_size):
+    """Place real TP/SL orders on exchange."""
+    if not config.take_profits or not tp_sl_data.get('take_profits'):
+        return []
+        
+    tp_orders_to_place = []
+    for tp_data in tp_sl_data['take_profits']:
+        tp_quantity = position_size * (tp_data['allocation'] / 100)
+        tp_orders_to_place.append({
+            'price': tp_data['price'],
+            'quantity': tp_quantity,
+            'percentage': tp_data['percentage'],
+            'allocation': tp_data['allocation']
+        })
+    
+    sl_price = None
+    if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
+        sl_price = str(tp_sl_data['stop_loss']['price'])
+    
+    if config.entry_type == "limit":
+        # Store TP/SL data to place later when order fills
+        config.pending_tp_sl_data = {
+            'take_profits': tp_orders_to_place,
+            'stop_loss_price': sl_price
+        }
+        logging.info(f"TP/SL orders configured to place when limit order fills")
+        return []
+    else:
+        # Place TP/SL immediately for market orders
+        return _execute_tp_sl_orders(client, config, tp_orders_to_place, sl_price, position_size)
+
+
+def _execute_tp_sl_orders(client, config, tp_orders_to_place, sl_price, position_size):
+    """Execute TP/SL orders on exchange."""
+    from api.unified_exchange_client import OrderParameterAdapter
+    
+    client_type = type(client).__name__.lower()
+    exchange_name = "toobit"
+    if 'lbank' in client_type:
+        exchange_name = "lbank"
+    elif 'hyperliquid' in client_type:
+        exchange_name = "hyperliquid"
+    
+    order_side = "buy" if config.side == "long" else "sell"
+    
+    # Convert to unified parameters
+    unified_params = OrderParameterAdapter.to_exchange_params(
+        exchange_name,
+        symbol=config.symbol,
+        side=order_side,
+        total_quantity=float(position_size),
+        entry_price=float(config.entry_price),
+        take_profits=tp_orders_to_place,
+        stop_loss_price=sl_price
+    )
+    
+    # Call exchange-specific TP/SL placement
+    if 'hyperliquid' in client_type:
+        return client.place_multiple_tp_sl_orders(
+            symbol=unified_params["symbol"],
+            side=unified_params["side"],
+            amount=unified_params["amount"],
+            entry_price=float(config.entry_price),
+            tp_levels=tp_orders_to_place
+        )
+    elif 'lbank' in client_type:
+        return client.place_multiple_tp_sl_orders(
+            symbol=unified_params["symbol"],
+            side=unified_params["side"],
+            amount=str(unified_params["amount"]),
+            take_profits=tp_orders_to_place,
+            stop_loss_price=sl_price
+        )
+    else:
+        # ToobitClient
+        return client.place_multiple_tp_sl_orders(
+            symbol=unified_params["symbol"],
+            side=unified_params["side"],
+            quantity=str(unified_params["quantity"]),
+            take_profits=tp_orders_to_place,
+            stop_loss_price=sl_price
+        )
+
+
+def _handle_paper_trading_balance(chat_id, config):
+    """Handle paper trading balance management."""
+    with paper_balances_lock:
+        if chat_id not in user_paper_balances:
+            user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
+            logging.info(f"Paper Trading: Initialized balance of ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f} for user {chat_id}")
+        
+        # Check if user has sufficient paper balance
+        if user_paper_balances[chat_id] < config.amount:
+            return jsonify({
+                'error': f'Insufficient paper trading balance. Available: ${user_paper_balances[chat_id]:,.2f}, Required: ${config.amount:,.2f}'
+            }), 400
+    
+    # Deduct margin from paper balance
+    with paper_balances_lock:
+        user_paper_balances[chat_id] -= config.amount
+        logging.info(f"Paper Trading: Deducted ${config.amount:,.2f} margin. Remaining balance: ${user_paper_balances[chat_id]:,.2f}")
+    
+    return None, None
+
+
+def _log_trade_execution(chat_id, trade_id, config, is_paper_mode):
+    """Log trade execution to bot_trades."""
+    with bot_trades_lock:
+        bot_trades.append({
+            'id': len(bot_trades) + 1,
+            'user_id': str(chat_id),
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'leverage': config.leverage,
+            'entry_price': config.entry_price,
+            'timestamp': get_iran_time().isoformat(),
+            'status': f'executed_{"paper" if is_paper_mode else "live"}',
+            'trading_mode': 'paper' if is_paper_mode else 'live'
+        })
+    
+    bot_status['total_trades'] += 1
+
+
+def _create_execution_response(trade_id, config, is_paper_mode):
+    """Create the final execution response."""
+    trade_mode = "Paper Trade" if is_paper_mode else "Live Trade"
+    
+    if config.entry_type == "limit":
+        message = f'{trade_mode} limit order placed successfully: {config.symbol} {config.side.upper()} at ${config.entry_price:.4f}. Will execute when market reaches this price.'
+    else:
+        message = f'{trade_mode} executed successfully: {config.symbol} {config.side.upper()}'
+    
+    return jsonify({
+        'success': True,
+        'message': message,
+        'paper_mode': is_paper_mode,
+        'trade': {
+            'trade_id': trade_id,
+            'symbol': config.symbol,
+            'side': config.side,
+            'amount': config.amount,
+            'leverage': config.leverage,
+            'entry_price': config.entry_price,
+            'current_price': config.current_price,
+            'position_margin': config.position_margin,
+            'position_size': config.position_size,
+            'status': config.status,
+            'exchange_order_id': getattr(config, 'exchange_order_id', None),
+            'take_profits': config.take_profits,
+            'stop_loss_percent': config.stop_loss_percent
+        }
+    })
+
+
+def _handle_trade_execution_errors(e):
+    """Handle trade execution errors with user-friendly messages."""
+    error_str = str(e).lower()
+    from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+    
+    if "insufficient balance" in error_str or "not enough funds" in error_str:
+        error = TradingError(
+            category=ErrorCategory.TRADING_ERROR,
+            severity=ErrorSeverity.HIGH,
+            technical_message=str(e),
+            user_message="You don't have enough balance to place this trade.",
+            suggestions=[
+                "Check your account balance",
+                "Reduce the trade amount or leverage",
+                "Deposit more funds to your account",
+                "Close other positions to free up margin"
+            ]
+        )
+        return jsonify(error.to_dict()), 400
+    elif "api key" in error_str or "unauthorized" in error_str or "authentication" in error_str:
+        error = TradingError(
+            category=ErrorCategory.AUTHENTICATION_ERROR,
+            severity=ErrorSeverity.HIGH,
+            technical_message=str(e),
+            user_message="Your API credentials are invalid or have expired.",
+            suggestions=[
+                "Check your API key and secret in Settings",
+                "Verify your credentials are still active",
+                "Make sure you're using the correct exchange",
+                "Contact your exchange if the problem persists"
+            ]
+        )
+        return jsonify(error.to_dict()), 401
+    elif "symbol" in error_str and ("not found" in error_str or "invalid" in error_str):
+        error = TradingError(
+            category=ErrorCategory.MARKET_ERROR,
+            severity=ErrorSeverity.MEDIUM,
+            technical_message=str(e),
+            user_message="The trading symbol is not available or invalid.",
+            suggestions=[
+                "Check the symbol name (e.g., BTCUSDT, ETHUSDT)",
+                "Make sure the symbol is supported on your exchange",
+                "Try a different trading pair",
+                "Refresh the symbol list"
+            ]
+        )
+        return jsonify(error.to_dict()), 400
+    else:
+        return jsonify(handle_error(e, "executing trade")), 500
+
+
 @app.route('/api/execute-trade', methods=['POST'])
 def execute_trade():
-    """Execute a trade configuration"""
+    """Execute a trade configuration - refactored for better maintainability."""
     user_id = None
     try:
         data = request.get_json() or {}
@@ -3654,7 +3946,7 @@ def execute_trade():
         if error_response:
             return error_response, status_code
         
-        # Get current market price from exchange (where trade will be executed)
+        # Get current market price
         current_market_price = get_live_market_price(config.symbol, user_id=chat_id, prefer_exchange=True)
         
         # Set up exchange client and determine trading mode
@@ -3662,191 +3954,35 @@ def execute_trade():
         if error_response:
             return error_response, status_code
         
-        execution_success = False
-        
+        # Execute the trade order
         if is_paper_mode:
-            # PAPER TRADING MODE - Simulate execution with real price monitoring
-            logging.info(f"Paper Trading: Executing simulated trade for user {chat_id}: {config.symbol} {config.side}")
-            execution_success = True
-            
-            # Simulate order placement with paper trading IDs
-            mock_order_id = f"paper_{uuid.uuid4().hex[:8]}"
-            config.exchange_order_id = mock_order_id
-            config.exchange_client_order_id = f"paper_client_{mock_order_id}"
-            
+            execution_success = _handle_paper_trading_execution(config, chat_id)
         else:
-            # REAL TRADING - Execute on exchange
             execution_success, error_response, status_code = _execute_real_trading_order(client, config, current_market_price)
             if not execution_success:
                 return error_response, status_code
         
-        # Calculate common values needed for both paper and real trading
-        position_value = config.amount * config.leverage
-        position_size = round(position_value / current_market_price, 6)
-        order_side = "buy" if config.side == "long" else "sell"
-        
-        # Update trade configuration - status depends on order type
-        if config.entry_type == "limit":
-            # Limit orders start as pending until filled by exchange
-            config.status = "pending"
-        else:
-            # Market orders are immediately active
-            config.status = "active"
-        
-        # Mark as paper trading if in paper mode and initialize monitoring
-        if is_paper_mode:
-            config.paper_trading_mode = True
-            # Initialize paper trading monitoring for market orders immediately
-            if config.entry_type == "market":
-                initialize_paper_trading_monitoring(config)
-            logging.info(f"Paper Trading: Position opened for {config.symbol} {config.side} - Real-time monitoring enabled")
-            
-        # CRITICAL FIX: Store original amounts when trade is first executed
-        # This ensures TP profit calculations remain accurate even after partial closures
-        if not hasattr(config, 'original_amount'):
-            config.original_amount = config.amount
-        if not hasattr(config, 'original_margin'):
-            config.original_margin = calculate_position_margin(config.original_amount, config.leverage)
-            
-        config.position_margin = calculate_position_margin(config.amount, config.leverage)
-        config.position_value = position_value
-        config.position_size = position_size
-        
-        # NOTE: Exchange-native TP/SL orders are handled below in lines 1899-1960
-        # This enables the optimized lightweight monitoring system
-        
-        if config.entry_type == "market" or config.entry_price is None:
-            config.current_price = current_market_price
-            config.entry_price = current_market_price
-        else:
-            config.current_price = current_market_price
-        
-        config.unrealized_pnl = 0.0
+        # Configure trade position details
+        position_size = _configure_trade_position(config, current_market_price)
         
         # Save to database
         save_trade_to_db(chat_id, config)
         
-        # Place TP/SL orders - handle differently for market vs limit orders
+        # Place TP/SL orders if execution was successful
         if execution_success:
             try:
-                tp_sl_orders = []
-                
-                # Calculate TP/SL prices
                 tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
                 
                 if is_paper_mode:
-                    # PAPER TRADING MODE - Simulate TP/SL orders with real price monitoring
-                    if config.take_profits and tp_sl_data.get('take_profits'):
-                        mock_tp_sl_orders = []
-                        # Store detailed TP/SL data for paper trading monitoring
-                        config.paper_tp_levels = []
-                        for i, tp_data in enumerate(tp_sl_data['take_profits']):
-                            mock_order_id = f"paper_tp_{i+1}_{uuid.uuid4().hex[:6]}"
-                            mock_tp_sl_orders.append(mock_order_id)
-                            # Store TP level details for monitoring
-                            config.paper_tp_levels.append({
-                                'order_id': mock_order_id,
-                                'level': i + 1,
-                                'price': tp_data['price'],
-                                'percentage': tp_data['percentage'],
-                                'allocation': tp_data['allocation'],
-                                'triggered': False
-                            })
-                        
-                        if config.stop_loss_percent > 0:
-                            sl_order_id = f"paper_sl_{uuid.uuid4().hex[:6]}"
-                            mock_tp_sl_orders.append(sl_order_id)
-                            # Store SL details for monitoring
-                            config.paper_sl_data = {
-                                'order_id': sl_order_id,
-                                'price': tp_sl_data['stop_loss']['price'],
-                                'percentage': config.stop_loss_percent,
-                                'triggered': False
-                            }
-                        
-                        config.exchange_tp_sl_orders = mock_tp_sl_orders
-                        config.paper_trading_mode = True  # Flag for paper trading monitoring
+                    mock_tp_sl_orders = _setup_paper_tp_sl_orders(config, tp_sl_data)
+                    config.exchange_tp_sl_orders = mock_tp_sl_orders
+                    if mock_tp_sl_orders:
                         logging.info(f"Paper Trading: Simulated {len(mock_tp_sl_orders)} TP/SL orders with real-time monitoring")
                 else:
-                    # Real TP/SL orders on exchange
-                    if config.take_profits and tp_sl_data.get('take_profits'):
-                        tp_orders_to_place = []
-                        for tp_data in tp_sl_data['take_profits']:
-                            tp_quantity = position_size * (tp_data['allocation'] / 100)
-                            tp_orders_to_place.append({
-                                'price': tp_data['price'],
-                                'quantity': tp_quantity,
-                                'percentage': tp_data['percentage'],
-                                'allocation': tp_data['allocation']
-                            })
-                        
-                        sl_price = None
-                        if config.stop_loss_percent > 0 and tp_sl_data.get('stop_loss'):
-                            sl_price = str(tp_sl_data['stop_loss']['price'])
-                        
-                        # For limit orders, place TP/SL as conditional orders that activate when main order fills
-                        # For market orders, place TP/SL immediately since position is already open
-                        if not is_paper_mode and client is not None:
-                            if config.entry_type == "limit":
-                                # For limit orders, TP/SL will be placed once the main order is filled
-                                # Store the TP/SL data to place later when order fills
-                                config.pending_tp_sl_data = {
-                                    'take_profits': tp_orders_to_place,
-                                    'stop_loss_price': sl_price
-                                }
-                                logging.info(f"TP/SL orders configured to place when limit order fills")
-                            else:
-                                # For market orders, place TP/SL immediately
-                                # Use Protocol-based unified interface for all exchange clients
-                                from api.unified_exchange_client import OrderParameterAdapter
-                                
-                                client_type = type(client).__name__.lower()
-                                exchange_name = "toobit"  # Default
-                                if 'lbank' in client_type:
-                                    exchange_name = "lbank"
-                                elif 'hyperliquid' in client_type:
-                                    exchange_name = "hyperliquid"
-                                
-                                # Convert to unified parameters
-                                unified_params = OrderParameterAdapter.to_exchange_params(
-                                    exchange_name,
-                                    symbol=config.symbol,
-                                    side=order_side,
-                                    total_quantity=float(position_size),
-                                    entry_price=float(config.entry_price),
-                                    take_profits=tp_orders_to_place,
-                                    stop_loss_price=sl_price
-                                )
-                                
-                                # Call with the proper parameters for each exchange
-                                if 'hyperliquid' in client_type:
-                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=unified_params["symbol"],
-                                        side=unified_params["side"],
-                                        amount=unified_params["amount"],
-                                        entry_price=float(config.entry_price),
-                                        tp_levels=tp_orders_to_place
-                                    )
-                                elif 'lbank' in client_type:
-                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=unified_params["symbol"],
-                                        side=unified_params["side"],
-                                        amount=str(unified_params["amount"]),
-                                        take_profits=tp_orders_to_place,
-                                        stop_loss_price=sl_price
-                                    )
-                                else:
-                                    # ToobitClient
-                                    tp_sl_orders = client.place_multiple_tp_sl_orders(
-                                        symbol=unified_params["symbol"],
-                                        side=unified_params["side"],
-                                        quantity=str(unified_params["quantity"]),
-                                        take_profits=tp_orders_to_place,
-                                        stop_loss_price=sl_price
-                                    )
-                                
-                                config.exchange_tp_sl_orders = tp_sl_orders
-                                logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
+                    tp_sl_orders = _place_real_tp_sl_orders(client, config, tp_sl_data, position_size)
+                    config.exchange_tp_sl_orders = tp_sl_orders
+                    if tp_sl_orders:
+                        logging.info(f"Placed {len(tp_sl_orders)} TP/SL orders on exchange")
                 
             except Exception as e:
                 logging.error(f"Failed to place TP/SL orders: {e}")
@@ -3854,120 +3990,20 @@ def execute_trade():
         
         logging.info(f"Trade executed: {config.symbol} {config.side} at ${config.entry_price} (entry type: {config.entry_type})")
         
-        # Initialize paper trading balance if needed
+        # Handle paper trading balance management
         if is_paper_mode:
-            with paper_balances_lock:
-                if chat_id not in user_paper_balances:
-                    user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
-                    logging.info(f"Paper Trading: Initialized balance of ${TradingConfig.DEFAULT_TRIAL_BALANCE:,.2f} for user {chat_id}")
-                
-                # Check if user has sufficient paper balance
-                if user_paper_balances[chat_id] < config.amount:
-                    return jsonify({
-                        'error': f'Insufficient paper trading balance. Available: ${user_paper_balances[chat_id]:,.2f}, Required: ${config.amount:,.2f}'
-                    }), 400
-            
-            # Deduct margin from paper balance
-            with paper_balances_lock:
-                user_paper_balances[chat_id] -= config.amount
-                logging.info(f"Paper Trading: Deducted ${config.amount:,.2f} margin. Remaining balance: ${user_paper_balances[chat_id]:,.2f}")
+            error_response, status_code = _handle_paper_trading_balance(chat_id, config)
+            if error_response:
+                return error_response, status_code
         
         # Log trade execution
-        with bot_trades_lock:
-            bot_trades.append({
-                'id': len(bot_trades) + 1,
-                'user_id': str(chat_id),
-            'trade_id': trade_id,
-            'symbol': config.symbol,
-            'side': config.side,
-            'amount': config.amount,
-            'leverage': config.leverage,
-            'entry_price': config.entry_price,
-            'timestamp': get_iran_time().isoformat(),
-            'status': f'executed_{"paper" if is_paper_mode else "live"}',
-            'trading_mode': 'paper' if is_paper_mode else 'live'
-        })
+        _log_trade_execution(chat_id, trade_id, config, is_paper_mode)
         
-        bot_status['total_trades'] += 1
-        
-        trade_mode = "Paper Trade" if is_paper_mode else "Live Trade"
-        
-        # Create appropriate message based on order type
-        if config.entry_type == "limit":
-            message = f'{trade_mode} limit order placed successfully: {config.symbol} {config.side.upper()} at ${config.entry_price:.4f}. Will execute when market reaches this price.'
-        else:
-            message = f'{trade_mode} executed successfully: {config.symbol} {config.side.upper()}'
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'paper_mode': is_paper_mode,
-            'trade': {
-                'trade_id': trade_id,
-                'symbol': config.symbol,
-                'side': config.side,
-                'amount': config.amount,
-                'leverage': config.leverage,
-                'entry_price': config.entry_price,
-                'current_price': config.current_price,
-                'position_margin': config.position_margin,
-                'position_size': config.position_size,
-                'status': config.status,
-                'exchange_order_id': getattr(config, 'exchange_order_id', None),
-                'take_profits': config.take_profits,
-                'stop_loss_percent': config.stop_loss_percent
-            }
-        })
+        # Return success response
+        return _create_execution_response(trade_id, config, is_paper_mode)
         
     except Exception as e:
-        # Handle specific error types with user-friendly messages
-        error_str = str(e).lower()
-        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
-        
-        if "insufficient balance" in error_str or "not enough funds" in error_str:
-            error = TradingError(
-                category=ErrorCategory.TRADING_ERROR,
-                severity=ErrorSeverity.HIGH,
-                technical_message=str(e),
-                user_message="You don't have enough balance to place this trade.",
-                suggestions=[
-                    "Check your account balance",
-                    "Reduce the trade amount or leverage",
-                    "Deposit more funds to your account",
-                    "Close other positions to free up margin"
-                ]
-            )
-            return jsonify(error.to_dict()), 400
-        elif "api key" in error_str or "unauthorized" in error_str or "authentication" in error_str:
-            error = TradingError(
-                category=ErrorCategory.AUTHENTICATION_ERROR,
-                severity=ErrorSeverity.HIGH,
-                technical_message=str(e),
-                user_message="Your API credentials are invalid or have expired.",
-                suggestions=[
-                    "Check your API key and secret in Settings",
-                    "Verify your credentials are still active",
-                    "Make sure you're using the correct exchange",
-                    "Contact your exchange if the problem persists"
-                ]
-            )
-            return jsonify(error.to_dict()), 401
-        elif "symbol" in error_str and ("not found" in error_str or "invalid" in error_str):
-            error = TradingError(
-                category=ErrorCategory.MARKET_ERROR,
-                severity=ErrorSeverity.MEDIUM,
-                technical_message=str(e),
-                user_message="The trading symbol is not available or invalid.",
-                suggestions=[
-                    "Check the symbol name (e.g., BTCUSDT, ETHUSDT)",
-                    "Make sure the symbol is supported on your exchange",
-                    "Try a different trading pair",
-                    "Refresh the symbol list"
-                ]
-            )
-            return jsonify(error.to_dict()), 400
-        else:
-            return jsonify(handle_error(e, "executing trade")), 500
+        return _handle_trade_execution_errors(e)
 
 @app.route('/api/user-credentials')
 @app.route('/api/credentials-status')
