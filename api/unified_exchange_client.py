@@ -845,7 +845,7 @@ class LBankClient:
             from Crypto.PublicKey import RSA
             from Crypto.Signature import PKCS1_v1_5
 
-            md5_hash = hashlib.md5(params_string.encode("utf-8")).hexdigest().upper()
+            md5_hash = hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
             logging.debug(f"LBank RSA - MD5 hash: {md5_hash}")
 
             # Step 2: Format RSA private key
@@ -882,7 +882,7 @@ class LBankClient:
         )
 
         # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
-        md5_hash = hashlib.md5(params_string.encode("utf-8")).hexdigest().upper()
+        md5_hash = hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
         caller_method = (
             inspect.stack()[1].function if len(inspect.stack()) > 1 else "unknown"
         )
@@ -959,7 +959,7 @@ class LBankClient:
         # 2. Sign the hash with HmacSHA256 (lowercase)
         import hashlib
 
-        md5_hash = hashlib.md5(param_string.encode("utf-8")).hexdigest().upper()
+        md5_hash = hashlib.md5(param_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
 
         import hmac
 

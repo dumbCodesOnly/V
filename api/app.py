@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import requests
+
 from flask import Flask, has_app_context, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -989,24 +991,22 @@ def setup_webhook_on_deployment():
 
             # Set the webhook
             webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-            webhook_data_encoded = urllib.parse.urlencode(webhook_data).encode("utf-8")
-
-            webhook_req = urllib.request.Request(
-                webhook_api_url, data=webhook_data_encoded, method="POST"
-            )
-            webhook_response = urllib.request.urlopen(
-                webhook_req, timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT
+            
+            webhook_response = requests.post(
+                webhook_api_url,
+                data=webhook_data,
+                timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT
             )
 
-            if webhook_response.getcode() == 200:
-                result = json.loads(webhook_response.read().decode("utf-8"))
+            if webhook_response.status_code == 200:
+                result = webhook_response.json()
                 if result.get("ok"):
                     logging.info(f"Webhook set successfully to {webhook_url}")
                 else:
                     logging.error(f"Webhook setup failed: {result.get('description')}")
             else:
                 logging.error(
-                    f"Webhook request failed with status {webhook_response.getcode()}"
+                    f"Webhook request failed with status {webhook_response.status_code}"
                 )
         else:
             logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
@@ -6810,16 +6810,16 @@ def fetch_binance_price(symbol):
     start_time = time.time()
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        req = urllib.request.Request(url)
-        req.add_header(
-            "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
-        req.add_header("Accept", "application/json")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
 
-        with urllib.request.urlopen(
-            req, timeout=TimeConfig.FAST_API_TIMEOUT
-        ) as response:
-            data = json.loads(response.read().decode())
+        response = requests.get(
+            url, headers=headers, timeout=TimeConfig.FAST_API_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
 
         response_time = time.time() - start_time
         update_api_metrics("binance", True, response_time)
@@ -6870,16 +6870,16 @@ def fetch_coingecko_price(symbol):
             raise Exception(f"Symbol {symbol} not supported by CoinGecko")
 
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-        req = urllib.request.Request(url)
-        req.add_header(
-            "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
-        req.add_header("Accept", "application/json")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
 
-        with urllib.request.urlopen(
-            req, timeout=TimeConfig.EXTENDED_API_TIMEOUT
-        ) as response:
-            data = json.loads(response.read().decode())
+        response = requests.get(
+            url, headers=headers, timeout=TimeConfig.EXTENDED_API_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
 
         response_time = time.time() - start_time
         update_api_metrics("coingecko", True, response_time)
@@ -6901,16 +6901,16 @@ def fetch_cryptocompare_price(symbol):
         url = (
             f"https://min-api.cryptocompare.com/data/price?fsym={base_symbol}&tsyms=USD"
         )
-        req = urllib.request.Request(url)
-        req.add_header(
-            "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
-        req.add_header("Accept", "application/json")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
 
-        with urllib.request.urlopen(
-            req, timeout=TimeConfig.EXTENDED_API_TIMEOUT
-        ) as response:
-            data = json.loads(response.read().decode())
+        response = requests.get(
+            url, headers=headers, timeout=TimeConfig.EXTENDED_API_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
 
         response_time = time.time() - start_time
 
@@ -7662,10 +7662,8 @@ def send_telegram_message(chat_id, text, keyboard=None):
         if keyboard:
             data["reply_markup"] = json.dumps(keyboard)
 
-        data_encoded = urllib.parse.urlencode(data).encode("utf-8")
-        req = urllib.request.Request(url, data=data_encoded, method="POST")
-        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.getcode() == 200
+        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
+        return response.status_code == 200
     except Exception as e:
         logging.error(f"Error sending Telegram message: {e}")
         return False
@@ -7689,10 +7687,8 @@ def edit_telegram_message(chat_id, message_id, text, keyboard=None):
         if keyboard:
             data["reply_markup"] = json.dumps(keyboard)
 
-        data_encoded = urllib.parse.urlencode(data).encode("utf-8")
-        req = urllib.request.Request(url, data=data_encoded, method="POST")
-        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.getcode() == 200
+        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
+        return response.status_code == 200
     except Exception as e:
         logging.error(f"Error editing Telegram message: {e}")
         return False
@@ -7706,10 +7702,8 @@ def answer_callback_query(callback_query_id, text=""):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
         data = {"callback_query_id": callback_query_id, "text": text}
-        data_encoded = urllib.parse.urlencode(data).encode("utf-8")
-        req = urllib.request.Request(url, data=data_encoded, method="POST")
-        response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.getcode() == 200
+        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
+        return response.status_code == 200
     except Exception as e:
         logging.error(f"Error answering callback query: {e}")
         return False
@@ -7720,18 +7714,14 @@ def setup_webhook():
     if WEBHOOK_URL and BOT_TOKEN:
         try:
             webhook_url = f"{WEBHOOK_URL}/webhook"
-            data = urllib.parse.urlencode({"url": webhook_url}).encode("utf-8")
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
-                data=data,
-                method="POST",
-            )
-            response = urllib.request.urlopen(req, timeout=TimeConfig.QUICK_API_TIMEOUT)
-            if response.getcode() == 200:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+            data = {"url": webhook_url}
+            response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
+            if response.status_code == 200:
                 logging.info(f"Webhook set successfully to {webhook_url}")
                 bot_status["status"] = "active"
             else:
-                logging.error(f"Failed to set webhook: HTTP {response.getcode()}")
+                logging.error(f"Failed to set webhook: HTTP {response.status_code}")
         except Exception as e:
             logging.error(f"Error setting webhook: {e}")
     else:
