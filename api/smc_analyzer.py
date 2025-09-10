@@ -1003,6 +1003,223 @@ class SMCAnalyzer:
             'direction': direction
         }
     
+    def _analyze_enhanced_confluence(self, h1_candlesticks: List[Dict], order_blocks, fvgs, liquidity_sweeps, alignment, h1_structure):
+        """Analyze confluence factors for enhanced signal generation."""
+        confluence_score = 0.0
+        reasoning = []
+        current_price = h1_candlesticks[-1]['close']
+        
+        # Multi-timeframe structure weight
+        if alignment and alignment['aligned']:
+            confluence_score += alignment['score']
+            reasoning.extend(alignment['details'])
+        else:
+            confluence_score, reasoning = self._analyze_single_timeframe_structure(h1_structure, confluence_score, reasoning)
+        
+        # Enhanced order block validation
+        relevant_obs = self._validate_relevant_order_blocks(order_blocks, current_price, confluence_score, reasoning)
+        confluence_score = relevant_obs['confluence_score']
+        reasoning = relevant_obs['reasoning']
+        
+        # Enhanced FVG analysis
+        relevant_fvgs = self._analyze_relevant_fvgs(fvgs, current_price, confluence_score, reasoning)
+        confluence_score = relevant_fvgs['confluence_score']
+        reasoning = relevant_fvgs['reasoning']
+        
+        # Liquidity sweep confirmation
+        confluence_score += self._analyze_liquidity_sweeps(liquidity_sweeps, reasoning)
+        
+        # Volume confirmation
+        confluence_score += self._analyze_volume_confirmation(h1_candlesticks, reasoning)
+        
+        return {
+            'confluence_score': confluence_score,
+            'reasoning': reasoning,
+            'relevant_obs': relevant_obs['obs'],
+            'relevant_fvgs': relevant_fvgs['fvgs']
+        }
+    
+    def _analyze_single_timeframe_structure(self, h1_structure, confluence_score, reasoning):
+        """Analyze single timeframe structure for confluence."""
+        if h1_structure == MarketStructure.BULLISH_BOS:
+            confluence_score += 0.3
+            reasoning.append("H1 bullish break of structure")
+        elif h1_structure == MarketStructure.BULLISH_CHoCH:
+            confluence_score += 0.25
+            reasoning.append("H1 bullish change of character")
+        elif h1_structure == MarketStructure.BEARISH_BOS:
+            confluence_score += 0.3
+            reasoning.append("H1 bearish break of structure")
+        elif h1_structure == MarketStructure.BEARISH_CHoCH:
+            confluence_score += 0.25
+            reasoning.append("H1 bearish change of character")
+        
+        return confluence_score, reasoning
+    
+    def _validate_relevant_order_blocks(self, order_blocks, current_price, confluence_score, reasoning):
+        """Validate and analyze relevant order blocks."""
+        relevant_obs = []
+        
+        for ob in order_blocks:
+            if (not ob.mitigated and ob.volume_confirmed and ob.impulsive_exit and 
+                ((ob.direction == 'bullish' and current_price >= ob.price_low * 0.995) or 
+                 (ob.direction == 'bearish' and current_price <= ob.price_high * 1.005))):
+                
+                confluence_score += 0.25 * ob.strength
+                relevant_obs.append(ob)
+                reasoning.append(f"Validated {ob.direction} OB at {ob.price_low:.4f}-{ob.price_high:.4f}")
+        
+        return {
+            'obs': relevant_obs,
+            'confluence_score': confluence_score,
+            'reasoning': reasoning
+        }
+    
+    def _analyze_relevant_fvgs(self, fvgs, current_price, confluence_score, reasoning):
+        """Analyze relevant Fair Value Gaps."""
+        relevant_fvgs = []
+        
+        for fvg in fvgs:
+            if (not fvg.filled and fvg.atr_size >= SMCConfig.FVG_ATR_MULTIPLIER and
+                ((fvg.direction == 'bullish' and fvg.gap_low <= current_price <= fvg.gap_high) or
+                 (fvg.direction == 'bearish' and fvg.gap_low <= current_price <= fvg.gap_high))):
+                
+                age_factor = max(0.5, 1.0 - (fvg.age_candles / SMCConfig.FVG_MAX_AGE_CANDLES))
+                fvg_weight = 0.2 * fvg.atr_size * age_factor
+                confluence_score += fvg_weight
+                relevant_fvgs.append(fvg)
+                reasoning.append(f"Valid {fvg.direction} FVG (ATR: {fvg.atr_size:.2f})")
+        
+        return {
+            'fvgs': relevant_fvgs,
+            'confluence_score': confluence_score,
+            'reasoning': reasoning
+        }
+    
+    def _analyze_liquidity_sweeps(self, liquidity_sweeps, reasoning):
+        """Analyze liquidity sweeps for confluence."""
+        sweep_confirmation = 0.0
+        
+        for sweep_type, sweeps in liquidity_sweeps.items():
+            for sweep in sweeps:
+                if sweep['confirmed']:
+                    sweep_confirmation += 0.3
+                    reasoning.append(f"Confirmed {sweep_type.replace('_', ' ')} sweep")
+                else:
+                    sweep_confirmation += 0.1
+                    reasoning.append(f"Unconfirmed {sweep_type.replace('_', ' ')} sweep")
+        
+        return sweep_confirmation
+    
+    def _analyze_volume_confirmation(self, h1_candlesticks, reasoning):
+        """Analyze volume confirmation for confluence."""
+        recent_volumes = [c['volume'] for c in h1_candlesticks[-5:] if c['volume'] > 0]
+        if not recent_volumes:
+            return 0.0
+        
+        avg_volume = sum(recent_volumes) / len(recent_volumes)
+        current_volume = h1_candlesticks[-1]['volume']
+        
+        if current_volume >= avg_volume * SMCConfig.HIGH_VOLUME_THRESHOLD:
+            reasoning.append(f"High volume confirmation")
+            return 0.15
+        
+        return 0.0
+    
+    def _determine_signal_direction(self, alignment, h1_structure, relevant_obs, relevant_fvgs):
+        """Determine the signal direction based on analysis."""
+        direction = None
+        additional_score = 0.0
+        
+        if alignment and alignment['aligned']:
+            direction = alignment['direction']
+        else:
+            bullish_signals = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
+            bearish_signals = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
+            
+            if h1_structure in bullish_signals:
+                bullish_obs = [ob for ob in relevant_obs if ob.direction == 'bullish']
+                bullish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bullish']
+                if bullish_obs or bullish_fvgs:
+                    direction = 'long'
+                    additional_score = 0.1
+            
+            elif h1_structure in bearish_signals:
+                bearish_obs = [ob for ob in relevant_obs if ob.direction == 'bearish']
+                bearish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bearish']
+                if bearish_obs or bearish_fvgs:
+                    direction = 'short'
+                    additional_score = 0.1
+        
+        return direction, additional_score
+    
+    def _calculate_long_prices(self, relevant_obs, relevant_fvgs, current_price, atr, order_blocks):
+        """Calculate entry, stop loss, and take profit prices for long positions."""
+        entry_price = current_price
+        
+        if relevant_obs:
+            entry_price = min(ob.price_high for ob in relevant_obs if ob.direction == 'bullish')
+        elif relevant_fvgs:
+            entry_price = max(fvg.gap_low for fvg in relevant_fvgs if fvg.direction == 'bullish')
+        
+        # ATR-based stop loss
+        atr_stop = current_price - (atr * 1.5)
+        ob_stop = current_price * 0.98
+        
+        for ob in order_blocks:
+            if ob.direction == 'bullish' and ob.price_low < current_price:
+                ob_stop = max(ob_stop, ob.price_low * 0.995)
+        
+        stop_loss = max(atr_stop, ob_stop)
+        take_profits = [
+            current_price + (atr * 1.0),
+            current_price + (atr * 2.0),
+            current_price + (atr * 3.0)
+        ]
+        
+        return entry_price, stop_loss, take_profits
+    
+    def _calculate_short_prices(self, relevant_obs, relevant_fvgs, current_price, atr, order_blocks):
+        """Calculate entry, stop loss, and take profit prices for short positions."""
+        entry_price = current_price
+        
+        if relevant_obs:
+            entry_price = max(ob.price_low for ob in relevant_obs if ob.direction == 'bearish')
+        elif relevant_fvgs:
+            entry_price = min(fvg.gap_high for fvg in relevant_fvgs if fvg.direction == 'bearish')
+        
+        # ATR-based stop loss
+        atr_stop = current_price + (atr * 1.5)
+        ob_stop = current_price * 1.02
+        
+        for ob in order_blocks:
+            if ob.direction == 'bearish' and ob.price_high > current_price:
+                ob_stop = min(ob_stop, ob.price_high * 1.005)
+        
+        stop_loss = min(atr_stop, ob_stop)
+        take_profits = [
+            current_price - (atr * 1.0),
+            current_price - (atr * 2.0),
+            current_price - (atr * 3.0)
+        ]
+        
+        return entry_price, stop_loss, take_profits
+    
+    def _calculate_signal_strength_and_confidence(self, confluence_score):
+        """Calculate signal strength and final confidence."""
+        if confluence_score >= 4.0:
+            signal_strength = SignalStrength.VERY_STRONG
+        elif confluence_score >= 3.0:
+            signal_strength = SignalStrength.STRONG
+        elif confluence_score >= 2.0:
+            signal_strength = SignalStrength.MODERATE
+        else:
+            signal_strength = SignalStrength.WEAK
+        
+        final_confidence = min(confluence_score / 5.0, 1.0)
+        
+        return signal_strength, final_confidence
+    
     def generate_enhanced_signal(self, symbol: str, h1_candlesticks: List[Dict], h4_candlesticks: List[Dict] = None, d1_candlesticks: List[Dict] = None) -> Optional[SMCSignal]:
         """Enhanced SMC signal generation with multi-timeframe analysis and improved filtering"""
         try:
@@ -1032,163 +1249,44 @@ class SMCAnalyzer:
             
             # Calculate ATR for dynamic thresholds
             atr = self.calculate_atr(h1_candlesticks)
-            
-            # Enhanced confluence scoring
-            confluence_score = 0.0
-            reasoning = []
             current_price = h1_candlesticks[-1]['close']
             
-            # Multi-timeframe structure weight
-            if alignment and alignment['aligned']:
-                confluence_score += alignment['score']
-                reasoning.extend(alignment['details'])
-            else:
-                # Single timeframe structure analysis
-                if h1_structure == MarketStructure.BULLISH_BOS:
-                    confluence_score += 0.3
-                    reasoning.append("H1 bullish break of structure")
-                elif h1_structure == MarketStructure.BULLISH_CHoCH:
-                    confluence_score += 0.25
-                    reasoning.append("H1 bullish change of character")
-                elif h1_structure == MarketStructure.BEARISH_BOS:
-                    confluence_score += 0.3
-                    reasoning.append("H1 bearish break of structure")
-                elif h1_structure == MarketStructure.BEARISH_CHoCH:
-                    confluence_score += 0.25
-                    reasoning.append("H1 bearish change of character")
+            # Enhanced confluence analysis
+            confluence_analysis = self._analyze_enhanced_confluence(
+                h1_candlesticks, order_blocks, fvgs, liquidity_sweeps, alignment, h1_structure
+            )
             
-            # Enhanced order block validation
-            relevant_obs = []
-            for ob in order_blocks:
-                if (not ob.mitigated and ob.volume_confirmed and ob.impulsive_exit and 
-                    ((ob.direction == 'bullish' and current_price >= ob.price_low * 0.995) or 
-                     (ob.direction == 'bearish' and current_price <= ob.price_high * 1.005))):
-                    
-                    confluence_score += 0.25 * ob.strength
-                    relevant_obs.append(ob)
-                    reasoning.append(f"Validated {ob.direction} OB at {ob.price_low:.4f}-{ob.price_high:.4f}")
-            
-            # Enhanced FVG analysis
-            relevant_fvgs = []
-            for fvg in fvgs:
-                if (not fvg.filled and fvg.atr_size >= SMCConfig.FVG_ATR_MULTIPLIER and
-                    ((fvg.direction == 'bullish' and fvg.gap_low <= current_price <= fvg.gap_high) or
-                     (fvg.direction == 'bearish' and fvg.gap_low <= current_price <= fvg.gap_high))):
-                    
-                    age_factor = max(0.5, 1.0 - (fvg.age_candles / SMCConfig.FVG_MAX_AGE_CANDLES))
-                    fvg_weight = 0.2 * fvg.atr_size * age_factor
-                    confluence_score += fvg_weight
-                    relevant_fvgs.append(fvg)
-                    reasoning.append(f"Valid {fvg.direction} FVG (ATR: {fvg.atr_size:.2f})")
-            
-            # Liquidity sweep confirmation
-            sweep_confirmation = 0.0
-            for sweep_type, sweeps in liquidity_sweeps.items():
-                for sweep in sweeps:
-                    if sweep['confirmed']:
-                        sweep_confirmation += 0.3
-                        reasoning.append(f"Confirmed {sweep_type.replace('_', ' ')} sweep")
-                    else:
-                        sweep_confirmation += 0.1
-                        reasoning.append(f"Unconfirmed {sweep_type.replace('_', ' ')} sweep")
-            
-            confluence_score += sweep_confirmation
-            
-            # Volume confirmation
-            recent_volumes = [c['volume'] for c in h1_candlesticks[-5:] if c['volume'] > 0]
-            if recent_volumes:
-                avg_volume = sum(recent_volumes) / len(recent_volumes)
-                current_volume = h1_candlesticks[-1]['volume']
-                if current_volume >= avg_volume * SMCConfig.HIGH_VOLUME_THRESHOLD:
-                    confluence_score += 0.15
-                    reasoning.append(f"High volume confirmation")
+            confluence_score = confluence_analysis['confluence_score']
+            reasoning = confluence_analysis['reasoning']
+            relevant_obs = confluence_analysis['relevant_obs']
+            relevant_fvgs = confluence_analysis['relevant_fvgs']
             
             # Determine signal direction
-            direction = None
-            if alignment and alignment['aligned']:
-                direction = alignment['direction']
-            else:
-                bullish_signals = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
-                bearish_signals = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
-                
-                if h1_structure in bullish_signals:
-                    bullish_obs = [ob for ob in relevant_obs if ob.direction == 'bullish']
-                    bullish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bullish']
-                    if bullish_obs or bullish_fvgs:
-                        direction = 'long'
-                        confluence_score += 0.1
-                
-                elif h1_structure in bearish_signals:
-                    bearish_obs = [ob for ob in relevant_obs if ob.direction == 'bearish']
-                    bearish_fvgs = [fvg for fvg in relevant_fvgs if fvg.direction == 'bearish']
-                    if bearish_obs or bearish_fvgs:
-                        direction = 'short'
-                        confluence_score += 0.1
-            
-            # Enhanced entry, stop loss, and take profit calculation
-            entry_price = current_price
-            stop_loss = current_price
-            take_profits = []
-            
-            if direction == 'long':
-                if relevant_obs:
-                    entry_price = min(ob.price_high for ob in relevant_obs if ob.direction == 'bullish')
-                elif relevant_fvgs:
-                    entry_price = max(fvg.gap_low for fvg in relevant_fvgs if fvg.direction == 'bullish')
-                
-                # ATR-based stop loss
-                atr_stop = current_price - (atr * 1.5)
-                ob_stop = current_price * 0.98
-                for ob in order_blocks:
-                    if ob.direction == 'bullish' and ob.price_low < current_price:
-                        ob_stop = max(ob_stop, ob.price_low * 0.995)
-                
-                stop_loss = max(atr_stop, ob_stop)
-                take_profits = [
-                    current_price + (atr * 1.0),
-                    current_price + (atr * 2.0),
-                    current_price + (atr * 3.0)
-                ]
-            
-            elif direction == 'short':
-                if relevant_obs:
-                    entry_price = max(ob.price_low for ob in relevant_obs if ob.direction == 'bearish')
-                elif relevant_fvgs:
-                    entry_price = min(fvg.gap_high for fvg in relevant_fvgs if fvg.direction == 'bearish')
-                
-                # ATR-based stop loss
-                atr_stop = current_price + (atr * 1.5)
-                ob_stop = current_price * 1.02
-                for ob in order_blocks:
-                    if ob.direction == 'bearish' and ob.price_high > current_price:
-                        ob_stop = min(ob_stop, ob.price_high * 1.005)
-                
-                stop_loss = min(atr_stop, ob_stop)
-                take_profits = [
-                    current_price - (atr * 1.0),
-                    current_price - (atr * 2.0),
-                    current_price - (atr * 3.0)
-                ]
+            direction, additional_score = self._determine_signal_direction(
+                alignment, h1_structure, relevant_obs, relevant_fvgs
+            )
+            confluence_score += additional_score
             
             # Enhanced confidence threshold
             min_confidence = 0.7 if SMCConfig.TIMEFRAME_ALIGNMENT_REQUIRED else 0.6
             
             if direction and confluence_score >= min_confidence:
+                # Calculate entry, stop loss, and take profits
+                if direction == 'long':
+                    entry_price, stop_loss, take_profits = self._calculate_long_prices(
+                        relevant_obs, relevant_fvgs, current_price, atr, order_blocks
+                    )
+                else:  # direction == 'short'
+                    entry_price, stop_loss, take_profits = self._calculate_short_prices(
+                        relevant_obs, relevant_fvgs, current_price, atr, order_blocks
+                    )
+                
+                # Calculate risk/reward and signal strength
                 risk = abs(entry_price - stop_loss)
                 reward = abs(take_profits[0] - entry_price) if take_profits else risk
                 rr_ratio = reward / risk if risk > 0 else 1.0
                 
-                # Enhanced signal strength
-                if confluence_score >= 4.0:
-                    signal_strength = SignalStrength.VERY_STRONG
-                elif confluence_score >= 3.0:
-                    signal_strength = SignalStrength.STRONG
-                elif confluence_score >= 2.0:
-                    signal_strength = SignalStrength.MODERATE
-                else:
-                    signal_strength = SignalStrength.WEAK
-                
-                final_confidence = min(confluence_score / 5.0, 1.0)
+                signal_strength, final_confidence = self._calculate_signal_strength_and_confidence(confluence_score)
                 
                 return SMCSignal(
                     symbol=symbol,
