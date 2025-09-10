@@ -6622,6 +6622,162 @@ def _handle_portfolio_overview(chat_id):
     return response, get_portfolio_menu()
 
 
+def _handle_portfolio_callbacks(callback_data, chat_id, user):
+    """Handle portfolio-related callbacks."""
+    if callback_data == "portfolio_overview":
+        return _handle_portfolio_overview(chat_id)
+    elif callback_data == "recent_trades":
+        return _handle_recent_trades_callback(chat_id, user)
+    elif callback_data == "performance":
+        return _handle_performance_callback(chat_id, user)
+    elif callback_data == "quick_price":
+        return _handle_quick_price_check()
+    return None
+
+
+def _handle_recent_trades_callback(chat_id, user):
+    """Handle recent trades callback display."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    executed_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
+    
+    response = "📈 **RECENT TRADING ACTIVITY**\n"
+    response += "=" * 35 + "\n\n"
+    
+    # Show executed trades from bot_trades
+    if executed_trades:
+        response += "✅ **EXECUTED TRADES**\n"
+        for trade in executed_trades[-5:]:  # Last 5 executed
+            status_emoji = "✅" if trade['status'] == "executed" else "⏳"
+            response += f"{status_emoji} {trade['action'].upper()} {trade['symbol']}\n"
+            response += f"   Quantity: {trade['quantity']:.4f}\n"
+            response += f"   Price: ${trade['price']:.4f}\n"
+            if 'leverage' in trade:
+                response += f"   Leverage: {trade['leverage']}x\n"
+            timestamp = datetime.fromisoformat(trade['timestamp'])
+            iran_time = utc_to_iran_time(timestamp)
+            if iran_time:
+                response += f"   Time: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n\n"
+    
+    # Show current position status
+    if user_trades:
+        response += "📊 **CURRENT POSITIONS**\n"
+        active_positions = [config for config in user_trades.values() if config.status == "active"]
+        configured_positions = [config for config in user_trades.values() if config.status == "configured"]
+        
+        if active_positions:
+            response += f"🟢 Active ({len(active_positions)}):\n"
+            for config in active_positions:
+                if config.symbol:
+                    pnl_info = ""
+                    if hasattr(config, 'unrealized_pnl') and config.unrealized_pnl != 0:
+                        pnl_emoji = "📈" if config.unrealized_pnl >= 0 else "📉"
+                        pnl_info = f" {pnl_emoji} ${config.unrealized_pnl:+.2f}"
+                    response += f"   • {config.symbol} {config.side.upper()}: ${config.amount or 0:,.2f}{pnl_info}\n"
+            response += "\n"
+        
+        if configured_positions:
+            response += f"🟡 Ready to Execute ({len(configured_positions)}):\n"
+            for config in configured_positions:
+                if config.symbol:
+                    response += f"   • {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
+            response += "\n"
+    
+    # Trading summary
+    total_executed = len(executed_trades)
+    total_positions = len(user_trades)
+    
+    response += "📋 **TRADING SUMMARY**\n"
+    response += f"Total Executed Trades: {total_executed}\n"
+    response += f"Total Positions Created: {total_positions}\n"
+    
+    if total_executed == 0 and total_positions == 0:
+        response += "\n💡 No trading activity yet. Create your first position to get started!"
+    
+    return response, get_portfolio_menu()
+
+
+def _handle_performance_callback(chat_id, user):
+    """Handle performance analytics callback display."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    executed_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
+    margin_data = get_margin_summary(chat_id)
+    
+    response = "💹 **PERFORMANCE ANALYTICS**\n"
+    response += "=" * 35 + "\n\n"
+    
+    # Trading Activity
+    response += "📊 **TRADING ACTIVITY**\n"
+    response += f"Total Positions Created: {len(user_trades)}\n"
+    response += f"Executed Trades: {len(executed_trades)}\n"
+    
+    active_count = sum(1 for config in user_trades.values() if config.status == "active")
+    response += f"Active Positions: {active_count}\n\n"
+    
+    # P&L Analysis
+    response += "💰 **P&L ANALYSIS**\n"
+    total_unrealized = margin_data['unrealized_pnl']
+    response += f"Current Floating P&L: ${total_unrealized:+,.2f}\n"
+    
+    # Calculate realized P&L from executed trades (simplified)
+    realized_pnl = 0.0  # In a real system, this would track closed positions
+    response += f"Total Realized P&L: ${realized_pnl:+,.2f}\n"
+    response += f"Total P&L: ${total_unrealized + realized_pnl:+,.2f}\n\n"
+    
+    # Position Analysis
+    if user_trades:
+        response += "📈 **POSITION ANALYSIS**\n"
+        
+        # Analyze by side (long/short)
+        long_positions = [c for c in user_trades.values() if c.side == "long" and c.status == "active"]
+        short_positions = [c for c in user_trades.values() if c.side == "short" and c.status == "active"]
+        
+        response += f"Long Positions: {len(long_positions)}\n"
+        response += f"Short Positions: {len(short_positions)}\n"
+        
+        # Analyze by symbol
+        symbols = {}
+        for config in user_trades.values():
+            if config.symbol and config.status == "active":
+                symbols[config.symbol] = symbols.get(config.symbol, 0) + 1
+        
+        if symbols:
+            response += f"\n🎯 **SYMBOL BREAKDOWN**\n"
+            for symbol, count in sorted(symbols.items()):
+                response += f"{symbol}: {count} position(s)\n"
+        
+        # Risk Analysis
+        response += f"\n⚠️ **RISK METRICS**\n"
+        if margin_data['total_margin'] > 0:
+            utilization = margin_data['total_margin'] / margin_data['account_balance'] * 100
+            response += f"Margin Utilization: {utilization:.1f}%\n"
+            
+            if utilization > 80:
+                response += "Risk Level: 🔴 HIGH\n"
+            elif utilization > 50:
+                response += "Risk Level: 🟡 MEDIUM\n"
+            else:
+                response += "Risk Level: 🟢 LOW\n"
+        else:
+            response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
+            
+        # Performance Score (simplified calculation)
+        if total_unrealized >= 0:
+            performance_emoji = "📈"
+            performance_status = "POSITIVE"
+        else:
+            performance_emoji = "📉"
+            performance_status = "NEGATIVE"
+        
+        response += f"\n{performance_emoji} **OVERALL PERFORMANCE**\n"
+        response += f"Current Trend: {performance_status}\n"
+        
+    else:
+        response += "📊 No positions created yet.\n"
+        response += "Start trading to see detailed performance metrics!\n"
+    
+    return response, get_portfolio_menu()
+
+
 def _handle_quick_price_check():
     """Handle quick price check callback."""
     response = "💰 Live Price Check:\n\n"
@@ -6643,6 +6799,352 @@ def _handle_quick_price_check():
     }
     return response, keyboard
 
+
+def _handle_position_management_callbacks(callback_data, chat_id):
+    """Handle position management callbacks."""
+    if callback_data == "menu_positions":
+        return _handle_menu_positions(chat_id)
+    elif callback_data == "positions_new":
+        return _handle_positions_new(chat_id)
+    elif callback_data == "positions_list":
+        return _handle_positions_list(chat_id)
+    elif callback_data == "positions_select":
+        return "🎯 Select a position to configure:", get_trade_selection_menu(chat_id)
+    elif callback_data.startswith("select_position_"):
+        return _handle_select_position(callback_data, chat_id)
+    elif callback_data == "positions_start":
+        return _handle_positions_start(chat_id)
+    elif callback_data == "positions_stop_all":
+        return _handle_positions_stop_all(chat_id)
+    elif callback_data == "positions_status":
+        return _handle_positions_status(chat_id)
+    return None
+
+
+def _handle_menu_positions(chat_id):
+    """Handle menu positions display."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    summary = f"🔄 Positions Manager\n\n"
+    summary += f"Total Positions: {len(user_trades)}\n"
+    if user_trades:
+        active_count = sum(1 for config in user_trades.values() if config.status == "active")
+        pending_count = sum(1 for config in user_trades.values() if config.status == "pending")
+        summary += f"Active: {active_count}\n"
+        if pending_count > 0:
+            summary += f"Pending: {pending_count}\n"
+        if chat_id in user_selected_trade:
+            selected_trade = user_trade_configs[chat_id].get(user_selected_trade[chat_id])
+            if selected_trade:
+                summary += f"Selected: {selected_trade.get_display_name()}\n"
+    return summary, get_positions_menu(chat_id)
+
+
+def _handle_positions_new(chat_id):
+    """Handle creating new position."""
+    global trade_counter
+    trade_counter += 1
+    trade_id = f"trade_{trade_counter}"
+    
+    if chat_id not in user_trade_configs:
+        user_trade_configs[chat_id] = {}
+    
+    new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
+    with trade_configs_lock:
+        user_trade_configs[chat_id][trade_id] = new_trade
+        user_selected_trade[chat_id] = trade_id
+    
+    return f"✅ Created new position: {new_trade.get_display_name()}", get_positions_menu(chat_id)
+
+
+def _handle_positions_list(chat_id):
+    """Handle positions list display."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    if not user_trades:
+        return "📋 No positions configured yet.", get_positions_menu(chat_id)
+    
+    response = "📋 Your Position Configurations:\n\n"
+    status_emoji_map = {
+        "active": "🟢",
+        "pending": "🔵", 
+        "configured": "🟡",
+        "stopped": "🔴"
+    }
+    
+    for trade_id, config in user_trades.items():
+        status_emoji = status_emoji_map.get(config.status, "⚪")
+        response += f"{status_emoji} {config.get_display_name()}\n"
+        response += f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
+    
+    keyboard = {"inline_keyboard": []}
+    for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 positions
+        status_emoji = status_emoji_map.get(config.status, "⚪")
+        button_text = f"{status_emoji} {config.name}"
+        keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
+    
+    keyboard["inline_keyboard"].append([{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}])
+    return response, keyboard
+
+
+def _handle_select_position(callback_data, chat_id):
+    """Handle position selection."""
+    trade_id = callback_data.replace("select_position_", "")
+    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+        with trade_configs_lock:
+            user_selected_trade[chat_id] = trade_id
+        config = user_trade_configs[chat_id][trade_id]
+        response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
+        return response, get_trade_actions_menu(trade_id)
+    return "❌ Position not found.", get_positions_menu(chat_id)
+
+
+def _handle_positions_start(chat_id):
+    """Handle starting position."""
+    if chat_id not in user_selected_trade:
+        return "❌ No position selected. Please select a position first.", get_positions_menu(chat_id)
+        
+    trade_id = user_selected_trade[chat_id]
+    config = user_trade_configs[chat_id][trade_id]
+    
+    if not config.is_complete():
+        return "❌ Position configuration incomplete. Please set symbol, side, and amount.", get_positions_menu(chat_id)
+        
+    config.status = "active"
+    return f"🚀 Started position: {config.get_display_name()}", get_positions_menu(chat_id)
+
+
+def _handle_positions_stop_all(chat_id):
+    """Handle stopping all positions."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    stopped_count = 0
+    for config in user_trades.values():
+        if config.status == "active":
+            config.status = "stopped"
+            stopped_count += 1
+    return f"⏹️ Stopped {stopped_count} active positions.", get_positions_menu(chat_id)
+
+
+def _handle_positions_status(chat_id):
+    """Handle positions status display."""
+    user_trades = user_trade_configs.get(chat_id, {})
+    if not user_trades:
+        return "📊 No positions to show status for.", get_positions_menu(chat_id)
+        
+    response = "📊 Positions Status:\n\n"
+    for config in user_trades.values():
+        status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
+        response += f"{status_emoji} {config.get_display_name()}\n"
+        response += f"   Status: {config.status.title()}\n"
+        if config.symbol:
+            response += f"   {config.symbol} {config.side or 'N/A'}\n"
+        response += "\n"
+    
+    return response, get_positions_menu(chat_id)
+
+
+def _handle_configuration_callbacks(callback_data, chat_id):
+    """Handle configuration-related callbacks."""
+    if callback_data == "set_breakeven":
+        config = get_current_trade_config(chat_id)
+        header = config.get_trade_header("Break-even Settings") if config else ""
+        return f"{header}⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
+    elif callback_data.startswith("breakeven_"):
+        breakeven_mode = callback_data.replace("breakeven_", "")
+        return handle_set_breakeven(chat_id, breakeven_mode)
+    elif callback_data == "set_trailstop":
+        config = get_current_trade_config(chat_id)
+        header = config.get_trade_header("Trailing Stop") if config else ""
+        return f"{header}📈 Trailing Stop Settings\n\nConfigure your trailing stop:", get_trailing_stop_menu()
+    elif callback_data == "trail_set_percent":
+        return handle_trail_percent_request(chat_id)
+    elif callback_data == "trail_set_activation":
+        return handle_trail_activation_request(chat_id)
+    elif callback_data == "trail_disable":
+        return handle_trailing_stop_disable(chat_id)
+    return None
+
+
+def _handle_trading_config_callbacks(callback_data, chat_id, user):
+    """Handle trading configuration callbacks."""
+    if callback_data == "set_side_long":
+        return handle_set_side(chat_id, "long")
+    elif callback_data == "set_side_short":
+        return handle_set_side(chat_id, "short")
+    elif callback_data == "set_leverage":
+        config = get_current_trade_config(chat_id)
+        header = config.get_trade_header("Set Leverage") if config else ""
+        return f"{header}📊 Select leverage for this trade:", get_leverage_menu()
+    elif callback_data.startswith("leverage_"):
+        leverage = int(callback_data.replace("leverage_", ""))
+        return handle_set_leverage_wizard(chat_id, leverage)
+    elif callback_data == "set_amount":
+        config = get_current_trade_config(chat_id)
+        header = config.get_trade_header("Set Amount") if config else ""
+        return f"{header}💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
+    elif callback_data == "execute_trade":
+        return handle_execute_trade(chat_id, user)
+    return None
+
+
+def _handle_trade_action_callbacks(callback_data, chat_id):
+    """Handle trade action callbacks."""
+    if callback_data.startswith("start_trade_"):
+        trade_id = callback_data.replace("start_trade_", "")
+        return handle_start_trade(chat_id, trade_id)
+    elif callback_data.startswith("stop_trade_"):
+        trade_id = callback_data.replace("stop_trade_", "")
+        return handle_stop_trade(chat_id, trade_id)
+    elif callback_data.startswith("delete_trade_"):
+        trade_id = callback_data.replace("delete_trade_", "")
+        return handle_delete_trade(chat_id, trade_id)
+    elif callback_data.startswith("edit_trade_"):
+        trade_id = callback_data.replace("edit_trade_", "")
+        return handle_edit_trade(chat_id, trade_id)
+    return None
+
+
+def _handle_take_profit_callbacks(callback_data, chat_id):
+    """Handle take profit configuration callbacks."""
+    if callback_data == "set_takeprofit":
+        if chat_id in user_selected_trade:
+            trade_id = user_selected_trade[chat_id]
+            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+                config = user_trade_configs[chat_id][trade_id]
+                config.take_profits = []  # Reset take profits
+                config.tp_config_step = "percentages"  # Start with percentages
+                header = config.get_trade_header("Set Take Profits")
+                return f"{header}🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):", get_tp_percentage_input_menu()
+        return "❌ No trade selected.", get_trading_menu(chat_id)
+    elif callback_data.startswith("tp_add_percent_"):
+        return _handle_tp_add_percent(callback_data, chat_id)
+    elif callback_data == "tp_continue_allocations":
+        return _handle_tp_continue_allocations(chat_id)
+    elif callback_data.startswith("tp_alloc_"):
+        return _handle_tp_allocation(callback_data, chat_id)
+    elif callback_data == "tp_reset_all":
+        return _handle_tp_reset_all(chat_id)
+    elif callback_data == "tp_reset_last_alloc":
+        return _handle_tp_reset_last_alloc(chat_id)
+    return None
+
+
+def _handle_tp_add_percent(callback_data, chat_id):
+    """Handle adding take profit percentage."""
+    percent = float(callback_data.replace("tp_add_percent_", ""))
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.take_profits.append({"percentage": percent, "allocation": None})
+            tp_num = len(config.take_profits)
+            
+            if tp_num < 3:
+                return f"✅ Added TP{tp_num}: {percent}%\n\n🎯 Add another TP or continue to allocations:", get_tp_percentage_input_menu()
+            else:
+                config.tp_config_step = "allocations"
+                return f"✅ Added TP{tp_num}: {percent}%\n\n📊 Now set allocation for TP1:", get_tp_allocation_menu(chat_id)
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+
+def _handle_tp_continue_allocations(chat_id):
+    """Handle continuing to TP allocations."""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            if config.take_profits:
+                config.tp_config_step = "allocations"
+                return f"📊 Set allocation for TP1 ({config.take_profits[0]['percentage']}%):", get_tp_allocation_menu(chat_id)
+            else:
+                return "❌ No take profits set. Add TP percentages first.", get_tp_percentage_input_menu()
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+
+def _handle_tp_allocation(callback_data, chat_id):
+    """Handle take profit allocation setting."""
+    alloc = float(callback_data.replace("tp_alloc_", ""))
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            
+            # Find next TP that needs allocation
+            for tp in config.take_profits:
+                if tp["allocation"] is None:
+                    tp["allocation"] = alloc
+                    tp_num = config.take_profits.index(tp) + 1
+                    
+                    # Check if more allocations needed
+                    remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
+                    if remaining:
+                        next_tp = remaining[0]
+                        next_num = config.take_profits.index(next_tp) + 1
+                        return f"✅ Set TP{tp_num} allocation: {alloc}%\n\n📊 Set allocation for TP{next_num} ({next_tp['percentage']}%):", get_tp_allocation_menu(chat_id)
+                    else:
+                        # All allocations set
+                        total_allocation = sum(tp["allocation"] for tp in config.take_profits)
+                        if total_allocation > 100:
+                            return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset and try again:", get_tp_allocation_reset_menu()
+                        else:
+                            return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
+                    break
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+
+def _handle_tp_reset_all(chat_id):
+    """Handle resetting all take profits."""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            config.take_profits = []
+            config.tp_config_step = "percentages"
+            return "🔄 Reset all take profits\n\n🎯 Set take profit percentage for TP1:", get_tp_percentage_input_menu()
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+
+def _handle_tp_reset_last_alloc(chat_id):
+    """Handle resetting last TP allocation."""
+    if chat_id in user_selected_trade:
+        trade_id = user_selected_trade[chat_id]
+        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
+            config = user_trade_configs[chat_id][trade_id]
+            # Find the last TP with an allocation and reset it
+            for tp in reversed(config.take_profits):
+                if tp["allocation"] is not None:
+                    tp["allocation"] = None
+                    tp_num = config.take_profits.index(tp) + 1
+                    return f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:", get_tp_allocation_menu(chat_id)
+            return "❌ No allocations to reset.", get_tp_allocation_menu(chat_id)
+    return "❌ No trade selected.", get_trading_menu(chat_id)
+
+
+def _handle_misc_callbacks(callback_data, chat_id):
+    """Handle miscellaneous callbacks."""
+    if callback_data == "set_stoploss":
+        config = get_current_trade_config(chat_id)
+        header = config.get_trade_header("Set Stop Loss") if config else ""
+        return f"{header}🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
+    elif callback_data.startswith("sl_"):
+        sl_data = callback_data.replace("sl_", "")
+        if sl_data == "custom":
+            return "🛑 Enter custom stop loss percentage (e.g., 7.5):", get_trading_menu(chat_id)
+        else:
+            return handle_set_stoploss(chat_id, float(sl_data))
+    elif callback_data == "set_entry":
+        return "🎯 Entry Price Options:", get_entry_price_menu()
+    elif callback_data == "entry_market":
+        return handle_set_entry_price(chat_id, "market")
+    elif callback_data == "entry_limit":
+        return handle_set_entry_price(chat_id, "limit")
+    elif callback_data.startswith("amount_"):
+        amount_data = callback_data.replace("amount_", "")
+        if amount_data == "custom":
+            return "💰 Enter custom amount in USDT (e.g., 150):", get_trading_menu(chat_id)
+        else:
+            return handle_set_amount_wizard(chat_id, float(amount_data))
+    return None
+
+
 def handle_callback_query(callback_data, chat_id, user):
     """Handle callback query from inline keyboard - refactored for better maintainability"""
     try:
@@ -6661,456 +7163,43 @@ def handle_callback_query(callback_data, chat_id, user):
         if result:
             return result
         
-        # Portfolio handlers - use helper function
-        elif callback_data == "portfolio_overview":
-            return _handle_portfolio_overview(chat_id)
-        elif callback_data == "recent_trades":
-            user_trades = user_trade_configs.get(chat_id, {})
-            executed_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
-            
-            response = "📈 **RECENT TRADING ACTIVITY**\n"
-            response += "=" * 35 + "\n\n"
-            
-            # Show executed trades from bot_trades
-            if executed_trades:
-                response += "✅ **EXECUTED TRADES**\n"
-                for trade in executed_trades[-5:]:  # Last 5 executed
-                    status_emoji = "✅" if trade['status'] == "executed" else "⏳"
-                    response += f"{status_emoji} {trade['action'].upper()} {trade['symbol']}\n"
-                    response += f"   Quantity: {trade['quantity']:.4f}\n"
-                    response += f"   Price: ${trade['price']:.4f}\n"
-                    if 'leverage' in trade:
-                        response += f"   Leverage: {trade['leverage']}x\n"
-                    timestamp = datetime.fromisoformat(trade['timestamp'])
-                    iran_time = utc_to_iran_time(timestamp)
-                    if iran_time:
-                        response += f"   Time: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n\n"
-            
-            # Show current position status
-            if user_trades:
-                response += "📊 **CURRENT POSITIONS**\n"
-                active_positions = [config for config in user_trades.values() if config.status == "active"]
-                configured_positions = [config for config in user_trades.values() if config.status == "configured"]
-                
-                if active_positions:
-                    response += f"🟢 Active ({len(active_positions)}):\n"
-                    for config in active_positions:
-                        if config.symbol:
-                            pnl_info = ""
-                            if hasattr(config, 'unrealized_pnl') and config.unrealized_pnl != 0:
-                                pnl_emoji = "📈" if config.unrealized_pnl >= 0 else "📉"
-                                pnl_info = f" {pnl_emoji} ${config.unrealized_pnl:+.2f}"
-                            response += f"   • {config.symbol} {config.side.upper()}: ${config.amount or 0:,.2f}{pnl_info}\n"
-                    response += "\n"
-                
-                if configured_positions:
-                    response += f"🟡 Ready to Execute ({len(configured_positions)}):\n"
-                    for config in configured_positions:
-                        if config.symbol:
-                            response += f"   • {config.symbol} {config.side or 'N/A'}: ${config.amount or 0:,.2f}\n"
-                    response += "\n"
-            
-            # Trading summary
-            total_executed = len(executed_trades)
-            total_positions = len(user_trades)
-            
-            response += "📋 **TRADING SUMMARY**\n"
-            response += f"Total Executed Trades: {total_executed}\n"
-            response += f"Total Positions Created: {total_positions}\n"
-            
-            if total_executed == 0 and total_positions == 0:
-                response += "\n💡 No trading activity yet. Create your first position to get started!"
-            
-            return response, get_portfolio_menu()
-        elif callback_data == "performance":
-            user_trades = user_trade_configs.get(chat_id, {})
-            executed_trades = [t for t in bot_trades if t['user_id'] == str(user.get('id', 'unknown'))]
-            margin_data = get_margin_summary(chat_id)
-            
-            response = "💹 **PERFORMANCE ANALYTICS**\n"
-            response += "=" * 35 + "\n\n"
-            
-            # Trading Activity
-            response += "📊 **TRADING ACTIVITY**\n"
-            response += f"Total Positions Created: {len(user_trades)}\n"
-            response += f"Executed Trades: {len(executed_trades)}\n"
-            
-            active_count = sum(1 for config in user_trades.values() if config.status == "active")
-            response += f"Active Positions: {active_count}\n\n"
-            
-            # P&L Analysis
-            response += "💰 **P&L ANALYSIS**\n"
-            total_unrealized = margin_data['unrealized_pnl']
-            response += f"Current Floating P&L: ${total_unrealized:+,.2f}\n"
-            
-            # Calculate realized P&L from executed trades (simplified)
-            realized_pnl = 0.0  # In a real system, this would track closed positions
-            response += f"Total Realized P&L: ${realized_pnl:+,.2f}\n"
-            response += f"Total P&L: ${total_unrealized + realized_pnl:+,.2f}\n\n"
-            
-            # Position Analysis
-            if user_trades:
-                response += "📈 **POSITION ANALYSIS**\n"
-                
-                # Analyze by side (long/short)
-                long_positions = [c for c in user_trades.values() if c.side == "long" and c.status == "active"]
-                short_positions = [c for c in user_trades.values() if c.side == "short" and c.status == "active"]
-                
-                response += f"Long Positions: {len(long_positions)}\n"
-                response += f"Short Positions: {len(short_positions)}\n"
-                
-                # Analyze by symbol
-                symbols = {}
-                for config in user_trades.values():
-                    if config.symbol and config.status == "active":
-                        if config.symbol not in symbols:
-                            symbols[config.symbol] = 0
-                        symbols[config.symbol] += 1
-                
-                if symbols:
-                    response += f"\n🎯 **SYMBOL BREAKDOWN**\n"
-                    for symbol, count in sorted(symbols.items()):
-                        response += f"{symbol}: {count} position(s)\n"
-                
-                # Risk Analysis
-                response += f"\n⚠️ **RISK METRICS**\n"
-                if margin_data['total_margin'] > 0:
-                    utilization = margin_data['total_margin'] / margin_data['account_balance'] * 100
-                    response += f"Margin Utilization: {utilization:.1f}%\n"
-                    
-                    if utilization > 80:
-                        response += "Risk Level: 🔴 HIGH\n"
-                    elif utilization > 50:
-                        response += "Risk Level: 🟡 MEDIUM\n"
-                    else:
-                        response += "Risk Level: 🟢 LOW\n"
-                else:
-                    response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
-                    
-                # Performance Score (simplified calculation)
-                if total_unrealized >= 0:
-                    performance_emoji = "📈"
-                    performance_status = "POSITIVE"
-                else:
-                    performance_emoji = "📉"
-                    performance_status = "NEGATIVE"
-                
-                response += f"\n{performance_emoji} **OVERALL PERFORMANCE**\n"
-                response += f"Current Trend: {performance_status}\n"
-                
-            else:
-                response += "📊 No positions created yet.\n"
-                response += "Start trading to see detailed performance metrics!\n"
-            
-            return response, get_portfolio_menu()
+        # Try portfolio callbacks
+        result = _handle_portfolio_callbacks(callback_data, chat_id, user)
+        if result:
+            return result
         
-        # Quick price check - use helper function  
-        elif callback_data == "quick_price":
-            return _handle_quick_price_check()
+        # Try position management callbacks
+        result = _handle_position_management_callbacks(callback_data, chat_id)
+        if result:
+            return result
         
-        # Multi-trade management handlers
-        elif callback_data == "menu_positions":
-            user_trades = user_trade_configs.get(chat_id, {})
-            summary = f"🔄 Positions Manager\n\n"
-            summary += f"Total Positions: {len(user_trades)}\n"
-            if user_trades:
-                active_count = sum(1 for config in user_trades.values() if config.status == "active")
-                pending_count = sum(1 for config in user_trades.values() if config.status == "pending")
-                summary += f"Active: {active_count}\n"
-                if pending_count > 0:
-                    summary += f"Pending: {pending_count}\n"
-                if chat_id in user_selected_trade:
-                    selected_trade = user_trade_configs[chat_id].get(user_selected_trade[chat_id])
-                    if selected_trade:
-                        summary += f"Selected: {selected_trade.get_display_name()}\n"
-            return summary, get_positions_menu(chat_id)
-            
-
-            
-        # Multi-trade specific handlers
-        elif callback_data == "positions_new":
-            global trade_counter
-            trade_counter += 1
-            trade_id = f"trade_{trade_counter}"
-            
-            if chat_id not in user_trade_configs:
-                user_trade_configs[chat_id] = {}
-            
-            new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
-            with trade_configs_lock:
-                user_trade_configs[chat_id][trade_id] = new_trade
-                user_selected_trade[chat_id] = trade_id
-            
-            return f"✅ Created new position: {new_trade.get_display_name()}", get_positions_menu(chat_id)
-            
-        elif callback_data == "positions_list":
-            user_trades = user_trade_configs.get(chat_id, {})
-            if not user_trades:
-                return "📋 No positions configured yet.", get_positions_menu(chat_id)
-            
-            response = "📋 Your Position Configurations:\n\n"
-            for trade_id, config in user_trades.items():
-                status_emoji = {
-                    "active": "🟢",
-                    "pending": "🔵", 
-                    "configured": "🟡",
-                    "stopped": "🔴"
-                }.get(config.status, "⚪")
-                response += f"{status_emoji} {config.get_display_name()}\n"
-                response += f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
-            
-            keyboard = {"inline_keyboard": []}
-            for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 positions
-                status_emoji = {
-                    "active": "🟢",
-                    "pending": "🔵",
-                    "configured": "🟡", 
-                    "stopped": "🔴"
-                }.get(config.status, "⚪")
-                button_text = f"{status_emoji} {config.name}"
-                keyboard["inline_keyboard"].append([{"text": button_text, "callback_data": f"select_position_{trade_id}"}])
-            
-            keyboard["inline_keyboard"].append([{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}])
-            return response, keyboard
-            
-        elif callback_data == "positions_select":
-            return "🎯 Select a position to configure:", get_trade_selection_menu(chat_id)
-            
-        elif callback_data.startswith("select_position_"):
-            trade_id = callback_data.replace("select_position_", "")
-            if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                with trade_configs_lock:
-                    user_selected_trade[chat_id] = trade_id
-                config = user_trade_configs[chat_id][trade_id]
-                response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
-                return response, get_trade_actions_menu(trade_id)
-            return "❌ Position not found.", get_positions_menu(chat_id)
-            
-        elif callback_data == "positions_start":
-            if chat_id not in user_selected_trade:
-                return "❌ No position selected. Please select a position first.", get_positions_menu(chat_id)
-                
-            trade_id = user_selected_trade[chat_id]
-            config = user_trade_configs[chat_id][trade_id]
-            
-            if not config.is_complete():
-                return "❌ Position configuration incomplete. Please set symbol, side, and amount.", get_positions_menu(chat_id)
-                
-            config.status = "active"
-            return f"🚀 Started position: {config.get_display_name()}", get_positions_menu(chat_id)
-            
-        elif callback_data == "positions_stop_all":
-            user_trades = user_trade_configs.get(chat_id, {})
-            stopped_count = 0
-            for config in user_trades.values():
-                if config.status == "active":
-                    config.status = "stopped"
-                    stopped_count += 1
-            return f"⏹️ Stopped {stopped_count} active positions.", get_positions_menu(chat_id)
-            
-        elif callback_data == "positions_status":
-            user_trades = user_trade_configs.get(chat_id, {})
-            if not user_trades:
-                return "📊 No positions to show status for.", get_positions_menu(chat_id)
-                
-            response = "📊 Positions Status:\n\n"
-            for config in user_trades.values():
-                status_emoji = "🟢" if config.status == "active" else "🟡" if config.status == "configured" else "🔴"
-                response += f"{status_emoji} {config.get_display_name()}\n"
-                response += f"   Status: {config.status.title()}\n"
-                if config.symbol:
-                    response += f"   {config.symbol} {config.side or 'N/A'}\n"
-                response += "\n"
-            
-            return response, get_positions_menu(chat_id)
+        # Try configuration callbacks
+        result = _handle_configuration_callbacks(callback_data, chat_id)
+        if result:
+            return result
         
-        # Configuration handlers
-        elif callback_data == "set_breakeven":
-            config = get_current_trade_config(chat_id)
-            header = config.get_trade_header("Break-even Settings") if config else ""
-            return f"{header}⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:", get_breakeven_menu()
-        elif callback_data.startswith("breakeven_"):
-            breakeven_mode = callback_data.replace("breakeven_", "")
-            return handle_set_breakeven(chat_id, breakeven_mode)
-        elif callback_data == "set_trailstop":
-            config = get_current_trade_config(chat_id)
-            header = config.get_trade_header("Trailing Stop") if config else ""
-            return f"{header}📈 Trailing Stop Settings\n\nConfigure your trailing stop:", get_trailing_stop_menu()
-        elif callback_data == "trail_set_percent":
-            return handle_trail_percent_request(chat_id)
-        elif callback_data == "trail_set_activation":
-            return handle_trail_activation_request(chat_id)
-        elif callback_data == "trail_disable":
-            return handle_trailing_stop_disable(chat_id)
-
-
-            
-        # Trading configuration handlers
-        elif callback_data == "set_side_long":
-            return handle_set_side(chat_id, "long")
-        elif callback_data == "set_side_short":
-            return handle_set_side(chat_id, "short")
-        elif callback_data == "set_leverage":
-            config = get_current_trade_config(chat_id)
-            header = config.get_trade_header("Set Leverage") if config else ""
-            return f"{header}📊 Select leverage for this trade:", get_leverage_menu()
-        elif callback_data.startswith("leverage_"):
-            leverage = int(callback_data.replace("leverage_", ""))
-            return handle_set_leverage_wizard(chat_id, leverage)
-        elif callback_data == "set_amount":
-            config = get_current_trade_config(chat_id)
-            header = config.get_trade_header("Set Amount") if config else ""
-            return f"{header}💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.", get_trading_menu(chat_id)
-        elif callback_data == "execute_trade":
-            return handle_execute_trade(chat_id, user)
-            
-        # Trade action handlers
-        elif callback_data.startswith("start_trade_"):
-            trade_id = callback_data.replace("start_trade_", "")
-            return handle_start_trade(chat_id, trade_id)
-        elif callback_data.startswith("stop_trade_"):
-            trade_id = callback_data.replace("stop_trade_", "")
-            return handle_stop_trade(chat_id, trade_id)
-        elif callback_data.startswith("delete_trade_"):
-            trade_id = callback_data.replace("delete_trade_", "")
-            return handle_delete_trade(chat_id, trade_id)
-
-        elif callback_data.startswith("edit_trade_"):
-            trade_id = callback_data.replace("edit_trade_", "")
-            return handle_edit_trade(chat_id, trade_id)
+        # Try trading config callbacks
+        result = _handle_trading_config_callbacks(callback_data, chat_id, user)
+        if result:
+            return result
         
-        # Trading configuration input handlers
-        elif callback_data == "set_takeprofit":
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    config.take_profits = []  # Reset take profits
-                    config.tp_config_step = "percentages"  # Start with percentages
-                    header = config.get_trade_header("Set Take Profits")
-                    return f"{header}🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):", get_tp_percentage_input_menu()
-            return "❌ No trade selected.", get_trading_menu(chat_id)
-        elif callback_data == "set_stoploss":
-            config = get_current_trade_config(chat_id)
-            header = config.get_trade_header("Set Stop Loss") if config else ""
-            return f"{header}🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):", get_stoploss_menu()
-        # New take profit system handlers
-        elif callback_data.startswith("tp_add_percent_"):
-            percent = float(callback_data.replace("tp_add_percent_", ""))
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    config.take_profits.append({"percentage": percent, "allocation": None})
-                    tp_num = len(config.take_profits)
-                    
-                    if tp_num < 3:
-                        return f"✅ Added TP{tp_num}: {percent}%\n\n🎯 Add another TP or continue to allocations:", get_tp_percentage_input_menu()
-                    else:
-                        config.tp_config_step = "allocations"
-                        return f"✅ Added TP{tp_num}: {percent}%\n\n📊 Now set allocation for TP1:", get_tp_allocation_menu(chat_id)
-            return "❌ No trade selected.", get_trading_menu(chat_id)
+        # Try trade action callbacks
+        result = _handle_trade_action_callbacks(callback_data, chat_id)
+        if result:
+            return result
         
-        elif callback_data == "tp_continue_allocations":
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    if config.take_profits:
-                        config.tp_config_step = "allocations"
-                        return f"📊 Set allocation for TP1 ({config.take_profits[0]['percentage']}%):", get_tp_allocation_menu(chat_id)
-                    else:
-                        return "❌ No take profits set. Add TP percentages first.", get_tp_percentage_input_menu()
-            return "❌ No trade selected.", get_trading_menu(chat_id)
+        # Try take profit callbacks
+        result = _handle_take_profit_callbacks(callback_data, chat_id)
+        if result:
+            return result
         
-        elif callback_data.startswith("tp_alloc_"):
-            alloc = float(callback_data.replace("tp_alloc_", ""))
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    
-                    # Find next TP that needs allocation
-                    for tp in config.take_profits:
-                        if tp["allocation"] is None:
-                            tp["allocation"] = alloc
-                            tp_num = config.take_profits.index(tp) + 1
-                            
-                            # Check if more allocations needed
-                            remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
-                            if remaining:
-                                next_tp = remaining[0]
-                                next_num = config.take_profits.index(next_tp) + 1
-                                return f"✅ Set TP{tp_num} allocation: {alloc}%\n\n📊 Set allocation for TP{next_num} ({next_tp['percentage']}%):", get_tp_allocation_menu(chat_id)
-                            else:
-                                # All allocations set
-                                total_allocation = sum(tp["allocation"] for tp in config.take_profits)
-                                if total_allocation > 100:
-                                    return f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset and try again:", get_tp_allocation_reset_menu()
-                                else:
-                                    return f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:", get_stoploss_menu()
-                            break
-            return "❌ No trade selected.", get_trading_menu(chat_id)
+        # Try miscellaneous callbacks
+        result = _handle_misc_callbacks(callback_data, chat_id)
+        if result:
+            return result
         
-        elif callback_data == "tp_reset_alloc":
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    for tp in config.take_profits:
-                        tp["allocation"] = None
-                    return "🔄 Reset all allocations\n\n📊 Set allocation for TP1:", get_tp_allocation_menu(chat_id)
-            return "❌ No trade selected.", get_trading_menu(chat_id)
-        
-        elif callback_data == "tp_reset_all_alloc":
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    for tp in config.take_profits:
-                        tp["allocation"] = None
-                    return "🔄 Reset all allocations\n\n📊 Set allocation for TP1:", get_tp_allocation_menu(chat_id)
-            return "❌ No trade selected.", get_trading_menu(chat_id)
-        
-        elif callback_data == "tp_reset_last_alloc":
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-                    config = user_trade_configs[chat_id][trade_id]
-                    # Find the last TP with an allocation and reset it
-                    for tp in reversed(config.take_profits):
-                        if tp["allocation"] is not None:
-                            tp["allocation"] = None
-                            tp_num = config.take_profits.index(tp) + 1
-                            return f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:", get_tp_allocation_menu(chat_id)
-                    return "❌ No allocations to reset.", get_tp_allocation_menu(chat_id)
-            return "❌ No trade selected.", get_trading_menu(chat_id)
-        
-        elif callback_data.startswith("sl_"):
-            sl_data = callback_data.replace("sl_", "")
-            if sl_data == "custom":
-                return "🛑 Enter custom stop loss percentage (e.g., 7.5):", get_trading_menu(chat_id)
-            else:
-                return handle_set_stoploss(chat_id, float(sl_data))
-        
-        # Entry price setting
-        elif callback_data == "set_entry":
-            return "🎯 Entry Price Options:", get_entry_price_menu()
-        elif callback_data == "entry_market":
-            return handle_set_entry_price(chat_id, "market")
-        elif callback_data == "entry_limit":
-            return handle_set_entry_price(chat_id, "limit")
-        
-        # Amount wizard handlers
-        elif callback_data.startswith("amount_"):
-            amount_data = callback_data.replace("amount_", "")
-            if amount_data == "custom":
-                return "💰 Enter custom amount in USDT (e.g., 150):", get_trading_menu(chat_id)
-            else:
-                return handle_set_amount_wizard(chat_id, float(amount_data))
-        
-        else:
-            return "🤔 Unknown action. Please try again.", get_main_menu()
+        # Unknown callback
+        return "🤔 Unknown action. Please try again.", get_main_menu()
             
     except Exception as e:
         logging.error(f"Error handling callback query: {e}")
