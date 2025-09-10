@@ -18,5 +18,5 @@ xenon>=0.9.3
 safety>=3.6.1
 pip-audit>=2.9.0
 
-# Security tools - using current compatible versions
-black
+# Code formatting and security tools
+black>=25.1.0
