@@ -7027,6 +7027,84 @@ def _handle_recent_trades_callback(chat_id, user):
     return response, get_portfolio_menu()
 
 
+def _format_trading_activity_section(user_trades, executed_trades):
+    """Format trading activity section for performance display."""
+    active_count = sum(1 for config in user_trades.values() if config.status == "active")
+    
+    section = "📊 **TRADING ACTIVITY**\n"
+    section += f"Total Positions Created: {len(user_trades)}\n"
+    section += f"Executed Trades: {len(executed_trades)}\n"
+    section += f"Active Positions: {active_count}\n\n"
+    return section
+
+
+def _format_pnl_analysis_section(margin_data):
+    """Format P&L analysis section for performance display."""
+    total_unrealized = margin_data['unrealized_pnl']
+    realized_pnl = 0.0  # In a real system, this would track closed positions
+    
+    section = "💰 **P&L ANALYSIS**\n"
+    section += f"Current Floating P&L: ${total_unrealized:+,.2f}\n"
+    section += f"Total Realized P&L: ${realized_pnl:+,.2f}\n"
+    section += f"Total P&L: ${total_unrealized + realized_pnl:+,.2f}\n\n"
+    return section
+
+
+def _format_position_analysis_section(user_trades, margin_data):
+    """Format position analysis section for performance display."""
+    if not user_trades:
+        return "📊 No positions created yet.\nStart trading to see detailed performance metrics!\n"
+    
+    section = "📈 **POSITION ANALYSIS**\n"
+    
+    # Analyze by side (long/short)
+    long_positions = [c for c in user_trades.values() if c.side == "long" and c.status == "active"]
+    short_positions = [c for c in user_trades.values() if c.side == "short" and c.status == "active"]
+    
+    section += f"Long Positions: {len(long_positions)}\n"
+    section += f"Short Positions: {len(short_positions)}\n"
+    
+    # Analyze by symbol
+    symbols = {}
+    for config in user_trades.values():
+        if config.symbol and config.status == "active":
+            symbols[config.symbol] = symbols.get(config.symbol, 0) + 1
+    
+    if symbols:
+        section += f"\n🎯 **SYMBOL BREAKDOWN**\n"
+        for symbol, count in sorted(symbols.items()):
+            section += f"{symbol}: {count} position(s)\n"
+    
+    # Risk Analysis
+    section += f"\n⚠️ **RISK METRICS**\n"
+    if margin_data['total_margin'] > 0:
+        utilization = margin_data['total_margin'] / margin_data['account_balance'] * 100
+        section += f"Margin Utilization: {utilization:.1f}%\n"
+        
+        if utilization > 80:
+            section += "Risk Level: 🔴 HIGH\n"
+        elif utilization > 50:
+            section += "Risk Level: 🟡 MEDIUM\n"
+        else:
+            section += "Risk Level: 🟢 LOW\n"
+    else:
+        section += "Risk Level: 🟢 MINIMAL (No active positions)\n"
+        
+    # Performance Score
+    total_unrealized = margin_data['unrealized_pnl']
+    if total_unrealized >= 0:
+        performance_emoji = "📈"
+        performance_status = "POSITIVE"
+    else:
+        performance_emoji = "📉"
+        performance_status = "NEGATIVE"
+    
+    section += f"\n{performance_emoji} **OVERALL PERFORMANCE**\n"
+    section += f"Current Trend: {performance_status}\n"
+    
+    return section
+
+
 def _handle_performance_callback(chat_id, user):
     """Handle performance analytics callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
@@ -7036,75 +7114,10 @@ def _handle_performance_callback(chat_id, user):
     response = "💹 **PERFORMANCE ANALYTICS**\n"
     response += "=" * 35 + "\n\n"
     
-    # Trading Activity
-    response += "📊 **TRADING ACTIVITY**\n"
-    response += f"Total Positions Created: {len(user_trades)}\n"
-    response += f"Executed Trades: {len(executed_trades)}\n"
-    
-    active_count = sum(1 for config in user_trades.values() if config.status == "active")
-    response += f"Active Positions: {active_count}\n\n"
-    
-    # P&L Analysis
-    response += "💰 **P&L ANALYSIS**\n"
-    total_unrealized = margin_data['unrealized_pnl']
-    response += f"Current Floating P&L: ${total_unrealized:+,.2f}\n"
-    
-    # Calculate realized P&L from executed trades (simplified)
-    realized_pnl = 0.0  # In a real system, this would track closed positions
-    response += f"Total Realized P&L: ${realized_pnl:+,.2f}\n"
-    response += f"Total P&L: ${total_unrealized + realized_pnl:+,.2f}\n\n"
-    
-    # Position Analysis
-    if user_trades:
-        response += "📈 **POSITION ANALYSIS**\n"
-        
-        # Analyze by side (long/short)
-        long_positions = [c for c in user_trades.values() if c.side == "long" and c.status == "active"]
-        short_positions = [c for c in user_trades.values() if c.side == "short" and c.status == "active"]
-        
-        response += f"Long Positions: {len(long_positions)}\n"
-        response += f"Short Positions: {len(short_positions)}\n"
-        
-        # Analyze by symbol
-        symbols = {}
-        for config in user_trades.values():
-            if config.symbol and config.status == "active":
-                symbols[config.symbol] = symbols.get(config.symbol, 0) + 1
-        
-        if symbols:
-            response += f"\n🎯 **SYMBOL BREAKDOWN**\n"
-            for symbol, count in sorted(symbols.items()):
-                response += f"{symbol}: {count} position(s)\n"
-        
-        # Risk Analysis
-        response += f"\n⚠️ **RISK METRICS**\n"
-        if margin_data['total_margin'] > 0:
-            utilization = margin_data['total_margin'] / margin_data['account_balance'] * 100
-            response += f"Margin Utilization: {utilization:.1f}%\n"
-            
-            if utilization > 80:
-                response += "Risk Level: 🔴 HIGH\n"
-            elif utilization > 50:
-                response += "Risk Level: 🟡 MEDIUM\n"
-            else:
-                response += "Risk Level: 🟢 LOW\n"
-        else:
-            response += "Risk Level: 🟢 MINIMAL (No active positions)\n"
-            
-        # Performance Score (simplified calculation)
-        if total_unrealized >= 0:
-            performance_emoji = "📈"
-            performance_status = "POSITIVE"
-        else:
-            performance_emoji = "📉"
-            performance_status = "NEGATIVE"
-        
-        response += f"\n{performance_emoji} **OVERALL PERFORMANCE**\n"
-        response += f"Current Trend: {performance_status}\n"
-        
-    else:
-        response += "📊 No positions created yet.\n"
-        response += "Start trading to see detailed performance metrics!\n"
+    # Add sections using helper functions
+    response += _format_trading_activity_section(user_trades, executed_trades)
+    response += _format_pnl_analysis_section(margin_data)
+    response += _format_position_analysis_section(user_trades, margin_data)
     
     return response, get_portfolio_menu()
 
