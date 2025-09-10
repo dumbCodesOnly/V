@@ -492,210 +492,222 @@ db.init_app(app)
 start_cache_cleanup_worker(app)
 logging.info("Enhanced caching system initialized with smart volatility-based TTL")
 
-# Database migration helper
+# Database migration helpers
+def _create_cache_tables():
+    """Create SMC signal cache and KlinesCache tables with indexes."""
+    from sqlalchemy import text
+    try:
+        # Ensure SMC signal cache table exists
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS smc_signal_cache (
+                id SERIAL PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                direction VARCHAR(10) NOT NULL,
+                entry_price FLOAT NOT NULL,
+                stop_loss FLOAT NOT NULL,
+                take_profit_levels TEXT NOT NULL,
+                confidence FLOAT NOT NULL,
+                reasoning TEXT NOT NULL,
+                signal_strength VARCHAR(20) NOT NULL,
+                risk_reward_ratio FLOAT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                market_price_at_signal FLOAT NOT NULL
+            )
+        """))
+        
+        # Create index for efficient SMC signal queries
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_smc_signal_cache_symbol_expires 
+            ON smc_signal_cache(symbol, expires_at)
+        """))
+        
+        # Ensure KlinesCache table exists with proper indexes
+        db.session.execute(text("""
+            CREATE TABLE IF NOT EXISTS klines_cache (
+                id SERIAL PRIMARY KEY,
+                symbol VARCHAR(20) NOT NULL,
+                timeframe VARCHAR(10) NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                open FLOAT NOT NULL,
+                high FLOAT NOT NULL,
+                low FLOAT NOT NULL,
+                close FLOAT NOT NULL,
+                volume FLOAT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                is_complete BOOLEAN DEFAULT TRUE
+            )
+        """))
+        
+        # Create indexes for efficient klines cache queries
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_timestamp 
+            ON klines_cache(symbol, timeframe, timestamp)
+        """))
+        
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_klines_expires 
+            ON klines_cache(expires_at)
+        """))
+        
+        db.session.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_expires 
+            ON klines_cache(symbol, timeframe, expires_at)
+        """))
+        
+        db.session.commit()
+        logging.info("SMC signal cache and KlinesCache tables ensured for deployment")
+    except Exception as smc_error:
+        logging.warning(f"Cache table creation failed (may already exist): {smc_error}")
+        db.session.rollback()
+
+
+def _fix_toobit_testnet_issues():
+    """Fix Toobit testnet issues for existing data."""
+    from sqlalchemy import text
+    try:
+        # First check if there are any Toobit users before running fixes
+        toobit_count = db.session.execute(text("""
+            SELECT COUNT(*) FROM user_credentials 
+            WHERE exchange_name = 'toobit' AND is_active = true
+        """)).scalar()
+        
+        if toobit_count and toobit_count > 0:
+            # Only run Toobit fixes if there are actual Toobit users
+            db.session.execute(text("""
+                UPDATE user_credentials 
+                SET testnet_mode = false 
+                WHERE exchange_name = 'toobit' AND testnet_mode = true
+            """))
+            db.session.commit()
+            
+            # Additional Vercel/Neon protection - ensure all Toobit credentials are mainnet
+            toobit_testnet_users = UserCredentials.query.filter_by(
+                exchange_name='toobit',
+                testnet_mode=True,
+                is_active=True
+            ).all()
+            
+            if toobit_testnet_users:
+                for cred in toobit_testnet_users:
+                    cred.testnet_mode = False
+                    logging.info(f"Vercel/Neon: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+                
+                db.session.commit()
+                logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
+            
+            logging.info("Fixed Toobit testnet mode for existing credentials")
+            
+            # CRITICAL: Force disable testnet mode for ALL environments (Replit, Vercel, Render)
+            all_toobit_creds = UserCredentials.query.filter_by(
+                exchange_name='toobit',
+                is_active=True
+            ).all()
+            
+            testnet_fixes = 0
+            for cred in all_toobit_creds:
+                if cred.testnet_mode:
+                    cred.testnet_mode = False
+                    testnet_fixes += 1
+                    logging.warning(f"RENDER FIX: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
+            
+            if testnet_fixes > 0:
+                db.session.commit()
+                logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
+        else:
+            logging.debug("No Toobit users found - skipping Toobit testnet fixes")
+        
+        # CRITICAL FIX: Ensure all non-Toobit exchanges default to live mode (not testnet)
+        try:
+            non_toobit_testnet_users = UserCredentials.query.filter(
+                UserCredentials.exchange_name != 'toobit',
+                UserCredentials.testnet_mode == True,
+                UserCredentials.is_active == True
+            ).all()
+            
+            if non_toobit_testnet_users:
+                fixed_count = 0
+                for cred in non_toobit_testnet_users:
+                    cred.testnet_mode = False  # Switch to live mode by default
+                    fixed_count += 1
+                    logging.info(f"LIVE MODE FIX: Switched {cred.exchange_name} user {cred.telegram_user_id} to live trading")
+                
+                db.session.commit()
+                logging.info(f"LIVE MODE FIX: Updated {fixed_count} users from testnet to live mode")
+            else:
+                logging.debug("No users stuck in testnet mode - migration not needed")
+                
+        except Exception as testnet_fix_error:
+            logging.warning(f"Live mode migration failed (may not be needed): {testnet_fix_error}")
+            db.session.rollback()
+            
+    except Exception as toobit_fix_error:
+        logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
+        db.session.rollback()
+
+
+def _migrate_database_columns():
+    """Migrate database columns for trade configurations."""
+    from sqlalchemy import text
+    try:
+        # Check for missing columns
+        required_columns = [
+            ('breakeven_sl_triggered', 'BOOLEAN DEFAULT FALSE'),
+            ('realized_pnl', 'FLOAT DEFAULT 0.0'),
+            ('original_amount', 'FLOAT DEFAULT 0.0'),
+            ('original_margin', 'FLOAT DEFAULT 0.0')
+        ]
+        
+        migrations_needed = []
+        # Check database type for proper column checking
+        is_sqlite = database_url.startswith("sqlite")
+        
+        for column_name, column_def in required_columns:
+            if is_sqlite:
+                # SQLite column checking
+                result = db.session.execute(text("""
+                    PRAGMA table_info(trade_configurations)
+                """))
+                columns = [row[1] for row in result.fetchall()]  # row[1] is the column name
+                if column_name not in columns:
+                    migrations_needed.append((column_name, column_def))
+            else:
+                # PostgreSQL column checking
+                result = db.session.execute(text("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'trade_configurations' 
+                    AND column_name = :column_name
+                """), {"column_name": column_name})
+                
+                if not result.fetchone():
+                    migrations_needed.append((column_name, column_def))
+        
+        # Apply migrations
+        for column_name, column_def in migrations_needed:
+            logging.info(f"Adding missing {column_name} column")
+            db.session.execute(text(f"""
+                ALTER TABLE trade_configurations 
+                ADD COLUMN {column_name} {column_def}
+            """))
+        
+        if migrations_needed:
+            db.session.commit()
+            logging.info(f"Database migration completed successfully - added {len(migrations_needed)} columns")
+            
+    except Exception as migration_error:
+        logging.warning(f"Migration check failed (table may not exist yet): {migration_error}")
+        db.session.rollback()
+
+
 def run_database_migrations():
     """Run database migrations to ensure schema compatibility"""
     try:
         with app.app_context():
-            from sqlalchemy import text
-            migrations_needed = []
-            
-            # Check for missing columns
-            required_columns = [
-                ('breakeven_sl_triggered', 'BOOLEAN DEFAULT FALSE'),
-                ('realized_pnl', 'FLOAT DEFAULT 0.0'),
-                ('original_amount', 'FLOAT DEFAULT 0.0'),
-                ('original_margin', 'FLOAT DEFAULT 0.0')
-            ]
-            
-            # Ensure SMC signal cache table exists
-            try:
-                db.session.execute(text("""
-                    CREATE TABLE IF NOT EXISTS smc_signal_cache (
-                        id SERIAL PRIMARY KEY,
-                        symbol VARCHAR(20) NOT NULL,
-                        direction VARCHAR(10) NOT NULL,
-                        entry_price FLOAT NOT NULL,
-                        stop_loss FLOAT NOT NULL,
-                        take_profit_levels TEXT NOT NULL,
-                        confidence FLOAT NOT NULL,
-                        reasoning TEXT NOT NULL,
-                        signal_strength VARCHAR(20) NOT NULL,
-                        risk_reward_ratio FLOAT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                        expires_at TIMESTAMP NOT NULL,
-                        market_price_at_signal FLOAT NOT NULL
-                    )
-                """))
-                
-                # Create index for efficient SMC signal queries
-                db.session.execute(text("""
-                    CREATE INDEX IF NOT EXISTS idx_smc_signal_cache_symbol_expires 
-                    ON smc_signal_cache(symbol, expires_at)
-                """))
-                
-                # Ensure KlinesCache table exists with proper indexes
-                db.session.execute(text("""
-                    CREATE TABLE IF NOT EXISTS klines_cache (
-                        id SERIAL PRIMARY KEY,
-                        symbol VARCHAR(20) NOT NULL,
-                        timeframe VARCHAR(10) NOT NULL,
-                        timestamp TIMESTAMP NOT NULL,
-                        open FLOAT NOT NULL,
-                        high FLOAT NOT NULL,
-                        low FLOAT NOT NULL,
-                        close FLOAT NOT NULL,
-                        volume FLOAT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                        expires_at TIMESTAMP NOT NULL,
-                        is_complete BOOLEAN DEFAULT TRUE
-                    )
-                """))
-                
-                # Create indexes for efficient klines cache queries
-                db.session.execute(text("""
-                    CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_timestamp 
-                    ON klines_cache(symbol, timeframe, timestamp)
-                """))
-                
-                db.session.execute(text("""
-                    CREATE INDEX IF NOT EXISTS idx_klines_expires 
-                    ON klines_cache(expires_at)
-                """))
-                
-                db.session.execute(text("""
-                    CREATE INDEX IF NOT EXISTS idx_klines_symbol_timeframe_expires 
-                    ON klines_cache(symbol, timeframe, expires_at)
-                """))
-                
-                db.session.commit()
-                logging.info("SMC signal cache and KlinesCache tables ensured for deployment")
-            except Exception as smc_error:
-                logging.warning(f"Cache table creation failed (may already exist): {smc_error}")
-                db.session.rollback()
-            
-            # Fix Toobit testnet issue for existing data (only if Toobit users exist)
-            try:
-                # First check if there are any Toobit users before running fixes
-                toobit_count = db.session.execute(text("""
-                    SELECT COUNT(*) FROM user_credentials 
-                    WHERE exchange_name = 'toobit' AND is_active = true
-                """)).scalar()
-                
-                if toobit_count and toobit_count > 0:
-                    # Only run Toobit fixes if there are actual Toobit users
-                    db.session.execute(text("""
-                        UPDATE user_credentials 
-                        SET testnet_mode = false 
-                        WHERE exchange_name = 'toobit' AND testnet_mode = true
-                    """))
-                    db.session.commit()
-                    
-                    # Additional Vercel/Neon protection - ensure all Toobit credentials are mainnet
-                    toobit_testnet_users = UserCredentials.query.filter_by(
-                        exchange_name='toobit',
-                        testnet_mode=True,
-                        is_active=True
-                    ).all()
-                    
-                    if toobit_testnet_users:
-                        for cred in toobit_testnet_users:
-                            cred.testnet_mode = False
-                            logging.info(f"Vercel/Neon: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
-                        
-                        db.session.commit()
-                        logging.info(f"Vercel/Neon: Fixed {len(toobit_testnet_users)} Toobit testnet credentials")
-                    
-                    logging.info("Fixed Toobit testnet mode for existing credentials")
-                    
-                    # CRITICAL: Force disable testnet mode for ALL environments (Replit, Vercel, Render)
-                    # This addresses persistent testnet issues on Render deployments
-                    all_toobit_creds = UserCredentials.query.filter_by(
-                        exchange_name='toobit',
-                        is_active=True
-                    ).all()
-                    
-                    testnet_fixes = 0
-                    for cred in all_toobit_creds:
-                        if cred.testnet_mode:
-                            cred.testnet_mode = False
-                            testnet_fixes += 1
-                            logging.warning(f"RENDER FIX: Disabled testnet mode for Toobit user {cred.telegram_user_id}")
-                    
-                    if testnet_fixes > 0:
-                        db.session.commit()
-                        logging.info(f"RENDER FIX: Updated {testnet_fixes} Toobit credentials to mainnet mode")
-                else:
-                    logging.debug("No Toobit users found - skipping Toobit testnet fixes")
-                
-                # CRITICAL FIX: Ensure all non-Toobit exchanges default to live mode (not testnet)
-                # This addresses the user issue where they're stuck in testnet mode
-                try:
-                    non_toobit_testnet_users = UserCredentials.query.filter(
-                        UserCredentials.exchange_name != 'toobit',
-                        UserCredentials.testnet_mode == True,
-                        UserCredentials.is_active == True
-                    ).all()
-                    
-                    if non_toobit_testnet_users:
-                        fixed_count = 0
-                        for cred in non_toobit_testnet_users:
-                            cred.testnet_mode = False  # Switch to live mode by default
-                            fixed_count += 1
-                            logging.info(f"LIVE MODE FIX: Switched {cred.exchange_name} user {cred.telegram_user_id} to live trading")
-                        
-                        db.session.commit()
-                        logging.info(f"LIVE MODE FIX: Updated {fixed_count} users from testnet to live mode")
-                    else:
-                        logging.debug("No users stuck in testnet mode - migration not needed")
-                        
-                except Exception as testnet_fix_error:
-                    logging.warning(f"Live mode migration failed (may not be needed): {testnet_fix_error}")
-                    db.session.rollback()
-                    
-            except Exception as toobit_fix_error:
-                logging.warning(f"Toobit testnet fix failed (may not be needed): {toobit_fix_error}")
-                db.session.rollback()
-            
-            try:
-                # Check database type for proper column checking
-                is_sqlite = database_url.startswith("sqlite")
-                
-                for column_name, column_def in required_columns:
-                    if is_sqlite:
-                        # SQLite column checking
-                        result = db.session.execute(text("""
-                            PRAGMA table_info(trade_configurations)
-                        """))
-                        columns = [row[1] for row in result.fetchall()]  # row[1] is the column name
-                        if column_name not in columns:
-                            migrations_needed.append((column_name, column_def))
-                    else:
-                        # PostgreSQL column checking
-                        result = db.session.execute(text("""
-                            SELECT column_name FROM information_schema.columns 
-                            WHERE table_name = 'trade_configurations' 
-                            AND column_name = :column_name
-                        """), {"column_name": column_name})
-                        
-                        if not result.fetchone():
-                            migrations_needed.append((column_name, column_def))
-                
-                # Apply migrations
-                for column_name, column_def in migrations_needed:
-                    logging.info(f"Adding missing {column_name} column")
-                    db.session.execute(text(f"""
-                        ALTER TABLE trade_configurations 
-                        ADD COLUMN {column_name} {column_def}
-                    """))
-                
-                if migrations_needed:
-                    db.session.commit()
-                    logging.info(f"Database migration completed successfully - added {len(migrations_needed)} columns")
-                    
-            except Exception as migration_error:
-                logging.warning(f"Migration check failed (table may not exist yet): {migration_error}")
-                db.session.rollback()
+            # Run all migration steps using helper functions
+            _create_cache_tables()
+            _fix_toobit_testnet_issues()
+            _migrate_database_columns()
     except Exception as e:
         logging.error(f"Database migration error: {e}")
 
