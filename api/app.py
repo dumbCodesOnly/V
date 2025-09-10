@@ -382,6 +382,7 @@ def _validate_credentials_and_create_client(user_creds, user_id):
     Validate user credentials and create exchange client for trading.
     Returns tuple: (client, error_response) where error_response is None on success.
     """
+    client = None  # Initialize client to avoid unbound variable error
     try:
         # Enhanced credential debugging for Render
         api_key = user_creds.get_api_key()
@@ -2077,8 +2078,8 @@ def _check_take_profit_triggers(trade, current_price):
         _check_tp_trigger(trade, current_price, tp_price, i)
 
 
-def _calculate_profit_percentage(trade, current_price):
-    """Calculate current profit percentage for the trade."""
+def _calculate_trade_profit_percentage(trade, current_price):
+    """Calculate current profit percentage for the trade (monitoring)."""
     if trade.side == "long":
         return ((current_price - trade.entry_price) / trade.entry_price) * 100
     else:  # short
@@ -2090,7 +2091,7 @@ def _check_breakeven_trigger(trade, current_price):
     if not (trade.breakeven_after > 0 and not trade.breakeven_sl_triggered):
         return
 
-    profit_percent = _calculate_profit_percentage(trade, current_price)
+    profit_percent = _calculate_trade_profit_percentage(trade, current_price)
 
     if profit_percent >= trade.breakeven_after:
         logging.info(
@@ -4863,6 +4864,9 @@ def execute_trade():
         )
         if error_response:
             return error_response, status_code
+
+        # At this point, config is guaranteed to not be None
+        assert config is not None, "Config should not be None after validation"
 
         # Get current market price
         current_market_price = get_live_market_price(
@@ -10237,21 +10241,22 @@ def place_exchange_native_orders(config, user_id):
                     amount=unified_params["amount"],
                     entry_price=float(config.entry_price),
                     tp_levels=tp_orders,
+                    stop_loss_price=sl_price,
                 )
             elif "lbank" in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=unified_params["symbol"],
                     side=unified_params["side"],
-                    amount=str(unified_params["amount"]),
+                    total_quantity=str(unified_params["amount"]),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
             else:
-                # ToobitClient
+                # ToobitClient  
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=unified_params["symbol"],
                     side=unified_params["side"],
-                    quantity=str(unified_params["quantity"]),
+                    total_quantity=str(unified_params.get("amount", unified_params.get("quantity", 0))),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )

@@ -280,10 +280,9 @@ class TradeConfiguration(db.Model):
         config.exchange = getattr(self, "exchange", "lbank")
 
         # Parse take profits JSON
+        import json
         if self.take_profits:
             try:
-                import json
-
                 config.take_profits = json.loads(self.take_profits)
             except (json.JSONDecodeError, ValueError):
                 config.take_profits = []
@@ -620,7 +619,7 @@ class KlinesCache(db.Model):
         if klines_to_insert:
             # Use bulk insert for better performance
             try:
-                db.session.bulk_insert_mappings(cls, klines_to_insert)
+                db.session.bulk_insert_mappings(cls.__table__, klines_to_insert)
                 db.session.commit()
                 return len(klines_to_insert)
             except Exception:
