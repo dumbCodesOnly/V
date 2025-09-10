@@ -62,3 +62,4 @@ python-telegram-bot
 requests
 sqlalchemy
 werkzeug
+bandit
