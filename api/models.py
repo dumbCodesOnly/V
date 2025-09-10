@@ -37,7 +37,9 @@ def utc_to_iran_time(utc_dt: Optional[datetime]) -> Optional[datetime]:
     return utc_dt.astimezone(IRAN_TZ)
 
 
-def format_iran_time(dt: Optional[datetime], format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+def format_iran_time(
+    dt: Optional[datetime], format_str: str = "%Y-%m-%d %H:%M:%S"
+) -> str:
     """Format datetime in GMT+3:30 timezone"""
     if dt is None:
         return ""
