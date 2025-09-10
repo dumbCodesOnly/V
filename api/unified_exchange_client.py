@@ -844,7 +844,11 @@ class LBankClient:
             from cryptography.hazmat.primitives import hashes, serialization
             from cryptography.hazmat.primitives.asymmetric import padding
 
-            md5_hash = hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
+            md5_hash = (
+                hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False)
+                .hexdigest()
+                .upper()
+            )
             logging.debug(f"LBank RSA - MD5 hash: {md5_hash}")
 
             # Step 2: Format RSA private key
@@ -858,13 +862,11 @@ class LBankClient:
             private_key = serialization.load_pem_private_key(
                 private_key_pem.encode(), password=None
             )
-            
+
             signature = private_key.sign(
-                md5_hash.encode("utf8"),
-                padding.PKCS1v15(),
-                hashes.SHA256()
+                md5_hash.encode("utf8"), padding.PKCS1v15(), hashes.SHA256()
             )
-            
+
             sign = b64encode(signature)
             signature_str = sign.decode("utf8")
             logging.debug(f"LBank RSA - Final signature length: {len(signature_str)}")
@@ -888,7 +890,11 @@ class LBankClient:
         )
 
         # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
-        md5_hash = hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
+        md5_hash = (
+            hashlib.md5(params_string.encode("utf-8"), usedforsecurity=False)
+            .hexdigest()
+            .upper()
+        )
         caller_method = (
             inspect.stack()[1].function if len(inspect.stack()) > 1 else "unknown"
         )
@@ -965,7 +971,11 @@ class LBankClient:
         # 2. Sign the hash with HmacSHA256 (lowercase)
         import hashlib
 
-        md5_hash = hashlib.md5(param_string.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
+        md5_hash = (
+            hashlib.md5(param_string.encode("utf-8"), usedforsecurity=False)
+            .hexdigest()
+            .upper()
+        )
 
         import hmac
 

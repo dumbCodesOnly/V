@@ -281,6 +281,7 @@ class TradeConfiguration(db.Model):
 
         # Parse take profits JSON
         import json
+
         if self.take_profits:
             try:
                 config.take_profits = json.loads(self.take_profits)

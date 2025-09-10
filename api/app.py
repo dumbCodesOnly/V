@@ -992,11 +992,11 @@ def setup_webhook_on_deployment():
 
             # Set the webhook
             webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-            
+
             webhook_response = requests.post(
                 webhook_api_url,
                 data=webhook_data,
-                timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT
+                timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT,
             )
 
             if webhook_response.status_code == 200:
@@ -6818,7 +6818,7 @@ def fetch_binance_price(symbol):
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
 
         response = requests.get(
@@ -6878,7 +6878,7 @@ def fetch_coingecko_price(symbol):
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
 
         response = requests.get(
@@ -6909,7 +6909,7 @@ def fetch_cryptocompare_price(symbol):
         )
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
 
         response = requests.get(
@@ -7722,7 +7722,9 @@ def setup_webhook():
             webhook_url = f"{WEBHOOK_URL}/webhook"
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
             data = {"url": webhook_url}
-            response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
+            response = requests.post(
+                url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT
+            )
             if response.status_code == 200:
                 logging.info(f"Webhook set successfully to {webhook_url}")
                 bot_status["status"] = "active"
@@ -10254,11 +10256,13 @@ def place_exchange_native_orders(config, user_id):
                     stop_loss_price=sl_price,
                 )
             else:
-                # ToobitClient  
+                # ToobitClient
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=unified_params["symbol"],
                     side=unified_params["side"],
-                    total_quantity=str(unified_params.get("amount", unified_params.get("quantity", 0))),
+                    total_quantity=str(
+                        unified_params.get("amount", unified_params.get("quantity", 0))
+                    ),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )

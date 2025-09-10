@@ -36,11 +36,13 @@ def setup_app_secret() -> None:
         secret_key: Optional[str] = os.environ.get("SESSION_SECRET")
         if not secret_key:
             if Environment.IS_DEVELOPMENT or Environment.IS_REPLIT:
-                # Only use default in development environments  
+                # Only use default in development environments
                 secret_key = SecurityConfig.DEFAULT_SESSION_SECRET
                 logging.warning("Using default session secret in development mode")
             else:
-                raise ValueError("SESSION_SECRET environment variable is required for production")
+                raise ValueError(
+                    "SESSION_SECRET environment variable is required for production"
+                )
         app.secret_key = secret_key
 
 
