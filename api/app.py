@@ -8302,13 +8302,24 @@ def initialize_paper_trading_monitoring(config):
     
     logging.info(f"Paper Trading: Monitoring initialized for {config.symbol} {config.side} with {len(getattr(config, 'paper_tp_levels', []))} TP levels")
 
-def update_positions_lightweight():
-    """OPTIMIZED: Lightweight position updates - only for break-even monitoring"""
-    # Only collect positions that need break-even monitoring
+def _is_breakeven_enabled(config):
+    """Check if break-even is enabled for a position."""
+    if not (hasattr(config, 'breakeven_after') and config.breakeven_after):
+        return False
+    
+    # Handle both string values (tp1, tp2, tp3) and numeric values (1.0, 2.0, 3.0)
+    if isinstance(config.breakeven_after, str):
+        return config.breakeven_after in ["tp1", "tp2", "tp3"]
+    elif isinstance(config.breakeven_after, (int, float)):
+        return config.breakeven_after > 0
+    
+    return False
+
+
+def _collect_breakeven_positions():
+    """Collect all positions that need break-even monitoring."""
     breakeven_positions = []
     symbols_needed = set()
-    
-    # Debug: Log all positions for troubleshooting
     total_positions = 0
     active_positions = 0
     
@@ -8329,21 +8340,105 @@ def update_positions_lightweight():
                 active_positions += 1
                 
             # Only monitor active positions with break-even enabled and not yet triggered
-            breakeven_enabled = False
-            if hasattr(config, 'breakeven_after') and config.breakeven_after:
-                # Handle both string values (tp1, tp2, tp3) and numeric values (1.0, 2.0, 3.0)
-                if isinstance(config.breakeven_after, str):
-                    breakeven_enabled = config.breakeven_after in ["tp1", "tp2", "tp3"]
-                elif isinstance(config.breakeven_after, (int, float)):
-                    breakeven_enabled = config.breakeven_after > 0
-            
-            if (config.status == "active" and config.symbol and breakeven_enabled and
+            if (config.status == "active" and config.symbol and _is_breakeven_enabled(config) and
                 not getattr(config, 'breakeven_sl_triggered', False)):
                 symbols_needed.add(config.symbol)
                 breakeven_positions.append((user_id, trade_id, config))
     
     # Enhanced debug logging
     logging.debug(f"Monitoring scan: {total_positions} total positions, {active_positions} active, {len(breakeven_positions)} need break-even monitoring")
+    
+    return breakeven_positions, symbols_needed
+
+
+def _fetch_breakeven_symbol_prices(symbols_needed):
+    """Fetch prices for symbols that need break-even monitoring."""
+    symbol_prices = {}
+    if not symbols_needed:
+        return symbol_prices
+    
+    futures = {}
+    for symbol in symbols_needed:
+        future = price_executor.submit(get_live_market_price, symbol, True)
+        futures[future] = symbol
+    
+    for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
+        symbol = futures[future]
+        try:
+            price = future.result()
+            symbol_prices[symbol] = price
+        except Exception as e:
+            logging.warning(f"Failed to get price for break-even check {symbol}: {e}")
+    
+    return symbol_prices
+
+
+def _calculate_position_pnl(config):
+    """Calculate unrealized PnL for a position."""
+    if not (config.entry_price and config.current_price):
+        return None
+    
+    return calculate_unrealized_pnl(
+        config.entry_price, config.current_price,
+        config.amount, config.leverage, config.side
+    )
+
+
+def _should_trigger_breakeven(config, profit_percentage):
+    """Check if break-even should trigger based on profit percentage."""
+    return (isinstance(config.breakeven_after, (int, float)) and 
+            profit_percentage >= config.breakeven_after)
+
+
+def _execute_breakeven_trigger(user_id, config):
+    """Execute break-even trigger by moving SL to entry price."""
+    logging.info(f"BREAK-EVEN TRIGGERED: {config.symbol} {config.side} - Moving SL to entry price")
+    
+    # Mark as triggered to stop monitoring
+    config.breakeven_sl_triggered = True
+    save_trade_to_db(user_id, config)
+    
+    # Move exchange SL to entry price
+    try:
+        user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
+        if user_creds and user_creds.has_credentials():
+            client = create_exchange_client(user_creds, testnet=False)
+            # Move stop loss to entry price (break-even)
+            config.breakeven_sl_price = config.entry_price
+            config.breakeven_sl_triggered = True
+            logging.info(f"Break-even stop loss set to entry price: ${config.entry_price}")
+    except Exception as be_error:
+        logging.error(f"Failed to move SL to break-even: {be_error}")
+
+
+def _process_breakeven_monitoring(breakeven_positions, symbol_prices):
+    """Process break-even monitoring for all positions."""
+    for user_id, trade_id, config in breakeven_positions:
+        if config.symbol not in symbol_prices:
+            continue
+        
+        try:
+            config.current_price = symbol_prices[config.symbol]
+            config.unrealized_pnl = _calculate_position_pnl(config)
+            
+            if config.unrealized_pnl is None:
+                continue
+            
+            # Check ONLY break-even (everything else handled by exchange)
+            if config.unrealized_pnl > 0:
+                profit_percentage = (config.unrealized_pnl / config.amount) * 100
+                
+                if _should_trigger_breakeven(config, profit_percentage):
+                    _execute_breakeven_trigger(user_id, config)
+                    
+        except Exception as e:
+            logging.warning(f"Break-even check failed for {config.symbol}: {e}")
+
+
+def update_positions_lightweight():
+    """OPTIMIZED: Lightweight position updates - only for break-even monitoring"""
+    # Collect positions that need break-even monitoring
+    breakeven_positions, symbols_needed = _collect_breakeven_positions()
     
     # If no positions need break-even monitoring, skip entirely
     if not breakeven_positions:
@@ -8353,60 +8448,10 @@ def update_positions_lightweight():
     logging.info(f"Lightweight monitoring: Only {len(breakeven_positions)} positions need break-even checks (vs {sum(len(trades) for trades in user_trade_configs.values())} total)")
     
     # Fetch prices only for symbols that need break-even monitoring
-    symbol_prices = {}
-    if symbols_needed:
-        futures = {}
-        for symbol in symbols_needed:
-            future = price_executor.submit(get_live_market_price, symbol, True)
-            futures[future] = symbol
-        
-        for future in as_completed(futures, timeout=TimeConfig.QUICK_API_TIMEOUT):
-            symbol = futures[future]
-            try:
-                price = future.result()
-                symbol_prices[symbol] = price
-            except Exception as e:
-                logging.warning(f"Failed to get price for break-even check {symbol}: {e}")
+    symbol_prices = _fetch_breakeven_symbol_prices(symbols_needed)
     
-    # Process break-even monitoring ONLY
-    for user_id, trade_id, config in breakeven_positions:
-        if config.symbol in symbol_prices:
-            try:
-                config.current_price = symbol_prices[config.symbol]
-                
-                if config.entry_price and config.current_price:
-                    config.unrealized_pnl = calculate_unrealized_pnl(
-                        config.entry_price, config.current_price,
-                        config.amount, config.leverage, config.side
-                    )
-                    
-                    # Check ONLY break-even (everything else handled by exchange)
-                    if config.unrealized_pnl > 0:
-                        profit_percentage = (config.unrealized_pnl / config.amount) * 100
-                        
-                        # Ensure breakeven_after is numeric before comparison
-                        if (isinstance(config.breakeven_after, (int, float)) and 
-                            profit_percentage >= config.breakeven_after):
-                            logging.info(f"BREAK-EVEN TRIGGERED: {config.symbol} {config.side} - Moving SL to entry price")
-                            
-                            # Mark as triggered to stop monitoring
-                            config.breakeven_sl_triggered = True
-                            save_trade_to_db(user_id, config)
-                            
-                            # Move exchange SL to entry price using ToobitClient
-                            try:
-                                user_creds = UserCredentials.query.filter_by(telegram_user_id=str(user_id)).first()
-                                if user_creds and user_creds.has_credentials():
-                                    client = create_exchange_client(user_creds, testnet=False)
-                                    # Move stop loss to entry price (break-even)
-                                    config.breakeven_sl_price = config.entry_price
-                                    config.breakeven_sl_triggered = True
-                                    logging.info(f"Break-even stop loss set to entry price: ${config.entry_price}")
-                            except Exception as be_error:
-                                logging.error(f"Failed to move SL to break-even: {be_error}")
-                            
-            except Exception as e:
-                logging.warning(f"Break-even check failed for {config.symbol}: {e}")
+    # Process break-even monitoring
+    _process_breakeven_monitoring(breakeven_positions, symbol_prices)
 
 
 def place_exchange_native_orders(config, user_id):
