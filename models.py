@@ -4,10 +4,10 @@
 
 # Import all models for table creation
 from api.models import (
-    db,
+    TradeConfiguration,
     UserCredentials,
     UserTradingSession,
-    TradeConfiguration,
+    db,
     format_iran_time,
     get_iran_time,
     utc_to_iran_time,

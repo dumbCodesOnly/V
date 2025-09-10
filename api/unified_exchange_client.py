@@ -5,14 +5,15 @@ Supports Toobit and LBank exchanges in a single file for better maintainability
 
 import hashlib
 import hmac
-import logging
-import requests
-import time
 import inspect
-import traceback
-from typing import Optional, Dict, List, Protocol, runtime_checkable, Any
-from urllib.parse import urlencode
 import json
+import logging
+import time
+import traceback
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from urllib.parse import urlencode
+
+import requests
 
 
 @runtime_checkable
@@ -101,8 +102,8 @@ from config import APIConfig, TradingConfig
 
 # Hyperliquid SDK imports
 try:
-    from hyperliquid.info import Info
     from hyperliquid.exchange import Exchange
+    from hyperliquid.info import Info
     from hyperliquid.utils import constants
 
     HYPERLIQUID_SDK_AVAILABLE = True
@@ -836,13 +837,13 @@ class LBankClient:
     def _generate_rsa_signature(self, params_string: str) -> str:
         """Generate RSA signature following official LBank connector implementation"""
         try:
+            # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
+            import hashlib
+            from base64 import b64encode
+
             from Crypto.Hash import SHA256
             from Crypto.PublicKey import RSA
             from Crypto.Signature import PKCS1_v1_5
-            from base64 import b64encode
-
-            # Step 1: Generate MD5 hash of parameter string (UPPERCASE)
-            import hashlib
 
             md5_hash = hashlib.md5(params_string.encode("utf-8")).hexdigest().upper()
             logging.debug(f"LBank RSA - MD5 hash: {md5_hash}")
@@ -869,8 +870,8 @@ class LBankClient:
 
     def _generate_hmac_signature(self, params_string: str) -> str:
         """Generate HmacSHA256 signature following official LBank connector implementation"""
-        import hmac
         import hashlib
+        import hmac
 
         # DEBUG: Log the input parameter string with caller info
         caller_method = (

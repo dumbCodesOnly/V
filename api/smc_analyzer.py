@@ -3,24 +3,25 @@ Smart Money Concepts (SMC) Analysis Engine
 Analyzes market structure and provides trade suggestions based on institutional trading patterns
 """
 
-import logging
 import json
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
-import requests
+import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
 
 # Import circuit breaker functionality
-from .circuit_breaker import with_circuit_breaker, CircuitBreakerError
+from .circuit_breaker import CircuitBreakerError, with_circuit_breaker
 
 # Import configuration constants
 try:
     from config import SMCConfig
 except ImportError:
     # Fallback if running from different directory
-    import sys
     import os
+    import sys
 
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from config import SMCConfig
@@ -112,8 +113,9 @@ class SMCAnalyzer:
         self, symbol: str, timeframe: str = "1h", limit: int = 100
     ) -> List[Dict]:
         """Get candlestick data with cache-first approach and circuit breaker protection"""
-        from .models import KlinesCache
         from config import CacheConfig
+
+        from .models import KlinesCache
 
         # Step 1: Try to get data from cache first
         try:

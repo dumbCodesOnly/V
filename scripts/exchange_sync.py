@@ -3,18 +3,19 @@ Exchange Synchronization Service
 Handles background polling and webhook processing for Toobit exchange
 """
 
+import logging
 import threading
 import time
-import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from api.unified_exchange_client import ToobitClient
+
 from api.models import (
-    UserCredentials,
     TradeConfiguration,
+    UserCredentials,
     get_iran_time,
     utc_to_iran_time,
 )
+from api.unified_exchange_client import ToobitClient
 from config import TimeConfig
 
 
@@ -184,7 +185,7 @@ class ExchangeSyncService:
         try:
             with self.app.app_context():
                 # Quick count query instead of full fetch
-                from api.models import UserCredentials, TradeConfiguration
+                from api.models import TradeConfiguration, UserCredentials
 
                 active_users = UserCredentials.query.filter_by(is_active=True).count()
                 active_trades = TradeConfiguration.query.filter_by(
@@ -258,8 +259,9 @@ class ExchangeSyncService:
 
         # CRITICAL FIX: Initialize missing paper trading monitoring structures
         if not hasattr(config, "paper_tp_levels") and config.take_profits:
-            from api.app import calculate_tp_sl_prices_and_amounts
             import uuid
+
+            from api.app import calculate_tp_sl_prices_and_amounts
 
             tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
             if tp_sl_data.get("take_profits"):

@@ -2,8 +2,8 @@
 Gunicorn configuration optimized for different deployment environments
 """
 
-import os
 import multiprocessing
+import os
 
 # Detect environment
 IS_RENDER = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))

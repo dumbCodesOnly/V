@@ -11,16 +11,16 @@ States:
 - HALF_OPEN: Testing if service has recovered
 """
 
-import time
-import threading
-from enum import Enum
-from typing import Callable, Any, Optional, Dict
 import logging
-from datetime import datetime, timedelta
+import os
 
 # Import configuration constants for circuit breaker defaults
 import sys
-import os
+import threading
+import time
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import CircuitBreakerConfig

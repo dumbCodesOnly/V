@@ -1,10 +1,11 @@
-import os
-from datetime import datetime, timedelta, timezone
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase
-from cryptography.fernet import Fernet
 import base64
 import hashlib
+import os
+from datetime import datetime, timedelta, timezone
+
+from cryptography.fernet import Fernet
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
 
 # GMT+3:30 timezone (Iran Standard Time)
 try:
@@ -77,7 +78,7 @@ def decrypt_data(encrypted_data):
     try:
         fernet = Fernet(get_encryption_key())
         return fernet.decrypt(encrypted_data.encode()).decode()
-    except:
+    except Exception:
         return ""
 
 
@@ -235,7 +236,7 @@ class TradeConfiguration(db.Model):
         config.entry_type = self.entry_type
         config.entry_price = self.entry_price
         config.stop_loss_percent = self.stop_loss_percent
-        # Convert breakeven_after back to expected format - handle both string and numeric values
+        # Convert breakeven_after back to expected format
         if isinstance(self.breakeven_after, str):
             if self.breakeven_after == "tp1":
                 config.breakeven_after = 1.0
@@ -281,7 +282,7 @@ class TradeConfiguration(db.Model):
                 import json
 
                 config.take_profits = json.loads(self.take_profits)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 config.take_profits = []
         else:
             config.take_profits = []
@@ -344,7 +345,7 @@ class TradeConfiguration(db.Model):
                 db_config.closed_at = datetime.fromisoformat(
                     config.closed_at.replace("Z", "+00:00")
                 )
-            except:
+            except (ValueError, TypeError):
                 pass
 
         return db_config
@@ -397,7 +398,8 @@ class SMCSignalCache(db.Model):
     def to_smc_signal(self):
         """Convert database model to SMCSignal object"""
         import json
-        from .smc_analyzer import SMCSignal, SignalStrength
+
+        from .smc_analyzer import SignalStrength, SMCSignal
 
         # Parse JSON fields
         take_profits = json.loads(self.take_profit_levels)
@@ -448,7 +450,7 @@ class SMCSignalCache(db.Model):
 
     @classmethod
     def get_valid_signal(cls, symbol, current_price=None):
-        """Get a valid cached signal for symbol, considering expiration and price tolerance"""
+        """Get a valid cached signal for symbol, considering expiration"""
         # Get most recent non-expired signal
         signal = (
             cls.query.filter(cls.symbol == symbol, cls.expires_at > datetime.utcnow())
@@ -545,7 +547,7 @@ class KlinesCache(db.Model):
         )
 
         if not include_incomplete:
-            query = query.filter(cls.is_complete == True)
+            query = query.filter(cls.is_complete.is_(True))
 
         # Get the most recent data, ordered by timestamp
         cached_data = query.order_by(cls.timestamp.desc()).limit(limit).all()
@@ -618,7 +620,7 @@ class KlinesCache(db.Model):
                 db.session.bulk_insert_mappings(cls, klines_to_insert)
                 db.session.commit()
                 return len(klines_to_insert)
-            except Exception as e:
+            except Exception:
                 db.session.rollback()
                 # Fall back to individual inserts on conflict
                 inserted_count = 0
@@ -649,7 +651,7 @@ class KlinesCache(db.Model):
                                 existing.expires_at = expires_at
                                 existing.created_at = current_time
 
-                    except Exception as inner_e:
+                    except Exception:
                         continue
 
                 db.session.commit()
@@ -659,13 +661,13 @@ class KlinesCache(db.Model):
 
     @classmethod
     def get_data_gaps(cls, symbol: str, timeframe: str, required_count: int):
-        """Identify gaps in cached data to determine what needs to be fetched from API"""
+        """Identify gaps in cached data to determine what needs fetching"""
         # Get the most recent cached complete data
         latest_complete = (
             cls.query.filter(
                 cls.symbol == symbol,
                 cls.timeframe == timeframe,
-                cls.is_complete == True,
+                cls.is_complete.is_(True),
                 cls.expires_at > datetime.utcnow(),
             )
             .order_by(cls.timestamp.desc())
@@ -684,7 +686,7 @@ class KlinesCache(db.Model):
         available_count = cls.query.filter(
             cls.symbol == symbol,
             cls.timeframe == timeframe,
-            cls.is_complete == True,
+            cls.is_complete.is_(True),
             cls.expires_at > datetime.utcnow(),
         ).count()
 

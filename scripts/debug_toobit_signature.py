@@ -6,10 +6,11 @@ Based on their official documentation examples
 
 import hashlib
 import hmac
-import time
-import requests
 import json
 import os
+import time
+
+import requests
 
 
 def generate_toobit_signature(secret_key: str, params_string: str) -> str:

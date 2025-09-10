@@ -3,9 +3,9 @@ Centralized Configuration for Toobit Trading Bot
 All constants, magic numbers, timeouts, and API endpoints are defined here
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any, Union
+import os
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 

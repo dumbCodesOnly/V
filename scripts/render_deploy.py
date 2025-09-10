@@ -3,14 +3,14 @@
 Streamlined Render.com Deployment Configuration
 Consolidates all Render-specific optimizations, fixes, and checks into one file
 """
+import logging
 import os
 import sys
-import logging
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import Environment, DatabaseConfig
+from config import DatabaseConfig, Environment
 
 
 def apply_render_optimizations():

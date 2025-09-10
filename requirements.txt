@@ -38,3 +38,6 @@ python-telegram-bot
 requests
 sqlalchemy
 werkzeug
+isort
+flake8
+mypy

@@ -5,15 +5,15 @@ This module serves as the primary entry point for the Flask application,
 handling environment-specific configurations and server startup.
 """
 
-import os
 import logging
+import os
 from typing import Optional
 
 from api.app import app
 
 # Apply Render performance and session fixes
 try:
-    import scripts.render_deploy  # type: ignore
+    import scripts.render_deploy  # type: ignore  # noqa: F401
 except ImportError:
     pass
 

@@ -1,56 +1,57 @@
-import os
-import logging
-import hmac
 import hashlib
-import uuid
-from flask import Flask, request, jsonify, render_template, has_app_context
-from datetime import datetime, timedelta
-import urllib.request
-import urllib.parse
+import hmac
 import json
+import logging
+import os
 import random
-import time
 import threading
+import time
+import urllib.parse
+import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+
+from flask import Flask, has_app_context, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
+
 from config import (
     APIConfig,
-    TimeConfig,
     DatabaseConfig,
-    TradingConfig,
+    Environment,
     LoggingConfig,
     SecurityConfig,
-    Environment,
+    TimeConfig,
+    TradingConfig,
     get_cache_ttl,
-    get_log_level,
     get_database_url,
+    get_log_level,
 )
 
 try:
     # Try relative import first (for module import - Vercel/main.py)
+    from ..scripts.exchange_sync import get_sync_service, initialize_sync_service
+    from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
     from .models import (
-        db,
+        TradeConfiguration,
         UserCredentials,
         UserTradingSession,
-        TradeConfiguration,
+        db,
         format_iran_time,
         get_iran_time,
         utc_to_iran_time,
     )
-    from ..scripts.exchange_sync import initialize_sync_service, get_sync_service
-    from .vercel_sync import initialize_vercel_sync_service, get_vercel_sync_service
     from .unified_exchange_client import (
-        ToobitClient,
-        LBankClient,
         HyperliquidClient,
+        LBankClient,
+        ToobitClient,
         create_exchange_client,
         create_wrapped_exchange_client,
     )
-    from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
+    from .vercel_sync import get_vercel_sync_service, initialize_vercel_sync_service
 except ImportError:
     # Fall back to absolute import (for direct execution - Replit)
     import sys
-    import os
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
@@ -76,15 +77,15 @@ except ImportError:
     from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
 
 from api.circuit_breaker import (
-    with_circuit_breaker,
-    circuit_manager,
     CircuitBreakerError,
+    circuit_manager,
+    with_circuit_breaker,
 )
 from api.error_handler import (
-    handle_error,
-    handle_api_error,
-    create_validation_error,
     create_success_response,
+    create_validation_error,
+    handle_api_error,
+    handle_error,
 )
 
 
@@ -789,8 +790,8 @@ def _fix_toobit_testnet_issues():
         try:
             non_toobit_testnet_users = UserCredentials.query.filter(
                 UserCredentials.exchange_name != "toobit",
-                UserCredentials.testnet_mode == True,
-                UserCredentials.is_active == True,
+                UserCredentials.testnet_mode.is_(True),
+                UserCredentials.is_active.is_(True),
             ).all()
 
             if non_toobit_testnet_users:
@@ -1244,11 +1245,11 @@ class TradeConfig:
         if self.entry_type == "limit" and self.entry_price > 0:
             summary += f"Entry: ${self.entry_price:.4f} (LIMIT)\n"
         else:
-            summary += f"Entry: Market Price\n"
+            summary += "Entry: Market Price\n"
 
         # Show take profits with prices if entry price is available
         if self.take_profits:
-            summary += f"Take Profits:\n"
+            summary += "Take Profits:\n"
             tp_sl_data = (
                 calculate_tp_sl_prices_and_amounts(self) if self.entry_price > 0 else {}
             )
@@ -1266,7 +1267,7 @@ class TradeConfig:
                 else:
                     summary += f"  TP{i}: {tp_percentage}% ({tp_allocation}%)\n"
         else:
-            summary += f"Take Profits: Not set\n"
+            summary += "Take Profits: Not set\n"
 
         # Show stop loss with price if entry price is available
         tp_sl_data = (
@@ -1286,13 +1287,13 @@ class TradeConfig:
 
         # Show trailing stop status
         if self.trailing_stop_enabled:
-            summary += f"Trailing Stop: Enabled\n"
+            summary += "Trailing Stop: Enabled\n"
             if self.trail_percentage > 0:
                 summary += f"  Trail %: {self.trail_percentage}%\n"
             if self.trail_activation_price > 0:
                 summary += f"  Activation: ${self.trail_activation_price:.4f}\n"
         else:
-            summary += f"Trailing Stop: Disabled\n"
+            summary += "Trailing Stop: Disabled\n"
 
         summary += f"Status: {self.status.title()}\n"
         return summary
@@ -1351,14 +1352,14 @@ class TradeConfig:
         if self.entry_type == "limit" and self.entry_price > 0:
             header += f"   🎯 Entry: ${self.entry_price:.4f} (LIMIT)\n"
         elif self.entry_type == "market":
-            header += f"   🎯 Entry: Market Price\n"
+            header += "   🎯 Entry: Market Price\n"
         else:
-            header += f"   🎯 Entry: Not set\n"
+            header += "   🎯 Entry: Not set\n"
 
         if self.take_profits:
             header += f"   🎯 Take Profits: {len(self.take_profits)} levels\n"
         else:
-            header += f"   🎯 Take Profits: Not set\n"
+            header += "   🎯 Take Profits: Not set\n"
 
         if self.stop_loss_percent > 0:
             header += f"   🛑 Stop Loss: {self.stop_loss_percent}%\n"
@@ -3061,8 +3062,8 @@ def get_multiple_prices():
 def get_smc_analysis(symbol):
     """Get Smart Money Concepts analysis for a specific symbol with database caching"""
     try:
-        from .smc_analyzer import SMCAnalyzer
         from .models import SMCSignalCache, db
+        from .smc_analyzer import SMCAnalyzer
 
         symbol = symbol.upper()
 
@@ -3142,8 +3143,8 @@ def get_smc_analysis(symbol):
 def get_multiple_smc_signals():
     """Get SMC signals for multiple popular trading symbols with caching"""
     try:
-        from .smc_analyzer import SMCAnalyzer
         from .models import SMCSignalCache, db
+        from .smc_analyzer import SMCAnalyzer
 
         # Analyze popular trading pairs
         symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]
@@ -4262,7 +4263,7 @@ def _validate_execute_trade_request(data):
 def _get_and_validate_trade_config(chat_id, trade_id):
     """Get and validate trade configuration exists and is complete."""
     if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        from api.error_handler import ErrorCategory, ErrorSeverity, TradingError
 
         error = TradingError(
             category=ErrorCategory.VALIDATION_ERROR,
@@ -4281,7 +4282,7 @@ def _get_and_validate_trade_config(chat_id, trade_id):
 
     # Validate configuration completeness
     if not config.is_complete():
-        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        from api.error_handler import ErrorCategory, ErrorSeverity, TradingError
 
         error = TradingError(
             category=ErrorCategory.VALIDATION_ERROR,
@@ -4786,7 +4787,7 @@ def _create_execution_response(trade_id, config, is_paper_mode):
 def _handle_trade_execution_errors(e):
     """Handle trade execution errors with user-friendly messages."""
     error_str = str(e).lower()
-    from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+    from api.error_handler import ErrorCategory, ErrorSeverity, TradingError
 
     if "insufficient balance" in error_str or "not enough funds" in error_str:
         error = TradingError(
@@ -5800,7 +5801,7 @@ def delete_trade():
             chat_id not in user_trade_configs
             or trade_id not in user_trade_configs[chat_id]
         ):
-            from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+            from api.error_handler import ErrorCategory, ErrorSeverity, TradingError
 
             error = TradingError(
                 category=ErrorCategory.VALIDATION_ERROR,
@@ -5844,7 +5845,7 @@ def delete_trade():
     except Exception as e:
         # Handle specific database errors
         error_str = str(e).lower()
-        from api.error_handler import TradingError, ErrorCategory, ErrorSeverity
+        from api.error_handler import ErrorCategory, ErrorSeverity, TradingError
 
         if "database" in error_str or "connection" in error_str:
             error = TradingError(
