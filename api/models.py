@@ -2,6 +2,7 @@ import base64
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from cryptography.fernet import Fernet
 from flask_sqlalchemy import SQLAlchemy
@@ -22,12 +23,12 @@ except ImportError:
     IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
 
-def get_iran_time():
+def get_iran_time() -> datetime:
     """Get current time in GMT+3:30 timezone"""
     return datetime.now(IRAN_TZ)
 
 
-def utc_to_iran_time(utc_dt):
+def utc_to_iran_time(utc_dt: Optional[datetime]) -> Optional[datetime]:
     """Convert UTC datetime to GMT+3:30 timezone"""
     if utc_dt is None:
         return None
@@ -36,7 +37,7 @@ def utc_to_iran_time(utc_dt):
     return utc_dt.astimezone(IRAN_TZ)
 
 
-def format_iran_time(dt, format_str="%Y-%m-%d %H:%M:%S"):
+def format_iran_time(dt: Optional[datetime], format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Format datetime in GMT+3:30 timezone"""
     if dt is None:
         return ""
@@ -56,14 +57,14 @@ db = SQLAlchemy(model_class=Base)
 
 
 # Encryption key for API credentials - generated from app secret
-def get_encryption_key():
+def get_encryption_key() -> bytes:
     """Generate encryption key from app secret for consistent encryption"""
     secret = os.environ.get("SESSION_SECRET", "dev-secret-key")
     key = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(key)
 
 
-def encrypt_data(data):
+def encrypt_data(data: Optional[str]) -> str:
     """Encrypt sensitive data"""
     if not data:
         return ""
@@ -71,7 +72,7 @@ def encrypt_data(data):
     return fernet.encrypt(data.encode()).decode()
 
 
-def decrypt_data(encrypted_data):
+def decrypt_data(encrypted_data: Optional[str]) -> str:
     """Decrypt sensitive data"""
     if not encrypted_data:
         return ""
@@ -110,31 +111,31 @@ class UserCredentials(db.Model):
     )
     last_used = db.Column(db.DateTime)
 
-    def set_api_key(self, api_key):
+    def set_api_key(self, api_key: Optional[str]) -> None:
         """Set encrypted API key"""
         self.api_key_encrypted = encrypt_data(api_key)
 
-    def get_api_key(self):
+    def get_api_key(self) -> str:
         """Get decrypted API key"""
         return decrypt_data(self.api_key_encrypted)
 
-    def set_api_secret(self, api_secret):
+    def set_api_secret(self, api_secret: Optional[str]) -> None:
         """Set encrypted API secret"""
         self.api_secret_encrypted = encrypt_data(api_secret)
 
-    def get_api_secret(self):
+    def get_api_secret(self) -> str:
         """Get decrypted API secret"""
         return decrypt_data(self.api_secret_encrypted)
 
-    def set_passphrase(self, passphrase):
+    def set_passphrase(self, passphrase: Optional[str]) -> None:
         """Set encrypted passphrase"""
         self.passphrase_encrypted = encrypt_data(passphrase) if passphrase else ""
 
-    def get_passphrase(self):
+    def get_passphrase(self) -> str:
         """Get decrypted passphrase"""
         return decrypt_data(self.passphrase_encrypted)
 
-    def has_credentials(self):
+    def has_credentials(self) -> bool:
         """Check if user has valid API credentials"""
         return bool(self.api_key_encrypted and self.api_secret_encrypted)
 
