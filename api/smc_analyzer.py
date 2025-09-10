@@ -550,6 +550,177 @@ class SMCAnalyzer:
             'sma_200': sum(closes[-200:]) / 200 if len(closes) >= 200 else sum(closes) / len(closes)
         }
     
+    def _analyze_bullish_signals(self, h1_structure, h4_structure, order_blocks, fvgs, current_price, rsi, mas, reasoning):
+        """Analyze bullish signal strength."""
+        bullish_signals = 0
+        
+        # H4 timeframe structure
+        if h4_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+            bullish_signals += 2
+            reasoning.append(f"H4 {h4_structure.value}")
+        
+        # H1 timeframe structure
+        if h1_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+            bullish_signals += 1
+            reasoning.append(f"H1 {h1_structure.value}")
+        
+        # Check for bullish order blocks near current price
+        for ob in order_blocks:
+            if (ob.direction == 'bullish' and 
+                ob.price_low <= current_price <= ob.price_high * 1.02):
+                bullish_signals += 1
+                reasoning.append("Price at bullish order block")
+                break
+        
+        # Check for unfilled bullish FVGs
+        for fvg in fvgs:
+            if (fvg.direction == 'bullish' and not fvg.filled and
+                fvg.gap_low <= current_price <= fvg.gap_high):
+                bullish_signals += 1
+                reasoning.append("Price in bullish FVG")
+                break
+        
+        # RSI confirmation
+        if rsi < 30:
+            bullish_signals += 1
+            reasoning.append("RSI oversold")
+        elif 30 <= rsi <= 50:
+            bullish_signals += 0.5
+            reasoning.append("RSI neutral-bullish")
+        
+        # Moving average confirmation
+        if mas and current_price > mas.get('ema_20', current_price):
+            bullish_signals += 0.5
+            reasoning.append("Above EMA 20")
+        
+        return bullish_signals
+    
+    def _analyze_bearish_signals(self, h1_structure, h4_structure, order_blocks, fvgs, current_price, rsi, mas, reasoning):
+        """Analyze bearish signal strength."""
+        bearish_signals = 0
+        
+        # H4 timeframe structure
+        if h4_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+            bearish_signals += 2
+            reasoning.append(f"H4 {h4_structure.value}")
+        
+        # H1 timeframe structure
+        if h1_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+            bearish_signals += 1
+            reasoning.append(f"H1 {h1_structure.value}")
+        
+        # Check for bearish order blocks near current price
+        for ob in order_blocks:
+            if (ob.direction == 'bearish' and 
+                ob.price_low * 0.98 <= current_price <= ob.price_high):
+                bearish_signals += 1
+                reasoning.append("Price at bearish order block")
+                break
+        
+        # Check for unfilled bearish FVGs
+        for fvg in fvgs:
+            if (fvg.direction == 'bearish' and not fvg.filled and
+                fvg.gap_low <= current_price <= fvg.gap_high):
+                bearish_signals += 1
+                reasoning.append("Price in bearish FVG")
+                break
+        
+        # RSI confirmation
+        if rsi > 70:
+            bearish_signals += 1
+            reasoning.append("RSI overbought")
+        elif 50 <= rsi <= 70:
+            bearish_signals += 0.5
+            reasoning.append("RSI neutral-bearish")
+        
+        # Moving average confirmation
+        if mas and current_price < mas.get('ema_20', current_price):
+            bearish_signals += 0.5
+            reasoning.append("Below EMA 20")
+        
+        return bearish_signals
+    
+    def _calculate_long_trade_levels(self, current_price, order_blocks):
+        """Calculate entry, stop loss, and take profits for long trades."""
+        entry_price = current_price
+        
+        # Stop loss below nearest support/order block
+        nearest_support = current_price * 0.97  # Default 3% below
+        for ob in order_blocks:
+            if ob.direction == 'bullish' and ob.price_low < current_price:
+                nearest_support = max(nearest_support, ob.price_low * 0.995)
+        
+        stop_loss = nearest_support
+        
+        # Take profits based on resistance levels
+        take_profits = [
+            current_price * 1.02,  # 2% profit
+            current_price * 1.035, # 3.5% profit
+            current_price * 1.05   # 5% profit
+        ]
+        
+        return entry_price, stop_loss, take_profits
+    
+    def _calculate_short_trade_levels(self, current_price, order_blocks):
+        """Calculate entry, stop loss, and take profits for short trades."""
+        entry_price = current_price
+        
+        # Stop loss above nearest resistance/order block
+        nearest_resistance = current_price * 1.03  # Default 3% above
+        for ob in order_blocks:
+            if ob.direction == 'bearish' and ob.price_high > current_price:
+                nearest_resistance = min(nearest_resistance, ob.price_high * 1.005)
+        
+        stop_loss = nearest_resistance
+        
+        # Take profits based on support levels
+        take_profits = [
+            current_price * 0.98,  # 2% profit
+            current_price * 0.965, # 3.5% profit
+            current_price * 0.95   # 5% profit
+        ]
+        
+        return entry_price, stop_loss, take_profits
+    
+    def _determine_trade_direction_and_levels(self, bullish_signals, bearish_signals, current_price, order_blocks):
+        """Determine trade direction and calculate price levels."""
+        direction = None
+        confidence = 0.0
+        entry_price = current_price
+        stop_loss = 0.0
+        take_profits = []
+        
+        if bullish_signals > bearish_signals and bullish_signals >= 3:
+            direction = 'long'
+            confidence = min(bullish_signals / 5.0, 1.0)
+            entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(current_price, order_blocks)
+            
+        elif bearish_signals > bullish_signals and bearish_signals >= 3:
+            direction = 'short'
+            confidence = min(bearish_signals / 5.0, 1.0)
+            entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(current_price, order_blocks)
+        
+        return direction, confidence, entry_price, stop_loss, take_profits
+    
+    def _calculate_trade_metrics(self, entry_price, stop_loss, take_profits, confidence):
+        """Calculate risk-reward ratio and signal strength."""
+        # Calculate risk-reward ratio
+        risk = abs(entry_price - stop_loss)
+        reward = abs(take_profits[0] - entry_price) if take_profits else risk
+        rr_ratio = reward / risk if risk > 0 else 1.0
+        
+        # Determine signal strength
+        if confidence >= 0.9:
+            signal_strength = SignalStrength.VERY_STRONG
+        elif confidence >= 0.8:
+            signal_strength = SignalStrength.STRONG
+        elif confidence >= 0.7:
+            signal_strength = SignalStrength.MODERATE
+        else:
+            signal_strength = SignalStrength.WEAK
+        
+        return rr_ratio, signal_strength
+    
     def generate_trade_signal(self, symbol: str) -> Optional[SMCSignal]:
         """Generate comprehensive trade signal based on SMC analysis"""
         try:
@@ -579,148 +750,28 @@ class SMCAnalyzer:
             rsi = self.calculate_rsi(h1_data)
             mas = self.calculate_moving_averages(h1_data)
             
-            # Generate signal logic
+            # Generate signal analysis
             reasoning = []
-            confidence = 0.0
-            direction = None
-            entry_price = current_price
-            stop_loss = 0.0
-            take_profits = []
             
-            # Bullish signal logic
-            bullish_signals = 0
-            if h4_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
-                bullish_signals += 2
-                reasoning.append(f"H4 {h4_structure.value}")
+            # Analyze bullish and bearish signals
+            bullish_signals = self._analyze_bullish_signals(
+                h1_structure, h4_structure, order_blocks, fvgs, current_price, rsi, mas, reasoning
+            )
             
-            if h1_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
-                bullish_signals += 1
-                reasoning.append(f"H1 {h1_structure.value}")
+            bearish_signals = self._analyze_bearish_signals(
+                h1_structure, h4_structure, order_blocks, fvgs, current_price, rsi, mas, reasoning
+            )
             
-            # Check for bullish order blocks near current price
-            for ob in order_blocks:
-                if (ob.direction == 'bullish' and 
-                    ob.price_low <= current_price <= ob.price_high * 1.02):
-                    bullish_signals += 1
-                    reasoning.append("Price at bullish order block")
-                    break
-            
-            # Check for unfilled bullish FVGs
-            for fvg in fvgs:
-                if (fvg.direction == 'bullish' and not fvg.filled and
-                    fvg.gap_low <= current_price <= fvg.gap_high):
-                    bullish_signals += 1
-                    reasoning.append("Price in bullish FVG")
-                    break
-            
-            # Technical indicator confirmation
-            if rsi < 30:
-                bullish_signals += 1
-                reasoning.append("RSI oversold")
-            elif 30 <= rsi <= 50:
-                bullish_signals += 0.5
-                reasoning.append("RSI neutral-bullish")
-            
-            if mas and current_price > mas.get('ema_20', current_price):
-                bullish_signals += 0.5
-                reasoning.append("Above EMA 20")
-            
-            # Bearish signal logic
-            bearish_signals = 0
-            if h4_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
-                bearish_signals += 2
-                reasoning.append(f"H4 {h4_structure.value}")
-            
-            if h1_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
-                bearish_signals += 1
-                reasoning.append(f"H1 {h1_structure.value}")
-            
-            for ob in order_blocks:
-                if (ob.direction == 'bearish' and 
-                    ob.price_low * 0.98 <= current_price <= ob.price_high):
-                    bearish_signals += 1
-                    reasoning.append("Price at bearish order block")
-                    break
-            
-            for fvg in fvgs:
-                if (fvg.direction == 'bearish' and not fvg.filled and
-                    fvg.gap_low <= current_price <= fvg.gap_high):
-                    bearish_signals += 1
-                    reasoning.append("Price in bearish FVG")
-                    break
-            
-            if rsi > 70:
-                bearish_signals += 1
-                reasoning.append("RSI overbought")
-            elif 50 <= rsi <= 70:
-                bearish_signals += 0.5
-                reasoning.append("RSI neutral-bearish")
-            
-            if mas and current_price < mas.get('ema_20', current_price):
-                bearish_signals += 0.5
-                reasoning.append("Below EMA 20")
-            
-            # Determine signal direction and strength
-            if bullish_signals > bearish_signals and bullish_signals >= 3:
-                direction = 'long'
-                confidence = min(bullish_signals / 5.0, 1.0)
-                
-                # Calculate entry, SL, and TP for long
-                entry_price = current_price
-                
-                # Stop loss below nearest support/order block
-                nearest_support = current_price * 0.97  # Default 3% below
-                for ob in order_blocks:
-                    if ob.direction == 'bullish' and ob.price_low < current_price:
-                        nearest_support = max(nearest_support, ob.price_low * 0.995)
-                
-                stop_loss = nearest_support
-                
-                # Take profits based on resistance levels
-                take_profits = [
-                    current_price * 1.02,  # 2% profit
-                    current_price * 1.035, # 3.5% profit
-                    current_price * 1.05   # 5% profit
-                ]
-                
-            elif bearish_signals > bullish_signals and bearish_signals >= 3:
-                direction = 'short'
-                confidence = min(bearish_signals / 5.0, 1.0)
-                
-                # Calculate entry, SL, and TP for short
-                entry_price = current_price
-                
-                # Stop loss above nearest resistance/order block
-                nearest_resistance = current_price * 1.03  # Default 3% above
-                for ob in order_blocks:
-                    if ob.direction == 'bearish' and ob.price_high > current_price:
-                        nearest_resistance = min(nearest_resistance, ob.price_high * 1.005)
-                
-                stop_loss = nearest_resistance
-                
-                # Take profits based on support levels
-                take_profits = [
-                    current_price * 0.98,  # 2% profit
-                    current_price * 0.965, # 3.5% profit
-                    current_price * 0.95   # 5% profit
-                ]
+            # Determine direction and calculate trade levels
+            direction, confidence, entry_price, stop_loss, take_profits = self._determine_trade_direction_and_levels(
+                bullish_signals, bearish_signals, current_price, order_blocks
+            )
             
             # Only generate signal if confidence is above threshold
             if direction and confidence >= 0.6:
-                # Calculate risk-reward ratio
-                risk = abs(entry_price - stop_loss)
-                reward = abs(take_profits[0] - entry_price) if take_profits else risk
-                rr_ratio = reward / risk if risk > 0 else 1.0
-                
-                # Determine signal strength
-                if confidence >= 0.9:
-                    signal_strength = SignalStrength.VERY_STRONG
-                elif confidence >= 0.8:
-                    signal_strength = SignalStrength.STRONG
-                elif confidence >= 0.7:
-                    signal_strength = SignalStrength.MODERATE
-                else:
-                    signal_strength = SignalStrength.WEAK
+                rr_ratio, signal_strength = self._calculate_trade_metrics(
+                    entry_price, stop_loss, take_profits, confidence
+                )
                 
                 return SMCSignal(
                     symbol=symbol,
