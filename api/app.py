@@ -1542,8 +1542,8 @@ def save_trade_to_db(user_id, trade_config):
             logging.warning(f"Database save attempt {attempt + 1} failed: {e}")
             try:
                 db.session.rollback()
-            except:
-                pass
+            except Exception as rollback_error:  # nosec B110
+                logging.error(f"Failed to rollback database session: {rollback_error}")
 
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
@@ -1578,8 +1578,8 @@ def delete_trade_from_db(user_id, trade_id):
         logging.error(f"Error deleting trade {trade_id} from database: {e}")
         try:
             db.session.rollback()
-        except:
-            pass
+        except Exception as rollback_error:  # nosec B110
+            logging.error(f"Failed to rollback database session: {rollback_error}")
         return False
 
 
@@ -4865,8 +4865,10 @@ def execute_trade():
         if error_response:
             return error_response, status_code
 
-        # At this point, config is guaranteed to not be None
-        assert config is not None, "Config should not be None after validation"
+        # At this point, config is guaranteed to not be None after validation
+        if config is None:
+            logging.error("Critical error: Config is None after validation")
+            return jsonify({"error": "Internal configuration error"}), 500
 
         # Get current market price
         current_market_price = get_live_market_price(

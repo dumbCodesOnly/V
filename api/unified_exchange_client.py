@@ -3048,9 +3048,9 @@ def create_wrapped_exchange_client(
         # Create anonymous client for public data access
         client = ExchangeClientFactory.create_client(
             exchange_name=exchange_name,
-            api_key="",
-            api_secret="",
-            passphrase="",
+            api_key=None,  # nosec B106 - Intentionally None for public access
+            api_secret=None,  # nosec B106 - Intentionally None for public access
+            passphrase=None,  # nosec B106 - Intentionally None for public access
             testnet=testnet,
         )
         actual_exchange_name = exchange_name

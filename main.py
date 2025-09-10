@@ -28,12 +28,19 @@ application = app
 
 def setup_app_secret() -> None:
     """Set up application secret key for all environments."""
-    if not app.secret_key or app.secret_key == "dev-secret-key":
+    # Check for insecure default secret key
+    insecure_defaults = ["dev-secret-key", "replit-default-secret-key-12345"]
+    if not app.secret_key or app.secret_key in insecure_defaults:
         from config import SecurityConfig
 
-        secret_key: Optional[str] = os.environ.get(
-            "SESSION_SECRET", SecurityConfig.DEFAULT_SESSION_SECRET
-        )
+        secret_key: Optional[str] = os.environ.get("SESSION_SECRET")
+        if not secret_key:
+            if Environment.IS_DEVELOPMENT or Environment.IS_REPLIT:
+                # Only use default in development environments  
+                secret_key = SecurityConfig.DEFAULT_SESSION_SECRET
+                logging.warning("Using default session secret in development mode")
+            else:
+                raise ValueError("SESSION_SECRET environment variable is required for production")
         app.secret_key = secret_key
 
 
@@ -47,16 +54,16 @@ def main() -> None:
     debug_mode: bool = Environment.IS_DEVELOPMENT or Environment.IS_REPLIT
 
     if Environment.IS_RENDER:
-        # Render production configuration
+        # Render production configuration - binding to all interfaces is required for cloud deployment
         logging.info(f"Starting application on Render - Port: {port}")
-        app.run(host="0.0.0.0", port=port, debug=False)
+        app.run(host="0.0.0.0", port=port, debug=False)  # nosec B104
     elif Environment.IS_VERCEL:
         # Vercel handles the serving, this shouldn't run
         logging.info("Running in Vercel environment")
     else:
-        # Replit or development environment
+        # Replit or development environment - binding to all interfaces is required for cloud IDE
         logging.info(f"Starting application in development mode - Port: {port}")
-        app.run(host="0.0.0.0", port=port, debug=debug_mode)
+        app.run(host="0.0.0.0", port=port, debug=debug_mode)  # nosec B104
 
 
 if __name__ == "__main__":

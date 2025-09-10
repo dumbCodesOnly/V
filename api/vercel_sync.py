@@ -172,8 +172,8 @@ class VercelSyncService:
             logging.error(f"Error syncing user {user_id}: {e}")
             try:
                 self.db.session.rollback()
-            except:
-                pass
+            except Exception as rollback_error:  # nosec B110
+                logging.error(f"Failed to rollback database session: {rollback_error}")
             return {"success": False, "message": str(e), "sync_error": True}
 
     def _sync_individual_trade(

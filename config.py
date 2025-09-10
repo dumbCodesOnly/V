@@ -223,9 +223,9 @@ class LoggingConfig:
 # SECURITY CONFIGURATION
 # =============================================================================
 class SecurityConfig:
-    # Session Configuration
+    # Session Configuration - WARNING: Only for development use
     DEFAULT_SESSION_SECRET = (
-        "replit-default-secret-key-12345"  # Only used in development
+        "replit-default-secret-key-12345"  # nosec B105 - Only used in development
     )
 
     # Webhook Security
