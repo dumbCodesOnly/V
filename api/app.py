@@ -236,7 +236,16 @@ def _process_partial_tp_closure(
 
     # Update position with remaining amount
     config.amount = remaining_amount
-    config.unrealized_pnl -= partial_pnl
+    
+    # Recalculate unrealized P&L based on new position size
+    if config.current_price and config.entry_price:
+        config.unrealized_pnl = calculate_unrealized_pnl(
+            config.entry_price,
+            config.current_price,
+            config.amount,
+            config.leverage,
+            config.side,
+        )
 
     # Remove triggered TP from list safely
     if tp_index < len(config.take_profits):
@@ -267,8 +276,9 @@ def _process_take_profit_monitoring(config, user_id, trade_id):
 
     profit_percentage = _calculate_profit_percentage(config)
 
-    # Check each TP level
-    for i, tp in enumerate(config.take_profits):
+    # Check each TP level (iterate backwards to avoid index shifting issues)
+    for i in range(len(config.take_profits) - 1, -1, -1):
+        tp = config.take_profits[i]
         tp_percentage, allocation = _get_tp_data(tp)
 
         if tp_percentage > 0 and profit_percentage >= tp_percentage:
@@ -2012,21 +2022,25 @@ def _validate_trade_for_alerts(trade):
 
 
 def _check_stop_loss_trigger(trade, current_price):
-    """Check if stop loss should trigger for the trade."""
+    """Check if stop loss should trigger for the trade using consistent P&L-based calculation."""
     if trade.stop_loss_percent <= 0:
         return
-
+    
+    # Calculate unrealized P&L
     if trade.side == "long":
-        sl_price = trade.entry_price * (1 - trade.stop_loss_percent / 100)
-        if current_price <= sl_price:
-            logging.info(
-                f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}"
-            )
+        price_change = (current_price - trade.entry_price) / trade.entry_price
     else:  # short
-        sl_price = trade.entry_price * (1 + trade.stop_loss_percent / 100)
-        if current_price >= sl_price:
+        price_change = (trade.entry_price - current_price) / trade.entry_price
+    
+    position_value = trade.amount * trade.leverage
+    unrealized_pnl = position_value * price_change
+    
+    # Check if loss threshold reached
+    if unrealized_pnl < 0:
+        loss_percentage = abs(unrealized_pnl / position_value) * 100
+        if loss_percentage >= trade.stop_loss_percent:
             logging.info(
-                f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} at {current_price}"
+                f"MONITORING ALERT: Stop loss trigger detected for {trade.trade_id} - Loss: {loss_percentage:.2f}% >= {trade.stop_loss_percent}%"
             )
 
 
@@ -7314,30 +7328,40 @@ def _process_stop_loss_monitoring(user_id, trade_id, config):
         and config.breakeven_sl_triggered
         and hasattr(config, "breakeven_sl_price")
     ):
-        # Break-even stop loss - trigger when price moves against position from entry price
-        if config.side == "long" and config.current_price <= config.breakeven_sl_price:
-            stop_loss_triggered = True
-            logging.warning(
-                f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} <= Break-even ${config.breakeven_sl_price}"
-            )
-        elif (
-            config.side == "short" and config.current_price >= config.breakeven_sl_price
-        ):
-            stop_loss_triggered = True
-            logging.warning(
-                f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} >= Break-even ${config.breakeven_sl_price}"
-            )
+        # Break-even stop loss - ensure small profit while preventing losses
+        # Set buffer of 0.25% to account for fees and slippage (configurable)
+        buffer_percentage = getattr(config, 'breakeven_buffer', 0.0025)  # 0.25% default
+        
+        if config.side == "long":
+            # For long positions, set SL above entry price to ensure small profit
+            breakeven_trigger_price = config.breakeven_sl_price * (1 + buffer_percentage)
+            if config.current_price <= breakeven_trigger_price:
+                stop_loss_triggered = True
+                logging.warning(
+                    f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} <= Break-even profit trigger ${breakeven_trigger_price} (entry + {buffer_percentage*100:.2f}%)"
+                )
+        else:  # short
+            # For short positions, set SL below entry price to ensure small profit
+            breakeven_trigger_price = config.breakeven_sl_price * (1 - buffer_percentage)
+            if config.current_price >= breakeven_trigger_price:
+                stop_loss_triggered = True
+                logging.warning(
+                    f"BREAK-EVEN STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Price ${config.current_price} >= Break-even profit trigger ${breakeven_trigger_price} (entry - {buffer_percentage*100:.2f}%)"
+                )
 
     # Check regular stop loss if break-even not triggered
     elif config.stop_loss_percent > 0 and config.unrealized_pnl < 0:
-        # Calculate current loss percentage based on margin
-        loss_percentage = abs(config.unrealized_pnl / config.amount) * 100
+        # Calculate current loss percentage based on position value (margin * leverage)
+        # Add safety guards for division by zero
+        if config.amount > 0 and config.leverage > 0:
+            position_value = config.amount * config.leverage
+            loss_percentage = abs(config.unrealized_pnl / position_value) * 100
 
-        if loss_percentage >= config.stop_loss_percent:
-            stop_loss_triggered = True
-            logging.warning(
-                f"STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Loss: {loss_percentage:.2f}% >= {config.stop_loss_percent}%"
-            )
+            if loss_percentage >= config.stop_loss_percent:
+                stop_loss_triggered = True
+                logging.warning(
+                    f"STOP-LOSS TRIGGERED: {config.symbol} {config.side} position for user {user_id} - Loss: {loss_percentage:.2f}% >= {config.stop_loss_percent}%"
+                )
 
     if stop_loss_triggered:
         # Close the position
