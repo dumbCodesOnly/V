@@ -1,125 +1,65 @@
 # Multi-Exchange Trading Bot (Toobit & LBank)
 
 ## Overview
-This project is a comprehensive Telegram-based trading bot supporting both Toobit and LBank exchanges for USDT-M futures trading, offering multi-trade capabilities. It allows users to manage multiple simultaneous trading configurations conversationally, with advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
-
-## Recent Changes (September 10, 2025)
-- **Fresh GitHub Clone Import**: Successfully imported and configured the multi-exchange trading bot from a fresh GitHub clone for the Replit environment
-- **Environment Configuration**: Configured Flask application to run on 0.0.0.0:5000 with proper webview output type for Replit's proxy system
-- **Dependencies Installation**: Installed all required Python packages using the packager tool including Flask, SQLAlchemy, exchange SDKs, and trading libraries
-- **Database Integration**: Successfully configured the application to use SQLite database as fallback (PostgreSQL creation restricted), all tables created automatically
-- **Workflow Configuration**: Set up proper Replit workflow "Trading Expert Web App" with port 5000, webview output, and session management
-- **Application Verification**: Confirmed full functionality - Trading Expert interface loads correctly with paper trading mode, real-time API calls, and all features working
-- **Frontend Integration**: Verified beautiful dark-themed trading interface with multi-tab layout (Portfolio, Trading, Keys) working perfectly
-- **Circuit Breaker System**: All external API circuit breakers initialized and working (Binance, CoinGecko, CryptoCompare, Toobit, Hyperliquid)
-- **Paper Trading Mode**: Confirmed paper trading functionality is active with $10,000 balance for development testing
-- **Deployment Configuration**: Set up autoscale deployment configuration using Gunicorn for production deployment
-- **Import Completion**: Successfully completed fresh GitHub import setup with fully functional trading bot ready for use
-
-## Previous Changes (September 9, 2025)
-- **Successful Replit Import Setup**: Successfully imported and configured the multi-exchange trading bot from GitHub for the Replit environment
-- **Environment Configuration**: Configured Flask application to run on 0.0.0.0:5000 with proper webview output type for Replit's proxy system
-- **Dependencies Installation**: Cleaned up and installed all required Python packages including Flask, SQLAlchemy, exchange SDKs, and trading libraries
-- **Database Integration**: Successfully configured the application to use existing SQLite database with automatic fallback from PostgreSQL
-- **Workflow Configuration**: Set up proper Replit workflow "Trading Expert Web App" with port 5000, webview output, and session management
-- **Deployment Configuration**: Configured autoscale deployment settings using Gunicorn for production deployment on Replit
-- **Application Verification**: Confirmed full functionality - Trading Expert interface loads correctly with paper trading mode, real-time API calls, and all features working
-- **Frontend Integration**: Verified Telegram WebApp integration works correctly with dark theme, responsive design, and multi-tab interface
-
-## Previous Changes (September 8, 2025)
-- **Resolved Flask Application Context Issue**: Fixed "Working outside of application context" error by adding proper Flask app context handling in the `get_live_market_price` function when called from background threads
-- **Enhanced Thread Safety**: Updated database queries in background services to use `with app.app_context():` pattern for proper Flask integration
-- **Stable Application State**: Achieved error-free operation with real-time price updates, paper trading functionality, and database integration working seamlessly
-- **Production-Ready Configuration**: Configured deployment settings for autoscale deployment with proper Gunicorn configuration
-- **Replit Environment Optimization**: Successfully configured the trading bot for optimal performance in the Replit cloud environment
-
-## Previous Changes (September 6, 2025)
-- **Successful GitHub Import to Replit**: Successfully imported and configured the multi-exchange trading bot for the Replit environment
-- **Dependency Management**: Cleaned up requirements.txt and installed all Python dependencies including Flask, SQLAlchemy, and exchange SDKs
-- **Database Configuration**: Configured application to use SQLite database with automatic fallback when PostgreSQL is not available
-- **Replit Environment Setup**: Properly configured Flask app to run on 0.0.0.0:5000 with webview output and debug mode enabled
-- **Workflow Configuration**: Set up proper Replit workflow for the web application with port 5000 and webview output type
-- **Deployment Configuration**: Configured autoscale deployment settings using Gunicorn for production deployment
-- **Application Verification**: Confirmed application runs successfully with Trading Expert interface, paper trading mode, and all API endpoints functional
-- **Implemented Comprehensive Klines Data Caching System**: Added `KlinesCache` database model with intelligent cache-first approach for candlestick data
-- **Enhanced SMC Analyzer with Smart Caching**: Modified `get_candlestick_data` method to use cache-first strategy with gap detection and automatic TTL management
-- **Advanced Cache Management**: Implemented timeframe-specific cache TTL (15min for 1h, 60min for 4h, 240min for 1d) with data retention policies
-- **Optimized API Call Reduction**: Cache system dramatically reduces Binance API calls by storing and reusing candlestick data intelligently
-- **Extended Cleanup Worker**: Enhanced background worker to clean expired klines cache and old data beyond retention periods
-- **Database Migration Support**: Added automatic table creation and indexing for KlinesCache with proper database migration handling
-- **Circuit Breaker Integration**: Maintained existing circuit breaker system with enhanced cache integration for failure resilience
-- **Performance Optimization**: Implemented bulk data operations and deduplication logic for improved caching efficiency
+This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
-The application uses Flask for its web framework, serving as the Telegram Mini-App interface and handling webhook integration. The core `MultiTradeManager` class enables concurrent management of multiple trading configurations while ensuring user isolation and orchestrating multiple `TradingBot` instances.
+The application is built on Flask, serving as the Telegram Mini-App interface and handling webhook integration. A core `MultiTradeManager` class manages concurrent trading configurations, ensuring user isolation and orchestrating multiple `TradingBot` instances.
 
 **UI/UX Decisions:**
-The UI/UX utilizes HTML formatting with a dark blue theme, gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. Modern, professional trading platform symbols are used. Typography uses Google Fonts (Inter for text, JetBrains Mono for numerical data). The application title is "Trading Expert".
+The UI/UX features a dark blue theme with gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. It utilizes modern, professional trading platform symbols and typography from Google Fonts (Inter for text, JetBrains Mono for numerical data), with "Trading Expert" as the application title.
 
 **Technical Implementations & Feature Specifications:**
-- Streamlined project structure with an `api/` directory and clear separation of environments.
+- Streamlined project structure with clear separation of environments and an `api/` directory.
 - Comprehensive webhook security with secret token authentication.
-- Implemented proper limit order functionality with "pending" status and monitoring.
-- Corrected margin, position size, and leverage calculations for mathematically accurate futures trading.
-- Enhanced TP/SL display showing actual prices and profit/loss amounts.
-- Migrated to real-time market data across all platform deployments with multiple APIs and fallback.
-- Implemented comprehensive price fetching optimization with intelligent caching, concurrent requests, and adaptive API prioritization, prioritizing Toobit-first pricing.
-- Displays full trade details before execution and for active positions, with real-time ROE and color-coded P&L.
-- Complete Edit/Execute/Delete functionality in the web app trading tab with smart UI controls.
+- Robust limit order functionality with pending status and monitoring.
+- Mathematically accurate margin, position size, and leverage calculations for futures trading.
+- Enhanced TP/SL display showing actual prices and profit/loss.
+- Real-time market data across all platform deployments with multiple APIs and intelligent caching, prioritizing Toobit-first pricing.
+- Detailed trade display before execution and for active positions, with real-time ROE and color-coded P&L.
+- Full Edit/Execute/Delete functionality in the web app with smart UI controls.
 - Collapsible/expandable functionality for positions and trading tabs.
-- Multi-symbol trading support for `get_live_market_price` function with concurrent processing and intelligent fallbacks.
-- Correctly displays "Position Size" alongside "Margin" in the UI.
-- Tracks and displays the last 5 closed positions in the Portfolio tab with comprehensive details.
-- Implemented hamburger menu with API Keys functionality.
-- Corrected account balance calculation to include realized P&L from closed trades.
-- Implemented comprehensive micro-interactions for trade management buttons.
-- Critical trade deletion issue resolved by implementing proper PostgreSQL database persistence with `TradeConfiguration` model.
-- Neon PostgreSQL-specific configurations for optimal Vercel performance.
-- Implemented GMT+3:30 (Iran Standard Time) timezone for all trade configurations and history timestamps.
-- Added portfolio reset functionality.
-- Implemented comprehensive Toobit exchange integration with dual-environment support (background polling for Replit, on-demand for Vercel).
-- Implemented intelligent caching system to prevent excessive database queries from Telegram WebView.
-- Enhanced realized P&L tracking system for partial take profit closures with separate display of realized vs floating P&L.
-- Fixed and enhanced stop loss trigger logic with proper break-even stop loss support for both long and short positions.
-- Supports both Replit and Vercel/Neon deployments seamlessly with shared codebase and environment-specific optimizations.
-- Automatic database migration system to handle schema updates across environments.
-- Enhanced import system with fallback mechanisms for relative (Vercel) and absolute (Replit) import paths.
+- Multi-symbol trading support with concurrent processing and intelligent fallbacks.
+- Correct display of "Position Size" alongside "Margin" and tracking of the last 5 closed positions.
+- API Keys management via a hamburger menu.
+- Accurate account balance calculation including realized P&L.
+- Comprehensive micro-interactions for trade management buttons.
+- PostgreSQL database persistence for `TradeConfiguration` model, with Neon-specific optimizations for Vercel.
+- All timestamps (trade configurations, history) are in GMT+3:30 (Iran Standard Time).
+- Portfolio reset functionality.
+- Comprehensive Toobit and LBank exchange integration with dual-environment support (background polling for Replit, on-demand for Vercel).
+- Intelligent caching system to prevent excessive database queries from Telegram WebView.
+- Enhanced realized P&L tracking for partial take profit closures.
+- Fixed and enhanced stop loss trigger logic, including break-even stop loss.
+- Seamless support for Replit and Vercel/Neon deployments with shared codebase and environment-specific optimizations.
+- Automatic database migration system for schema updates.
+- Enhanced import system with fallback mechanisms for relative and absolute import paths.
 - Optimized Neon PostgreSQL connection pooling.
-- Fixed take profit progression where triggered TP levels are removed and subsequent TPs become new TP1.
-- Corrected partial take profit allocation calculations for accurate position closure and profit calculation.
-- Implemented real Toobit exchange integration for order execution, position management, and risk management.
-- Added testnet/mainnet toggle functionality with real-time exchange balance display.
-- Added paper trading mode for development testing without requiring API credentials.
-- Enhanced trade execution to properly handle both paper and live trading modes seamlessly.
-- Enhanced error reporting with specific error messages and technical details.
-- Improved paper trading reliability and debugging.
-- Universal disabling of Toobit Testnet mode, forcing mainnet for all operations.
-- Comprehensive debugging for position closing failures.
-- UptimeRobot integration for continuous monitoring and prevention of Render free tier sleeping.
-- Resolved critical bugs in TP execution and breakeven stop loss movement.
-- Streamlined root directory organization and Render deployment process.
-- Achieved 100% centralization of all configuration values into `config.py`.
-- Standardized TP allocation format and corrected default allocation values.
-- Fixed critical issues with auto-trades visibility and break-even monitoring.
-- Implemented comprehensive error classification system with user-friendly messages.
-- Enhanced caching system with smart volatility-based TTL and user data caching.
-- Deployed background cache cleanup worker.
-- Implemented circuit breaker pattern for all external API calls to prevent cascading failures.
-- Resolved bug in SMC signal data retrieval (`get_live_market_price`).
-- SMC signals now display correctly and are cached in the database with validation.
-- **Multi-Exchange Support**: Added comprehensive LBank exchange integration alongside existing Toobit support.
-- **Dynamic Exchange Factory**: Implemented modular exchange client architecture with factory pattern for seamless multi-exchange operation.
-- **Exchange-Agnostic Trading**: All trading functions now support both Toobit and LBank exchanges dynamically based on user credentials.
-- **Unified API Interface**: Standardized exchange client interface ensuring consistent behavior across all supported exchanges.
+- Corrected take profit progression logic, where triggered TP levels are removed and subsequent TPs become new TP1.
+- Accurate partial take profit allocation calculations.
+- Real Toobit exchange integration for order execution, position management, and risk management.
+- Testnet/mainnet toggle with real-time exchange balance display.
+- Paper trading mode for development testing, seamlessly integrated with live trading.
+- Enhanced error reporting with specific messages.
+- Universal disabling of Toobit Testnet mode, forcing mainnet.
+- UptimeRobot integration for continuous monitoring.
+- Centralized configuration values in `config.py`.
+- Standardized TP allocation format and corrected default values.
+- Comprehensive error classification system with user-friendly messages.
+- Enhanced caching system with smart volatility-based TTL and user data caching, including a background cleanup worker.
+- Circuit breaker pattern for all external API calls.
+- SMC signals are correctly displayed and cached in the database with validation.
+- Modular exchange client architecture with factory pattern for seamless multi-exchange operation and a unified API interface.
 
 **System Design Choices:**
-The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
+The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing, and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
 
 ## External Dependencies
 - **Toobit Exchange API**: For Toobit futures API communication and market data.
+- **LBank Exchange API**: For LBank futures API communication and market data.
 - **Telegram Bot API**: For webhook-based communication, rich messaging, and inline keyboard support.
 - **Python Libraries**: Flask, Requests/aiohttp, Threading/Asyncio, Logging, Cryptography.
 - **Binance API**: For real-time market data (fallback).
