@@ -22,13 +22,13 @@ args = "Trading Expert Web App"
 name = "Trading Expert Web App"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "SESSION_SECRET=\"replit-session-secret-12345\" python main.py"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[ports]]
 localPort = 5000
