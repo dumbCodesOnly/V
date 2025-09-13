@@ -754,7 +754,7 @@ class KlinesCache(db.Model):
                 cls.symbol == symbol,
                 cls.timeframe == timeframe,
                 cls.is_complete.is_(True),
-                cls.expires_at > datetime.utcnow(),
+                cls.expires_at > get_utc_now().replace(tzinfo=None),
             )
             .order_by(cls.timestamp.desc())
             .first()
