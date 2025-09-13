@@ -572,11 +572,14 @@ class KlinesCache(db.Model):
         candlesticks: list,
         cache_ttl_minutes: int = 15,
     ):
-        """Save a batch of candlestick data to cache"""
+        """Save a batch of candlestick data to cache with intelligent TTL"""
         from sqlalchemy import text
 
-        expires_at = datetime.utcnow() + timedelta(minutes=cache_ttl_minutes)
         current_time = datetime.utcnow()
+        
+        # Intelligent TTL based on candle completeness
+        complete_candle_ttl_days = 7  # Complete candles cached for 7 days
+        incomplete_candle_ttl_minutes = cache_ttl_minutes  # Incomplete candles use short TTL
 
         # Prepare batch data
         klines_to_insert = []
@@ -599,7 +602,14 @@ class KlinesCache(db.Model):
 
                 is_complete = not is_current_period
             else:
-                is_complete = True  # Default to complete
+                # If timestamp is not datetime, assume it's complete unless it's very recent
+                is_complete = True  # Conservative default for non-datetime timestamps
+
+            # Intelligent TTL: Complete candles get long cache time, incomplete get short
+            if is_complete:
+                expires_at = current_time + timedelta(days=complete_candle_ttl_days)
+            else:
+                expires_at = current_time + timedelta(minutes=incomplete_candle_ttl_minutes)
 
             klines_to_insert.append(
                 {
@@ -620,7 +630,7 @@ class KlinesCache(db.Model):
         if klines_to_insert:
             # Use bulk insert for better performance
             try:
-                db.session.bulk_insert_mappings(cls.__table__, klines_to_insert)
+                db.session.bulk_insert_mappings(cls, klines_to_insert)
                 db.session.commit()
                 return len(klines_to_insert)
             except Exception:
@@ -641,17 +651,15 @@ class KlinesCache(db.Model):
                             db.session.add(new_kline)
                             inserted_count += 1
                         else:
-                            # Update existing incomplete candle
-                            if (
-                                not existing.is_complete
-                                and not kline_data["is_complete"]
-                            ):
+                            # Update existing candle (incomplete to incomplete, or incomplete to complete)
+                            if not existing.is_complete:
                                 existing.open = kline_data["open"]
                                 existing.high = kline_data["high"]
                                 existing.low = kline_data["low"]
                                 existing.close = kline_data["close"]
                                 existing.volume = kline_data["volume"]
-                                existing.expires_at = expires_at
+                                existing.expires_at = kline_data["expires_at"]  # Use the intelligent TTL
+                                existing.is_complete = kline_data["is_complete"]  # Promote to complete if needed
                                 existing.created_at = current_time
 
                     except Exception:
