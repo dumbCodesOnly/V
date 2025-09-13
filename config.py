@@ -329,6 +329,11 @@ class SMCConfig:
     ATR_PERIOD = 14  # Period for Average True Range calculation
     ATR_SMOOTHING_FACTOR = 2.0  # EMA smoothing factor for ATR calculation
 
+    # Timeframe Data Limits for Enhanced SMC Analysis
+    TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
+    TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
+    TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
+
 
 # =============================================================================
 # CACHE CONFIGURATION
@@ -370,7 +375,7 @@ class CacheConfig:
     KLINES_1H_CACHE_TTL = 15  # 15 minutes cache for 1h timeframe
     KLINES_4H_CACHE_TTL = 60  # 1 hour cache for 4h timeframe
     KLINES_1D_CACHE_TTL = 240  # 4 hours cache for 1d timeframe
-    KLINES_DATA_RETENTION_DAYS = 7  # Keep klines data for 7 days
+    KLINES_DATA_RETENTION_DAYS = 21  # Keep klines data for 21 days (increased from 7 for better SMC analysis)
     KLINES_CLEANUP_INTERVAL = 3600  # Clean up klines cache every hour (seconds)
 
 

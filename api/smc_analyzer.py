@@ -227,11 +227,17 @@ class SMCAnalyzer:
 
     def get_multi_timeframe_data(self, symbol: str) -> Dict[str, List[Dict]]:
         """Get candlestick data for multiple timeframes with circuit breaker protection"""
+        from config import SMCConfig
+        
         timeframe_data = {}
-        timeframe_configs = [("1h", 100), ("4h", 50), ("1d", 30)]
+        timeframe_configs = [
+            ("1h", SMCConfig.TIMEFRAME_1H_LIMIT), 
+            ("4h", SMCConfig.TIMEFRAME_4H_LIMIT), 
+            ("1d", SMCConfig.TIMEFRAME_1D_LIMIT)
+        ]
 
         logging.info(
-            f"Fetching batch candlestick data for {symbol} across {len(timeframe_configs)} timeframes with circuit breaker"
+            f"Fetching batch candlestick data for {symbol} - 1h:{SMCConfig.TIMEFRAME_1H_LIMIT}, 4h:{SMCConfig.TIMEFRAME_4H_LIMIT}, 1d:{SMCConfig.TIMEFRAME_1D_LIMIT} candles"
         )
 
         for timeframe, limit in timeframe_configs:

@@ -136,9 +136,9 @@ The analyzer operates on three key timeframes:
 ### Data Requirements
 | Timeframe | Default Limit | Purpose |
 |-----------|---------------|---------|
-| 1h | 100 candles | Detailed entry analysis and order block detection |
-| 4h | 50 candles | Structure confirmation and liquidity pool analysis |
-| 1d | 30 candles | Directional bias and major structure levels |
+| 1h | 300 candles | Enhanced structure analysis and detailed order block detection (~12.5 days) |
+| 4h | 100 candles | Intermediate structure confirmation and liquidity pool analysis (~16 days) |
+| 1d | 50 candles | Macro directional bias and major structure levels (~7 weeks) |
 
 ---
 
