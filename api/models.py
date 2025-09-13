@@ -721,12 +721,31 @@ class KlinesCache(db.Model):
             time_diff = (current_time - latest_complete.timestamp).total_seconds()
             periods_elapsed = int(time_diff // period_seconds)
             
-            # If we have enough recent data, no fetch needed
-            if available_count >= required_count and periods_elapsed <= 1:
+            # Check if current period's incomplete candle exists
+            current_period_start = current_time.replace(minute=0, second=0, microsecond=0)
+            if timeframe == "4h":
+                current_period_start = current_period_start.replace(hour=(current_period_start.hour // 4) * 4)
+            elif timeframe == "1d":
+                current_period_start = current_period_start.replace(hour=0)
+            
+            current_incomplete = cls.query.filter(
+                cls.symbol == symbol,
+                cls.timeframe == timeframe,
+                cls.timestamp == current_period_start,
+                cls.is_complete.is_(False),
+                cls.expires_at > current_time,
+            ).first()
+            
+            # If no new periods elapsed and current incomplete exists, no fetch needed
+            if periods_elapsed == 0 and current_incomplete:
                 return {"needs_fetch": False, "fetch_count": 0, "has_cached_data": True}
             
             # Calculate how many new candles we need to fetch
-            fetch_count = min(required_count, max(1, periods_elapsed + 1))  # +1 for current incomplete
+            if periods_elapsed == 0:
+                fetch_count = 1  # Just need current incomplete
+            else:
+                fetch_count = min(required_count, periods_elapsed + 1)  # +1 for current incomplete
+            
             return {
                 "needs_fetch": True,
                 "fetch_count": fetch_count,
