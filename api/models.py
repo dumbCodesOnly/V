@@ -580,7 +580,7 @@ class KlinesCache(db.Model):
         current_time = datetime.utcnow()
         
         # Intelligent TTL based on candle completeness
-        complete_candle_ttl_days = 7  # Complete candles cached for 7 days
+        complete_candle_ttl_days = 21  # Complete candles cached for 21 days (aligned with retention)
         incomplete_candle_ttl_minutes = cache_ttl_minutes  # Incomplete candles use short TTL
 
         # Prepare batch data
