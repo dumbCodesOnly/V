@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -508,7 +509,7 @@ class KlinesCache(db.Model):
         db.Boolean, default=True
     )  # False for incomplete candles (current period)
 
-    # Composite indexes for efficient queries
+    # Composite indexes and constraints for efficient queries and data integrity
     __table_args__ = (
         db.Index(
             "idx_klines_symbol_timeframe_timestamp", "symbol", "timeframe", "timestamp"
@@ -517,6 +518,7 @@ class KlinesCache(db.Model):
         db.Index(
             "idx_klines_symbol_timeframe_expires", "symbol", "timeframe", "expires_at"
         ),
+        db.UniqueConstraint("symbol", "timeframe", "timestamp", name="uq_klines_symbol_tf_timestamp"),
     )
 
     def is_expired(self):
@@ -628,45 +630,50 @@ class KlinesCache(db.Model):
             )
 
         if klines_to_insert:
-            # Use bulk insert for better performance
-            try:
-                db.session.bulk_insert_mappings(cls, klines_to_insert)
-                db.session.commit()
-                return len(klines_to_insert)
-            except Exception:
-                db.session.rollback()
-                # Fall back to individual inserts on conflict
-                inserted_count = 0
-                for kline_data in klines_to_insert:
-                    try:
-                        # Check if already exists
-                        existing = cls.query.filter(
-                            cls.symbol == kline_data["symbol"],
-                            cls.timeframe == kline_data["timeframe"],
-                            cls.timestamp == kline_data["timestamp"],
-                        ).first()
+            # Proper upsert logic to handle unique constraint and promotion
+            inserted_count = 0
+            updated_count = 0
+            
+            for kline_data in klines_to_insert:
+                try:
+                    # Check if already exists
+                    existing = cls.query.filter(
+                        cls.symbol == kline_data["symbol"],
+                        cls.timeframe == kline_data["timeframe"],
+                        cls.timestamp == kline_data["timestamp"],
+                    ).first()
 
-                        if not existing:
-                            new_kline = cls(**kline_data)
-                            db.session.add(new_kline)
-                            inserted_count += 1
-                        else:
-                            # Update existing candle (incomplete to incomplete, or incomplete to complete)
-                            if not existing.is_complete:
-                                existing.open = kline_data["open"]
-                                existing.high = kline_data["high"]
-                                existing.low = kline_data["low"]
-                                existing.close = kline_data["close"]
-                                existing.volume = kline_data["volume"]
-                                existing.expires_at = kline_data["expires_at"]  # Use the intelligent TTL
-                                existing.is_complete = kline_data["is_complete"]  # Promote to complete if needed
-                                existing.created_at = current_time
+                    if not existing:
+                        # Insert new candle
+                        new_kline = cls(**kline_data)
+                        db.session.add(new_kline)
+                        inserted_count += 1
+                    else:
+                        # Update existing candle (handles incomplete→complete promotion)
+                        # Never downgrade: only update if new is complete or both are incomplete
+                        should_update = (
+                            not existing.is_complete and kline_data["is_complete"]  # Promote incomplete→complete
+                            or (not existing.is_complete and not kline_data["is_complete"])  # Update incomplete→incomplete
+                        )
+                        
+                        if should_update:
+                            existing.open = kline_data["open"]
+                            existing.high = kline_data["high"]
+                            existing.low = kline_data["low"]
+                            existing.close = kline_data["close"]
+                            existing.volume = kline_data["volume"]
+                            existing.expires_at = kline_data["expires_at"]  # Use intelligent TTL
+                            existing.is_complete = kline_data["is_complete"]  # Promote to complete if needed
+                            existing.created_at = current_time
+                            updated_count += 1
 
-                    except Exception:
-                        continue
+                except Exception as e:
+                    logging.warning(f"Failed to upsert kline {kline_data.get('symbol', 'unknown')} {kline_data.get('timestamp', 'unknown')}: {e}")
+                    continue
 
-                db.session.commit()
-                return inserted_count
+            db.session.commit()
+            logging.debug(f"Klines upsert: {inserted_count} inserted, {updated_count} updated")
+            return inserted_count + updated_count
 
         return 0
 
@@ -693,17 +700,47 @@ class KlinesCache(db.Model):
                 "has_cached_data": False,
             }
 
-        # Count available complete data
-        available_count = cls.query.filter(
+        # Count available complete data and find latest timestamp
+        from sqlalchemy import func
+        complete_query = cls.query.filter(
             cls.symbol == symbol,
             cls.timeframe == timeframe,
             cls.is_complete.is_(True),
             cls.expires_at > datetime.utcnow(),
-        ).count()
+        )
+        
+        available_count = complete_query.with_entities(func.count(func.distinct(cls.timestamp))).scalar()
+        latest_complete = complete_query.order_by(cls.timestamp.desc()).first()
 
-        if available_count >= required_count:
-            # Sufficient cached data available
-            return {"needs_fetch": False, "fetch_count": 0, "has_cached_data": True}
+        # Calculate time period in seconds
+        period_seconds = {"1h": 3600, "4h": 14400, "1d": 86400}.get(timeframe, 3600)
+        current_time = datetime.utcnow()
+        
+        if latest_complete:
+            # Calculate how many periods have elapsed since latest complete candle
+            time_diff = (current_time - latest_complete.timestamp).total_seconds()
+            periods_elapsed = int(time_diff // period_seconds)
+            
+            # If we have enough recent data, no fetch needed
+            if available_count >= required_count and periods_elapsed <= 1:
+                return {"needs_fetch": False, "fetch_count": 0, "has_cached_data": True}
+            
+            # Calculate how many new candles we need to fetch
+            fetch_count = min(required_count, max(1, periods_elapsed + 1))  # +1 for current incomplete
+            return {
+                "needs_fetch": True,
+                "fetch_count": fetch_count,
+                "has_cached_data": True,
+                "from_timestamp": latest_complete.timestamp,
+            }
+        elif available_count >= required_count:
+            # Have enough old data but no recent - fetch just recent periods
+            fetch_count = min(required_count, 5)  # Fetch last 5 periods to get recent data
+            return {
+                "needs_fetch": True,
+                "fetch_count": fetch_count,
+                "has_cached_data": True,
+            }
         else:
             # Need to fetch additional data
             missing_count = (
