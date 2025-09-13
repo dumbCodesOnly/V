@@ -3,7 +3,7 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from cryptography.fernet import Fernet
 from flask_sqlalchemy import SQLAlchemy
@@ -36,6 +36,35 @@ def utc_to_iran_time(utc_dt: Optional[datetime]) -> Optional[datetime]:
     if utc_dt.tzinfo is None:
         utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(IRAN_TZ)
+
+
+def get_utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime"""
+    return datetime.now(timezone.utc)
+
+
+def normalize_to_utc(dt: datetime) -> datetime:
+    """Normalize datetime to timezone-aware UTC"""
+    if dt.tzinfo is None:
+        # Assume naive datetime is UTC
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def floor_to_period(dt_utc: datetime, timeframe: str) -> datetime:
+    """Floor datetime to start of trading period (timezone-aware UTC)"""
+    dt_utc = normalize_to_utc(dt_utc)
+    
+    if timeframe == "1h":
+        return dt_utc.replace(minute=0, second=0, microsecond=0)
+    elif timeframe == "4h":
+        hour = (dt_utc.hour // 4) * 4
+        return dt_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
+    elif timeframe == "1d":
+        return dt_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        # Default to hourly for unknown timeframes
+        return dt_utc.replace(minute=0, second=0, microsecond=0)
 
 
 def format_iran_time(
@@ -545,10 +574,11 @@ class KlinesCache(db.Model):
         include_incomplete: bool = True,
     ):
         """Get cached candlestick data for symbol and timeframe"""
+        current_time = get_utc_now()
         query = cls.query.filter(
             cls.symbol == symbol,
             cls.timeframe == timeframe,
-            cls.expires_at > datetime.utcnow(),
+            cls.expires_at > current_time.replace(tzinfo=None),  # Store as naive UTC
         )
 
         if not include_incomplete:
@@ -577,35 +607,32 @@ class KlinesCache(db.Model):
         """Save a batch of candlestick data to cache with intelligent TTL"""
         from sqlalchemy import text
 
-        current_time = datetime.utcnow()
+        current_time = get_utc_now()
         
         # Intelligent TTL based on candle completeness
         complete_candle_ttl_days = 21  # Complete candles cached for 21 days (aligned with retention)
         incomplete_candle_ttl_minutes = cache_ttl_minutes  # Incomplete candles use short TTL
 
+        # Get current period start for proper completeness detection
+        current_period_start = floor_to_period(current_time, timeframe)
+        
         # Prepare batch data
         klines_to_insert = []
 
         for candle in candlesticks:
-            # Determine if this is a complete candle (not the current period)
+            # Parse and normalize timestamp to UTC
             candle_time = candle["timestamp"]
-            if isinstance(candle_time, datetime):
-                is_current_period = False
-                # Check if this is the most recent candle (within the timeframe period)
-                if timeframe == "1h":
-                    time_diff = (current_time - candle_time).total_seconds()
-                    is_current_period = time_diff < 3600  # Less than 1 hour
-                elif timeframe == "4h":
-                    time_diff = (current_time - candle_time).total_seconds()
-                    is_current_period = time_diff < 14400  # Less than 4 hours
-                elif timeframe == "1d":
-                    time_diff = (current_time - candle_time).total_seconds()
-                    is_current_period = time_diff < 86400  # Less than 1 day
-
-                is_complete = not is_current_period
-            else:
-                # If timestamp is not datetime, assume it's complete unless it's very recent
-                is_complete = True  # Conservative default for non-datetime timestamps
+            if isinstance(candle_time, str):
+                candle_time = datetime.fromisoformat(candle_time.replace("Z", "+00:00"))
+            elif isinstance(candle_time, (int, float)):
+                candle_time = datetime.fromtimestamp(candle_time / 1000, tz=timezone.utc)
+            
+            # Normalize to timezone-aware UTC
+            candle_time = normalize_to_utc(candle_time)
+            
+            # Determine if candle is complete using proper period calculation
+            candle_period_start = floor_to_period(candle_time, timeframe)
+            is_complete = candle_period_start < current_period_start
 
             # Intelligent TTL: Complete candles get long cache time, incomplete get short
             if is_complete:
@@ -630,50 +657,91 @@ class KlinesCache(db.Model):
             )
 
         if klines_to_insert:
-            # Proper upsert logic to handle unique constraint and promotion
-            inserted_count = 0
-            updated_count = 0
-            
-            for kline_data in klines_to_insert:
+            # Use PostgreSQL ON CONFLICT for atomic upsert
+            try:
+                from sqlalchemy.dialects.postgresql import insert
+                from sqlalchemy import text
+                
+                # Batch insert with ON CONFLICT DO UPDATE
+                stmt = insert(cls.__table__).values(klines_to_insert)
+                
+                # Only update if not downgrading: never change complete to incomplete
+                update_dict = {
+                    'open': stmt.excluded.open,
+                    'high': stmt.excluded.high,
+                    'low': stmt.excluded.low,
+                    'close': stmt.excluded.close,
+                    'volume': stmt.excluded.volume,
+                    'expires_at': stmt.excluded.expires_at,
+                    'created_at': stmt.excluded.created_at,
+                    # Only promote incomplete→complete, never downgrade
+                    'is_complete': text('CASE WHEN klines_cache.is_complete = true THEN true ELSE excluded.is_complete END')
+                }
+                
+                upsert_stmt = stmt.on_conflict_do_update(
+                    constraint='uq_klines_symbol_tf_timestamp',
+                    set_=update_dict,
+                    where=text('klines_cache.is_complete = false OR excluded.is_complete = true')
+                )
+                
+                result = db.session.execute(upsert_stmt)
+                db.session.commit()
+                
+                logging.debug(f"Klines batch upsert completed: {len(klines_to_insert)} records processed")
+                return len(klines_to_insert)
+                
+            except Exception as e:
+                logging.warning(f"PostgreSQL upsert failed, falling back to individual operations: {e}")
+                db.session.rollback()
+                
+                # Fallback to individual upsert operations
+                inserted_count = 0
+                updated_count = 0
+                
+                for kline_data in klines_to_insert:
+                    try:
+                        existing = cls.query.filter(
+                            cls.symbol == kline_data["symbol"],
+                            cls.timeframe == kline_data["timeframe"],
+                            cls.timestamp == kline_data["timestamp"],
+                        ).first()
+
+                        if not existing:
+                            new_kline = cls(**kline_data)
+                            db.session.add(new_kline)
+                            db.session.flush()  # Flush to catch IntegrityError early
+                            inserted_count += 1
+                        else:
+                            # Never downgrade: only update if promoting or both incomplete
+                            should_update = (
+                                not existing.is_complete and kline_data["is_complete"]  # Promote incomplete→complete
+                                or (not existing.is_complete and not kline_data["is_complete"])  # Update incomplete→incomplete
+                            )
+                            
+                            if should_update:
+                                existing.open = kline_data["open"]
+                                existing.high = kline_data["high"]
+                                existing.low = kline_data["low"]
+                                existing.close = kline_data["close"]
+                                existing.volume = kline_data["volume"]
+                                existing.expires_at = kline_data["expires_at"]
+                                existing.is_complete = kline_data["is_complete"]
+                                existing.created_at = current_time
+                                updated_count += 1
+
+                    except Exception as inner_e:
+                        logging.warning(f"Failed to upsert individual kline: {inner_e}")
+                        db.session.rollback()
+                        continue
+
                 try:
-                    # Check if already exists
-                    existing = cls.query.filter(
-                        cls.symbol == kline_data["symbol"],
-                        cls.timeframe == kline_data["timeframe"],
-                        cls.timestamp == kline_data["timestamp"],
-                    ).first()
-
-                    if not existing:
-                        # Insert new candle
-                        new_kline = cls(**kline_data)
-                        db.session.add(new_kline)
-                        inserted_count += 1
-                    else:
-                        # Update existing candle (handles incomplete→complete promotion)
-                        # Never downgrade: only update if new is complete or both are incomplete
-                        should_update = (
-                            not existing.is_complete and kline_data["is_complete"]  # Promote incomplete→complete
-                            or (not existing.is_complete and not kline_data["is_complete"])  # Update incomplete→incomplete
-                        )
-                        
-                        if should_update:
-                            existing.open = kline_data["open"]
-                            existing.high = kline_data["high"]
-                            existing.low = kline_data["low"]
-                            existing.close = kline_data["close"]
-                            existing.volume = kline_data["volume"]
-                            existing.expires_at = kline_data["expires_at"]  # Use intelligent TTL
-                            existing.is_complete = kline_data["is_complete"]  # Promote to complete if needed
-                            existing.created_at = current_time
-                            updated_count += 1
-
-                except Exception as e:
-                    logging.warning(f"Failed to upsert kline {kline_data.get('symbol', 'unknown')} {kline_data.get('timestamp', 'unknown')}: {e}")
-                    continue
-
-            db.session.commit()
-            logging.debug(f"Klines upsert: {inserted_count} inserted, {updated_count} updated")
-            return inserted_count + updated_count
+                    db.session.commit()
+                    logging.debug(f"Fallback upsert: {inserted_count} inserted, {updated_count} updated")
+                    return inserted_count + updated_count
+                except Exception as commit_e:
+                    logging.error(f"Failed to commit klines batch: {commit_e}")
+                    db.session.rollback()
+                    return 0
 
         return 0
 
@@ -714,37 +782,44 @@ class KlinesCache(db.Model):
 
         # Calculate time period in seconds
         period_seconds = {"1h": 3600, "4h": 14400, "1d": 86400}.get(timeframe, 3600)
-        current_time = datetime.utcnow()
+        current_time = get_utc_now()
+        current_period_start = floor_to_period(current_time, timeframe)
         
         if latest_complete:
-            # Calculate how many periods have elapsed since latest complete candle
-            time_diff = (current_time - latest_complete.timestamp).total_seconds()
-            periods_elapsed = int(time_diff // period_seconds)
+            # Normalize latest complete timestamp to UTC
+            latest_complete_utc = normalize_to_utc(latest_complete.timestamp)
+            latest_complete_period = floor_to_period(latest_complete_utc, timeframe)
+            
+            # Calculate periods elapsed from period start to period start (correct math)
+            time_diff = (current_period_start - latest_complete_period).total_seconds()
+            periods_elapsed = max(0, int(time_diff // period_seconds))
             
             # Check if current period's incomplete candle exists
-            current_period_start = current_time.replace(minute=0, second=0, microsecond=0)
-            if timeframe == "4h":
-                current_period_start = current_period_start.replace(hour=(current_period_start.hour // 4) * 4)
-            elif timeframe == "1d":
-                current_period_start = current_period_start.replace(hour=0)
-            
             current_incomplete = cls.query.filter(
                 cls.symbol == symbol,
                 cls.timeframe == timeframe,
-                cls.timestamp == current_period_start,
+                cls.timestamp == current_period_start.replace(tzinfo=None),  # Store as naive UTC
                 cls.is_complete.is_(False),
-                cls.expires_at > current_time,
+                cls.expires_at > current_time.replace(tzinfo=None),
             ).first()
             
             # If no new periods elapsed and current incomplete exists, no fetch needed
             if periods_elapsed == 0 and current_incomplete:
                 return {"needs_fetch": False, "fetch_count": 0, "has_cached_data": True}
             
-            # Calculate how many new candles we need to fetch
+            # Calculate how many new candles we need to fetch (fixed: no +1 over-fetching)
             if periods_elapsed == 0:
-                fetch_count = 1  # Just need current incomplete
+                # Only need current incomplete if it doesn't exist
+                fetch_count = 1 if not current_incomplete else 0
             else:
-                fetch_count = min(required_count, periods_elapsed + 1)  # +1 for current incomplete
+                # Fetch the missing periods (no +1 to avoid over-fetching)
+                fetch_count = min(required_count, periods_elapsed)
+                # Add 1 for current incomplete only if it doesn't exist
+                if not current_incomplete:
+                    fetch_count = min(required_count, fetch_count + 1)
+            
+            if fetch_count == 0:
+                return {"needs_fetch": False, "fetch_count": 0, "has_cached_data": True}
             
             return {
                 "needs_fetch": True,
