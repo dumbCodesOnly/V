@@ -2113,6 +2113,10 @@ class HyperliquidClient:
 
         # Track last error for better user feedback
         self.last_error = None
+        
+        # Initialize tracking attributes for enhanced functionality
+        self.symbol_leverage_settings = {}  # Store local leverage preferences per symbol
+        self.active_orders_tracking = {}    # Track orders for break-even management
 
         # Initialize Hyperliquid clients
         try:
@@ -2253,7 +2257,7 @@ class HyperliquidClient:
                                 pos.get("position", {}).get("unrealizedPnl", 0)
                             ),
                             "percentage": 0,  # Calculate based on entry and mark price
-                            "leverage": 1,  # Hyperliquid uses different leverage model
+                            "leverage": self._get_effective_leverage(symbol, pos),
                             "margin_type": "cross",
                         }
                     )
@@ -2390,22 +2394,103 @@ class HyperliquidClient:
             logging.error(self.last_error)
             return []
 
-    def change_leverage(self, symbol: str, leverage: int) -> bool:
-        """Change leverage for a symbol (Note: Hyperliquid has different leverage mechanics)"""
+    def change_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
+        """
+        Set preferred leverage for a symbol (LOCAL PREFERENCE ONLY).
+        
+        IMPORTANT: This is a local preference for calculations and UI display only.
+        Hyperliquid DEX does not have server-side leverage settings like CEXs.
+        Actual leverage is determined by position size relative to margin deposited.
+        
+        This method validates the requested leverage and stores it locally for:
+        - Position size calculations
+        - UI display consistency
+        - Risk management calculations
+        """
         try:
-            # Hyperliquid handles leverage differently - this is a placeholder
-            # In Hyperliquid, leverage is more about margin requirements and position sizing
+            if not self.exchange_client:
+                self.last_error = "Exchange client not initialized (missing credentials)"
+                return {
+                    "result": "false", 
+                    "message": self.last_error,
+                    "symbol": symbol,
+                    "leverage": leverage,
+                    "error": "Missing credentials"
+                }
+
+            # Validate leverage range (typical range for most assets on Hyperliquid)
+            if leverage < 1 or leverage > 50:
+                self.last_error = f"Invalid leverage {leverage}. Hyperliquid typically supports 1x-50x leverage"
+                logging.error(self.last_error)
+                return {
+                    "result": "false",
+                    "message": self.last_error,
+                    "symbol": symbol,
+                    "leverage": leverage,
+                    "error": "Invalid leverage range"
+                }
+
+            hyperliquid_symbol = self._convert_symbol(symbol)
+            
+            # Get asset metadata to check maximum leverage for this specific asset
+            try:
+                if hasattr(self, 'info_client') and self.info_client:
+                    meta = self.info_client.meta()
+                    if meta and isinstance(meta, dict) and "universe" in meta:
+                        for universe_item in meta["universe"]:
+                            if universe_item.get("name") == hyperliquid_symbol:
+                                # Check for maxLeverage field with fallback to szDecimals-based logic
+                                max_leverage = universe_item.get("maxLeverage")
+                                if max_leverage is None:
+                                    # Fallback: calculate reasonable max based on asset properties
+                                    sz_decimals = universe_item.get("szDecimals", 6)
+                                    max_leverage = 50 if sz_decimals >= 3 else 20  # Conservative estimate
+                                
+                                max_leverage = float(max_leverage) if max_leverage else 50
+                                if leverage > max_leverage:
+                                    self.last_error = f"Leverage {leverage}x exceeds estimated maximum {max_leverage}x for {symbol}"
+                                    logging.error(self.last_error)
+                                    return {
+                                        "result": "false",
+                                        "message": self.last_error,
+                                        "symbol": symbol,
+                                        "leverage": leverage,
+                                        "error": f"Exceeds maximum {max_leverage}x"
+                                    }
+                                break
+            except Exception as e:
+                logging.warning(f"Could not fetch leverage limits for {symbol}: {e}")
+                # Continue with general validation
+
+            # Store leverage preference for this symbol
+            if not hasattr(self, 'symbol_leverage_settings'):
+                self.symbol_leverage_settings = {}
+            
+            self.symbol_leverage_settings[symbol] = leverage
+            
             logging.info(
-                f"Leverage change requested for {symbol}: {leverage}x (Hyperliquid handles leverage differently)"
+                f"Preferred leverage set to {leverage}x for {symbol} (LOCAL PREFERENCE - affects calculations only)"
             )
-            return True
+            return {
+                "result": "true",
+                "message": f"Preferred leverage set to {leverage}x for {symbol} (LOCAL PREFERENCE)",
+                "symbol": symbol,
+                "leverage": leverage,
+                "note": "This is a local preference for calculations only - Hyperliquid uses margin-based leverage"
+            }
 
         except Exception as e:
             self.last_error = f"Error changing leverage: {e}"
             logging.error(self.last_error)
-            return False
+            return {
+                "result": "false",
+                "message": f"Failed to set leverage preference: {str(e)}",
+                "symbol": symbol,
+                "leverage": leverage,
+                "error": str(e)
+            }
 
-    def set_leverage(self, symbol: str, leverage: int) -> bool:
+    def set_leverage(self, symbol: str, leverage: int) -> Optional[Dict]:
         """Set leverage for a symbol (alias for change_leverage)"""
         return self.change_leverage(symbol, leverage)
 
@@ -2504,14 +2589,49 @@ class HyperliquidClient:
             return []
 
     def get_api_restrictions(self) -> Optional[Dict]:
-        """Get API restrictions (placeholder for Hyperliquid)"""
+        """Get API restrictions and trading permissions for Hyperliquid"""
         try:
-            # Hyperliquid doesn't have traditional API restrictions like CEXs
-            return {
-                "restrictions": [],
-                "trading_enabled": True,
-                "message": "Hyperliquid DEX - No traditional API restrictions",
-            }
+            if not self.account_address:
+                return {
+                    "restrictions": ["No account address - read-only access"],
+                    "trading_enabled": False,
+                    "message": "Account address required for trading on Hyperliquid DEX",
+                }
+
+            # Check if account has any restrictions by attempting to get account info
+            try:
+                account_state = self.info_client.user_state(self.account_address)
+                if account_state:
+                    # Account is accessible, check if trading is possible
+                    margin_summary = account_state.get("marginSummary", {})
+                    account_value = float(margin_summary.get("accountValue", 0))
+                    
+                    restrictions = []
+                    if account_value <= 0:
+                        restrictions.append("Zero account value - deposits required for trading")
+                    
+                    return {
+                        "restrictions": restrictions,
+                        "trading_enabled": len(restrictions) == 0,
+                        "message": "Hyperliquid DEX - Decentralized trading platform",
+                        "account_value": account_value,
+                        "currency": "USD",
+                    }
+                else:
+                    return {
+                        "restrictions": ["Account state unavailable"],
+                        "trading_enabled": False,
+                        "message": "Unable to verify account status",
+                    }
+                    
+            except Exception as e:
+                logging.warning(f"Could not fetch account restrictions: {e}")
+                return {
+                    "restrictions": ["Unable to verify account status"],
+                    "trading_enabled": True,  # Assume trading is enabled if we can't check
+                    "message": "Hyperliquid DEX - Status check failed, assuming trading enabled",
+                }
+
         except Exception as e:
             self.last_error = f"Error getting API restrictions: {e}"
             logging.error(self.last_error)
@@ -2895,6 +3015,55 @@ class HyperliquidClient:
                 # If SL side is sell, original position was buy
                 return "buy" if order.get("side") == "sell" else "sell"
         return "buy"  # Default fallback
+
+    def _get_effective_leverage(self, symbol: str, position_data: Dict) -> float:
+        """
+        Calculate effective leverage for a Hyperliquid position
+        
+        In Hyperliquid, leverage is calculated as position_value / margin_used
+        rather than being explicitly set like in traditional exchanges.
+        """
+        try:
+            # Check if we have stored leverage settings for this symbol
+            if hasattr(self, 'symbol_leverage_settings') and symbol in self.symbol_leverage_settings:
+                return float(self.symbol_leverage_settings[symbol])
+            
+            # Calculate effective leverage from position data
+            position_info = position_data.get("position", {})
+            if position_info and isinstance(position_info, dict):
+                # Handle different possible field names from Hyperliquid API
+                position_size = abs(float(
+                    position_info.get("szi", 0) or  # Standard field
+                    position_info.get("size", 0) or  # Alternative field name
+                    0
+                ))
+                entry_px = float(
+                    position_info.get("entryPx", 0) or  # Standard field
+                    position_info.get("entry_price", 0) or  # Alternative field name
+                    0
+                )
+                
+                if position_size > 0 and entry_px > 0:
+                    position_value = position_size * entry_px
+                    
+                    # Try multiple field names for margin data
+                    margin_used = float(
+                        position_info.get("marginUsed", 0) or  # Standard field
+                        position_info.get("margin_used", 0) or  # Snake case alternative
+                        position_info.get("initialMargin", 0) or  # Another possible field
+                        0
+                    )
+                    
+                    if margin_used > 0:
+                        effective_leverage = position_value / margin_used
+                        return round(max(effective_leverage, 1.0), 2)  # Ensure >= 1x
+            
+            # Fallback: try to get from stored settings or default
+            return 1.0  # Conservative default for Hyperliquid
+            
+        except Exception as e:
+            logging.debug(f"Error calculating effective leverage for {symbol}: {e}")
+            return 1.0  # Safe fallback
 
 
 class ExchangeClientFactory:
