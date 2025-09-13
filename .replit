@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask Trading App"
+args = "Trading Bot Server"
 
 [[workflows.workflow]]
-name = "Flask Trading App"
+name = "Trading Bot Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -33,6 +33,10 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 40833
+externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
