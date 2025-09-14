@@ -208,7 +208,12 @@ def get_authenticated_user_id() -> Optional[str]:
             init_data = request.headers.get('X-Telegram-Init-Data')
             
         if not init_data:
-            logging.warning("No Telegram WebApp initData found in request")
+            # Debug information
+            logging.warning(f"No Telegram WebApp initData found in request")
+            logging.debug(f"Request headers: {dict(request.headers)}")
+            logging.debug(f"Request args: {dict(request.args)}")
+            logging.debug(f"Request URL: {request.url}")
+            logging.debug(f"User-Agent: {request.headers.get('User-Agent', 'Not provided')}")
             return None
             
         # Verify initData using bot token
