@@ -124,8 +124,8 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> Optional[Dict
         
         # Create secret key using bot token (FIXED: Correct HMAC parameter order per Telegram spec)
         secret_key = hmac.new(
-            key=bot_token.encode('utf-8'),
-            msg=b"WebAppData", 
+            key=b"WebAppData",
+            msg=bot_token.encode('utf-8'), 
             digestmod=hashlib.sha256
         ).digest()
         
