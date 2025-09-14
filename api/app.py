@@ -1109,7 +1109,7 @@ else:
 
 
 # Bot token and webhook URL from environment
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 
