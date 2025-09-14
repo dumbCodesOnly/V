@@ -1866,7 +1866,20 @@ def delete_trade_from_db(user_id, trade_id):
 @app.route("/")
 def mini_app():
     """Telegram Mini App interface - Main route with access control"""
-    user_id = get_user_id_from_request()
+    user_id = get_authenticated_user_id()
+    
+    # If authentication fails, deny access
+    if not user_id:
+        return render_template(
+            "access_wall.html",
+            access_data={
+                "title": "🔒 Authentication Required",
+                "message": "Please access this app through the official Telegram bot.",
+                "status": "auth_required",
+                "show_request_button": False
+            },
+            user_id=None
+        )
     
     # Check if whitelist is enabled
     if not WHITELIST_ENABLED:
@@ -1902,7 +1915,20 @@ def mini_app():
 @app.route("/miniapp")
 def mini_app_alias():
     """Telegram Mini App interface - Alias route with access control"""
-    user_id = get_user_id_from_request()
+    user_id = get_authenticated_user_id()
+    
+    # If authentication fails, deny access
+    if not user_id:
+        return render_template(
+            "access_wall.html",
+            access_data={
+                "title": "🔒 Authentication Required",
+                "message": "Please access this app through the official Telegram bot.",
+                "status": "auth_required",
+                "show_request_button": False
+            },
+            user_id=None
+        )
     
     # Check if whitelist is enabled
     if not WHITELIST_ENABLED:
