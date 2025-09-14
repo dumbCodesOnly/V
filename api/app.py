@@ -1716,21 +1716,73 @@ def delete_trade_from_db(user_id, trade_id):
 
 @app.route("/")
 def mini_app():
-    """Telegram Mini App interface - Main route"""
+    """Telegram Mini App interface - Main route with access control"""
+    user_id = get_user_id_from_request()
+    
+    # Check if whitelist is enabled
+    if not WHITELIST_ENABLED:
+        return render_template(
+            "mini_app.html",
+            price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
+            portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
+        )
+    
+    # Check if user is whitelisted or is bot owner
+    if not is_user_whitelisted(user_id):
+        # Show access wall for non-whitelisted users
+        access_wall_data = get_access_wall_message(user_id)
+        return render_template(
+            "access_wall.html",
+            access_data=access_wall_data,
+            user_id=user_id
+        )
+    
+    # User is whitelisted - record access and show main app
+    record_user_access(user_id)
+    is_owner = is_bot_owner(user_id)
+    
     return render_template(
         "mini_app.html",
         price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
         portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
+        is_bot_owner=is_owner,
+        user_id=user_id
     )
 
 
 @app.route("/miniapp")
 def mini_app_alias():
-    """Telegram Mini App interface - Alias route"""
+    """Telegram Mini App interface - Alias route with access control"""
+    user_id = get_user_id_from_request()
+    
+    # Check if whitelist is enabled
+    if not WHITELIST_ENABLED:
+        return render_template(
+            "mini_app.html",
+            price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
+            portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
+        )
+    
+    # Check if user is whitelisted or is bot owner
+    if not is_user_whitelisted(user_id):
+        # Show access wall for non-whitelisted users
+        access_wall_data = get_access_wall_message(user_id)
+        return render_template(
+            "access_wall.html",
+            access_data=access_wall_data,
+            user_id=user_id
+        )
+    
+    # User is whitelisted - record access and show main app
+    record_user_access(user_id)
+    is_owner = is_bot_owner(user_id)
+    
     return render_template(
         "mini_app.html",
         price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
         portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
+        is_bot_owner=is_owner,
+        user_id=user_id
     )
 
 

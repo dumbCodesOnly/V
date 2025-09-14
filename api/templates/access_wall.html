@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Access Required - Trading Bot</title>
+    
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Feather Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --tg-theme-bg-color: #0f1419;
+            --tg-theme-text-color: #e8eef7;
+            --tg-theme-hint-color: #8b9dc3;
+            --tg-theme-link-color: #6bb6ff;
+            --tg-theme-button-color: #4a5d7a;
+            --tg-theme-button-text-color: #ffffff;
+            --tg-theme-secondary-bg-color: #1a202c;
+            --tg-theme-accent-color: #5b7394;
+            --tg-theme-card-bg: #212836;
+            --tg-theme-border-color: #3a4658;
+            --tg-theme-success: #52c41a;
+            --tg-theme-warning: #faad14;
+            --tg-theme-danger: #ff4d4f;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--tg-theme-bg-color) !important;
+            color: var(--tg-theme-text-color) !important;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .access-wall-container {
+            max-width: 480px;
+            width: 90%;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .access-wall-card {
+            background: linear-gradient(135deg, var(--tg-theme-card-bg) 0%, #2d3748 100%);
+            border: 2px solid var(--tg-theme-border-color);
+            border-radius: 20px;
+            padding: 3rem 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .access-wall-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #4a90e2, #357abd, #4a90e2);
+            background-size: 200% 100%;
+            animation: gradient-flow 3s ease-in-out infinite;
+        }
+
+        @keyframes gradient-flow {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .access-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+            font-size: 2.5rem;
+            color: white;
+            box-shadow: 0 8px 25px rgba(74, 144, 226, 0.3);
+        }
+
+        .access-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--tg-theme-text-color);
+        }
+
+        .access-message {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: var(--tg-theme-hint-color);
+            margin-bottom: 2.5rem;
+        }
+
+        .access-button {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border: none;
+            border-radius: 12px;
+            padding: 1rem 2rem;
+            color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+            width: 100%;
+        }
+
+        .access-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .access-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 20, 25, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--tg-theme-text-color);
+            font-size: 1rem;
+        }
+
+        .spinner-ring {
+            width: 32px;
+            height: 32px;
+            border: 4px solid rgba(74, 144, 226, 0.3);
+            border-top: 4px solid #4a90e2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-pending { color: var(--tg-theme-warning); }
+        .status-rejected { color: var(--tg-theme-danger); }
+        .status-banned { color: var(--tg-theme-danger); }
+        .status-approved { color: var(--tg-theme-success); }
+
+        .status-details {
+            background: rgba(75, 93, 122, 0.1);
+            border: 1px solid var(--tg-theme-border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            text-align: left;
+        }
+
+        .status-details h6 {
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+            color: var(--tg-theme-text-color);
+        }
+
+        .status-details p {
+            margin: 0;
+            color: var(--tg-theme-hint-color);
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="access-wall-container">
+        <div class="access-wall-card">
+            <div class="access-icon">
+                {% if access_data.status == 'not_registered' %}
+                    🔐
+                {% elif access_data.status == 'pending' %}
+                    ⏳
+                {% elif access_data.status == 'rejected' %}
+                    ❌
+                {% elif access_data.status == 'banned' %}
+                    🚫
+                {% else %}
+                    🔒
+                {% endif %}
+            </div>
+            
+            <h1 class="access-title">{{ access_data.title }}</h1>
+            <p class="access-message">{{ access_data.message }}</p>
+            
+            {% if access_data.show_request_button %}
+                <button id="requestAccessBtn" class="access-button">
+                    Request Access
+                </button>
+            {% else %}
+                <div class="status-details">
+                    <h6>Status: <span class="status-{{ access_data.status }}">
+                        {% if access_data.status == 'pending' %}
+                            Pending Review
+                        {% elif access_data.status == 'rejected' %}
+                            Access Denied
+                        {% elif access_data.status == 'banned' %}
+                            Banned
+                        {% else %}
+                            {{ access_data.status.title() }}
+                        {% endif %}
+                    </span></h6>
+                    <p>Please wait for the bot owner to review your request or contact support if you believe this is an error.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <span>Processing request...</span>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Initialize Telegram Web App
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        
+        // Get user data from Telegram
+        const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+        const userId = '{{ user_id }}';
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const requestBtn = document.getElementById('requestAccessBtn');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            if (requestBtn) {
+                requestBtn.addEventListener('click', function() {
+                    requestAccess();
+                });
+            }
+        });
+        
+        function showLoading() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+        
+        async function requestAccess() {
+            const requestBtn = document.getElementById('requestAccessBtn');
+            
+            showLoading();
+            requestBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/request-access', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        username: tgUser?.username || '',
+                        first_name: tgUser?.first_name || '',
+                        last_name: tgUser?.last_name || ''
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Reload page to show updated status
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.message);
+                    requestBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error requesting access:', error);
+                alert('An error occurred while requesting access. Please try again.');
+                requestBtn.disabled = false;
+            } finally {
+                hideLoading();
+            }
+        }
+    </script>
+</body>
+</html>
