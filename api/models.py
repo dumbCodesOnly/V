@@ -555,21 +555,21 @@ class UserWhitelist(db.Model):
         """Check if user is banned"""
         return self.status == "banned"
     
-    def approve(self, reviewer_id: str, notes: str = None):
+    def approve(self, reviewer_id: str, notes: Optional[str] = None):
         """Approve user access"""
         self.status = "approved"
         self.reviewed_by = reviewer_id
         self.review_notes = notes
         self.reviewed_at = datetime.utcnow()
     
-    def reject(self, reviewer_id: str, notes: str = None):
+    def reject(self, reviewer_id: str, notes: Optional[str] = None):
         """Reject user access"""
         self.status = "rejected"
         self.reviewed_by = reviewer_id
         self.review_notes = notes
         self.reviewed_at = datetime.utcnow()
     
-    def ban(self, reviewer_id: str, notes: str = None):
+    def ban(self, reviewer_id: str, notes: Optional[str] = None):
         """Ban user access"""
         self.status = "banned"
         self.reviewed_by = reviewer_id
@@ -736,7 +736,7 @@ class KlinesCache(db.Model):
                 from sqlalchemy import text
                 
                 # Batch insert with ON CONFLICT DO UPDATE
-                stmt = insert(cls.__table__).values(klines_to_insert)
+                stmt = insert(cls.__table__).values(klines_to_insert)  # type: ignore
                 
                 # Only update if not downgrading: never change complete to incomplete
                 update_dict = {
