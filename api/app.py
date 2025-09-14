@@ -39,6 +39,7 @@ try:
         TradeConfiguration,
         UserCredentials,
         UserTradingSession,
+        UserWhitelist,
         db,
         format_iran_time,
         get_iran_time,
@@ -63,6 +64,7 @@ except ImportError:
         db,
         UserCredentials,
         UserTradingSession,
+        UserWhitelist,
         TradeConfiguration,
         format_iran_time,
         get_iran_time,
@@ -1055,6 +1057,125 @@ bot_status_lock = threading.RLock()
 # Multi-trade management storage
 user_trade_configs: dict[int, dict[str, any]] = {}  # {user_id: {trade_id: TradeConfig}}
 user_selected_trade: dict[int, str | None] = {}  # {user_id: trade_id}
+
+# Whitelist configuration
+BOT_OWNER_ID = os.environ.get("BOT_OWNER_ID", Environment.DEFAULT_TEST_USER_ID)  # Bot owner's telegram user ID
+WHITELIST_ENABLED = os.environ.get("WHITELIST_ENABLED", "true").lower() == "true"
+
+# Whitelist functions
+def is_user_whitelisted(user_id: str) -> bool:
+    """Check if user is whitelisted for access"""
+    if not WHITELIST_ENABLED:
+        return True
+    
+    # Bot owner always has access
+    if str(user_id) == str(BOT_OWNER_ID):
+        return True
+    
+    try:
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        return user_whitelist and user_whitelist.is_approved()
+    except Exception as e:
+        logging.error(f"Error checking whitelist status for user {user_id}: {e}")
+        return False
+
+def is_bot_owner(user_id: str) -> bool:
+    """Check if user is the bot owner"""
+    return str(user_id) == str(BOT_OWNER_ID)
+
+def register_user_for_whitelist(user_id: str, username: str = None, first_name: str = None, last_name: str = None):
+    """Register a new user for whitelist approval"""
+    try:
+        # Check if user already exists
+        existing_user = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        if existing_user:
+            if existing_user.is_approved():
+                return {"status": "already_approved", "message": "You are already approved for access."}
+            elif existing_user.is_pending():
+                return {"status": "pending", "message": "Your request is pending approval."}
+            elif existing_user.is_rejected():
+                return {"status": "rejected", "message": "Your access request was rejected."}
+            elif existing_user.is_banned():
+                return {"status": "banned", "message": "You are banned from accessing the system."}
+        
+        # Create new whitelist entry
+        new_user = UserWhitelist(
+            telegram_user_id=str(user_id),
+            telegram_username=username,
+            first_name=first_name,
+            last_name=last_name,
+            status="pending"
+        )
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        logging.info(f"New user registered for whitelist: {user_id} ({username})")
+        return {"status": "registered", "message": "Your access request has been submitted and is pending approval."}
+        
+    except Exception as e:
+        logging.error(f"Error registering user for whitelist: {e}")
+        db.session.rollback()
+        return {"status": "error", "message": "An error occurred while processing your request."}
+
+def record_user_access(user_id: str):
+    """Record user access for tracking"""
+    try:
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        if user_whitelist:
+            user_whitelist.record_access()
+            db.session.commit()
+    except Exception as e:
+        logging.error(f"Error recording access for user {user_id}: {e}")
+
+def get_access_wall_message(user_id: str) -> dict:
+    """Get appropriate message for users hitting the access wall"""
+    try:
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        
+        if not user_whitelist:
+            return {
+                "title": "🚫 Access Required",
+                "message": "This bot requires approval to access. Please click 'Request Access' to submit your request.",
+                "status": "not_registered",
+                "show_request_button": True
+            }
+        elif user_whitelist.is_pending():
+            return {
+                "title": "⏳ Pending Approval",
+                "message": f"Your access request is pending approval. Requested on {format_iran_time(user_whitelist.requested_at)}.",
+                "status": "pending",
+                "show_request_button": False
+            }
+        elif user_whitelist.is_rejected():
+            return {
+                "title": "❌ Access Denied",
+                "message": f"Your access request was rejected. Reason: {user_whitelist.review_notes or 'No reason provided.'}",
+                "status": "rejected",
+                "show_request_button": False
+            }
+        elif user_whitelist.is_banned():
+            return {
+                "title": "🚫 Banned",
+                "message": f"You have been banned from accessing this bot. Reason: {user_whitelist.review_notes or 'No reason provided.'}",
+                "status": "banned",
+                "show_request_button": False
+            }
+        else:
+            return {
+                "title": "✅ Access Granted",
+                "message": "You have access to the bot.",
+                "status": "approved",
+                "show_request_button": False
+            }
+    except Exception as e:
+        logging.error(f"Error getting access wall message for user {user_id}: {e}")
+        return {
+            "title": "❗ Error",
+            "message": "An error occurred while checking your access status.",
+            "status": "error",
+            "show_request_button": False
+        }
 
 
 def determine_trading_mode(user_id):
@@ -10459,6 +10580,271 @@ def debug_trading_status():
     except Exception as e:
         logging.error(f"[RENDER DEBUG] Diagnostic failed: {e}")
         return jsonify({"error": f"Diagnostic failed: {str(e)}"}), 500
+
+
+# ============================================================================
+# WHITELIST MANAGEMENT API ENDPOINTS
+# ============================================================================
+
+@app.route("/api/whitelist/status")
+def get_whitelist_status():
+    """Get whitelist status for a user"""
+    user_id = get_user_id_from_request()
+    
+    try:
+        # Check if user is whitelisted
+        is_whitelisted = is_user_whitelisted(user_id)
+        is_owner = is_bot_owner(user_id)
+        
+        # Get detailed status message
+        wall_message = get_access_wall_message(user_id)
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "is_whitelisted": is_whitelisted,
+            "is_bot_owner": is_owner,
+            "whitelist_enabled": WHITELIST_ENABLED,
+            "wall_message": wall_message,
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting whitelist status for user {user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/whitelist/request", methods=["POST"])
+def request_whitelist_access():
+    """Request access to the whitelist"""
+    try:
+        data = request.get_json()
+        user_id = data.get("user_id") or get_user_id_from_request()
+        username = data.get("username")
+        first_name = data.get("first_name")
+        last_name = data.get("last_name")
+        
+        # Register user for whitelist
+        result = register_user_for_whitelist(user_id, username, first_name, last_name)
+        
+        return jsonify({
+            "success": True,
+            "result": result,
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error requesting whitelist access: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/whitelist/users")
+def get_whitelist_users():
+    """Get all whitelist users (admin only)"""
+    user_id = get_user_id_from_request()
+    
+    # Check if user is bot owner
+    if not is_bot_owner(user_id):
+        return jsonify({"error": "Access denied. Admin privileges required."}), 403
+    
+    try:
+        status_filter = request.args.get("status", "all")
+        
+        query = UserWhitelist.query
+        if status_filter != "all":
+            query = query.filter_by(status=status_filter)
+        
+        users = query.order_by(UserWhitelist.requested_at.desc()).all()
+        
+        users_data = []
+        for user in users:
+            users_data.append({
+                "id": user.id,
+                "telegram_user_id": user.telegram_user_id,
+                "telegram_username": user.telegram_username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "status": user.status,
+                "requested_at": format_iran_time(user.requested_at),
+                "reviewed_at": format_iran_time(user.reviewed_at) if user.reviewed_at else None,
+                "reviewed_by": user.reviewed_by,
+                "review_notes": user.review_notes,
+                "last_access": format_iran_time(user.last_access) if user.last_access else None,
+                "access_count": user.access_count or 0
+            })
+        
+        return jsonify({
+            "success": True,
+            "users": users_data,
+            "total_count": len(users_data),
+            "status_filter": status_filter,
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting whitelist users: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/whitelist/approve", methods=["POST"])
+def approve_whitelist_user():
+    """Approve a user for whitelist access (admin only)"""
+    user_id = get_user_id_from_request()
+    
+    # Check if user is bot owner
+    if not is_bot_owner(user_id):
+        return jsonify({"error": "Access denied. Admin privileges required."}), 403
+    
+    try:
+        data = request.get_json()
+        target_user_id = data.get("target_user_id")
+        notes = data.get("notes", "")
+        
+        if not target_user_id:
+            return jsonify({"error": "target_user_id is required"}), 400
+        
+        # Find user
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(target_user_id)).first()
+        if not user_whitelist:
+            return jsonify({"error": "User not found in whitelist"}), 404
+        
+        # Approve user
+        user_whitelist.approve(user_id, notes)
+        db.session.commit()
+        
+        logging.info(f"User {target_user_id} approved by {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {target_user_id} has been approved",
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error approving user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/whitelist/reject", methods=["POST"])
+def reject_whitelist_user():
+    """Reject a user for whitelist access (admin only)"""
+    user_id = get_user_id_from_request()
+    
+    # Check if user is bot owner
+    if not is_bot_owner(user_id):
+        return jsonify({"error": "Access denied. Admin privileges required."}), 403
+    
+    try:
+        data = request.get_json()
+        target_user_id = data.get("target_user_id")
+        notes = data.get("notes", "")
+        
+        if not target_user_id:
+            return jsonify({"error": "target_user_id is required"}), 400
+        
+        # Find user
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(target_user_id)).first()
+        if not user_whitelist:
+            return jsonify({"error": "User not found in whitelist"}), 404
+        
+        # Reject user
+        user_whitelist.reject(user_id, notes)
+        db.session.commit()
+        
+        logging.info(f"User {target_user_id} rejected by {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {target_user_id} has been rejected",
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error rejecting user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/whitelist/ban", methods=["POST"])
+def ban_whitelist_user():
+    """Ban a user from whitelist access (admin only)"""
+    user_id = get_user_id_from_request()
+    
+    # Check if user is bot owner
+    if not is_bot_owner(user_id):
+        return jsonify({"error": "Access denied. Admin privileges required."}), 403
+    
+    try:
+        data = request.get_json()
+        target_user_id = data.get("target_user_id")
+        notes = data.get("notes", "")
+        
+        if not target_user_id:
+            return jsonify({"error": "target_user_id is required"}), 400
+        
+        # Find user
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(target_user_id)).first()
+        if not user_whitelist:
+            return jsonify({"error": "User not found in whitelist"}), 404
+        
+        # Ban user
+        user_whitelist.ban(user_id, notes)
+        db.session.commit()
+        
+        logging.info(f"User {target_user_id} banned by {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {target_user_id} has been banned",
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error banning user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/whitelist/stats")
+def get_whitelist_stats():
+    """Get whitelist statistics (admin only)"""
+    user_id = get_user_id_from_request()
+    
+    # Check if user is bot owner
+    if not is_bot_owner(user_id):
+        return jsonify({"error": "Access denied. Admin privileges required."}), 403
+    
+    try:
+        total_users = UserWhitelist.query.count()
+        pending_users = UserWhitelist.query.filter_by(status="pending").count()
+        approved_users = UserWhitelist.query.filter_by(status="approved").count()
+        rejected_users = UserWhitelist.query.filter_by(status="rejected").count()
+        banned_users = UserWhitelist.query.filter_by(status="banned").count()
+        
+        # Recent activity
+        recent_requests = UserWhitelist.query.filter(
+            UserWhitelist.requested_at >= datetime.utcnow() - timedelta(days=7)
+        ).count()
+        
+        return jsonify({
+            "success": True,
+            "stats": {
+                "total_users": total_users,
+                "pending_users": pending_users,
+                "approved_users": approved_users,
+                "rejected_users": rejected_users,
+                "banned_users": banned_users,
+                "recent_requests_7_days": recent_requests,
+                "whitelist_enabled": WHITELIST_ENABLED,
+                "bot_owner_id": BOT_OWNER_ID
+            },
+            "timestamp": get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting whitelist stats: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

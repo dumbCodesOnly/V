@@ -512,6 +512,79 @@ class SMCSignalCache(db.Model):
         return f"<SMCSignalCache {self.symbol}: {self.direction} @ {self.entry_price}>"
 
 
+class UserWhitelist(db.Model):
+    """Manage user whitelist for access control"""
+
+    __tablename__ = "user_whitelist"
+
+    id = db.Column(db.Integer, primary_key=True)
+    telegram_user_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    telegram_username = db.Column(db.String(100))
+    first_name = db.Column(db.String(100))
+    last_name = db.Column(db.String(100))
+    
+    # Whitelist status: pending, approved, rejected, banned
+    status = db.Column(db.String(20), default="pending", nullable=False, index=True)
+    
+    # Bot owner information (who approved/rejected)
+    reviewed_by = db.Column(db.String(50))  # Bot owner's telegram_user_id
+    review_notes = db.Column(db.Text)  # Optional notes from reviewer
+    
+    # Timestamps
+    requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    reviewed_at = db.Column(db.DateTime)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Access tracking
+    last_access = db.Column(db.DateTime)
+    access_count = db.Column(db.Integer, default=0)
+    
+    def is_approved(self) -> bool:
+        """Check if user is approved for access"""
+        return self.status == "approved"
+    
+    def is_pending(self) -> bool:
+        """Check if user is pending approval"""
+        return self.status == "pending"
+    
+    def is_rejected(self) -> bool:
+        """Check if user is rejected"""
+        return self.status == "rejected"
+    
+    def is_banned(self) -> bool:
+        """Check if user is banned"""
+        return self.status == "banned"
+    
+    def approve(self, reviewer_id: str, notes: str = None):
+        """Approve user access"""
+        self.status = "approved"
+        self.reviewed_by = reviewer_id
+        self.review_notes = notes
+        self.reviewed_at = datetime.utcnow()
+    
+    def reject(self, reviewer_id: str, notes: str = None):
+        """Reject user access"""
+        self.status = "rejected"
+        self.reviewed_by = reviewer_id
+        self.review_notes = notes
+        self.reviewed_at = datetime.utcnow()
+    
+    def ban(self, reviewer_id: str, notes: str = None):
+        """Ban user access"""
+        self.status = "banned"
+        self.reviewed_by = reviewer_id
+        self.review_notes = notes
+        self.reviewed_at = datetime.utcnow()
+    
+    def record_access(self):
+        """Record user access"""
+        self.last_access = datetime.utcnow()
+        self.access_count = (self.access_count or 0) + 1
+    
+    def __repr__(self):
+        return f"<UserWhitelist {self.telegram_user_id}:{self.status}>"
+
+
 class KlinesCache(db.Model):
     """Cache candlestick (klines) data to reduce API calls and improve performance"""
 

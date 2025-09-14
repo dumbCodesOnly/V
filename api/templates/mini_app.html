@@ -2354,6 +2354,11 @@
                     ⚡ SMC
                 </button>
             </li>
+            <li class="nav-item">
+                <button class="nav-link" id="admin-tab" data-bs-toggle="tab" data-bs-target="#admin-panel" type="button">
+                    🛡️ Admin
+                </button>
+            </li>
         </ul>
 
         <!-- Tab Content -->
@@ -2525,6 +2530,98 @@
                     <div class="loading">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
                         Loading SMC signals...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Panel Tab -->
+            <div class="tab-pane fade" id="admin-panel" role="tabpanel">
+                <!-- Access Check - Hidden initially -->
+                <div id="admin-access-check" class="d-none">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Checking access...</span>
+                        </div>
+                        <p class="text-muted mt-2">Verifying admin access...</p>
+                    </div>
+                </div>
+
+                <!-- Access Denied -->
+                <div id="admin-access-denied" class="d-none">
+                    <div class="text-center py-4">
+                        <div class="mb-3">
+                            <i data-feather="shield-off" class="text-danger" style="width: 48px; height: 48px;"></i>
+                        </div>
+                        <h5 class="text-danger">Access Denied</h5>
+                        <p class="text-muted">You don't have permission to access the admin panel. Only the bot owner can manage the whitelist.</p>
+                    </div>
+                </div>
+
+                <!-- Admin Panel Content -->
+                <div id="admin-panel-content" class="d-none">
+                    <!-- Admin Header -->
+                    <div class="admin-header mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-primary mb-1">🛡️ Admin Panel</h6>
+                                <small class="text-muted">Manage user whitelist and access control</small>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-outline-primary btn-sm" onclick="refreshWhitelistData()">
+                                    <i data-feather="refresh-cw"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Whitelist Stats -->
+                    <div class="admin-stats mb-3">
+                        <div class="position-summary-compact">
+                            <div class="stat-item">
+                                <div class="stat-value" id="admin-total-users">0</div>
+                                <div class="stat-label">Total Users</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="admin-pending-users">0</div>
+                                <div class="stat-label">Pending</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="admin-approved-users">0</div>
+                                <div class="stat-label">Approved</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="admin-recent-requests">0</div>
+                                <div class="stat-label">Recent</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="admin-filter mb-3">
+                        <div class="row g-2">
+                            <div class="col-8">
+                                <select class="form-control form-control-sm" id="status-filter" onchange="filterWhitelistUsers()">
+                                    <option value="all">All Users</option>
+                                    <option value="pending">Pending Approval</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="rejected">Rejected</option>
+                                    <option value="banned">Banned</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <button class="btn btn-success btn-sm w-100" onclick="refreshWhitelistData()">
+                                    <i data-feather="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Users List -->
+                    <div id="admin-users-list">
+                        <div class="loading">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            Loading whitelist users...
+                        </div>
                     </div>
                 </div>
             </div>
@@ -6303,7 +6400,7 @@
             }
         }
 
-        // Update handleTabSwitch to include SMC signals
+        // Update handleTabSwitch to include SMC signals and admin panel
         const originalHandleTabSwitch = handleTabSwitch;
         handleTabSwitch = function(tabName) {
             originalHandleTabSwitch(tabName);
@@ -6315,7 +6412,290 @@
             } else {
                 stopSmcAutoRefresh();
             }
+            
+            if (tabName === 'admin-panel') {
+                checkAdminAccess();
+            }
         };
+
+        // =====================================
+        // ADMIN PANEL FUNCTIONS
+        // =====================================
+        
+        let whitelistData = [];
+        let filteredWhitelistData = [];
+        
+        async function checkAdminAccess() {
+            try {
+                // Show loading state
+                document.getElementById('admin-access-check').classList.remove('d-none');
+                document.getElementById('admin-access-denied').classList.add('d-none');
+                document.getElementById('admin-panel-content').classList.add('d-none');
+                
+                const response = await apiCall('/api/whitelist/status');
+                
+                if (response.is_bot_owner) {
+                    // User is bot owner, show admin panel
+                    document.getElementById('admin-access-check').classList.add('d-none');
+                    document.getElementById('admin-panel-content').classList.remove('d-none');
+                    await loadWhitelistData();
+                } else {
+                    // User is not bot owner, show access denied
+                    document.getElementById('admin-access-check').classList.add('d-none');
+                    document.getElementById('admin-access-denied').classList.remove('d-none');
+                }
+                
+            } catch (error) {
+                console.error('Error checking admin access:', error);
+                document.getElementById('admin-access-check').classList.add('d-none');
+                document.getElementById('admin-access-denied').classList.remove('d-none');
+            }
+        }
+        
+        async function loadWhitelistData() {
+            try {
+                // Load whitelist stats
+                const statsResponse = await apiCall('/api/admin/whitelist/stats');
+                if (statsResponse.success) {
+                    const stats = statsResponse.stats;
+                    document.getElementById('admin-total-users').textContent = stats.total_users;
+                    document.getElementById('admin-pending-users').textContent = stats.pending_users;
+                    document.getElementById('admin-approved-users').textContent = stats.approved_users;
+                    document.getElementById('admin-recent-requests').textContent = stats.recent_requests_7_days;
+                }
+                
+                // Load users list
+                const usersResponse = await apiCall('/api/admin/whitelist/users');
+                if (usersResponse.success) {
+                    whitelistData = usersResponse.users;
+                    filteredWhitelistData = [...whitelistData];
+                    renderWhitelistUsers();
+                }
+                
+            } catch (error) {
+                console.error('Error loading whitelist data:', error);
+                document.getElementById('admin-users-list').innerHTML = `
+                    <div class="text-center text-danger py-3">
+                        <i data-feather="alert-circle"></i>
+                        <p class="mb-0">Error loading whitelist data</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderWhitelistUsers() {
+            const container = document.getElementById('admin-users-list');
+            
+            if (!filteredWhitelistData || filteredWhitelistData.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i data-feather="users" style="width: 32px; height: 32px; opacity: 0.5;"></i>
+                        <p class="mb-0 mt-2">No users found</p>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+            
+            const html = filteredWhitelistData.map(user => {
+                const statusClass = getStatusClass(user.status);
+                const statusIcon = getStatusIcon(user.status);
+                const displayName = user.first_name ? 
+                    `${user.first_name} ${user.last_name || ''}`.trim() : 
+                    user.telegram_username || `User ${user.telegram_user_id}`;
+                
+                return `
+                    <div class="admin-user-item mb-2">
+                        <div class="card">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <strong class="text-primary">${displayName}</strong>
+                                            <span class="badge ${statusClass}">${statusIcon} ${user.status.toUpperCase()}</span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <div>ID: ${user.telegram_user_id}</div>
+                                            ${user.telegram_username ? `<div>@${user.telegram_username}</div>` : ''}
+                                            <div>Requested: ${user.requested_at}</div>
+                                            ${user.last_access ? `<div>Last access: ${user.last_access} (${user.access_count} times)</div>` : ''}
+                                            ${user.review_notes ? `<div class="text-warning">Notes: ${user.review_notes}</div>` : ''}
+                                        </div>
+                                    </div>
+                                    <div class="admin-user-actions">
+                                        ${renderUserActions(user)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
+            feather.replace();
+        }
+        
+        function renderUserActions(user) {
+            if (user.status === 'pending') {
+                return `
+                    <div class="btn-group-vertical btn-group-sm">
+                        <button class="btn btn-success btn-sm" onclick="approveUser('${user.telegram_user_id}')">
+                            <i data-feather="check"></i> Approve
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectUser('${user.telegram_user_id}')">
+                            <i data-feather="x"></i> Reject
+                        </button>
+                    </div>
+                `;
+            } else if (user.status === 'approved') {
+                return `
+                    <div class="btn-group-vertical btn-group-sm">
+                        <button class="btn btn-warning btn-sm" onclick="rejectUser('${user.telegram_user_id}')">
+                            <i data-feather="x"></i> Revoke
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="banUser('${user.telegram_user_id}')">
+                            <i data-feather="shield"></i> Ban
+                        </button>
+                    </div>
+                `;
+            } else if (user.status === 'rejected') {
+                return `
+                    <div class="btn-group-vertical btn-group-sm">
+                        <button class="btn btn-success btn-sm" onclick="approveUser('${user.telegram_user_id}')">
+                            <i data-feather="check"></i> Approve
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="banUser('${user.telegram_user_id}')">
+                            <i data-feather="shield"></i> Ban
+                        </button>
+                    </div>
+                `;
+            } else if (user.status === 'banned') {
+                return `
+                    <button class="btn btn-success btn-sm" onclick="approveUser('${user.telegram_user_id}')">
+                        <i data-feather="check"></i> Unban
+                    </button>
+                `;
+            }
+            return '';
+        }
+        
+        function getStatusClass(status) {
+            switch (status) {
+                case 'pending': return 'bg-warning text-dark';
+                case 'approved': return 'bg-success';
+                case 'rejected': return 'bg-secondary';
+                case 'banned': return 'bg-danger';
+                default: return 'bg-secondary';
+            }
+        }
+        
+        function getStatusIcon(status) {
+            switch (status) {
+                case 'pending': return '⏳';
+                case 'approved': return '✅';
+                case 'rejected': return '❌';
+                case 'banned': return '🚫';
+                default: return '❓';
+            }
+        }
+        
+        function filterWhitelistUsers() {
+            const statusFilter = document.getElementById('status-filter').value;
+            
+            if (statusFilter === 'all') {
+                filteredWhitelistData = [...whitelistData];
+            } else {
+                filteredWhitelistData = whitelistData.filter(user => user.status === statusFilter);
+            }
+            
+            renderWhitelistUsers();
+        }
+        
+        async function approveUser(userId) {
+            const notes = prompt('Optional approval notes:') || '';
+            
+            try {
+                const response = await apiCall('/api/admin/whitelist/approve', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        target_user_id: userId,
+                        notes: notes
+                    })
+                });
+                
+                if (response.success) {
+                    alert('✅ User approved successfully');
+                    await loadWhitelistData();
+                } else {
+                    alert(`❌ Error: ${response.error}`);
+                }
+            } catch (error) {
+                console.error('Error approving user:', error);
+                alert('❌ Error approving user');
+            }
+        }
+        
+        async function rejectUser(userId) {
+            const notes = prompt('Rejection reason (optional):') || '';
+            
+            try {
+                const response = await apiCall('/api/admin/whitelist/reject', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        target_user_id: userId,
+                        notes: notes
+                    })
+                });
+                
+                if (response.success) {
+                    alert('✅ User rejected successfully');
+                    await loadWhitelistData();
+                } else {
+                    alert(`❌ Error: ${response.error}`);
+                }
+            } catch (error) {
+                console.error('Error rejecting user:', error);
+                alert('❌ Error rejecting user');
+            }
+        }
+        
+        async function banUser(userId) {
+            const notes = prompt('Ban reason (required):');
+            if (!notes) {
+                alert('Ban reason is required');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to ban this user?')) {
+                return;
+            }
+            
+            try {
+                const response = await apiCall('/api/admin/whitelist/ban', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        target_user_id: userId,
+                        notes: notes
+                    })
+                });
+                
+                if (response.success) {
+                    alert('✅ User banned successfully');
+                    await loadWhitelistData();
+                } else {
+                    alert(`❌ Error: ${response.error}`);
+                }
+            } catch (error) {
+                console.error('Error banning user:', error);
+                alert('❌ Error banning user');
+            }
+        }
+        
+        async function refreshWhitelistData() {
+            await loadWhitelistData();
+            alert('✅ Whitelist data refreshed');
+        }
     </script>
 
     <!-- API Keys Settings Modal -->
