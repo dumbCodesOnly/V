@@ -7,28 +7,6 @@ channel = "stable-25_05"
 packages = ["cargo", "gmp", "jq", "libiconv", "libxcrypt", "openssl", "pkg-config", "postgresql", "rustc"]
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Trading Bot Server"
-
-[[workflows.workflow]]
-name = "Trading Bot Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python main.py"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[ports]]
 localPort = 5000
