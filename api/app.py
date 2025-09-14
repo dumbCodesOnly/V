@@ -94,9 +94,158 @@ from api.error_handler import (
 )
 
 
-# Helper function to get user_id from request - streamlines repetitive code
+# SECURITY: Telegram WebApp Authentication Functions
+def verify_telegram_webapp_data(init_data: str, bot_token: str) -> Optional[Dict[str, Any]]:
+    """
+    Verify Telegram WebApp initData integrity using bot token hash validation.
+    Returns parsed user data if valid, None if invalid.
+    
+    This implements the official Telegram WebApp authentication protocol:
+    https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+    """
+    try:
+        if not init_data or not bot_token:
+            return None
+            
+        # Parse URL-encoded init data
+        parsed_data = dict(urllib.parse.parse_qsl(init_data))
+        
+        # Extract hash and remove it from data for verification
+        received_hash = parsed_data.pop('hash', None)
+        if not received_hash:
+            logging.warning("Missing hash in Telegram WebApp data")
+            return None
+            
+        # Create data check string by sorting keys alphabetically
+        data_check_arr = []
+        for key in sorted(parsed_data.keys()):
+            data_check_arr.append(f"{key}={parsed_data[key]}")
+        data_check_string = '\n'.join(data_check_arr)
+        
+        # Create secret key using bot token
+        secret_key = hmac.new(
+            b"WebAppData", 
+            bot_token.encode('utf-8'), 
+            hashlib.sha256
+        ).digest()
+        
+        # Calculate expected hash
+        expected_hash = hmac.new(
+            secret_key,
+            data_check_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Verify hash matches
+        if not hmac.compare_digest(expected_hash, received_hash):
+            logging.warning("Invalid hash in Telegram WebApp data")
+            return None
+            
+        # Check auth_date to prevent replay attacks (24 hour window)
+        auth_date = parsed_data.get('auth_date')
+        if auth_date:
+            try:
+                auth_timestamp = int(auth_date)
+                current_timestamp = int(time.time())
+                # Allow 24 hours for auth data validity
+                if current_timestamp - auth_timestamp > 86400:
+                    logging.warning("Expired Telegram WebApp data")
+                    return None
+            except ValueError:
+                logging.warning("Invalid auth_date in Telegram WebApp data")
+                return None
+                
+        # Parse user data if present
+        user_data = None
+        if 'user' in parsed_data:
+            try:
+                user_data = json.loads(parsed_data['user'])
+            except json.JSONDecodeError:
+                logging.warning("Invalid user JSON in Telegram WebApp data")
+                return None
+                
+        return {
+            'user': user_data,
+            'auth_date': auth_date,
+            'query_id': parsed_data.get('query_id'),
+            'start_param': parsed_data.get('start_param'),
+            'chat_type': parsed_data.get('chat_type'),
+            'chat_instance': parsed_data.get('chat_instance')
+        }
+        
+    except Exception as e:
+        logging.error(f"Error verifying Telegram WebApp data: {e}")
+        return None
+
+
+def get_authenticated_user_id() -> Optional[str]:
+    """
+    SECURE: Get authenticated user ID from verified Telegram WebApp data.
+    
+    This function replaces the vulnerable get_user_id_from_request() and only
+    returns user_id if the Telegram WebApp authentication is valid.
+    
+    Returns:
+        str: Verified user_id if authentication is valid
+        None: If authentication fails or is missing
+    """
+    try:
+        # Check for Telegram WebApp initData in request
+        init_data = None
+        
+        # Try multiple sources for initData
+        if request.method == 'GET':
+            init_data = request.args.get('initData')
+        elif request.method == 'POST':
+            if request.is_json:
+                request_data = request.get_json() or {}
+                init_data = request_data.get('initData')
+            else:
+                init_data = request.form.get('initData')
+        
+        # Also check headers for initData
+        if not init_data:
+            init_data = request.headers.get('X-Telegram-Init-Data')
+            
+        if not init_data:
+            logging.warning("No Telegram WebApp initData found in request")
+            return None
+            
+        # Verify initData using bot token
+        if not BOT_TOKEN:
+            logging.error("Bot token not configured - cannot verify authentication")
+            return None
+            
+        verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
+        if not verified_data:
+            logging.warning("Telegram WebApp authentication failed")
+            return None
+            
+        # Extract user ID from verified data
+        user_data = verified_data.get('user')
+        if not user_data or 'id' not in user_data:
+            logging.warning("No user ID in verified Telegram WebApp data")
+            return None
+            
+        user_id = str(user_data['id'])
+        logging.info(f"Successfully authenticated Telegram user: {user_id}")
+        return user_id
+        
+    except Exception as e:
+        logging.error(f"Error in get_authenticated_user_id: {e}")
+        return None
+
+
+# DEPRECATED: Legacy function for backward compatibility only
+# WARNING: This function is insecure and should not be used for authentication
 def get_user_id_from_request(default_user_id=None):
-    """Get user_id from request args with fallback to default"""
+    """
+    DEPRECATED: This function is vulnerable to privilege escalation attacks.
+    Use get_authenticated_user_id() instead for secure authentication.
+    
+    This function is kept only for backward compatibility with non-authenticated endpoints.
+    """
+    logging.warning("SECURITY WARNING: Using deprecated get_user_id_from_request() - use get_authenticated_user_id() instead")
     return request.args.get(
         "user_id", default_user_id or Environment.DEFAULT_TEST_USER_ID
     )
@@ -6244,6 +6393,270 @@ def reset_paper_balance():
         }
     )
 
+
+# ====================================================================
+# WHITELIST MANAGEMENT API ENDPOINTS
+# ====================================================================
+
+@app.route("/api/request-access", methods=["POST"])
+def request_access():
+    """Allow users to request access to the bot"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "message": "No data provided"}), 400
+        
+        user_id = data.get("user_id")
+        username = data.get("username", "")
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        
+        if not user_id:
+            return jsonify({"success": False, "message": "User ID is required"}), 400
+        
+        # Register user for whitelist
+        result = register_user_for_whitelist(user_id, username, first_name, last_name)
+        
+        return jsonify({
+            "success": result["status"] in ["registered", "already_approved"],
+            "status": result["status"],
+            "message": result["message"]
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in request_access: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@app.route("/api/whitelist/status")
+def whitelist_status():
+    """Get whitelist status for the current user"""
+    try:
+        user_id = get_user_id_from_request()
+        
+        # Get access wall message which contains status info
+        access_data = get_access_wall_message(user_id)
+        
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "status": access_data["status"],
+            "title": access_data["title"],
+            "message": access_data["message"],
+            "show_request_button": access_data["show_request_button"],
+            "is_whitelisted": is_user_whitelisted(user_id),
+            "is_bot_owner": is_bot_owner(user_id),
+            "whitelist_enabled": WHITELIST_ENABLED
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in whitelist_status: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@app.route("/api/admin/whitelist/stats")
+def admin_whitelist_stats():
+    """Get whitelist statistics - Admin only"""
+    try:
+        # SECURITY: Use authenticated user ID from verified Telegram WebApp data
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({
+                "success": False, 
+                "message": "Unauthorized - Invalid Telegram WebApp authentication"
+            }), 401
+        
+        # Check if user is bot owner
+        if not is_bot_owner(user_id):
+            return jsonify({"success": False, "message": "Access denied"}), 403
+        
+        # Get statistics from database
+        total_users = UserWhitelist.query.count()
+        pending_users = UserWhitelist.query.filter_by(status="pending").count()
+        approved_users = UserWhitelist.query.filter_by(status="approved").count()
+        rejected_users = UserWhitelist.query.filter_by(status="rejected").count()
+        banned_users = UserWhitelist.query.filter_by(status="banned").count()
+        
+        return jsonify({
+            "success": True,
+            "stats": {
+                "total_users": total_users,
+                "pending_users": pending_users,
+                "approved_users": approved_users,
+                "rejected_users": rejected_users,
+                "banned_users": banned_users
+            },
+            "whitelist_enabled": WHITELIST_ENABLED
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in admin_whitelist_stats: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@app.route("/api/admin/whitelist/users")
+def admin_whitelist_users():
+    """Get all whitelist users for admin management - Admin only"""
+    try:
+        # SECURITY: Use authenticated user ID from verified Telegram WebApp data
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({
+                "success": False, 
+                "message": "Unauthorized - Invalid Telegram WebApp authentication"
+            }), 401
+        
+        # Check if user is bot owner
+        if not is_bot_owner(user_id):
+            return jsonify({"success": False, "message": "Access denied"}), 403
+        
+        # Get filter from query params
+        status_filter = request.args.get("status", "all")
+        
+        # Build query
+        query = UserWhitelist.query
+        if status_filter != "all":
+            query = query.filter_by(status=status_filter)
+        
+        # Order by most recent first
+        users = query.order_by(UserWhitelist.requested_at.desc()).all()
+        
+        # Convert to list of dictionaries
+        users_data = []
+        for user in users:
+            users_data.append({
+                "id": user.id,
+                "telegram_user_id": user.telegram_user_id,
+                "telegram_username": user.telegram_username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "status": user.status,
+                "requested_at": format_iran_time(user.requested_at),
+                "reviewed_at": format_iran_time(user.reviewed_at) if user.reviewed_at else None,
+                "reviewed_by": user.reviewed_by,
+                "review_notes": user.review_notes,
+                "last_access": format_iran_time(user.last_access) if user.last_access else None,
+                "access_count": user.access_count or 0
+            })
+        
+        return jsonify({
+            "success": True,
+            "users": users_data,
+            "total_count": len(users_data),
+            "filter": status_filter
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in admin_whitelist_users: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@app.route("/api/admin/approve-user", methods=["POST"])
+def admin_approve_user():
+    """Approve a user for access - Admin only"""
+    try:
+        # SECURITY: Use authenticated user ID from verified Telegram WebApp data
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({
+                "success": False, 
+                "message": "Unauthorized - Invalid Telegram WebApp authentication"
+            }), 401
+        
+        # Check if user is bot owner
+        if not is_bot_owner(user_id):
+            return jsonify({"success": False, "message": "Access denied"}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "message": "No data provided"}), 400
+        
+        target_user_id = data.get("user_id")
+        notes = data.get("notes", "")
+        
+        if not target_user_id:
+            return jsonify({"success": False, "message": "User ID is required"}), 400
+        
+        # Find user in whitelist
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(target_user_id)).first()
+        
+        if not user_whitelist:
+            return jsonify({"success": False, "message": "User not found in whitelist"}), 404
+        
+        # Approve the user
+        user_whitelist.approve(user_id, notes)
+        db.session.commit()
+        
+        logging.info(f"User {target_user_id} approved by bot owner {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {target_user_id} has been approved for access",
+            "user_id": target_user_id,
+            "status": "approved"
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in admin_approve_user: {e}")
+        db.session.rollback()
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+@app.route("/api/admin/reject-user", methods=["POST"])
+def admin_reject_user():
+    """Reject a user's access request - Admin only"""
+    try:
+        # SECURITY: Use authenticated user ID from verified Telegram WebApp data
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({
+                "success": False, 
+                "message": "Unauthorized - Invalid Telegram WebApp authentication"
+            }), 401
+        
+        # Check if user is bot owner
+        if not is_bot_owner(user_id):
+            return jsonify({"success": False, "message": "Access denied"}), 403
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "message": "No data provided"}), 400
+        
+        target_user_id = data.get("user_id")
+        notes = data.get("notes", "")
+        action = data.get("action", "reject")  # "reject" or "ban"
+        
+        if not target_user_id:
+            return jsonify({"success": False, "message": "User ID is required"}), 400
+        
+        # Find user in whitelist
+        user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(target_user_id)).first()
+        
+        if not user_whitelist:
+            return jsonify({"success": False, "message": "User not found in whitelist"}), 404
+        
+        # Reject or ban the user
+        if action == "ban":
+            user_whitelist.ban(user_id, notes)
+            status_msg = "banned"
+        else:
+            user_whitelist.reject(user_id, notes)
+            status_msg = "rejected"
+        
+        db.session.commit()
+        
+        logging.info(f"User {target_user_id} {status_msg} by bot owner {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {target_user_id} has been {status_msg}",
+            "user_id": target_user_id,
+            "status": user_whitelist.status
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in admin_reject_user: {e}")
+        db.session.rollback()
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+# ====================================================================
+# TELEGRAM WEBHOOK HANDLER
+# ====================================================================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
