@@ -22,21 +22,17 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --timeout 120 --workers 2 main:application"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 33157
-externalPort = 3000
 
 [[ports]]
 localPort = 38367
@@ -48,5 +44,5 @@ externalPort = 3002
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]
 build = ["pip", "install", "-r", "requirements.txt"]
