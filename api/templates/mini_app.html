@@ -2962,6 +2962,22 @@
             return currentUser?.id || '123456789';
         }
 
+        // Initialize Telegram WebApp
+        let telegramWebApp = null;
+        let telegramInitData = '';
+        
+        try {
+            telegramWebApp = window.Telegram?.WebApp;
+            if (telegramWebApp) {
+                telegramWebApp.ready();
+                telegramWebApp.expand();
+                telegramInitData = telegramWebApp.initData || '';
+                console.log('Telegram WebApp initialized:', telegramInitData ? 'initData captured' : 'no initData');
+            }
+        } catch (error) {
+            console.log('Telegram WebApp not available:', error);
+        }
+
         // API Functions with request deduplication
         const apiCallCache = new Map();
         const pendingRequests = new Map();
@@ -2987,11 +3003,20 @@
             }
             
             try {
+                // Prepare headers with Telegram initData
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'X-Telegram-User-ID': getUserId(),
+                    ...options.headers
+                };
+                
+                // Add initData if available
+                if (telegramInitData) {
+                    headers['X-Telegram-Init-Data'] = telegramInitData;
+                }
+                
                 const requestPromise = fetch(endpoint, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Telegram-User-ID': getUserId()
-                    },
+                    headers: headers,
                     ...options
                 }).then(async response => {
                     if (!response.ok) {
