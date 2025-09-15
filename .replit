@@ -34,7 +34,15 @@ waitForPort = 5000
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 38367
+externalPort = 3001
+
+[[ports]]
+localPort = 44451
+externalPort = 3000
+
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]
 build = ["pip", "install", "-r", "requirements.txt"]
