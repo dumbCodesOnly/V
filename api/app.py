@@ -273,12 +273,17 @@ def get_authenticated_user_id() -> Optional[str]:
             user_agent = request.headers.get('User-Agent', '')
             if 'Telegram' in user_agent:
                 logging.warning("Telegram WebApp request detected but no initData found")
-                logging.debug(f"User-Agent: {user_agent}")
+                # Only log detailed info in development to avoid leaking sensitive data
+                if not Environment.IS_PRODUCTION:
+                    logging.debug(f"User-Agent: {user_agent}")
             else:
                 logging.warning(f"No Telegram WebApp initData found in request")
-            logging.debug(f"Request headers: {dict(request.headers)}")
-            logging.debug(f"Request args: {dict(request.args)}")
-            logging.debug(f"Request URL: {request.url}")
+            
+            # Only log sensitive request details in development
+            if not Environment.IS_PRODUCTION:
+                logging.debug(f"Request headers: {dict(request.headers)}")
+                logging.debug(f"Request args: {dict(request.args)}")
+                logging.debug(f"Request URL: {request.url}")
             return None
             
         # Verify initData using bot token (production mode)
@@ -451,9 +456,14 @@ def generate_csrf_token() -> str:
     return session['csrf_token']
 
 
-def validate_csrf_token(token: str) -> bool:
+def validate_csrf_token(token: Optional[str]) -> bool:
     """Validate CSRF token against the session token."""
-    return session.get('csrf_token') == token and token is not None
+    if not token:
+        return False
+    session_token = session.get('csrf_token')
+    if not session_token:
+        return False
+    return session_token == token
 
 
 def require_authentication(f):
@@ -493,7 +503,8 @@ def require_csrf_token(f):
         if request.method == 'POST':
             token = None
             if request.is_json:
-                token = request.get_json().get('csrf_token')
+                data = request.get_json(silent=True) or {}
+                token = data.get('csrf_token')
             else:
                 token = request.form.get('csrf_token')
             
@@ -940,6 +951,20 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Strict',  # CSRF protection
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),  # 24 hour session timeout
 )
+
+# Production environment validation - ensure critical database configuration
+if Environment.IS_PRODUCTION:
+    # DATABASE_URL must be PostgreSQL in production (not SQLite)
+    database_url_check = os.environ.get("DATABASE_URL")
+    if not database_url_check or database_url_check.startswith("sqlite"):
+        raise ValueError(
+            "DATABASE_URL must be set to a PostgreSQL URL in production. "
+            "SQLite is not suitable for multi-worker deployments."
+        )
+    
+    logging.info("Production environment validation passed - DATABASE_URL is properly configured")
+else:
+    logging.warning("Running in development mode - some security checks are relaxed")
 
 # Configure database using centralized config
 database_url = get_database_url()
