@@ -9002,7 +9002,9 @@ def handle_execute_trade(chat_id, user):
         response += f"Leverage: {config.leverage}x\n"
         response += f"Entry Price: ${price:.4f}\n"
         response += f"Order Type: {order_type}\n"
-        response += f"Quantity: {trade['quantity']:.6f}"
+        # Calculate quantity from amount and price
+        quantity = config.amount / price
+        response += f"Quantity: {quantity:.6f}"
 
         return response, get_trading_menu(chat_id)
     else:
@@ -10091,7 +10093,8 @@ def place_exchange_native_orders(config, user_id):
         elif config.stop_loss_percent > 0:
             # Use regular stop loss
             sl_calc = calculate_tp_sl_prices_and_amounts(config)
-            sl_price = str(sl_calc.get("stop_loss", {}).get("price", 0))
+            sl_val = sl_calc.get("stop_loss", {}).get("price")
+            sl_price = float(sl_val) if sl_val else None
 
         # Place all orders on exchange
         if trailing_stop:
@@ -10123,29 +10126,26 @@ def place_exchange_native_orders(config, user_id):
 
             if "hyperliquid" in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=unified_params["symbol"],
-                    side=unified_params["side"],
-                    amount=unified_params["amount"],
-                    entry_price=float(config.entry_price),
-                    tp_levels=tp_orders,
+                    symbol=config.symbol,
+                    side=config.side,
+                    total_quantity=float(position_size),
+                    take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
             elif "lbank" in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=unified_params["symbol"],
-                    side=unified_params["side"],
-                    total_quantity=str(unified_params["amount"]),
+                    symbol=config.symbol,
+                    side=config.side,
+                    total_quantity=float(position_size),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
             else:
                 # ToobitClient
                 orders_placed = client.place_multiple_tp_sl_orders(
-                    symbol=unified_params["symbol"],
-                    side=unified_params["side"],
-                    total_quantity=str(
-                        unified_params.get("amount", unified_params.get("quantity", 0))
-                    ),
+                    symbol=config.symbol,
+                    side=config.side,
+                    total_quantity=float(position_size),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
