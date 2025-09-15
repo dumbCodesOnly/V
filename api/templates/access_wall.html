@@ -259,11 +259,18 @@
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
         
-        // Get user data from Telegram
+        // Get secure initData from Telegram
+        const initData = window.Telegram.WebApp.initData || '';
         const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-        const userId = '{{ user_id }}';
         
         document.addEventListener('DOMContentLoaded', function() {
+            // If initData exists and not in URL, redirect to include it
+            if (initData && !new URLSearchParams(location.search).has('initData')) {
+                const url = new URL(location.href);
+                url.searchParams.set('initData', initData);
+                location.replace(url.toString());
+                return;
+            }
             const requestBtn = document.getElementById('requestAccessBtn');
             const loadingOverlay = document.getElementById('loadingOverlay');
             
@@ -292,10 +299,10 @@
                 const response = await fetch('/api/request-access', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Telegram-Init-Data': initData
                     },
                     body: JSON.stringify({
-                        user_id: userId,
                         username: tgUser?.username || '',
                         first_name: tgUser?.first_name || '',
                         last_name: tgUser?.last_name || ''
