@@ -1894,7 +1894,7 @@ class SMCAnalyzer:
         entry_price = current_price
 
         if relevant_obs:
-            entry_price = min(
+            entry_price = max(
                 ob.price_high for ob in relevant_obs if ob.direction == "bullish"
             )
         elif relevant_fvgs:
