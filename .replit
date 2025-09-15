@@ -39,6 +39,6 @@ localPort = 33157
 externalPort = 3000
 
 [deployment]
-deploymentTarget = "vm"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--worker-class=gthread", "--workers=3", "--threads=8", "--timeout=60", "--graceful-timeout=30", "--max-requests=1000", "--max-requests-jitter=100", "--preload-app", "main:application"]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 build = ["pip", "install", "-r", "requirements.txt"]
