@@ -305,7 +305,6 @@ def get_authenticated_user_id() -> Optional[str]:
             
         else:
             # Development mode - parse without verification
-            from config import Environment
             if Environment.IS_DEVELOPMENT or Environment.IS_REPLIT:
                 parsed_data = parse_telegram_init_data(init_data)
                 if not parsed_data:
