@@ -2433,6 +2433,9 @@ class HyperliquidClient:
             hyperliquid_symbol = self._convert_symbol(symbol)
 
             # Get L2 book data (contains current price)
+            if not self.info_client:
+                self.last_error = "Info client not available"
+                return None
             l2_book = self.info_client.l2_snapshot(hyperliquid_symbol)
 
             if not l2_book or "levels" not in l2_book:
@@ -2472,6 +2475,9 @@ class HyperliquidClient:
                 return None
 
             # Get user state (includes balance)
+            if not self.info_client:
+                self.last_error = "Info client not available"
+                return None
             user_state = self.info_client.user_state(self.account_address)
 
             if not user_state:
@@ -2501,6 +2507,9 @@ class HyperliquidClient:
                 return []
 
             # Get user state (includes positions)
+            if not self.info_client:
+                self.last_error = "Info client not available"
+                return []
             user_state = self.info_client.user_state(self.account_address)
 
             if not user_state:
@@ -2577,7 +2586,7 @@ class HyperliquidClient:
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
                     sz=sz_float,
-                    limit_px=None,
+                    limit_px=0.0,  # Market orders don't use limit_px but SDK requires float
                     order_type={"market": {}},
                     reduce_only=reduce_only,
                 )
@@ -2656,6 +2665,8 @@ class HyperliquidClient:
                 return []
 
             # Get open orders
+            if not self.info_client:
+                return []
             open_orders = self.info_client.open_orders(self.account_address)
 
             orders = []
