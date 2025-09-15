@@ -464,8 +464,11 @@ class SMCAnalyzer:
         if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_FVG:
             return fvgs
 
-        # Calculate ATR for gap size filtering
+        # Calculate ATR for gap size filtering with safety floor
         atr = self.calculate_atr(candlesticks)
+        if atr <= 0:  # Guard against insufficient data
+            current_price = candlesticks[-1]["close"]
+            atr = current_price * 0.001  # Use same 0.1% floor as trade calculations
         min_gap_size = atr * SMCConfig.FVG_ATR_MULTIPLIER
 
         for i in range(1, len(candlesticks) - 1):
@@ -473,30 +476,10 @@ class SMCAnalyzer:
             current = candlesticks[i]
             next_candle = candlesticks[i + 1]
 
-            # Bullish FVG: Gap between previous low and next high
+            # Bullish FVG: Gap UP between previous high and next low (price gaps higher)
             if (
-                prev_candle["low"] > next_candle["high"]
-                and current["close"] > current["open"]
-            ):
-
-                gap_size = prev_candle["low"] - next_candle["high"]
-
-                # Apply ATR filter
-                if gap_size >= min_gap_size:
-                    fvg = FairValueGap(
-                        gap_high=prev_candle["low"],
-                        gap_low=next_candle["high"],
-                        timestamp=current["timestamp"],
-                        direction="bullish",
-                        atr_size=gap_size / atr,
-                        age_candles=0,
-                    )
-                    fvgs.append(fvg)
-
-            # Bearish FVG: Gap between previous high and next low
-            elif (
                 prev_candle["high"] < next_candle["low"]
-                and current["close"] < current["open"]
+                and current["close"] > current["open"]
             ):
 
                 gap_size = next_candle["low"] - prev_candle["high"]
@@ -506,6 +489,26 @@ class SMCAnalyzer:
                     fvg = FairValueGap(
                         gap_high=next_candle["low"],
                         gap_low=prev_candle["high"],
+                        timestamp=current["timestamp"],
+                        direction="bullish",
+                        atr_size=gap_size / atr,
+                        age_candles=0,
+                    )
+                    fvgs.append(fvg)
+
+            # Bearish FVG: Gap DOWN between previous low and next high (price gaps lower)
+            elif (
+                prev_candle["low"] > next_candle["high"]
+                and current["close"] < current["open"]
+            ):
+
+                gap_size = prev_candle["low"] - next_candle["high"]
+
+                # Apply ATR filter
+                if gap_size >= min_gap_size:
+                    fvg = FairValueGap(
+                        gap_high=prev_candle["low"],
+                        gap_low=next_candle["high"],
                         timestamp=current["timestamp"],
                         direction="bearish",
                         atr_size=gap_size / atr,
@@ -756,7 +759,7 @@ class SMCAnalyzer:
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
-        min_atr = max(current_price * 0.001, 0.1)  # 0.1% of price or absolute minimum
+        min_atr = current_price * 0.001  # 0.1% of price minimum (removed problematic absolute floor)
         if atr <= 0:
             # Calculate median true range from available data as fallback
             if len(candlesticks) >= 2:
@@ -796,9 +799,20 @@ class SMCAnalyzer:
             # Use the closest order block to current price (highest among valid below-price OBs)
             entry_price = max(ob.price_high for ob in valid_obs)
         else:
-            # Robust fallback: small percentage buffer below current price
-            entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-            entry_price = current_price - entry_buffer
+            # Check if current price is inside any bullish order block (edge case)
+            inside_ob_entry = None
+            for ob in order_blocks:
+                if (ob.direction == "bullish" 
+                    and ob.price_low <= current_price <= ob.price_high):
+                    inside_ob_entry = ob.price_high  # Use proximal edge (top of bullish OB)
+                    break
+            
+            if inside_ob_entry:
+                entry_price = inside_ob_entry
+            else:
+                # Robust fallback: small percentage buffer below current price
+                entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
+                entry_price = current_price - entry_buffer
 
         # Stop loss using swing lows and order block structure with safety checks
         stop_loss_candidates = []
@@ -898,7 +912,7 @@ class SMCAnalyzer:
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
-        min_atr = max(current_price * 0.001, 0.1)  # 0.1% of price or absolute minimum
+        min_atr = current_price * 0.001  # 0.1% of price minimum (removed problematic absolute floor)
         if atr <= 0:
             # Calculate median true range from available data as fallback
             if len(candlesticks) >= 2:
@@ -938,9 +952,20 @@ class SMCAnalyzer:
             # Use the closest order block to current price (lowest among valid above-price OBs)
             entry_price = min(ob.price_low for ob in valid_obs)
         else:
-            # Robust fallback: small percentage buffer above current price
-            entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-            entry_price = current_price + entry_buffer
+            # Check if current price is inside any bearish order block (edge case)
+            inside_ob_entry = None
+            for ob in order_blocks:
+                if (ob.direction == "bearish" 
+                    and ob.price_low <= current_price <= ob.price_high):
+                    inside_ob_entry = ob.price_low  # Use proximal edge (bottom of bearish OB)
+                    break
+            
+            if inside_ob_entry:
+                entry_price = inside_ob_entry
+            else:
+                # Robust fallback: small percentage buffer above current price
+                entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
+                entry_price = current_price + entry_buffer
 
         # Stop loss using swing highs and order block structure with safety checks
         stop_loss_candidates = []
