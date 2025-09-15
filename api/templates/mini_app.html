@@ -2908,23 +2908,37 @@
                     const urlParams = new URLSearchParams(window.location.search);
                     const authProcessed = urlParams.get('tg_auth_processed');
                     
-                    // If we have initData but haven't processed auth yet, reload with auth data
+                    // If we have initData but haven't processed auth yet, send auth data via AJAX
                     if (initData && !authProcessed) {
                         console.log('Telegram WebApp initData found, processing authentication...');
                         
                         // Check if URL already has tg_init_data to prevent double processing
                         const hasInitData = urlParams.get('tg_init_data');
                         if (!hasInitData) {
-                            // Add auth processed flag to prevent infinite reload
-                            const newUrl = new URL(window.location);
-                            newUrl.searchParams.set('tg_auth_processed', '1');
-                            newUrl.searchParams.set('tg_init_data', encodeURIComponent(initData));
-                            
-                            // Reload page with auth data only once
-                            window.location.href = newUrl.toString();
-                            return; // Stop execution since we're reloading
+                            // Send auth data to server without page reload
+                            fetch('/auth', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                },
+                                body: new URLSearchParams({
+                                    'tg_init_data': initData
+                                })
+                            }).then(response => {
+                                if (response.ok) {
+                                    console.log('Authentication successful, updating URL without reload');
+                                    // Update URL without reload for clean state
+                                    const newUrl = new URL(window.location);
+                                    newUrl.searchParams.set('tg_auth_processed', '1');
+                                    window.history.replaceState({}, '', newUrl.toString());
+                                } else {
+                                    console.error('Authentication failed:', response.status);
+                                }
+                            }).catch(error => {
+                                console.error('Authentication error:', error);
+                            });
                         } else {
-                            console.log('Auth data already in URL, skipping reload');
+                            console.log('Auth data already in URL, skipping auth');
                         }
                     }
                 }

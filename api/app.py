@@ -2158,7 +2158,7 @@ def delete_trade_from_db(user_id, trade_id):
         return False
 
 
-@app.route("/auth")
+@app.route("/auth", methods=["GET", "POST"])
 def authenticate():
     """
     Handle authentication with clean URL redirect.
@@ -2192,10 +2192,12 @@ def authenticate():
             init_data = None
             if request.method == 'GET':
                 init_data = request.args.get('initData') or request.args.get('tg_init_data')
+                if init_data and request.args.get('tg_init_data'):
+                    init_data = urllib.parse.unquote(init_data)
+            elif request.method == 'POST':
+                init_data = request.form.get('tg_init_data')
             
             if init_data:
-                if request.args.get('tg_init_data'):
-                    init_data = urllib.parse.unquote(init_data)
                 
                 verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
                 user_data = verified_data.get('user', {}) if verified_data else {}
@@ -2205,7 +2207,10 @@ def authenticate():
         # Establish session
         if establish_user_session(user_id, user_data):
             logging.info(f"Authentication successful, session established for user {user_id}")
-            # Redirect to clean URL without sensitive parameters
+            # For AJAX requests, return JSON success
+            if request.method == 'POST':
+                return jsonify({"success": True, "message": "Authentication successful"})
+            # For GET requests, redirect to clean URL without sensitive parameters
             return redirect(url_for('mini_app', _external=False))
         else:
             logging.error(f"Failed to establish session for user {user_id}")
