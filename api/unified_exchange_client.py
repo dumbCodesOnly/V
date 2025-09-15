@@ -62,9 +62,7 @@ class OrderParameterAdapter:
         "toobit": {
             "order_type_map": {
                 "MARKET": "MARKET",
-                "LIMIT": "LIMIT", 
-                "STOP": "STOP",
-                "STOP_MARKET": "STOP"
+                "LIMIT": "LIMIT"
             },
             "side_map": {
                 "BUY": "BUY_OPEN", "LONG": "BUY_OPEN",
@@ -89,9 +87,7 @@ class OrderParameterAdapter:
         "hyperliquid": {
             "order_type_map": {
                 "MARKET": "market",
-                "LIMIT": "limit",
-                "STOP": "stop",
-                "STOP_MARKET": "stop_market"
+                "LIMIT": "limit"
             },
             "side_map": {
                 "BUY": "buy", "LONG": "buy",
@@ -121,11 +117,15 @@ class OrderParameterAdapter:
             elif required_param not in params or params[required_param] is None:
                 errors.append(f"Missing required parameter: {required_param}")
         
-        # Validate price is required for limit/stop orders
+        # STRICT VALIDATION: Only allow MARKET and LIMIT orders (no stop orders)
         order_type = params.get("order_type", "MARKET").upper()
-        if order_type in ["LIMIT", "STOP", "STOP_MARKET"]:
+        if order_type in ["STOP", "STOP_MARKET", "STOP_LIMIT"]:
+            errors.append(f"Stop orders are not supported. Order type '{order_type}' is blocked. Only MARKET and LIMIT orders are allowed.")
+        
+        # Validate price is required for limit orders
+        if order_type == "LIMIT":
             if not (params.get("price") is not None or params.get("entry_price") is not None):
-                errors.append(f"Price (or entry_price) is required for {order_type} orders")
+                errors.append(f"Price (or entry_price) is required for LIMIT orders")
         
         if errors:
             raise ValueError(f"Parameter validation failed: {'; '.join(errors)}")
@@ -142,7 +142,7 @@ class OrderParameterAdapter:
                 converted[key] = value
                 continue
                 
-            if key in ["quantity", "total_quantity", "price", "entry_price", "stop_price"]:
+            if key in ["quantity", "total_quantity", "price", "entry_price"]:
                 try:
                     converted[key] = float(value)
                 except (ValueError, TypeError):
@@ -203,7 +203,7 @@ class OrderParameterAdapter:
         }
         
         # Add price for limit orders
-        if result["order_type"] in ["LIMIT", "STOP"]:
+        if result["order_type"] == "LIMIT":
             price_value = params.get("entry_price", params.get("price"))
             if price_value is not None:
                 result["price"] = price_value
