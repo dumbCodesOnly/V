@@ -783,22 +783,22 @@ class SMCAnalyzer:
         # Entry price calculation with robust fallbacks
         entry_price = None
         
-        # Find valid bullish order block above current price for entry
+        # Find valid bullish order block below current price for entry (SMC discount zone)
         atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
         valid_obs = [
             ob for ob in order_blocks 
             if (ob.direction == "bullish" 
-                and ob.price_high > current_price
-                and ob.price_high <= current_price + atr_range)
+                and ob.price_high < current_price
+                and ob.price_high >= current_price - atr_range)
         ]
         
         if valid_obs:
-            # Use the closest order block to current price
-            entry_price = min(ob.price_high for ob in valid_obs)
+            # Use the closest order block to current price (highest among valid below-price OBs)
+            entry_price = max(ob.price_high for ob in valid_obs)
         else:
-            # Robust fallback: small percentage buffer
+            # Robust fallback: small percentage buffer below current price
             entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-            entry_price = current_price + entry_buffer
+            entry_price = current_price - entry_buffer
 
         # Stop loss using swing lows and order block structure with safety checks
         stop_loss_candidates = []
@@ -925,22 +925,22 @@ class SMCAnalyzer:
         # Entry price calculation with robust fallbacks
         entry_price = None
         
-        # Find valid bearish order block below current price for entry
+        # Find valid bearish order block above current price for entry (SMC premium zone)
         atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
         valid_obs = [
             ob for ob in order_blocks 
             if (ob.direction == "bearish" 
-                and ob.price_low < current_price
-                and ob.price_low >= current_price - atr_range)
+                and ob.price_low > current_price
+                and ob.price_low <= current_price + atr_range)
         ]
         
         if valid_obs:
-            # Use the closest order block to current price
-            entry_price = max(ob.price_low for ob in valid_obs)
+            # Use the closest order block to current price (lowest among valid above-price OBs)
+            entry_price = min(ob.price_low for ob in valid_obs)
         else:
-            # Robust fallback: small percentage buffer
+            # Robust fallback: small percentage buffer above current price
             entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-            entry_price = current_price - entry_buffer
+            entry_price = current_price + entry_buffer
 
         # Stop loss using swing highs and order block structure with safety checks
         stop_loss_candidates = []
