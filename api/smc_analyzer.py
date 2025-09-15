@@ -750,82 +750,310 @@ class SMCAnalyzer:
 
         return bearish_signals
 
-    def _calculate_long_trade_levels(self, current_price, order_blocks):
-        """Calculate entry, stop loss, and take profits for long trades."""
-        # For LONG signals, entry should be ABOVE current price (stop buy)
-        # Use bullish order block HIGH price as entry point
+    def _calculate_long_trade_levels(self, current_price, order_blocks, candlesticks):
+        """Calculate entry, stop loss, and take profits for long trades using dynamic SMC analysis."""
+        # Calculate ATR with robust fallback for insufficient data
+        atr = self.calculate_atr(candlesticks)
+        
+        # Apply ATR floor to handle low volatility and insufficient data cases
+        min_atr = max(current_price * 0.001, 0.1)  # 0.1% of price or absolute minimum
+        if atr <= 0:
+            # Calculate median true range from available data as fallback
+            if len(candlesticks) >= 2:
+                true_ranges = []
+                for i in range(1, min(len(candlesticks), 20)):
+                    current = candlesticks[i]
+                    prev = candlesticks[i - 1]
+                    tr = max(
+                        current["high"] - current["low"],
+                        abs(current["high"] - prev["close"]),
+                        abs(current["low"] - prev["close"])
+                    )
+                    true_ranges.append(tr)
+                atr = sum(true_ranges) / len(true_ranges) if true_ranges else min_atr
+            else:
+                atr = min_atr
+        
+        atr = max(atr, min_atr)  # Ensure minimum ATR
+        
+        # Find swing highs and lows for natural levels
+        swing_highs = self._find_swing_highs(candlesticks)
+        swing_lows = self._find_swing_lows(candlesticks)
+        
+        # Entry price calculation with robust fallbacks
         entry_price = None
         
         # Find valid bullish order block above current price for entry
-        for ob in order_blocks:
-            if (
-                ob.direction == "bullish" 
+        atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
+        valid_obs = [
+            ob for ob in order_blocks 
+            if (ob.direction == "bullish" 
                 and ob.price_high > current_price
-                and ob.price_high <= current_price * 1.05  # Within 5% above
-            ):
-                if entry_price is None or ob.price_high < entry_price:
-                    entry_price = ob.price_high
-        
-        # If no valid order block found, use current price + small buffer for stop buy
-        if entry_price is None:
-            entry_price = current_price * 1.002  # 0.2% above current price
-
-        # Stop loss below nearest support/order block
-        nearest_support = current_price * 0.97  # Default 3% below
-        for ob in order_blocks:
-            if ob.direction == "bullish" and ob.price_low < current_price:
-                nearest_support = max(nearest_support, ob.price_low * 0.995)
-
-        stop_loss = nearest_support
-
-        # Take profits based on entry price
-        take_profits = [
-            entry_price * 1.02,  # 2% profit from entry
-            entry_price * 1.035,  # 3.5% profit from entry
-            entry_price * 1.05,  # 5% profit from entry
+                and ob.price_high <= current_price + atr_range)
         ]
+        
+        if valid_obs:
+            # Use the closest order block to current price
+            entry_price = min(ob.price_high for ob in valid_obs)
+        else:
+            # Robust fallback: small percentage buffer
+            entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
+            entry_price = current_price + entry_buffer
 
-        return entry_price, stop_loss, take_profits
+        # Stop loss using swing lows and order block structure with safety checks
+        stop_loss_candidates = []
+        
+        # Add recent swing lows as potential stop loss levels
+        recent_swings = swing_lows[-3:] if len(swing_lows) >= 3 else swing_lows
+        for swing in recent_swings:
+            if swing["low"] < current_price and swing["low"] > 0:
+                stop_loss_candidates.append(swing["low"])
+        
+        # Add bullish order block lows below current price
+        for ob in order_blocks:
+            if (ob.direction == "bullish" and ob.price_low < current_price 
+                and ob.price_low > 0):
+                stop_loss_candidates.append(ob.price_low)
+        
+        # Calculate stop loss with safety constraints
+        if stop_loss_candidates:
+            stop_loss = max(stop_loss_candidates)
+        else:
+            # Fallback: percentage-based stop loss
+            stop_loss = current_price * 0.97  # 3% below
+            
+        # Ensure minimum risk distance and valid price constraints
+        min_risk_distance = max(atr * 1.0, current_price * 0.005)  # 0.5% minimum
+        max_risk_distance = current_price * 0.15  # Maximum 15% risk
+        
+        # Adjust stop loss if too close to entry
+        if entry_price - stop_loss < min_risk_distance:
+            stop_loss = entry_price - min_risk_distance
+            
+        # Ensure stop loss doesn't exceed maximum risk
+        if entry_price - stop_loss > max_risk_distance:
+            stop_loss = entry_price - max_risk_distance
+            
+        # Final safety check: ensure stop loss is positive and below entry
+        stop_loss = max(stop_loss, current_price * 0.01)  # At least 1% of price
+        stop_loss = min(stop_loss, entry_price * 0.99)  # Below entry price
 
-    def _calculate_short_trade_levels(self, current_price, order_blocks):
-        """Calculate entry, stop loss, and take profits for short trades."""
-        # For SHORT signals, entry should be BELOW current price (stop sell)
-        # Use bearish order block LOW price as entry point
+        # Take profits with guaranteed valid levels
+        take_profits = []
+        base_reward = max(atr * 0.8, current_price * 0.008)  # Minimum 0.8% reward
+        
+        # TP1: Next resistance or minimum reward
+        tp1_candidates = []
+        
+        # Check for swing highs above entry price
+        for swing in swing_highs[-5:]:
+            if swing["high"] > entry_price + base_reward:
+                tp1_candidates.append(swing["high"])
+        
+        # Check for bearish order blocks above entry price
+        for ob in order_blocks:
+            if (ob.direction == "bearish" and ob.price_low > entry_price + base_reward):
+                tp1_candidates.append(ob.price_low)
+        
+        # Select TP1
+        if tp1_candidates:
+            tp1 = min(tp1_candidates)
+        else:
+            tp1 = entry_price + max(atr * 1.0, current_price * 0.01)
+        
+        take_profits.append(tp1)
+        
+        # TP2: Extended target, ensuring it's above TP1
+        tp2_base = entry_price + max(atr * 2.0, current_price * 0.02)
+        extended_highs = [s["high"] for s in swing_highs[-10:] if s["high"] > tp1]
+        if extended_highs:
+            tp2 = min(extended_highs)
+            tp2 = max(tp2, tp1 * 1.01)  # Ensure TP2 > TP1
+        else:
+            tp2 = max(tp2_base, tp1 * 1.01)
+        
+        take_profits.append(tp2)
+        
+        # TP3: Full extension, ensuring it's above TP2
+        tp3 = max(
+            entry_price + max(atr * 3.0, current_price * 0.03),
+            tp2 * 1.01
+        )
+        take_profits.append(tp3)
+        
+        # Final validation: ensure all TPs are unique and ordered
+        take_profits = sorted(list(set(take_profits)))
+        if len(take_profits) < 3:
+            # Fill missing TPs with calculated levels
+            while len(take_profits) < 3:
+                last_tp = take_profits[-1]
+                next_tp = last_tp * 1.01  # 1% increment
+                take_profits.append(next_tp)
+
+        return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
+
+    def _calculate_short_trade_levels(self, current_price, order_blocks, candlesticks):
+        """Calculate entry, stop loss, and take profits for short trades using dynamic SMC analysis."""
+        # Calculate ATR with robust fallback for insufficient data
+        atr = self.calculate_atr(candlesticks)
+        
+        # Apply ATR floor to handle low volatility and insufficient data cases
+        min_atr = max(current_price * 0.001, 0.1)  # 0.1% of price or absolute minimum
+        if atr <= 0:
+            # Calculate median true range from available data as fallback
+            if len(candlesticks) >= 2:
+                true_ranges = []
+                for i in range(1, min(len(candlesticks), 20)):
+                    current = candlesticks[i]
+                    prev = candlesticks[i - 1]
+                    tr = max(
+                        current["high"] - current["low"],
+                        abs(current["high"] - prev["close"]),
+                        abs(current["low"] - prev["close"])
+                    )
+                    true_ranges.append(tr)
+                atr = sum(true_ranges) / len(true_ranges) if true_ranges else min_atr
+            else:
+                atr = min_atr
+        
+        atr = max(atr, min_atr)  # Ensure minimum ATR
+        
+        # Find swing highs and lows for natural levels
+        swing_highs = self._find_swing_highs(candlesticks)
+        swing_lows = self._find_swing_lows(candlesticks)
+        
+        # Entry price calculation with robust fallbacks
         entry_price = None
         
         # Find valid bearish order block below current price for entry
-        for ob in order_blocks:
-            if (
-                ob.direction == "bearish" 
+        atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
+        valid_obs = [
+            ob for ob in order_blocks 
+            if (ob.direction == "bearish" 
                 and ob.price_low < current_price
-                and ob.price_low >= current_price * 0.95  # Within 5% below
-            ):
-                if entry_price is None or ob.price_low > entry_price:
-                    entry_price = ob.price_low
-        
-        # If no valid order block found, use current price - small buffer for stop sell
-        if entry_price is None:
-            entry_price = current_price * 0.998  # 0.2% below current price
-
-        # Stop loss above nearest resistance/order block
-        nearest_resistance = current_price * 1.03  # Default 3% above
-        for ob in order_blocks:
-            if ob.direction == "bearish" and ob.price_high > current_price:
-                nearest_resistance = min(nearest_resistance, ob.price_high * 1.005)
-
-        stop_loss = nearest_resistance
-
-        # Take profits based on entry price
-        take_profits = [
-            entry_price * 0.98,  # 2% profit from entry
-            entry_price * 0.965,  # 3.5% profit from entry
-            entry_price * 0.95,  # 5% profit from entry
+                and ob.price_low >= current_price - atr_range)
         ]
+        
+        if valid_obs:
+            # Use the closest order block to current price
+            entry_price = max(ob.price_low for ob in valid_obs)
+        else:
+            # Robust fallback: small percentage buffer
+            entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
+            entry_price = current_price - entry_buffer
 
-        return entry_price, stop_loss, take_profits
+        # Stop loss using swing highs and order block structure with safety checks
+        stop_loss_candidates = []
+        
+        # Add recent swing highs as potential stop loss levels
+        recent_swings = swing_highs[-3:] if len(swing_highs) >= 3 else swing_highs
+        for swing in recent_swings:
+            if swing["high"] > current_price:
+                stop_loss_candidates.append(swing["high"])
+        
+        # Add bearish order block highs above current price
+        for ob in order_blocks:
+            if (ob.direction == "bearish" and ob.price_high > current_price):
+                stop_loss_candidates.append(ob.price_high)
+        
+        # Calculate stop loss with safety constraints
+        if stop_loss_candidates:
+            stop_loss = min(stop_loss_candidates)
+        else:
+            # Fallback: percentage-based stop loss
+            stop_loss = current_price * 1.03  # 3% above
+            
+        # Ensure minimum risk distance and valid price constraints
+        min_risk_distance = max(atr * 1.0, current_price * 0.005)  # 0.5% minimum
+        max_risk_distance = current_price * 0.15  # Maximum 15% risk
+        
+        # Adjust stop loss if too close to entry
+        if stop_loss - entry_price < min_risk_distance:
+            stop_loss = entry_price + min_risk_distance
+            
+        # Ensure stop loss doesn't exceed maximum risk
+        if stop_loss - entry_price > max_risk_distance:
+            stop_loss = entry_price + max_risk_distance
+            
+        # Final safety check: ensure stop loss is above entry
+        stop_loss = max(stop_loss, entry_price * 1.01)  # Above entry price
+
+        # Take profits with guaranteed valid levels
+        take_profits = []
+        base_reward = max(atr * 0.8, current_price * 0.008)  # Minimum 0.8% reward
+        
+        # TP1: Next support or minimum reward
+        tp1_candidates = []
+        
+        # Check for swing lows below entry price
+        for swing in swing_lows[-5:]:
+            if swing["low"] < entry_price - base_reward and swing["low"] > 0:
+                tp1_candidates.append(swing["low"])
+        
+        # Check for bullish order blocks below entry price
+        for ob in order_blocks:
+            if (ob.direction == "bullish" and ob.price_high < entry_price - base_reward
+                and ob.price_high > 0):
+                tp1_candidates.append(ob.price_high)
+        
+        # Select TP1
+        if tp1_candidates:
+            tp1 = max(tp1_candidates)
+        else:
+            tp1 = entry_price - max(atr * 1.0, current_price * 0.01)
+        
+        # Ensure TP1 is positive and below entry
+        tp1 = max(tp1, current_price * 0.01)  # At least 1% of current price
+        tp1 = min(tp1, entry_price * 0.99)  # Below entry price
+        
+        take_profits.append(tp1)
+        
+        # TP2: Extended target, ensuring it's below TP1
+        tp2_base = entry_price - max(atr * 2.0, current_price * 0.02)
+        extended_lows = [s["low"] for s in swing_lows[-10:] if s["low"] < tp1 and s["low"] > 0]
+        if extended_lows:
+            tp2 = max(extended_lows)
+            tp2 = min(tp2, tp1 * 0.99)  # Ensure TP2 < TP1
+        else:
+            tp2 = min(tp2_base, tp1 * 0.99)
+        
+        # Ensure TP2 is positive
+        tp2 = max(tp2, current_price * 0.005)  # At least 0.5% of current price
+        
+        take_profits.append(tp2)
+        
+        # TP3: Full extension, ensuring it's below TP2
+        tp3 = min(
+            entry_price - max(atr * 3.0, current_price * 0.03),
+            tp2 * 0.99
+        )
+        
+        # Ensure TP3 is positive
+        tp3 = max(tp3, current_price * 0.003)  # At least 0.3% of current price
+        
+        take_profits.append(tp3)
+        
+        # Final validation: ensure all TPs are unique, ordered, and positive
+        take_profits = [tp for tp in take_profits if tp > 0]  # Remove any negative TPs
+        take_profits = sorted(list(set(take_profits)), reverse=True)  # Sort descending for shorts
+        
+        if len(take_profits) < 3:
+            # Fill missing TPs with calculated levels
+            while len(take_profits) < 3:
+                if len(take_profits) == 0:
+                    next_tp = entry_price * 0.99
+                else:
+                    last_tp = take_profits[-1]
+                    next_tp = last_tp * 0.99  # 1% decrement
+                
+                # Ensure it's positive
+                next_tp = max(next_tp, current_price * 0.001)
+                take_profits.append(next_tp)
+
+        return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
     def _determine_trade_direction_and_levels(
-        self, bullish_signals, bearish_signals, current_price, order_blocks
+        self, bullish_signals, bearish_signals, current_price, order_blocks, candlesticks
     ):
         """Determine trade direction and calculate price levels."""
         direction = None
@@ -838,14 +1066,14 @@ class SMCAnalyzer:
             direction = "long"
             confidence = min(bullish_signals / 5.0, 1.0)
             entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
-                current_price, order_blocks
+                current_price, order_blocks, candlesticks
             )
 
         elif bearish_signals > bullish_signals and bearish_signals >= 3:
             direction = "short"
             confidence = min(bearish_signals / 5.0, 1.0)
             entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
-                current_price, order_blocks
+                current_price, order_blocks, candlesticks
             )
 
         return direction, confidence, entry_price, stop_loss, take_profits
@@ -931,7 +1159,7 @@ class SMCAnalyzer:
             # Determine direction and calculate trade levels
             direction, confidence, entry_price, stop_loss, take_profits = (
                 self._determine_trade_direction_and_levels(
-                    bullish_signals, bearish_signals, current_price, order_blocks
+                    bullish_signals, bearish_signals, current_price, order_blocks, h1_data
                 )
             )
 
