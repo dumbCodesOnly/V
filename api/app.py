@@ -1184,7 +1184,8 @@ def setup_webhook_on_deployment():
         logging.error(f"Error setting up webhook: {e}")
 
 
-# Automatic webhook setup disabled - use manual configuration
+# Automatic webhook setup enabled for Replit deployment
+setup_webhook_on_deployment()
 
 # Simple in-memory storage for the bot (replace with database in production)
 bot_messages = []
