@@ -506,7 +506,13 @@ class ToobitClient:
             params["type"] = "LIMIT"  # Default to LIMIT
             params["priceType"] = "INPUT"
 
-        params["quantity"] = f"{float(quantity):.6f}".rstrip("0").rstrip(".")
+        # Ensure quantity is properly formatted for Toobit API
+        try:
+            qty_float = float(quantity)
+            params["quantity"] = f"{qty_float:.8f}".rstrip("0").rstrip(".")
+        except (ValueError, TypeError):
+            self.last_error = f"Invalid quantity format: {quantity}"
+            return None
 
         # Add leverage if provided
         if "leverage" in kwargs:
@@ -1573,17 +1579,27 @@ class LBankClient:
             lbank_symbol = self.convert_to_lbank_symbol(symbol)
 
             # Prepare order parameters according to LBank format
-            params = {
-                "symbol": lbank_symbol,
-                "type": side.lower(),  # buy or sell
-                "amount": str(quantity),
-            }
+            try:
+                qty_float = float(quantity)
+                params = {
+                    "symbol": lbank_symbol,
+                    "type": side.lower(),  # buy or sell
+                    "amount": str(qty_float),
+                }
+            except (ValueError, TypeError):
+                self.last_error = f"Invalid quantity format: {quantity}"
+                return None
 
             # Price is required for limit orders
             if order_type.upper() == "LIMIT":
                 if not price:
                     raise ValueError("Price is required for limit orders")
-                params["price"] = str(price)
+                try:
+                    price_float = float(price)
+                    params["price"] = str(price_float)
+                except (ValueError, TypeError):
+                    self.last_error = f"Invalid price format: {price}"
+                    return None
 
             # Add required perpetual futures parameters
             params.update(
@@ -2300,10 +2316,17 @@ class HyperliquidClient:
 
             if order_type.lower() == "market":
                 # Market order using order method with market type
+                # Ensure quantity is float for Hyperliquid SDK
+                try:
+                    sz_float = float(quantity)
+                except (ValueError, TypeError):
+                    self.last_error = f"Invalid quantity format: {quantity}"
+                    return None
+                    
                 order_result = self.exchange_client.order(
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
-                    sz=quantity,
+                    sz=sz_float,
                     limit_px=None,
                     order_type={"market": {}},
                     reduce_only=reduce_only,
@@ -2314,11 +2337,19 @@ class HyperliquidClient:
                     self.last_error = "Price is required for limit orders"
                     return None
 
+                # Ensure quantity and price are floats for Hyperliquid SDK
+                try:
+                    sz_float = float(quantity)
+                    px_float = float(price)
+                except (ValueError, TypeError):
+                    self.last_error = f"Invalid quantity or price format: {quantity}, {price}"
+                    return None
+                    
                 order_result = self.exchange_client.order(
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
-                    sz=quantity,
-                    limit_px=price,
+                    sz=sz_float,
+                    limit_px=px_float,
                     order_type={"limit": {"tif": "Gtc"}},  # Good till canceled
                     reduce_only=reduce_only,
                 )
