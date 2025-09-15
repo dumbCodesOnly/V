@@ -1106,8 +1106,10 @@ class LBankClient:
                 private_key_pem.encode(), password=None
             )
 
+            # Note: This RSA signing is for LBank, not HyperLiquid
+            # HyperLiquid uses EIP-712 signing via the SDK
             signature = private_key.sign(
-                md5_hash.encode("utf8"), padding.PKCS1v15(), hashes.SHA256()
+                md5_hash.encode("utf-8"), padding.PKCS1v15(), hashes.SHA256()
             )
 
             sign = b64encode(signature)
