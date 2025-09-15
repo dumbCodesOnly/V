@@ -1428,6 +1428,14 @@ def setup_webhook_on_deployment():
         elif os.environ.get("REPLIT_DOMAIN"):
             deployment_url = f"https://{os.environ.get('REPLIT_DOMAIN')}"
 
+        # Check for Render deployment
+        elif Environment.IS_RENDER:
+            render_url = os.environ.get("RENDER_EXTERNAL_URL")
+            if render_url:
+                deployment_url = render_url
+            else:
+                logging.warning("Render environment detected but RENDER_EXTERNAL_URL not found")
+
         # Use custom webhook URL if provided
         elif WEBHOOK_URL and WEBHOOK_URL.strip():
             if WEBHOOK_URL.endswith("/webhook"):
