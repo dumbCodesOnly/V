@@ -3974,32 +3974,16 @@ def create_auto_trade_from_smc():
         trade_config.leverage = 5  # Conservative leverage for auto-trades
         trade_config.entry_price = signal.entry_price
         
-        # INTERIM FIX: SMC order type logic with current system limitations
-        # Note: This system lacks proper stop order support for breakout entries
-        
-        # Check if this is a "stop" type entry (breakout/breakdown) vs "limit" type entry (discount/premium)
-        is_stop_entry = False
-        if signal.direction == "long" and signal_entry_float > current_price_float:
-            is_stop_entry = True  # Long breakout entry (needs to wait for higher price)
-        elif signal.direction == "short" and signal_entry_float < current_price_float:
-            is_stop_entry = True  # Short breakdown entry (needs to wait for lower price)
-        
-        if price_diff_percent > 0.1:  # Significant price difference
-            if is_stop_entry:
-                # WARNING: This is a stop-type entry but system lacks stop order support
-                # Using MARKET order as workaround - will execute immediately at current price
-                trade_config.entry_type = "market"
-                trade_config.entry_price = current_price_float  # Use current price since it will fill immediately
-                logging.warning(f"SMC {signal.direction.upper()} STOP entry converted to MARKET order - Original SMC entry: {signal_entry_float:.4f}, Current: {current_price_float:.4f}, diff={price_diff_percent:.2f}%")
-                logging.warning("NOTE: Stop order behavior not fully supported - trade will execute immediately at market price")
-            else:
-                # This is a limit-type entry (discount for longs, premium for shorts) - safe to use LIMIT
-                trade_config.entry_type = "limit"
-                logging.info(f"SMC {signal.direction.upper()} LIMIT order (favorable entry): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+        # SMC order type logic - Use market orders for immediate execution or limit orders for better price
+        if price_diff_percent > 0.5:  # Price difference threshold for limit vs market order
+            # Significant price difference - use limit order to wait for better price
+            trade_config.entry_type = "limit"
+            logging.info(f"SMC {signal.direction.upper()} LIMIT order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
         else:
-            # Entry price very close to current price - use market for immediate execution
+            # Entry price close to current price - use market for immediate execution
             trade_config.entry_type = "market"
-            logging.info(f"SMC MARKET order (price close): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            trade_config.entry_price = current_price_float  # Use current price for market execution
+            logging.info(f"SMC {signal.direction.upper()} MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
 
         # FIXED: Calculate stop loss percentage on margin for system compatibility
         # The monitoring system expects margin-based percentages for trigger comparison
