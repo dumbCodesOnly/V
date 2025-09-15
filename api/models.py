@@ -91,7 +91,9 @@ db = SQLAlchemy(model_class=Base)
 # Encryption key for API credentials - generated from app secret
 def get_encryption_key() -> bytes:
     """Generate encryption key from app secret for consistent encryption"""
-    secret = os.environ.get("SESSION_SECRET", "dev-secret-key")
+    secret = os.environ.get("SESSION_SECRET")
+    if not secret:
+        raise ValueError("SESSION_SECRET environment variable is required for encryption")
     key = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(key)
 
