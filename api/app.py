@@ -2169,7 +2169,8 @@ def authenticate():
         # Check if user is already authenticated via session
         existing_user = get_user_from_session()
         if existing_user:
-            return redirect(url_for('mini_app'))
+            # Redirect to clean URL without any parameters
+            return redirect(url_for('mini_app', _external=False))
         
         # Try to authenticate via Telegram WebApp data
         user_id = get_authenticated_user_id()
@@ -2205,7 +2206,7 @@ def authenticate():
         if establish_user_session(user_id, user_data):
             logging.info(f"Authentication successful, session established for user {user_id}")
             # Redirect to clean URL without sensitive parameters
-            return redirect(url_for('mini_app'))
+            return redirect(url_for('mini_app', _external=False))
         else:
             logging.error(f"Failed to establish session for user {user_id}")
             return render_template(
@@ -2254,8 +2255,14 @@ def mini_app():
     """Telegram Mini App interface - Main route with session-based authentication"""
     # Check for Telegram WebApp initData in URL (new authentication)
     if request.args.get('tg_init_data') or request.args.get('initData'):
+        # Only pass the authentication data, not all URL parameters to avoid redirect loops
+        auth_params = {}
+        if request.args.get('tg_init_data'):
+            auth_params['tg_init_data'] = request.args.get('tg_init_data')
+        if request.args.get('initData'):
+            auth_params['initData'] = request.args.get('initData')
         # Redirect to auth route for proper session establishment
-        return redirect(url_for('authenticate', **request.args))
+        return redirect(url_for('authenticate', **auth_params))
     
     # Try to get user from existing session first
     user_id = get_user_from_session()
