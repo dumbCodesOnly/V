@@ -64,7 +64,7 @@ ensure_newline_before_comments = true
 line_length = 88
 skip_glob = ["**/migrations/*", "instance/*", "attached_assets/*"]
 known_first_party = ["api", "scripts", "config"]
-known_third_party = ["flask", "sqlalchemy", "requests", "aiohttp", "telegram"]
+known_third_party = ["flask", "sqlalchemy", "requests", "aiohttp"]
 
 # MyPy type checking configuration
 [tool.mypy]
@@ -96,7 +96,6 @@ exclude = [
 [[tool.mypy.overrides]]
 module = [
     "hyperliquid.*",
-    "telegram.*",
     "eth_account.*",
     "Crypto.*",
 ]
