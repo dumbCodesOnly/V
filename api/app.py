@@ -3918,10 +3918,26 @@ def create_auto_trade_from_smc():
         # Generate trade ID
         trade_id = f"smc_{symbol}_{int(datetime.now().timestamp())}"
 
-        # Get current market price for comparison
-        current_market_price = get_live_market_price(symbol, user_id=user_id, prefer_exchange=True)
-        current_price_float = float(current_market_price)
-        signal_entry_float = float(signal.entry_price)
+        # Get current market price for comparison with error handling
+        try:
+            current_market_price = get_live_market_price(symbol, user_id=user_id, prefer_exchange=True)
+            if not current_market_price:
+                raise ValueError("Unable to fetch current market price")
+            current_price_float = float(current_market_price)
+            signal_entry_float = float(signal.entry_price)
+        except Exception as e:
+            logging.error(f"Failed to fetch/parse market price for SMC signal: {e}")
+            return (
+                jsonify(
+                    {
+                        "error": "Unable to fetch current market price for SMC signal validation",
+                        "symbol": symbol,
+                        "details": str(e),
+                        "retry": "Please try again in a few moments"
+                    }
+                ),
+                500,
+            )
         
         # Calculate price difference percentage
         price_diff_percent = abs(signal_entry_float - current_price_float) / current_price_float * 100
@@ -3932,16 +3948,24 @@ def create_auto_trade_from_smc():
         trade_config.side = signal.direction
         trade_config.amount = margin_amount
         trade_config.leverage = 5  # Conservative leverage for auto-trades
+        trade_config.entry_price = signal.entry_price
         
-        # CRITICAL FIX: Use limit orders for proper stop buy/sell when entry differs from current price
-        if price_diff_percent > 0.1:  # More than 0.1% difference - use limit order for proper entry
-            trade_config.entry_type = "limit"  # Wait for proper entry price
-            logging.info(f"SMC Signal using LIMIT order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+        # CRITICAL FIX: Use proper STOP orders for SMC signals that need to wait for entry
+        if price_diff_percent > 0.1:  # More than 0.1% difference - use stop order for proper trigger behavior
+            # Validate entry price direction makes sense
+            if signal.direction == "long" and signal_entry_float > current_price_float:
+                trade_config.entry_type = "STOP_MARKET"  # Proper STOP order - wait for price trigger
+                logging.info(f"SMC Long STOP_MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            elif signal.direction == "short" and signal_entry_float < current_price_float:
+                trade_config.entry_type = "STOP_MARKET"  # Proper STOP order - wait for price trigger
+                logging.info(f"SMC Short STOP_MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            else:
+                # Entry price direction doesn't match signal direction - use market
+                trade_config.entry_type = "market"  
+                logging.warning(f"SMC Signal direction mismatch - using MARKET: {signal.direction} entry={signal_entry_float:.4f}, current={current_price_float:.4f}")
         else:
             trade_config.entry_type = "market"  # Entry price close to current - immediate execution
             logging.info(f"SMC Signal using MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
-            
-        trade_config.entry_price = signal.entry_price
 
         # FIXED: Calculate stop loss percentage on margin for consistency
         # The issue was: SL calculation used raw price percentage, but system expected margin percentage
