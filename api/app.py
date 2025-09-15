@@ -3528,35 +3528,33 @@ def get_paper_trading_status():
 
 
 @app.route("/api/status")
-def get_bot_status():
-    """Get bot status with API performance metrics"""
-    # Check if bot is active (heartbeat within last 5 minutes)
-    if bot_status["last_heartbeat"]:
-        current_time = get_iran_time().replace(
-            tzinfo=None
-        )  # Remove timezone for comparison
-        last_heartbeat = datetime.fromisoformat(bot_status["last_heartbeat"]).replace(
-            tzinfo=None
-        )
-        time_diff = current_time - last_heartbeat
-        is_active = time_diff.total_seconds() < TimeConfig.BOT_HEARTBEAT_TIMEOUT
-        bot_status["status"] = "active" if is_active else "inactive"
+def get_system_status():
+    """Get system status with API performance metrics (bot commands removed)"""
+    current_time = get_iran_time()
+    
+    # Create system status response
+    system_status = {
+        "status": "active",
+        "timestamp": current_time.isoformat(),
+        "service": "telegram_mini_app",
+        "api_performance": {},
+        "cache_stats": {}
+    }
 
     # Add API performance metrics
-    bot_status["api_performance"] = {}
     for api_name, metrics in api_performance_metrics.items():
         if metrics["requests"] is not None and metrics["requests"] > 0:
             success_rate = (metrics["successes"] / metrics["requests"]) * 100
             avg_response_time = metrics.get("avg_response_time", 0)
             last_success = metrics.get("last_success")
-            bot_status["api_performance"][api_name] = {
+            system_status["api_performance"][api_name] = {
                 "success_rate": round(success_rate, 2),
                 "avg_response_time": round(avg_response_time, 3),
                 "total_requests": metrics["requests"],
                 "last_success": last_success.isoformat() if last_success else None,
             }
         else:
-            bot_status["api_performance"][api_name] = {
+            system_status["api_performance"][api_name] = {
                 "success_rate": 0,
                 "avg_response_time": 0,
                 "total_requests": 0,
@@ -3565,9 +3563,9 @@ def get_bot_status():
 
     # Add enhanced cache statistics
     cache_stats = enhanced_cache.get_cache_stats()
-    bot_status["cache_stats"] = cache_stats
+    system_status["cache_stats"] = cache_stats
 
-    return jsonify(bot_status)
+    return jsonify(system_status)
 
 
 @app.route("/api/cache/stats")
@@ -4081,16 +4079,34 @@ def create_auto_trade_from_smc():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/recent-messages")
-def recent_messages():
-    """Get recent bot messages"""
-    return jsonify(bot_messages[-10:])  # Last 10 messages
-
-
 @app.route("/api/recent-trades")
 def recent_trades():
-    """Get recent trades"""
-    return jsonify(bot_trades[-10:])  # Last 10 trades
+    """Get recent trades from database (bot functionality removed)"""
+    try:
+        # Get recent trades from database instead of bot_trades array
+        recent_trade_configs = TradeConfiguration.query.order_by(
+            TradeConfiguration.created_at.desc()
+        ).limit(10).all()
+        
+        trades_data = []
+        for trade in recent_trade_configs:
+            trades_data.append({
+                "id": trade.trade_id,
+                "user_id": trade.telegram_user_id,
+                "symbol": trade.symbol,
+                "side": trade.side,
+                "amount": trade.amount,
+                "leverage": trade.leverage,
+                "status": trade.status,
+                "entry_price": trade.entry_price,
+                "unrealized_pnl": trade.unrealized_pnl,
+                "timestamp": trade.created_at.isoformat() if trade.created_at else None,
+            })
+        
+        return jsonify(trades_data)
+    except Exception as e:
+        logging.error(f"Error getting recent trades: {e}")
+        return jsonify({"error": "Unable to fetch recent trades"}), 500
 
 
 @app.route("/api/debug/paper-trading-status")
@@ -5415,8 +5431,6 @@ def _log_trade_execution(chat_id, trade_id, config, is_paper_mode):
                 "trading_mode": "paper" if is_paper_mode else "live",
             }
         )
-
-    bot_status["total_trades"] += 1
 
 
 def _create_execution_response(trade_id, config, is_paper_mode):
@@ -7513,7 +7527,6 @@ def _process_pending_limit_orders(user_id, trade_id, config):
                 }
             )
 
-            bot_status["total_trades"] += 1
             return True
     return False
 
@@ -9110,7 +9123,6 @@ def handle_execute_trade(chat_id, user):
             "timestamp": datetime.utcnow().isoformat(),
         }
         bot_trades.append(trade)
-        bot_status["total_trades"] += 1
         config.status = "active"
 
         response = f"🚀 {order_type} Order Executed!\n\n"
