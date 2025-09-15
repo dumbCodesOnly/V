@@ -558,20 +558,7 @@ def _process_full_tp_closure(config, user_id, trade_id, tp_level):
 
     save_trade_to_db(user_id, config)
 
-    # Log trade closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount,
-            "final_pnl": config.final_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": f"take_profit_{tp_level}_triggered",
-        }
-    )
+    # Trade closure now logged via database save_trade_to_db()
 
     logging.info(
         f"Position auto-closed at TP{tp_level}: {config.symbol} {config.side} - Final P&L: ${config.final_pnl:.2f}"
@@ -636,20 +623,7 @@ def _process_partial_tp_closure(
     partial_pnl = _calculate_partial_pnl(config, tp_level, allocation)
     remaining_amount = config.amount * ((100 - allocation) / 100)
 
-    # Log partial closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount * (allocation / 100),
-            "final_pnl": partial_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": f"partial_take_profit_{tp_level}",
-        }
-    )
+    # Partial closure now logged via database save_trade_to_db()
 
     # Update realized P&L with the profit from this TP
     if not hasattr(config, "realized_pnl"):
@@ -1415,7 +1389,6 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 # Bot storage variables removed - bot functionality has been removed
 # Trading data is now stored in the database through the web interface
-bot_trades = []  # Kept for backward compatibility with existing code
 
 # user_api_setup_state variable removed - was part of bot setup wizard
 # API setup is now handled through the web interface
@@ -1423,10 +1396,8 @@ bot_trades = []  # Kept for backward compatibility with existing code
 # Thread locks for global state to prevent race conditions
 trade_configs_lock = threading.RLock()
 paper_balances_lock = threading.RLock()
-bot_trades_lock = threading.RLock()
 api_setup_lock = threading.RLock()
 user_preferences_lock = threading.RLock()
-bot_status_lock = threading.RLock()
 
 # Multi-trade management storage
 user_trade_configs: dict[int, dict[str, any]] = {}  # {user_id: {trade_id: TradeConfig}}
@@ -5414,23 +5385,9 @@ def _handle_paper_trading_balance(chat_id, config):
 
 
 def _log_trade_execution(chat_id, trade_id, config, is_paper_mode):
-    """Log trade execution to bot_trades."""
-    with bot_trades_lock:
-        bot_trades.append(
-            {
-                "id": len(bot_trades) + 1,
-                "user_id": str(chat_id),
-                "trade_id": trade_id,
-                "symbol": config.symbol,
-                "side": config.side,
-                "amount": config.amount,
-                "leverage": config.leverage,
-                "entry_price": config.entry_price,
-                "timestamp": get_iran_time().isoformat(),
-                "status": f'executed_{"paper" if is_paper_mode else "live"}',
-                "trading_mode": "paper" if is_paper_mode else "live",
-            }
-        )
+    """Trade execution logging removed - data tracked in database."""
+    # Trade execution now tracked through database via trade configuration updates
+    pass
 
 
 def _create_execution_response(trade_id, config, is_paper_mode):
@@ -6605,12 +6562,7 @@ def reset_trade_history():
         # Reset paper trading balance to default regardless of credentials
         user_paper_balances[chat_id] = TradingConfig.DEFAULT_TRIAL_BALANCE
 
-        # Clear trade history from bot_trades list
-        global bot_trades
-        with bot_trades_lock:
-            bot_trades = [
-                trade for trade in bot_trades if trade.get("user_id") != str(chat_id)
-            ]
+        # Bot trades list removed - trade history managed through database
 
         # Clear any cached portfolio data manually using enhanced cache
         try:
@@ -9110,19 +9062,7 @@ def handle_execute_trade(chat_id, user):
         logging.info(f"Using MARKET order with price: ${price}")
 
     if price:
-        trade = {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user.get("id", "unknown")),
-            "symbol": config.symbol,
-            "action": config.side,
-            "quantity": config.amount / price if config.amount else 0.001,
-            "price": price,
-            "leverage": config.leverage,
-            "order_type": order_type,
-            "status": "executed",
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        bot_trades.append(trade)
+        # Trade execution now tracked via database
         config.status = "active"
 
         response = f"🚀 {order_type} Order Executed!\n\n"
