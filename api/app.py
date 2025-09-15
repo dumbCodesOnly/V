@@ -8126,8 +8126,12 @@ def _format_closed_positions_history(closed_positions, chat_id):
 
         for config in closed_positions[-5:]:  # Show last 5 closed positions
             if config.symbol and config.amount:
-                # Get final PnL from config (stored in database)
-                final_pnl = getattr(config, "final_pnl", 0) or 0
+                # For closed positions, prefer final_pnl over unrealized_pnl
+                final_pnl = getattr(config, "final_pnl", None)
+                if final_pnl is None:
+                    final_pnl = getattr(config, "unrealized_pnl", 0) or 0
+                else:
+                    final_pnl = final_pnl or 0
                 pnl_emoji = "🟢" if final_pnl >= 0 else "🔴"
 
                 response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
@@ -8307,7 +8311,10 @@ def _handle_recent_trades_callback(chat_id, user):
     """Handle recent trades callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
     # Get executed trades from database instead of bot_trades
-    executed_trades = []  # Executed trades are now tracked via database TradeConfiguration status
+    executed_trades = TradeConfiguration.query.filter(
+        TradeConfiguration.telegram_user_id == str(user.get("id", "unknown")),
+        TradeConfiguration.status.in_(["closed", "stopped", "partial"])
+    ).order_by(TradeConfiguration.closed_at.desc()).limit(10).all()
 
     response = "📈 **RECENT TRADING ACTIVITY**\n"
     response += "=" * 35 + "\n\n"
@@ -8423,7 +8430,10 @@ def _handle_performance_callback(chat_id, user):
     """Handle performance analytics callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
     # Get executed trades from database instead of bot_trades
-    executed_trades = []  # Executed trades are now tracked via database TradeConfiguration status
+    executed_trades = TradeConfiguration.query.filter(
+        TradeConfiguration.telegram_user_id == str(user.get("id", "unknown")),
+        TradeConfiguration.status.in_(["closed", "stopped", "partial"])
+    ).order_by(TradeConfiguration.closed_at.desc()).limit(10).all()
     margin_data = get_margin_summary(chat_id)
 
     response = "💹 **PERFORMANCE ANALYTICS**\n"
