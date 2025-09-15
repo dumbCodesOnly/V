@@ -8,7 +8,6 @@
    DATABASE_URL=<your-neon-postgresql-url>
    SESSION_SECRET=<random-string>
    TELEGRAM_BOT_TOKEN=<your-bot-token>
-   WEBHOOK_URL=<your-vercel-url>/webhook
    VERCEL=1
    ```
 

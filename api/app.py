@@ -1378,20 +1378,9 @@ def get_bot_token() -> Optional[str]:
     return bot_token
 
 BOT_TOKEN = get_bot_token()
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-
-# Webhook setup functions removed - bot webhook functionality no longer needed
-# The app now uses only Telegram WebApp interface
-
-
-# Automatic webhook setup call removed - webhook functionality no longer needed
-
-# Bot storage variables removed - bot functionality has been removed
-# Trading data is now stored in the database through the web interface
-
-# user_api_setup_state variable removed - was part of bot setup wizard
-# API setup is now handled through the web interface
+# Trading data is stored in the database through the web interface
+# API setup is handled through the web interface
 
 # Thread locks for global state to prevent race conditions
 trade_configs_lock = threading.RLock()
@@ -6586,7 +6575,6 @@ def reset_trade_history():
         return jsonify({"error": "Failed to reset trade history"}), 500
 
 
-# verify_telegram_webhook() function removed - webhook verification no longer needed
 # The app now uses only Telegram WebApp interface
 
 
@@ -7861,7 +7849,6 @@ def get_margin_summary(chat_id):
 # answer_callback_query() function removed - part of bot messaging system
 
 
-# setup_webhook() function removed - webhook functionality no longer needed
 # The app now uses only Telegram WebApp interface
 
 

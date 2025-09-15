@@ -85,7 +85,6 @@ Required in Vercel dashboard:
 DATABASE_URL=<neon-postgresql-url>
 SESSION_SECRET=<random-secure-string>
 TELEGRAM_BOT_TOKEN=<telegram-bot-token>
-WEBHOOK_URL=<vercel-domain>/webhook
 VERCEL=1
 ```
 

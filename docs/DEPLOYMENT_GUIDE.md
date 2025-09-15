@@ -15,7 +15,7 @@ This guide covers deploying the Toobit Multi-Trade Telegram Bot to both Replit (
 - **On-Demand Services**: `VercelSyncService` with smart cooldown (30s)
 - **Database**: Neon PostgreSQL with serverless optimization
 - **SMC Signal Caching**: Database-backed caching for stable entry prices (15-min TTL)
-- **Sync Method**: Triggered by user requests and webhooks
+- **Sync Method**: Triggered by user requests
 - **Performance**: Optimized for serverless cold starts
 
 ## Environment Variables Required
@@ -26,10 +26,8 @@ This guide covers deploying the Toobit Multi-Trade Telegram Bot to both Replit (
 DATABASE_URL=postgresql://user:pass@host:port/db
 NEON_DATABASE_URL=postgresql://user:pass@neon-host/db  # For Vercel
 
-# Telegram Bot
+# Telegram Mini App
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-WEBHOOK_URL=https://your-domain.com/webhook
-WEBHOOK_SECRET_TOKEN=your_webhook_secret
 
 # Encryption
 SESSION_SECRET=your_session_secret_key
@@ -97,19 +95,9 @@ vercel env add SESSION_SECRET
 # ... add other required variables
 ```
 
-### 3. Webhook Configuration
+### 3. Exchange Webhook Configuration (Optional)
 
-#### Telegram Webhook
-```bash
-curl -X POST "https://api.telegram.org/bot{BOT_TOKEN}/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://your-domain.com/webhook",
-    "secret_token": "your_webhook_secret"
-  }'
-```
-
-#### Toobit Webhook (Optional)
+#### Toobit Webhook
 ```bash
 # Configure in Toobit dashboard
 URL: https://your-domain.com/webhook/toobit

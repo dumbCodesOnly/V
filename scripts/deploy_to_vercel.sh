@@ -42,7 +42,6 @@ echo "⚠️  IMPORTANT: Ensure these environment variables are set in Vercel da
 echo "   DATABASE_URL=<neon-postgresql-url>"
 echo "   SESSION_SECRET=<random-secure-string>"
 echo "   TELEGRAM_BOT_TOKEN=<telegram-bot-token>"
-echo "   WEBHOOK_URL=<vercel-domain>/webhook"
 echo "   VERCEL=1"
 echo ""
 
