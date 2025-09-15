@@ -685,7 +685,9 @@ logging.basicConfig(level=getattr(logging, get_log_level()))
 
 # Create the Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", SecurityConfig.DEFAULT_SESSION_SECRET)
+app.secret_key = os.environ.get("SESSION_SECRET")
+if not app.secret_key:
+    raise ValueError("SESSION_SECRET environment variable is required")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Record app start time for uptime tracking

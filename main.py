@@ -35,8 +35,8 @@ def setup_app_secret() -> None:
 
         secret_key: Optional[str] = os.environ.get("SESSION_SECRET")
         if not secret_key:
-            if Environment.IS_DEVELOPMENT or Environment.IS_REPLIT:
-                # Only use default in development environments
+            if Environment.IS_DEVELOPMENT:
+                # Only use default in local development environments
                 secret_key = SecurityConfig.DEFAULT_SESSION_SECRET
                 logging.warning("Using default session secret in development mode")
             else:
@@ -52,8 +52,8 @@ def main() -> None:
 
     port: int = int(os.environ.get("PORT", Environment.DEFAULT_PORT))
 
-    # Configure debug mode based on environment
-    debug_mode: bool = Environment.IS_DEVELOPMENT or Environment.IS_REPLIT
+    # Configure debug mode based on environment (only for local development)
+    debug_mode: bool = Environment.IS_DEVELOPMENT
 
     if Environment.IS_RENDER:
         # Render production configuration - binding to all interfaces is required for cloud deployment
