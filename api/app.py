@@ -3918,13 +3918,29 @@ def create_auto_trade_from_smc():
         # Generate trade ID
         trade_id = f"smc_{symbol}_{int(datetime.now().timestamp())}"
 
+        # Get current market price for comparison
+        current_market_price = get_live_market_price(symbol, user_id=user_id, prefer_exchange=True)
+        current_price_float = float(current_market_price)
+        signal_entry_float = float(signal.entry_price)
+        
+        # Calculate price difference percentage
+        price_diff_percent = abs(signal_entry_float - current_price_float) / current_price_float * 100
+        
         # Create trade configuration
         trade_config = TradeConfig(trade_id, f"SMC Auto-Trade {symbol}")
         trade_config.symbol = symbol
         trade_config.side = signal.direction
         trade_config.amount = margin_amount
         trade_config.leverage = 5  # Conservative leverage for auto-trades
-        trade_config.entry_type = "market"  # Market entry for immediate execution
+        
+        # CRITICAL FIX: Use limit orders for proper stop buy/sell when entry differs from current price
+        if price_diff_percent > 0.1:  # More than 0.1% difference - use limit order for proper entry
+            trade_config.entry_type = "limit"  # Wait for proper entry price
+            logging.info(f"SMC Signal using LIMIT order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+        else:
+            trade_config.entry_type = "market"  # Entry price close to current - immediate execution
+            logging.info(f"SMC Signal using MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            
         trade_config.entry_price = signal.entry_price
 
         # FIXED: Calculate stop loss percentage on margin for consistency

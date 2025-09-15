@@ -752,7 +752,23 @@ class SMCAnalyzer:
 
     def _calculate_long_trade_levels(self, current_price, order_blocks):
         """Calculate entry, stop loss, and take profits for long trades."""
-        entry_price = current_price
+        # For LONG signals, entry should be ABOVE current price (stop buy)
+        # Use bullish order block HIGH price as entry point
+        entry_price = None
+        
+        # Find valid bullish order block above current price for entry
+        for ob in order_blocks:
+            if (
+                ob.direction == "bullish" 
+                and ob.price_high > current_price
+                and ob.price_high <= current_price * 1.05  # Within 5% above
+            ):
+                if entry_price is None or ob.price_high < entry_price:
+                    entry_price = ob.price_high
+        
+        # If no valid order block found, use current price + small buffer for stop buy
+        if entry_price is None:
+            entry_price = current_price * 1.002  # 0.2% above current price
 
         # Stop loss below nearest support/order block
         nearest_support = current_price * 0.97  # Default 3% below
@@ -762,18 +778,34 @@ class SMCAnalyzer:
 
         stop_loss = nearest_support
 
-        # Take profits based on resistance levels
+        # Take profits based on entry price
         take_profits = [
-            current_price * 1.02,  # 2% profit
-            current_price * 1.035,  # 3.5% profit
-            current_price * 1.05,  # 5% profit
+            entry_price * 1.02,  # 2% profit from entry
+            entry_price * 1.035,  # 3.5% profit from entry
+            entry_price * 1.05,  # 5% profit from entry
         ]
 
         return entry_price, stop_loss, take_profits
 
     def _calculate_short_trade_levels(self, current_price, order_blocks):
         """Calculate entry, stop loss, and take profits for short trades."""
-        entry_price = current_price
+        # For SHORT signals, entry should be BELOW current price (stop sell)
+        # Use bearish order block LOW price as entry point
+        entry_price = None
+        
+        # Find valid bearish order block below current price for entry
+        for ob in order_blocks:
+            if (
+                ob.direction == "bearish" 
+                and ob.price_low < current_price
+                and ob.price_low >= current_price * 0.95  # Within 5% below
+            ):
+                if entry_price is None or ob.price_low > entry_price:
+                    entry_price = ob.price_low
+        
+        # If no valid order block found, use current price - small buffer for stop sell
+        if entry_price is None:
+            entry_price = current_price * 0.998  # 0.2% below current price
 
         # Stop loss above nearest resistance/order block
         nearest_resistance = current_price * 1.03  # Default 3% above
@@ -783,11 +815,11 @@ class SMCAnalyzer:
 
         stop_loss = nearest_resistance
 
-        # Take profits based on support levels
+        # Take profits based on entry price
         take_profits = [
-            current_price * 0.98,  # 2% profit
-            current_price * 0.965,  # 3.5% profit
-            current_price * 0.95,  # 5% profit
+            entry_price * 0.98,  # 2% profit from entry
+            entry_price * 0.965,  # 3.5% profit from entry
+            entry_price * 0.95,  # 5% profit from entry
         ]
 
         return entry_price, stop_loss, take_profits
