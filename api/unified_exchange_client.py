@@ -197,8 +197,8 @@ class ToobitClient:
         if "recvWindow" not in params:
             params["recvWindow"] = "5000"
 
-        # Create query string preserving parameter order (CRITICAL for signature validation)
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        # Create query string with parameters sorted alphabetically (CRITICAL for signature validation)
+        query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
 
         # Generate signature from the query string (WITHOUT signature parameter)
         signature = self._generate_signature(query_string)
