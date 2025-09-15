@@ -4581,19 +4581,9 @@ def user_trades():
                     final_pnl = config.final_pnl
                     closed_at = getattr(config, "closed_at", None)
                 else:
-                    # Fallback to bot_trades list
-                    closed_trade = next(
-                        (
-                            trade
-                            for trade in bot_trades
-                            if trade.get("trade_id") == trade_id
-                            and trade.get("user_id") == str(chat_id)
-                        ),
-                        None,
-                    )
-                    if closed_trade:
-                        final_pnl = closed_trade.get("final_pnl", 0)
-                        closed_at = closed_trade.get("timestamp")
+                    # Use stored values from config as fallback
+                    final_pnl = getattr(config, "unrealized_pnl", 0)
+                    closed_at = getattr(config, "closed_at", None)
 
             user_trade_list.append(
                 {
@@ -5916,19 +5906,9 @@ def _close_paper_trade(chat_id, trade_id, config):
         # Save to database immediately for paper trades
         save_trade_to_db(chat_id, config)
 
-        # Log trade closure
-        bot_trades.append(
-            {
-                "id": len(bot_trades) + 1,
-                "user_id": str(chat_id),
-                "trade_id": trade_id,
-                "symbol": config.symbol,
-                "side": config.side,
-                "amount": config.amount,
-                "final_pnl": final_pnl,
-                "timestamp": get_iran_time().isoformat(),
-                "status": "closed_paper",
-            }
+        # Trade closure is now logged via database save_trade_to_db()
+        logging.info(
+            f"Paper trade closed: {trade_id} for user {chat_id} with final P&L: ${final_pnl:.2f}"
         )
 
         # Simulate cancelling paper TP/SL orders
@@ -6136,19 +6116,9 @@ def _finalize_trade_closure(chat_id, trade_id, config):
     # Save updated status to database
     save_trade_to_db(chat_id, config)
 
-    # Log trade closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(chat_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount,
-            "final_pnl": final_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": "closed",
-        }
+    # Trade closure is now logged via database save_trade_to_db()
+    logging.info(
+        f"Trade closed: {trade_id} for user {chat_id} with final P&L: ${final_pnl:.2f}"
     )
 
     return final_pnl
@@ -6310,19 +6280,9 @@ def _finalize_individual_trade_closure(chat_id, trade_id, config):
     # Save updated status to database
     save_trade_to_db(chat_id, config)
 
-    # Log trade closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(chat_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount,
-            "final_pnl": final_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": "closed",
-        }
+    # Trade closure is now logged via database save_trade_to_db()
+    logging.info(
+        f"Trade closed: {trade_id} for user {chat_id} with final P&L: ${final_pnl:.2f}"
     )
 
     return final_pnl
@@ -7450,21 +7410,9 @@ def _process_pending_limit_orders(user_id, trade_id, config):
             if getattr(config, "paper_trading_mode", False):
                 initialize_paper_trading_monitoring(config)
 
-            # Log trade execution
-            bot_trades.append(
-                {
-                    "id": len(bot_trades) + 1,
-                    "user_id": str(user_id),
-                    "trade_id": trade_id,
-                    "symbol": config.symbol,
-                    "side": config.side,
-                    "amount": config.amount,
-                    "leverage": config.leverage,
-                    "entry_price": config.entry_price,
-                    "timestamp": get_iran_time().isoformat(),
-                    "status": f'executed_{"paper" if getattr(config, "paper_trading_mode", False) else "live"}',
-                    "trading_mode": trading_mode.lower(),
-                }
+            # Trade execution is now logged via database save_trade_to_db()
+            logging.info(
+                f"{trading_mode} trade executed: {trade_id} for user {user_id} - {config.symbol} {config.side} at ${config.entry_price}"
             )
 
             return True
@@ -7534,19 +7482,9 @@ def _process_stop_loss_monitoring(user_id, trade_id, config):
         # Save to database
         save_trade_to_db(user_id, config)
 
-        # Log trade closure
-        bot_trades.append(
-            {
-                "id": len(bot_trades) + 1,
-                "user_id": str(user_id),
-                "trade_id": trade_id,
-                "symbol": config.symbol,
-                "side": config.side,
-                "amount": config.amount,
-                "final_pnl": config.final_pnl,
-                "timestamp": get_iran_time().isoformat(),
-                "status": "stop_loss_triggered",
-            }
+        # Trade closure is now logged via database save_trade_to_db()
+        logging.info(
+            f"Stop loss triggered: {trade_id} for user {user_id} with final P&L: ${config.final_pnl:.2f}"
         )
 
         logging.info(
@@ -8188,17 +8126,8 @@ def _format_closed_positions_history(closed_positions, chat_id):
 
         for config in closed_positions[-5:]:  # Show last 5 closed positions
             if config.symbol and config.amount:
-                # Get final PnL from bot_trades
-                closed_trade = next(
-                    (
-                        trade
-                        for trade in bot_trades
-                        if trade.get("trade_id") == config.trade_id
-                        and trade.get("user_id") == str(chat_id)
-                    ),
-                    None,
-                )
-                final_pnl = closed_trade.get("final_pnl", 0) if closed_trade else 0
+                # Get final PnL from config (stored in database)
+                final_pnl = getattr(config, "final_pnl", 0) or 0
                 pnl_emoji = "🟢" if final_pnl >= 0 else "🔴"
 
                 response += f"{pnl_emoji} {config.symbol} {config.side.upper()}\n"
@@ -8208,12 +8137,18 @@ def _format_closed_positions_history(closed_positions, chat_id):
                 response += f"   Entry: ${config.entry_price or 0:.4f}\n"
                 response += f"   Final P&L: ${final_pnl:+,.2f}\n"
 
-                # Add timestamp if available
-                if closed_trade and "timestamp" in closed_trade:
-                    timestamp = datetime.fromisoformat(closed_trade["timestamp"])
-                    iran_time = utc_to_iran_time(timestamp)
-                    if iran_time:
-                        response += f"   Closed: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n"
+                # Add timestamp if available from config
+                if hasattr(config, 'closed_at') and config.closed_at:
+                    try:
+                        if isinstance(config.closed_at, str):
+                            closed_time = datetime.fromisoformat(config.closed_at.replace('Z', '+00:00'))
+                        else:
+                            closed_time = config.closed_at
+                        iran_time = utc_to_iran_time(closed_time)
+                        if iran_time:
+                            response += f"   Closed: {iran_time.strftime('%Y-%m-%d %H:%M')} GMT+3:30\n"
+                    except (ValueError, TypeError):
+                        pass
                 response += "\n"
 
         if len(closed_positions) > 5:
@@ -8371,9 +8306,8 @@ def _format_trading_summary(total_executed, total_positions):
 def _handle_recent_trades_callback(chat_id, user):
     """Handle recent trades callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
-    executed_trades = [
-        t for t in bot_trades if t["user_id"] == str(user.get("id", "unknown"))
-    ]
+    # Get executed trades from database instead of bot_trades
+    executed_trades = []  # Executed trades are now tracked via database TradeConfiguration status
 
     response = "📈 **RECENT TRADING ACTIVITY**\n"
     response += "=" * 35 + "\n\n"
@@ -8488,9 +8422,8 @@ def _format_position_analysis_section(user_trades, margin_data):
 def _handle_performance_callback(chat_id, user):
     """Handle performance analytics callback display."""
     user_trades = user_trade_configs.get(chat_id, {})
-    executed_trades = [
-        t for t in bot_trades if t["user_id"] == str(user.get("id", "unknown"))
-    ]
+    # Get executed trades from database instead of bot_trades
+    executed_trades = []  # Executed trades are now tracked via database TradeConfiguration status
     margin_data = get_margin_summary(chat_id)
 
     response = "💹 **PERFORMANCE ANALYTICS**\n"
@@ -9677,20 +9610,9 @@ def execute_paper_stop_loss(user_id, trade_id, config):
 
     save_trade_to_db(user_id, config)
 
-    # Log paper trade closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount,
-            "final_pnl": config.final_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": "paper_stop_loss_triggered",
-            "trading_mode": "paper",
-        }
+    # Paper trade closure is now logged via database save_trade_to_db()
+    logging.info(
+        f"Paper trading stop loss triggered: {trade_id} for user {user_id} with final P&L: ${config.final_pnl:.2f}"
     )
 
     logging.info(
@@ -9720,20 +9642,9 @@ def _execute_full_paper_tp_closure(user_id, trade_id, config, tp_level):
                 f"Paper Trading: Balance updated +${balance_change:.2f}. New balance: ${user_paper_balances[user_id]:,.2f}"
             )
 
-    # Log paper trade closure
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": config.amount,
-            "final_pnl": config.final_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": f'paper_take_profit_{tp_level["level"]}_triggered',
-            "trading_mode": "paper",
-        }
+    # Paper trade closure is now logged via database save_trade_to_db()
+    logging.info(
+        f"Paper trading TP{tp_level['level']} triggered: {trade_id} for user {user_id} with final P&L: ${config.final_pnl:.2f}"
     )
 
     logging.info(
@@ -9821,19 +9732,9 @@ def _log_partial_tp_closure(
     """Log partial TP closure to bot trades."""
     # Use original position amount for allocation calculation
     closed_amount = config.original_amount * (allocation / 100)
-    bot_trades.append(
-        {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user_id),
-            "trade_id": trade_id,
-            "symbol": config.symbol,
-            "side": config.side,
-            "amount": closed_amount,
-            "final_pnl": partial_pnl,
-            "timestamp": get_iran_time().isoformat(),
-            "status": f'paper_partial_take_profit_{tp_level["level"]}',
-            "trading_mode": "paper",
-        }
+    # Partial paper trade closure is now logged via database save_trade_to_db()
+    logging.info(
+        f"Paper trading partial TP{tp_level['level']} triggered: {trade_id} for user {user_id} - {allocation}% allocation with partial P&L: ${partial_pnl:.2f}"
     )
 
     logging.info(
