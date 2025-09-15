@@ -5318,7 +5318,7 @@ def _execute_tp_sl_orders(client, config, tp_orders_to_place, sl_price, position
         return client.place_multiple_tp_sl_orders(
             symbol=unified_params["symbol"],
             side=unified_params["side"],
-            amount=str(unified_params["amount"]),
+            total_quantity=str(unified_params["amount"]),
             take_profits=tp_orders_to_place,
             stop_loss_price=sl_price,
         )
@@ -5327,7 +5327,7 @@ def _execute_tp_sl_orders(client, config, tp_orders_to_place, sl_price, position
         return client.place_multiple_tp_sl_orders(
             symbol=unified_params["symbol"],
             side=unified_params["side"],
-            quantity=str(unified_params["quantity"]),
+            total_quantity=str(unified_params["quantity"]),
             take_profits=tp_orders_to_place,
             stop_loss_price=sl_price,
         )
@@ -10128,15 +10128,16 @@ def place_exchange_native_orders(config, user_id):
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    total_quantity=float(position_size),
-                    take_profits=tp_orders,
+                    amount=float(position_size),
+                    entry_price=float(config.entry_price),
+                    tp_levels=tp_orders,
                     stop_loss_price=sl_price,
                 )
             elif "lbank" in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    total_quantity=float(position_size),
+                    total_quantity=str(position_size),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
@@ -10145,7 +10146,7 @@ def place_exchange_native_orders(config, user_id):
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    total_quantity=float(position_size),
+                    total_quantity=str(position_size),
                     take_profits=tp_orders,
                     stop_loss_price=sl_price,
                 )
