@@ -1407,96 +1407,18 @@ BOT_TOKEN = get_bot_token()
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 
-# Automatic webhook setup for deployments
-def setup_webhook_on_deployment():
-    """Automatically set up webhook for Vercel/deployment environments"""
-    if not BOT_TOKEN:
-        logging.warning("TELEGRAM_BOT_TOKEN not set, skipping webhook setup")
-        return
-
-    try:
-        # Detect deployment URL
-        deployment_url = None
-
-        # Check for Vercel deployment
-        if os.environ.get("VERCEL"):
-            vercel_url = os.environ.get("VERCEL_URL")
-            if vercel_url:
-                deployment_url = f"https://{vercel_url}"
-
-        # Check for Replit deployment
-        elif os.environ.get("REPLIT_DOMAIN"):
-            deployment_url = f"https://{os.environ.get('REPLIT_DOMAIN')}"
-
-        # Check for Render deployment
-        elif Environment.IS_RENDER:
-            render_url = os.environ.get("RENDER_EXTERNAL_URL")
-            if render_url:
-                deployment_url = render_url
-            else:
-                logging.warning("Render environment detected but RENDER_EXTERNAL_URL not found")
-
-        # Use custom webhook URL if provided
-        elif WEBHOOK_URL and WEBHOOK_URL.strip():
-            if WEBHOOK_URL.endswith("/webhook"):
-                deployment_url = WEBHOOK_URL[:-8]
-            else:
-                deployment_url = WEBHOOK_URL
-
-        if deployment_url:
-            webhook_url = f"{deployment_url}/webhook"
-
-            # Prepare webhook data with optional secret token
-            webhook_data = {"url": webhook_url}
-            secret_token = os.environ.get("WEBHOOK_SECRET_TOKEN")
-            if secret_token:
-                webhook_data["secret_token"] = secret_token
-                logging.info("Setting webhook with secret token for enhanced security")
-
-            # Set the webhook
-            webhook_api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-
-            webhook_response = requests.post(
-                webhook_api_url,
-                data=webhook_data,
-                timeout=SecurityConfig.WEBHOOK_SETUP_TIMEOUT,
-            )
-
-            if webhook_response.status_code == 200:
-                result = webhook_response.json()
-                if result.get("ok"):
-                    logging.info(f"Webhook set successfully to {webhook_url}")
-                else:
-                    logging.error(f"Webhook setup failed: {result.get('description')}")
-            else:
-                logging.error(
-                    f"Webhook request failed with status {webhook_response.status_code}"
-                )
-        else:
-            logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
-
-    except Exception as e:
-        logging.error(f"Error setting up webhook: {e}")
+# Webhook setup functions removed - bot webhook functionality no longer needed
+# The app now uses only Telegram WebApp interface
 
 
-# Automatic webhook setup enabled for Replit deployment
-setup_webhook_on_deployment()
+# Automatic webhook setup call removed - webhook functionality no longer needed
 
-# Simple in-memory storage for the bot (replace with database in production)
-bot_messages = []
-bot_trades = []
-bot_status = {
-    "status": "active",
-    "total_messages": 5,
-    "total_trades": 2,
-    "error_count": 0,
-    "last_heartbeat": get_iran_time().isoformat(),
-}
+# Bot storage variables removed - bot functionality has been removed
+# Trading data is now stored in the database through the web interface
+bot_trades = []  # Kept for backward compatibility with existing code
 
-# User state tracking for API setup
-user_api_setup_state: dict[str, dict[str, str]] = (
-    {}
-)  # {user_id: {'step': 'api_key|api_secret|passphrase', 'exchange': 'toobit'}}
+# user_api_setup_state variable removed - was part of bot setup wizard
+# API setup is now handled through the web interface
 
 # Thread locks for global state to prevent race conditions
 trade_configs_lock = threading.RLock()
@@ -6698,58 +6620,8 @@ def reset_trade_history():
         return jsonify({"error": "Failed to reset trade history"}), 500
 
 
-def verify_telegram_webhook(data):
-    """Verify that the webhook request is from Telegram"""
-    try:
-        # Get client IP for logging
-        client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        logging.info(f"Webhook request from IP: {client_ip}")
-
-        # Telegram IP ranges for validation (optional strict checking)
-        from config import SecurityConfig
-
-        telegram_ip_ranges = SecurityConfig.TELEGRAM_IP_RANGES
-
-        # Check for secret token if configured
-        secret_token = os.environ.get("WEBHOOK_SECRET_TOKEN")
-        if secret_token:
-            provided_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-            if provided_token != secret_token:
-                logging.warning(
-                    f"Invalid secret token in webhook request from {client_ip}"
-                )
-                return False
-            logging.info("Secret token verified successfully")
-
-        # Verify the request structure looks like a valid Telegram update
-        if not isinstance(data, dict):
-            logging.warning(f"Invalid data structure from {client_ip}")
-            return False
-
-        # Should have either message or callback_query
-        if not (
-            data.get("message")
-            or data.get("callback_query")
-            or data.get("inline_query")
-            or data.get("edited_message")
-        ):
-            logging.warning(f"Invalid Telegram update structure from {client_ip}")
-            return False
-
-        # Basic structure validation for messages
-        if data.get("message"):
-            msg = data["message"]
-            if not msg.get("chat") or not msg["chat"].get("id"):
-                logging.warning(f"Invalid message structure from {client_ip}")
-                return False
-
-        # Log successful verification
-        logging.info(f"Webhook verification successful from {client_ip}")
-        return True
-
-    except Exception as e:
-        logging.error(f"Webhook verification error: {e}")
-        return False
+# verify_telegram_webhook() function removed - webhook verification no longer needed
+# The app now uses only Telegram WebApp interface
 
 
 @app.route("/paper-balance", methods=["GET"])
@@ -7065,696 +6937,35 @@ def admin_reject_user():
         return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # ====================================================================
-# TELEGRAM WEBHOOK HANDLER
+# TELEGRAM WEBHOOK REMOVED - USING MINI APP ONLY
 # ====================================================================
+# Note: Telegram bot commands have been removed in favor of Telegram Mini App
+# Telegram WebApp authentication is still preserved in this file
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    """Handle Telegram webhook with security verification"""
-    try:
-        # Get the JSON data from Telegram
-        json_data = request.get_json()
 
-        if not json_data:
-            logging.warning("No JSON data received")
-            return jsonify({"status": "error", "message": "No JSON data"}), 400
+# ====================================================================
+# BOT COMMAND HANDLERS REMOVED - MINI APP ONLY
+# ====================================================================
+# Note: All bot command handlers (_handle_basic_commands, _handle_price_command, 
+# _handle_trade_commands, process_command, etc.) have been removed.
+# The trading functionality is now available exclusively through the Telegram Mini App web interface.
 
-        # Verify this is a legitimate Telegram webhook
-        if not verify_telegram_webhook(json_data):
-            logging.warning("Invalid webhook request rejected")
-            return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
-        # Process the update
-        if "message" in json_data:
-            message = json_data["message"]
-            user = message.get("from", {})
-            chat_id = message.get("chat", {}).get("id")
-            text = message.get("text", "")
+# Note: show_credentials_status() and handle_api_text_input() functions removed
+# as they were part of the bot command system. API credentials are now managed
+# through the web interface.
 
-            # Update bot status
-            bot_status["last_heartbeat"] = get_iran_time().isoformat()
-            bot_status["total_messages"] += 1
+# Note: start_api_setup() and start_api_update() functions removed
+# as they were part of the bot command system. API credentials are now managed
+# through the web interface.
 
-            # Log the message
-            bot_messages.append(
-                {
-                    "id": len(bot_messages) + 1,
-                    "user_id": str(user.get("id", "unknown")),
-                    "username": user.get("username", "Unknown"),
-                    "message": text,
-                    "timestamp": get_iran_time().isoformat(),
-                    "command_type": (
-                        text.split()[0] if text.startswith("/") else "message"
-                    ),
-                }
-            )
 
-            # Process the command
-            response_text, keyboard = process_command(text, chat_id, user)
+# toggle_api_mode() function removed - part of bot command system
+# API mode is now managed through the web interface
 
-            # Send response back to Telegram
-            if BOT_TOKEN and chat_id:
-                send_telegram_message(chat_id, response_text, keyboard)
 
-        # Handle callback queries from inline keyboards
-        elif "callback_query" in json_data:
-            callback_query = json_data["callback_query"]
-            chat_id = callback_query["message"]["chat"]["id"]
-            message_id = callback_query["message"]["message_id"]
-            callback_data = callback_query["data"]
-            user = callback_query.get("from", {})
-
-            # Update bot status
-            bot_status["last_heartbeat"] = get_iran_time().isoformat()
-
-            # Log the callback
-            bot_messages.append(
-                {
-                    "id": len(bot_messages) + 1,
-                    "user_id": str(user.get("id", "unknown")),
-                    "username": user.get("username", "Unknown"),
-                    "message": f"[CALLBACK] {callback_data}",
-                    "timestamp": get_iran_time().isoformat(),
-                    "command_type": "callback",
-                }
-            )
-
-            # Process the callback
-            response_text, keyboard = handle_callback_query(
-                callback_data, chat_id, user
-            )
-
-            # Send response back to Telegram
-            if BOT_TOKEN and chat_id and response_text:
-                edit_telegram_message(chat_id, message_id, response_text, keyboard)
-
-            # Answer the callback query to remove loading state
-            answer_callback_query(callback_query["id"])
-
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        logging.error(f"Error processing webhook: {e}")
-        bot_status["error_count"] += 1
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-def _handle_basic_commands(text, user):
-    """Handle basic bot commands like /start and /menu"""
-    if text.startswith("/start"):
-        welcome_text = f"""🤖 Welcome to Trading Bot, {user.get('first_name', 'User')}!
-
-Use the menu below to navigate:"""
-        return welcome_text, get_main_menu()
-    elif text.startswith("/menu"):
-        return "📋 Main Menu:", get_main_menu()
-    return None, None
-
-
-def _handle_price_command(text):
-    """Handle /price command for market price lookup"""
-    parts = text.split()
-    if len(parts) < 2:
-        return "❌ Please provide a symbol. Example: /price BTCUSDT", None
-
-    symbol = parts[1].upper()
-    try:
-        start_time = time.time()
-        price = get_live_market_price(symbol, prefer_exchange=True)
-        fetch_time = (time.time() - start_time) * 1000
-
-        # Get enhanced cache info
-        cache_info = ""
-        cached_result = enhanced_cache.get_price(symbol)
-        if cached_result:
-            _, source, cache_meta = cached_result
-            cache_info = (
-                f" (cached, {source})"
-                if cache_meta.get("cached", False)
-                else f" ({source})"
-            )
-        else:
-            cache_info = " (live)"
-
-        return (
-            f"💰 {symbol}: ${price:.4f}{cache_info}\n⚡ Fetched in {fetch_time:.0f}ms",
-            None,
-        )
-    except Exception as e:
-        logging.error(f"Error fetching live price for {symbol}: {e}")
-        return f"❌ Could not fetch live price for {symbol}\nError: {str(e)}", None
-
-
-def _handle_trade_commands(text, user):
-    """Handle /buy and /sell commands"""
-    parts = text.split()
-    if len(parts) < 3:
-        action = parts[0][1:]  # Remove '/'
-        return (
-            f"❌ Please provide symbol and quantity. Example: /{action} BTCUSDT 0.001",
-            None,
-        )
-
-    action = parts[0][1:]  # Remove '/'
-    symbol = parts[1].upper()
-    try:
-        quantity = float(parts[2])
-    except ValueError:
-        return "❌ Invalid quantity. Please provide a valid number.", None
-
-    # Execute trade with live market price
-    try:
-        price = get_live_market_price(symbol)
-    except Exception as e:
-        logging.error(f"Error fetching live price for trade: {e}")
-        return f"❌ Could not fetch live market price for {symbol}", None
-
-    if price and quantity > 0:
-        # Record the trade
-        trade = {
-            "id": len(bot_trades) + 1,
-            "user_id": str(user.get("id", "unknown")),
-            "symbol": symbol,
-            "action": action,
-            "quantity": quantity,
-            "price": price,
-            "status": "executed",
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        bot_trades.append(trade)
-        bot_status["total_trades"] += 1
-
-        return (
-            f"✅ {action.capitalize()} order executed: {quantity} {symbol} at ${price:.4f}",
-            None,
-        )
-    else:
-        return (
-            f"❌ {action.capitalize()} order failed: Invalid symbol or quantity",
-            None,
-        )
-
-
-def _handle_trades_command(text, user):
-    """Handle /trades command for trade history"""
-    user_trades = [
-        t for t in bot_trades if t["user_id"] == str(user.get("id", "unknown"))
-    ]
-    if not user_trades:
-        return "📈 No recent trades found.", None
-
-    response = "📈 Recent Trades:\n\n"
-    for trade in user_trades[-5:]:  # Show last 5 trades
-        status_emoji = "✅" if trade["status"] == "executed" else "⏳"
-        response += f"{status_emoji} {trade['action'].upper()} {trade['quantity']} {trade['symbol']}"
-        response += f" @ ${trade['price']:.4f}\n"
-        timestamp = datetime.fromisoformat(trade["timestamp"])
-        response += f"   {timestamp.strftime('%Y-%m-%d %H:%M')}\n\n"
-
-    return response, None
-
-
-def process_command(text, chat_id, user):
-    """Process bot commands - refactored for better maintainability"""
-    if not text:
-        return (
-            "🤔 I didn't receive any text. Type /help to see available commands.",
-            None,
-        )
-
-    # Try basic commands
-    response, keyboard = _handle_basic_commands(text, user)
-    if response:
-        return response, keyboard
-
-    # Handle API commands
-    if text.startswith("/api") or text.startswith("/credentials"):
-        return handle_api_setup_command(text, chat_id, user)
-
-    # Handle price command
-    if text.startswith("/price"):
-        return _handle_price_command(text)
-
-    # Handle trade commands
-    if text.startswith("/buy") or text.startswith("/sell"):
-        return _handle_trade_commands(text, user)
-
-    # Handle portfolio command
-    if text.startswith("/portfolio"):
-        return (
-            "📊 Check your portfolio in the positions tab of the web interface.",
-            None,
-        )
-
-    # Handle trades command
-    if text.startswith("/trades"):
-        return _handle_trades_command(text, user)
-
-    # Handle numeric input for trade configuration
-    result = _handle_numeric_input(text, chat_id)
-    if result:
-        return result
-
-    # Handle API setup text input
-    if chat_id in user_api_setup_state:
-        return handle_api_text_input(text, chat_id, user)
-
-    return (
-        "🤔 I didn't understand that command. Use the menu buttons to navigate.",
-        get_main_menu(),
-    )
-
-
-def _handle_numeric_input(text, chat_id):
-    """Handle numeric input for trade configuration"""
-    if chat_id not in user_selected_trade:
-        return None
-
-    trade_id = user_selected_trade[chat_id]
-    if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-        return None
-
-    config = user_trade_configs[chat_id][trade_id]
-
-    try:
-        value = float(text)
-
-        # Check if we're expecting trailing stop percentage
-        if config.waiting_for_trail_percent:
-            config.trail_percentage = value
-            config.waiting_for_trail_percent = False
-            config.trailing_stop_enabled = True
-            return (
-                f"✅ Set trailing stop percentage to {value}%\n\nTrailing stop is now enabled!",
-                get_trailing_stop_menu(),
-            )
-
-        # Check if we're expecting trailing stop activation price
-        elif config.waiting_for_trail_activation:
-            config.trail_activation_price = value
-            config.waiting_for_trail_activation = False
-            config.trailing_stop_enabled = True
-            return (
-                f"✅ Set activation price to ${value:.4f}\n\nTrailing stop will activate when price reaches this level!",
-                get_trailing_stop_menu(),
-            )
-
-        # Check if we're expecting an amount input
-        elif config.amount <= 0:
-            config.amount = value
-            header = config.get_trade_header("Amount Set")
-            return f"{header}✅ Set trade amount to ${value}", get_trading_menu(chat_id)
-
-        # Check if we're expecting a limit price
-        elif config.waiting_for_limit_price:
-            config.entry_price = value
-            config.waiting_for_limit_price = False
-            return (
-                f"✅ Set limit price to ${value:.4f}\n\n🎯 Now let's set your take profits:",
-                get_tp_percentage_input_menu(),
-            )
-
-        # Handle take profit configuration
-        elif config.tp_config_step == "percentages":
-            return _handle_tp_percentage_input(config, value, chat_id)
-
-        elif config.tp_config_step == "allocations":
-            return _handle_tp_allocation_input(config, value, chat_id)
-
-        # Check if we're expecting stop loss
-        elif config.stop_loss_percent <= 0:
-            config.stop_loss_percent = value
-            return (
-                f"✅ Set stop loss to {value}%\n\n🎯 Trade configuration complete!",
-                get_trading_menu(chat_id),
-            )
-
-    except ValueError:
-        pass
-
-    return None
-
-
-def _handle_tp_percentage_input(config, value, chat_id):
-    """Handle take profit percentage input"""
-    config.take_profits.append({"percentage": value, "allocation": None})
-    tp_num = len(config.take_profits)
-
-    if tp_num < 3:  # Allow up to 3 TPs
-        return (
-            f"✅ Added TP{tp_num}: {value}%\n\n🎯 Add another TP percentage or continue to allocations:",
-            get_tp_percentage_input_menu(),
-        )
-    else:
-        config.tp_config_step = "allocations"
-        return (
-            f"✅ Added TP{tp_num}: {value}%\n\n📊 Now set position allocation for each TP:",
-            get_tp_allocation_menu(chat_id),
-        )
-
-
-def _handle_tp_allocation_input(config, value, chat_id):
-    """Handle take profit allocation input"""
-    for tp in config.take_profits:
-        if tp["allocation"] is None:
-            tp["allocation"] = value
-            tp_num = config.take_profits.index(tp) + 1
-
-            # Check if more allocations needed
-            remaining = [tp for tp in config.take_profits if tp["allocation"] is None]
-            if remaining:
-                return (
-                    f"✅ Set TP{tp_num} allocation: {value}%\n\n📊 Set allocation for next TP:",
-                    get_tp_allocation_menu(chat_id),
-                )
-            else:
-                # All allocations set, validate and continue
-                total_allocation = sum(tp["allocation"] for tp in config.take_profits)
-                if total_allocation > 100:
-                    return (
-                        f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset allocations:",
-                        get_tp_allocation_reset_menu(),
-                    )
-                else:
-                    return (
-                        f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:",
-                        get_stoploss_menu(),
-                    )
-            break
-    return None
-
-
-def handle_api_setup_command(text, chat_id, user):
-    """Handle API setup commands"""
-    if text.startswith("/api"):
-        return show_api_menu(chat_id, user)
-    elif text.startswith("/credentials"):
-        return show_credentials_status(chat_id, user)
-
-    return "🔑 Use /api to manage your exchange API credentials.", get_main_menu()
-
-
-def show_api_menu(chat_id, user):
-    """Show API credentials management menu"""
-    try:
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-
-        if user_creds and user_creds.has_credentials():
-            status_text = f"""🔑 API Credentials Status
-
-✅ Exchange: {user_creds.exchange_name.title()}
-✅ API Key: Set (ending in ...{user_creds.get_api_key()[-4:] if user_creds.get_api_key() else 'N/A'})
-✅ API Secret: Set
-{"🧪 Mode: Testnet" if user_creds.testnet_mode else "🚀 Mode: Live Trading"}
-📅 Added: {user_creds.created_at.strftime('%Y-%m-%d %H:%M')}
-
-Choose an option:"""
-        else:
-            status_text = """🔑 API Credentials Setup
-
-❌ No API credentials configured
-⚠️ You need to add your exchange API credentials to enable live trading
-
-Choose an option:"""
-
-        return status_text, get_api_management_menu(
-            user_creds is not None and user_creds.has_credentials()
-        )
-
-    except Exception as e:
-        logging.error(f"Error showing API menu: {str(e)}")
-        return "❌ Error accessing credentials. Please try again.", get_main_menu()
-
-
-def show_credentials_status(chat_id, user):
-    """Show detailed credentials status"""
-    try:
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-
-        if not user_creds or not user_creds.has_credentials():
-            return (
-                "❌ No API credentials found. Use /api to set up your credentials.",
-                get_main_menu(),
-            )
-
-        # Get recent session info
-        recent_session = (
-            UserTradingSession.query.filter_by(telegram_user_id=str(chat_id))
-            .order_by(UserTradingSession.session_start.desc())
-            .first()
-        )
-
-        status_text = f"""📊 Detailed API Status
-
-🏢 Exchange: {user_creds.exchange_name.title()}
-🔑 API Key: ...{user_creds.get_api_key()[-8:]}
-{"🧪 Testnet Mode" if user_creds.testnet_mode else "🚀 Live Trading"}
-📅 Created: {user_creds.created_at.strftime('%Y-%m-%d %H:%M')}
-🕒 Last Used: {user_creds.last_used.strftime('%Y-%m-%d %H:%M') if user_creds.last_used else 'Never'}
-
-"""
-
-        if recent_session:
-            status_text += f"""📈 Recent Session:
-• Total Trades: {recent_session.total_trades}
-• Successful: {recent_session.successful_trades}
-• Failed: {recent_session.failed_trades}
-• API Calls: {recent_session.api_calls_made}
-• API Errors: {recent_session.api_errors}
-"""
-
-        return status_text, get_main_menu()
-
-    except Exception as e:
-        logging.error(f"Error showing credentials status: {str(e)}")
-        return "❌ Error accessing credentials. Please try again.", get_main_menu()
-
-
-def handle_api_text_input(text, chat_id, user):
-    """Handle text input during API setup process"""
-    if chat_id not in user_api_setup_state:
-        return "❌ No active API setup. Use /api to start.", get_main_menu()
-
-    state = user_api_setup_state[chat_id]
-    step = state.get("step")
-    exchange = state.get("exchange", "toobit")
-
-    try:
-        # Get or create user credentials
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-        if not user_creds:
-            user_creds = UserCredentials()
-            user_creds.telegram_user_id = str(chat_id)
-            user_creds.telegram_username = user.get("username")
-            user_creds.exchange_name = exchange
-            db.session.add(user_creds)
-
-        if step == "api_key":
-            # Validate API key format (basic check)
-            if len(text.strip()) < 10:
-                return "❌ API key seems too short. Please enter a valid API key:", None
-
-            user_creds.set_api_key(text.strip())
-            state["step"] = "api_secret"
-
-            return "✅ API key saved securely!\n\n🔐 Now enter your API Secret:", None
-
-        elif step == "api_secret":
-            # Validate API secret format
-            if len(text.strip()) < 10:
-                return (
-                    "❌ API secret seems too short. Please enter a valid API secret:",
-                    None,
-                )
-
-            user_creds.set_api_secret(text.strip())
-
-            # Check if exchange needs passphrase
-            if exchange.lower() in ["okx", "okex", "kucoin"]:
-                state["step"] = "passphrase"
-                return (
-                    "✅ API secret saved securely!\n\n🔑 Enter your passphrase (if any, or type 'none'):",
-                    None,
-                )
-            else:
-                # Save and complete setup
-                db.session.commit()
-                del user_api_setup_state[chat_id]
-
-                return (
-                    f"""✅ API credentials setup complete!
-
-🏢 Exchange: {exchange.title()}
-🔑 API Key: ...{user_creds.get_api_key()[-4:]}
-🧪 Mode: Testnet (Safe for testing)
-
-Your credentials are encrypted and stored securely. You can now use live trading features!""",
-                    get_main_menu(),
-                )
-
-        elif step == "passphrase":
-            if text.strip().lower() != "none":
-                user_creds.set_passphrase(text.strip())
-
-            # Save and complete setup
-            db.session.commit()
-            del user_api_setup_state[chat_id]
-
-            return (
-                f"""✅ API credentials setup complete!
-
-🏢 Exchange: {exchange.title()}
-🔑 API Key: ...{user_creds.get_api_key()[-4:]}
-🧪 Mode: Testnet (Safe for testing)
-
-Your credentials are encrypted and stored securely. You can now use live trading features!""",
-                get_main_menu(),
-            )
-
-    except Exception as e:
-        logging.error(f"Error handling API text input: {str(e)}")
-        if chat_id in user_api_setup_state:
-            del user_api_setup_state[chat_id]
-        return (
-            "❌ Error saving credentials. Please try again with /api",
-            get_main_menu(),
-        )
-
-    return "❌ Invalid step in API setup. Please restart with /api", get_main_menu()
-
-
-def start_api_setup(chat_id, user, exchange):
-    """Start API credentials setup process"""
-    try:
-        # Initialize user state for API setup
-        user_api_setup_state[chat_id] = {
-            "step": "api_key",
-            "exchange": exchange.lower(),
-        }
-
-        exchange_name = exchange.title()
-        return (
-            f"""🔑 Setting up {exchange_name} API Credentials
-
-🔐 For security, your API credentials will be encrypted and stored safely.
-
-⚠️ **IMPORTANT SECURITY TIPS:**
-• Use API keys with ONLY trading permissions
-• Never share your API secret with anyone
-• Enable IP whitelist if possible
-• Start with testnet for testing
-
-📝 Please enter your {exchange_name} API Key:""",
-            None,
-        )
-
-    except Exception as e:
-        logging.error(f"Error starting API setup: {str(e)}")
-        return "❌ Error starting API setup. Please try again.", get_main_menu()
-
-
-def start_api_update(chat_id, user):
-    """Start updating existing API credentials"""
-    try:
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-        if not user_creds or not user_creds.has_credentials():
-            return (
-                "❌ No existing credentials found. Use setup instead.",
-                get_api_management_menu(False),
-            )
-
-        # Start update process
-        user_api_setup_state[chat_id] = {
-            "step": "api_key",
-            "exchange": user_creds.exchange_name,
-            "updating": True,
-        }
-
-        return (
-            f"""🔄 Updating {user_creds.exchange_name.title()} API Credentials
-
-Current API Key: ...{user_creds.get_api_key()[-4:] if user_creds.get_api_key() else 'N/A'}
-
-📝 Enter your new API Key:""",
-            None,
-        )
-
-    except Exception as e:
-        logging.error(f"Error starting API update: {str(e)}")
-        return "❌ Error starting update. Please try again.", get_main_menu()
-
-
-def toggle_api_mode(chat_id, user):
-    """Toggle between testnet and live trading mode"""
-    try:
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-        if not user_creds or not user_creds.has_credentials():
-            return (
-                "❌ No API credentials found. Set up credentials first.",
-                get_api_management_menu(False),
-            )
-
-        # Toggle mode
-        user_creds.testnet_mode = not user_creds.testnet_mode
-        db.session.commit()
-
-        mode = (
-            "🧪 Testnet (Safe for testing)"
-            if user_creds.testnet_mode
-            else "🚀 Live Trading (Real money)"
-        )
-
-        return f"""✅ Trading mode updated!
-
-Current Mode: {mode}
-
-{"⚠️ You are now in LIVE TRADING mode. Real money will be used!" if not user_creds.testnet_mode else "✅ Safe testing mode enabled."}""", get_api_management_menu(
-            True
-        )
-
-    except Exception as e:
-        logging.error(f"Error toggling API mode: {str(e)}")
-        return "❌ Error updating mode. Please try again.", get_main_menu()
-
-
-def delete_user_credentials(chat_id, user):
-    """Delete user's API credentials"""
-    try:
-        user_creds = UserCredentials.query.filter_by(
-            telegram_user_id=str(chat_id)
-        ).first()
-        if not user_creds:
-            return "❌ No credentials found to delete.", get_main_menu()
-
-        # Delete credentials
-        db.session.delete(user_creds)
-        db.session.commit()
-
-        # Clean up any active API setup state
-        if chat_id in user_api_setup_state:
-            del user_api_setup_state[chat_id]
-
-        return """✅ API credentials deleted successfully!
-
-🔐 All your encrypted credentials have been securely removed from our system.
-
-You can add new credentials anytime using the setup option.""", get_api_management_menu(
-            False
-        )
-
-    except Exception as e:
-        logging.error(f"Error deleting credentials: {str(e)}")
-        return "❌ Error deleting credentials. Please try again.", get_main_menu()
+# delete_user_credentials() function removed - part of bot command system
+# Credential deletion is now handled through the web interface
 
 
 # Enhanced caching system replaces basic price cache
@@ -8675,85 +7886,18 @@ def get_margin_summary(chat_id):
     }
 
 
-def send_telegram_message(chat_id, text, keyboard=None):
-    """Send message to Telegram"""
-    if not BOT_TOKEN:
-        logging.warning("BOT_TOKEN not set, cannot send message")
-        return False
-
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        data = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-
-        if keyboard:
-            data["reply_markup"] = json.dumps(keyboard)
-
-        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.status_code == 200
-    except Exception as e:
-        logging.error(f"Error sending Telegram message: {e}")
-        return False
+# send_telegram_message() function removed - part of bot messaging system
+# The app now uses only the Telegram WebApp interface
 
 
-def edit_telegram_message(chat_id, message_id, text, keyboard=None):
-    """Edit existing Telegram message"""
-    if not BOT_TOKEN:
-        logging.warning("BOT_TOKEN not set, cannot edit message")
-        return False
-
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
-        data = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-            "parse_mode": "HTML",
-        }
-
-        if keyboard:
-            data["reply_markup"] = json.dumps(keyboard)
-
-        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.status_code == 200
-    except Exception as e:
-        logging.error(f"Error editing Telegram message: {e}")
-        return False
+# edit_telegram_message() function removed - part of bot messaging system
 
 
-def answer_callback_query(callback_query_id, text=""):
-    """Answer callback query to remove loading state"""
-    if not BOT_TOKEN:
-        return False
-
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery"
-        data = {"callback_query_id": callback_query_id, "text": text}
-        response = requests.post(url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT)
-        return response.status_code == 200
-    except Exception as e:
-        logging.error(f"Error answering callback query: {e}")
-        return False
+# answer_callback_query() function removed - part of bot messaging system
 
 
-def setup_webhook():
-    """Setup webhook for the bot"""
-    if WEBHOOK_URL and BOT_TOKEN:
-        try:
-            webhook_url = f"{WEBHOOK_URL}/webhook"
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-            data = {"url": webhook_url}
-            response = requests.post(
-                url, data=data, timeout=TimeConfig.QUICK_API_TIMEOUT
-            )
-            if response.status_code == 200:
-                logging.info(f"Webhook set successfully to {webhook_url}")
-                bot_status["status"] = "active"
-            else:
-                logging.error(f"Failed to set webhook: HTTP {response.status_code}")
-        except Exception as e:
-            logging.error(f"Error setting webhook: {e}")
-    else:
-        logging.warning("WEBHOOK_URL or BOT_TOKEN not provided, webhook not set")
+# setup_webhook() function removed - webhook functionality no longer needed
+# The app now uses only Telegram WebApp interface
 
 
 def get_current_trade_config(chat_id):
@@ -8765,55 +7909,12 @@ def get_current_trade_config(chat_id):
     return None
 
 
-def get_main_menu():
-    """Get main menu keyboard"""
-    return {
-        "inline_keyboard": [
-            [{"text": "🔄 Positions Manager", "callback_data": "menu_positions"}],
-            [{"text": "📊 Trading", "callback_data": "menu_trading"}],
-            [{"text": "💼 Portfolio & Analytics", "callback_data": "menu_portfolio"}],
-            [{"text": "🔑 API Credentials", "callback_data": "api_menu"}],
-            [{"text": "📈 Quick Price Check", "callback_data": "quick_price"}],
-        ]
-    }
+# get_main_menu() function removed - part of bot menu system
+# Navigation is now handled through the web interface
 
 
-def get_api_management_menu(has_credentials=False):
-    """Get API credentials management menu"""
-    if has_credentials:
-        return {
-            "inline_keyboard": [
-                [{"text": "🔄 Update Credentials", "callback_data": "api_update"}],
-                [
-                    {
-                        "text": "🧪 Toggle Test/Live Mode",
-                        "callback_data": "api_toggle_mode",
-                    }
-                ],
-                [{"text": "📊 View Status", "callback_data": "api_status"}],
-                [{"text": "🗑️ Delete Credentials", "callback_data": "api_delete"}],
-                [{"text": "⬅️ Back to Main Menu", "callback_data": "main_menu"}],
-            ]
-        }
-    else:
-        return {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "🔑 Add Toobit Credentials",
-                        "callback_data": "api_setup_toobit",
-                    }
-                ],
-                [
-                    {
-                        "text": "🔑 Add Binance Credentials",
-                        "callback_data": "api_setup_binance",
-                    }
-                ],
-                [{"text": "🔑 Add OKX Credentials", "callback_data": "api_setup_okx"}],
-                [{"text": "⬅️ Back to Main Menu", "callback_data": "main_menu"}],
-            ]
-        }
+# get_api_management_menu() function removed - part of bot menu system
+# API management is now handled through the web interface
 
 
 def get_positions_menu(user_id):
@@ -8990,43 +8091,12 @@ def get_leverage_menu():
     return {"inline_keyboard": keyboard}
 
 
-def _handle_main_menu_callbacks(callback_data, chat_id):
-    """Handle main menu navigation callbacks"""
-    if callback_data == "main_menu":
-        return "🏠 Main Menu:", get_main_menu()
-    elif callback_data == "menu_trading":
-        config = get_current_trade_config(chat_id)
-        if config:
-            header = config.get_trade_header("Trading Menu")
-            return f"{header}📊 Trading Menu:", get_trading_menu(chat_id)
-        else:
-            return (
-                "📊 Trading Menu:\n\nNo trade selected. Please create or select a trade first.",
-                get_trading_menu(chat_id),
-            )
-    elif callback_data == "menu_portfolio":
-        return "💼 Portfolio & Analytics:", get_portfolio_menu()
-    elif callback_data == "select_pair":
-        return "💱 Select a trading pair:", get_pairs_menu()
-    return None
+# _handle_main_menu_callbacks() function removed - part of bot callback system
+# Navigation is now handled through the web interface
 
 
-def _handle_api_callbacks(callback_data, chat_id, user):
-    """Handle API credentials management callbacks"""
-    if callback_data.startswith("api_setup_"):
-        exchange = callback_data.replace("api_setup_", "")
-        return start_api_setup(chat_id, user, exchange)
-    elif callback_data == "api_update":
-        return start_api_update(chat_id, user)
-    elif callback_data == "api_toggle_mode":
-        return toggle_api_mode(chat_id, user)
-    elif callback_data == "api_status":
-        return show_credentials_status(chat_id, user)
-    elif callback_data == "api_delete":
-        return delete_user_credentials(chat_id, user)
-    elif callback_data == "api_menu":
-        return show_api_menu(chat_id, user)
-    return None
+# _handle_api_callbacks() function removed - part of bot callback system
+# API management is now handled through the web interface
 
 
 def _handle_pair_selection_callbacks(callback_data, chat_id):
@@ -9930,65 +9000,8 @@ def _handle_misc_callbacks(callback_data, chat_id):
     return None
 
 
-def handle_callback_query(callback_data, chat_id, user):
-    """Handle callback query from inline keyboard - refactored for better maintainability"""
-    try:
-        # Try main menu callbacks first
-        result = _handle_main_menu_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try API callbacks
-        result = _handle_api_callbacks(callback_data, chat_id, user)
-        if result:
-            return result
-
-        # Try pair selection callbacks
-        result = _handle_pair_selection_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try portfolio callbacks
-        result = _handle_portfolio_callbacks(callback_data, chat_id, user)
-        if result:
-            return result
-
-        # Try position management callbacks
-        result = _handle_position_management_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try configuration callbacks
-        result = _handle_configuration_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try trading config callbacks
-        result = _handle_trading_config_callbacks(callback_data, chat_id, user)
-        if result:
-            return result
-
-        # Try trade action callbacks
-        result = _handle_trade_action_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try take profit callbacks
-        result = _handle_take_profit_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Try miscellaneous callbacks
-        result = _handle_misc_callbacks(callback_data, chat_id)
-        if result:
-            return result
-
-        # Unknown callback
-        return "🤔 Unknown action. Please try again.", get_main_menu()
-
-    except Exception as e:
-        logging.error(f"Error handling callback query: {e}")
-        return "❌ An error occurred. Please try again.", get_main_menu()
+# handle_callback_query() function removed - part of bot callback system
+# All callback handling is now done through the web interface
 
 
 def get_breakeven_menu():
@@ -10390,7 +9403,7 @@ def handle_trailing_stop_disable(chat_id):
                 f"{header}✅ Trailing stop disabled for current trade",
                 get_trading_menu(chat_id),
             )
-    return "❌ No trade selected", get_main_menu()
+    return "❌ No trade selected", None
 
 
 def handle_trail_percent_request(chat_id):
@@ -10406,7 +9419,7 @@ def handle_trail_percent_request(chat_id):
                 "📉 Enter trailing stop percentage (e.g., 2 for 2%):\n\nThis will move your stop loss when price moves favorably.",
                 None,
             )
-    return "❌ No trade selected", get_main_menu()
+    return "❌ No trade selected", None
 
 
 def handle_trail_activation_request(chat_id):
@@ -10422,7 +9435,7 @@ def handle_trail_activation_request(chat_id):
                 "🎯 Enter activation price (e.g., 45500):\n\nTrailing stop will activate when price reaches this level.",
                 None,
             )
-    return "❌ No trade selected", get_main_menu()
+    return "❌ No trade selected", None
 
 
 def get_amount_wizard_menu():
