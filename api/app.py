@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import secrets
 import threading
 import time
 import urllib.parse
@@ -15,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
-from flask import Flask, has_app_context, jsonify, render_template, request
+from flask import Flask, has_app_context, jsonify, render_template, request, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import (
@@ -246,6 +247,188 @@ def get_authenticated_user_id() -> Optional[str]:
     except Exception as e:
         logging.error(f"Error in get_authenticated_user_id: {e}")
         return None
+
+
+# SECURE: Session Management Functions for Telegram WebApp Authentication
+def establish_user_session(user_id: str, user_data: dict = None) -> bool:
+    """
+    Establish a secure Flask session after successful authentication.
+    
+    Args:
+        user_id: Verified Telegram user ID
+        user_data: Optional additional user data from verification
+        
+    Returns:
+        bool: True if session was established successfully
+    """
+    try:
+        session.permanent = True
+        session['user_id'] = user_id
+        session['authenticated'] = True
+        session['auth_timestamp'] = int(time.time())
+        
+        # Store additional user info if available
+        if user_data:
+            session['username'] = user_data.get('username')
+            session['first_name'] = user_data.get('first_name')
+            session['last_name'] = user_data.get('last_name')
+        
+        logging.info(f"Session established for user: {user_id}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error establishing session for user {user_id}: {e}")
+        return False
+
+
+def get_user_from_session() -> Optional[str]:
+    """
+    Get authenticated user ID from existing Flask session.
+    
+    Returns:
+        str: User ID if session is valid and not expired
+        None: If no valid session exists
+    """
+    try:
+        if not session.get('authenticated'):
+            return None
+            
+        user_id = session.get('user_id')
+        auth_timestamp = session.get('auth_timestamp', 0)
+        current_time = int(time.time())
+        
+        # Check if session is expired (24 hours)
+        if current_time - auth_timestamp > 86400:
+            logging.info(f"Session expired for user {user_id}")
+            clear_user_session()
+            return None
+            
+        return user_id
+        
+    except Exception as e:
+        logging.error(f"Error getting user from session: {e}")
+        return None
+
+
+def clear_user_session() -> None:
+    """Clear user session data."""
+    try:
+        session.clear()
+        logging.info("User session cleared")
+    except Exception as e:
+        logging.error(f"Error clearing session: {e}")
+
+
+def get_authenticated_user() -> Optional[str]:
+    """
+    Get authenticated user ID with session-first approach.
+    
+    This function first checks for an existing valid session, then falls back
+    to verifying Telegram WebApp data for new authentications.
+    
+    Returns:
+        str: Verified user_id if authentication is valid
+        None: If authentication fails or is missing
+    """
+    # First, try to get user from existing session
+    user_id = get_user_from_session()
+    if user_id:
+        return user_id
+    
+    # If no valid session, try to authenticate via Telegram WebApp data
+    user_id = get_authenticated_user_id()
+    if user_id:
+        # Get additional user data for session
+        try:
+            init_data = None
+            if request.method == 'GET':
+                init_data = request.args.get('initData') or request.args.get('tg_init_data')
+            elif request.method == 'POST':
+                if request.is_json:
+                    request_data = request.get_json() or {}
+                    init_data = request_data.get('initData')
+                else:
+                    init_data = request.form.get('initData')
+            
+            if not init_data:
+                init_data = request.headers.get('X-Telegram-Init-Data')
+            
+            if init_data:
+                if request.args.get('tg_init_data'):
+                    init_data = urllib.parse.unquote(init_data)
+                
+                verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
+                user_data = verified_data.get('user', {}) if verified_data else {}
+                
+                # Establish session for future requests
+                establish_user_session(user_id, user_data)
+        except Exception as e:
+            logging.error(f"Error establishing session after authentication: {e}")
+    
+    return user_id
+
+
+def generate_csrf_token() -> str:
+    """Generate a secure CSRF token for the current session."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_urlsafe(32)
+    return session['csrf_token']
+
+
+def validate_csrf_token(token: str) -> bool:
+    """Validate CSRF token against the session token."""
+    return session.get('csrf_token') == token and token is not None
+
+
+def require_authentication(f):
+    """
+    Decorator for routes that require authentication.
+    Redirects to authentication if user is not logged in.
+    """
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = get_authenticated_user()
+        if not user_id:
+            # Return access wall for unauthenticated users
+            return render_template(
+                "access_wall.html",
+                access_data={
+                    "title": "🔒 Authentication Required",
+                    "message": "Please access this app through the official Telegram bot.",
+                    "status": "auth_required",
+                    "show_request_button": False
+                },
+                user_id=None
+            )
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def require_csrf_token(f):
+    """
+    Decorator for routes that require CSRF token validation for POST requests.
+    """
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.method == 'POST':
+            token = None
+            if request.is_json:
+                token = request.get_json().get('csrf_token')
+            else:
+                token = request.form.get('csrf_token')
+            
+            if not validate_csrf_token(token):
+                return jsonify({
+                    'error': 'Invalid CSRF token',
+                    'message': 'Security validation failed. Please refresh and try again.'
+                }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # DEPRECATED: Legacy function for backward compatibility only
@@ -700,6 +883,14 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 # Record app start time for uptime tracking
 app.config["START_TIME"] = time.time()
 
+# Configure secure session settings
+app.config.update(
+    SESSION_COOKIE_SECURE=Environment.IS_PRODUCTION,  # HTTPS only in production
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent XSS attacks
+    SESSION_COOKIE_SAMESITE='Strict',  # CSRF protection
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),  # 24 hour session timeout
+)
+
 # Configure database using centralized config
 database_url = get_database_url()
 if not database_url:
@@ -1122,8 +1313,21 @@ else:
             initialized = True
 
 
-# Bot token and webhook URL from environment
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+# Bot token and webhook URL from environment with proper validation
+def get_bot_token() -> Optional[str]:
+    """Get bot token from environment with proper error handling for production."""
+    bot_token = os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+    
+    if not bot_token:
+        if Environment.IS_PRODUCTION:
+            logging.error("CRITICAL: BOT_TOKEN or TELEGRAM_BOT_TOKEN environment variable is required for production")
+            raise ValueError("BOT_TOKEN or TELEGRAM_BOT_TOKEN environment variable is required for production")
+        else:
+            logging.warning("BOT_TOKEN not configured - Telegram authentication will be disabled in development")
+    
+    return bot_token
+
+BOT_TOKEN = get_bot_token()
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 
@@ -1878,12 +2082,116 @@ def delete_trade_from_db(user_id, trade_id):
         return False
 
 
+@app.route("/auth")
+def authenticate():
+    """
+    Handle authentication with clean URL redirect.
+    This route processes Telegram WebApp initData and establishes a session,
+    then redirects to a clean URL without sensitive parameters.
+    """
+    try:
+        # Check if user is already authenticated via session
+        existing_user = get_user_from_session()
+        if existing_user:
+            return redirect(url_for('mini_app'))
+        
+        # Try to authenticate via Telegram WebApp data
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return render_template(
+                "access_wall.html",
+                access_data={
+                    "title": "🔒 Authentication Failed",
+                    "message": "Could not verify your Telegram identity. Please access this app through the official Telegram bot.",
+                    "status": "auth_failed",
+                    "show_request_button": False
+                },
+                user_id=None
+            )
+        
+        # Get user data for session establishment
+        user_data = None
+        try:
+            init_data = None
+            if request.method == 'GET':
+                init_data = request.args.get('initData') or request.args.get('tg_init_data')
+            
+            if init_data:
+                if request.args.get('tg_init_data'):
+                    init_data = urllib.parse.unquote(init_data)
+                
+                verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
+                user_data = verified_data.get('user', {}) if verified_data else {}
+        except Exception as e:
+            logging.error(f"Error extracting user data for session: {e}")
+        
+        # Establish session
+        if establish_user_session(user_id, user_data):
+            logging.info(f"Authentication successful, session established for user {user_id}")
+            # Redirect to clean URL without sensitive parameters
+            return redirect(url_for('mini_app'))
+        else:
+            logging.error(f"Failed to establish session for user {user_id}")
+            return render_template(
+                "access_wall.html",
+                access_data={
+                    "title": "🔒 Session Error",
+                    "message": "Authentication succeeded but session could not be established. Please try again.",
+                    "status": "session_error",
+                    "show_request_button": False
+                },
+                user_id=None
+            )
+            
+    except Exception as e:
+        logging.error(f"Authentication error: {e}")
+        return render_template(
+            "access_wall.html",
+            access_data={
+                "title": "🔒 Authentication Error",
+                "message": "An error occurred during authentication. Please try again.",
+                "status": "auth_error",
+                "show_request_button": False
+            },
+            user_id=None
+        )
+
+
+@app.route("/logout")
+def logout():
+    """Clear user session and redirect to access wall."""
+    clear_user_session()
+    return render_template(
+        "access_wall.html",
+        access_data={
+            "title": "👋 Logged Out",
+            "message": "You have been logged out successfully. Please access this app through the official Telegram bot to log in again.",
+            "status": "logged_out",
+            "show_request_button": False
+        },
+        user_id=None
+    )
+
+
 @app.route("/")
 def mini_app():
-    """Telegram Mini App interface - Main route with access control"""
-    user_id = get_authenticated_user_id()
+    """Telegram Mini App interface - Main route with session-based authentication"""
+    # Check for Telegram WebApp initData in URL (new authentication)
+    if request.args.get('tg_init_data') or request.args.get('initData'):
+        # Redirect to auth route for proper session establishment
+        return redirect(url_for('authenticate', **request.args))
     
-    # If authentication fails, deny access
+    # Try to get user from existing session first
+    user_id = get_user_from_session()
+    
+    # If no session, try one-time authentication verification
+    if not user_id:
+        user_id = get_authenticated_user_id()
+        if user_id:
+            # Authentication successful but no session - redirect to auth route
+            return redirect(url_for('authenticate', **request.args))
+    
+    # If still no authentication, show access wall
     if not user_id:
         return render_template(
             "access_wall.html",
@@ -1898,10 +2206,12 @@ def mini_app():
     
     # Check if whitelist is enabled
     if not WHITELIST_ENABLED:
+        record_user_access(user_id)
         return render_template(
             "mini_app.html",
             price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
             portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
+            csrf_token=generate_csrf_token()
         )
     
     # Check if user is whitelisted or is bot owner
@@ -1923,57 +2233,16 @@ def mini_app():
         price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
         portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
         is_bot_owner=is_owner,
-        user_id=user_id
+        user_id=user_id,
+        csrf_token=generate_csrf_token()
     )
 
 
 @app.route("/miniapp")
 def mini_app_alias():
-    """Telegram Mini App interface - Alias route with access control"""
-    user_id = get_authenticated_user_id()
-    
-    # If authentication fails, deny access
-    if not user_id:
-        return render_template(
-            "access_wall.html",
-            access_data={
-                "title": "🔒 Authentication Required",
-                "message": "Please access this app through the official Telegram bot.",
-                "status": "auth_required",
-                "show_request_button": False
-            },
-            user_id=None
-        )
-    
-    # Check if whitelist is enabled
-    if not WHITELIST_ENABLED:
-        return render_template(
-            "mini_app.html",
-            price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
-            portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
-        )
-    
-    # Check if user is whitelisted or is bot owner
-    if not is_user_whitelisted(user_id):
-        # Show access wall for non-whitelisted users
-        access_wall_data = get_access_wall_message(user_id)
-        return render_template(
-            "access_wall.html",
-            access_data=access_wall_data,
-            user_id=user_id
-        )
-    
-    # User is whitelisted - record access and show main app
-    record_user_access(user_id)
-    is_owner = is_bot_owner(user_id)
-    
-    return render_template(
-        "mini_app.html",
-        price_update_interval=TimeConfig.PRICE_UPDATE_INTERVAL,
-        portfolio_refresh_interval=TimeConfig.PORTFOLIO_REFRESH_INTERVAL,
-        is_bot_owner=is_owner,
-        user_id=user_id
-    )
+    """Telegram Mini App interface - Alias route that redirects to main route"""
+    # Simply redirect to the main route to avoid code duplication
+    return redirect(url_for('mini_app', **request.args))
 
 
 @app.route("/health")
