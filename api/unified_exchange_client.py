@@ -27,6 +27,7 @@ class ExchangeTradeProtocol(Protocol):
         quantity: float,
         price: Optional[float] = None,
         order_type: str = "MARKET",
+        **kwargs,
     ) -> Optional[Dict[str, Any]]:
         """Place a single order with unified parameters."""
         ...
@@ -54,48 +55,279 @@ class ExchangeTradeProtocol(Protocol):
 
 
 class OrderParameterAdapter:
-    """Adapter to convert between unified parameters and exchange-specific formats."""
+    """Enhanced adapter to convert between unified parameters and exchange-specific formats."""
 
-    @staticmethod
-    def to_exchange_params(exchange_type: str, **unified_params: Any) -> Dict[str, Any]:
-        """Convert unified parameters to exchange-specific format."""
+    # Exchange-specific parameter mappings
+    EXCHANGE_MAPPINGS = {
+        "toobit": {
+            "order_type_map": {
+                "MARKET": "MARKET",
+                "LIMIT": "LIMIT", 
+                "STOP": "STOP",
+                "STOP_MARKET": "STOP"
+            },
+            "side_map": {
+                "BUY": "BUY_OPEN", "LONG": "BUY_OPEN",
+                "SELL": "SELL_OPEN", "SHORT": "SELL_OPEN",
+                "BUY_CLOSE": "BUY_CLOSE", "SELL_CLOSE": "SELL_CLOSE"
+            },
+            "required_params": ["symbol", "side", "quantity"],
+            "optional_params": ["price", "order_type", "time_in_force", "reduce_only"]
+        },
+        "lbank": {
+            "order_type_map": {
+                "MARKET": "MARKET",
+                "LIMIT": "LIMIT"
+            },
+            "side_map": {
+                "BUY": "buy", "LONG": "buy",
+                "SELL": "sell", "SHORT": "sell"
+            },
+            "required_params": ["symbol", "side", "quantity"],
+            "optional_params": ["price", "order_type"]
+        },
+        "hyperliquid": {
+            "order_type_map": {
+                "MARKET": "market",
+                "LIMIT": "limit",
+                "STOP": "stop",
+                "STOP_MARKET": "stop_market"
+            },
+            "side_map": {
+                "BUY": "buy", "LONG": "buy",
+                "SELL": "sell", "SHORT": "sell"
+            },
+            "required_params": ["symbol", "side", "quantity"],
+            "optional_params": ["price", "order_type", "leverage", "reduce_only"]
+        }
+    }
 
-        if exchange_type.lower() == "toobit":
-            # ToobitClient expects: quantity, price, order_type
-            return {
-                "symbol": unified_params.get("symbol"),
-                "side": unified_params.get("side"),
-                "quantity": unified_params.get(
-                    "total_quantity", unified_params.get("quantity")
-                ),
-                "price": unified_params.get("entry_price", unified_params.get("price")),
-                "order_type": unified_params.get("order_type", "MARKET"),
-            }
-        elif exchange_type.lower() == "lbank":
-            # LBankClient expects: quantity, price, order_type (matching method signature)
-            return {
-                "symbol": unified_params.get("symbol"),
-                "side": unified_params.get("side"),
-                "quantity": unified_params.get(
-                    "total_quantity", unified_params.get("quantity")
-                ),
-                "price": unified_params.get("entry_price", unified_params.get("price")),
-                "order_type": unified_params.get("order_type", "MARKET"),
-            }
-        elif exchange_type.lower() == "hyperliquid":
-            # HyperliquidClient expects: quantity, price (matching method signature)  
-            return {
-                "symbol": unified_params.get("symbol"),
-                "side": unified_params.get("side"),
-                "quantity": unified_params.get(
-                    "total_quantity", unified_params.get("quantity")
-                ),
-                "price": unified_params.get("entry_price", unified_params.get("price")),
-                "order_type": unified_params.get("order_type", "limit"),
-            }
+    @classmethod
+    def validate_params(cls, exchange_type: str, **params: Any) -> Dict[str, Any]:
+        """Validate and clean parameters for specific exchange."""
+        exchange = exchange_type.lower()
+        
+        if exchange not in cls.EXCHANGE_MAPPINGS:
+            raise ValueError(f"Unsupported exchange: {exchange_type}")
+        
+        mapping = cls.EXCHANGE_MAPPINGS[exchange]
+        errors = []
+        
+        # Check required parameters (allow total_quantity as alternative to quantity)
+        for required_param in mapping["required_params"]:
+            if required_param == "quantity":
+                if not (params.get("quantity") is not None or params.get("total_quantity") is not None):
+                    errors.append(f"Missing required parameter: quantity (or total_quantity)")
+            elif required_param not in params or params[required_param] is None:
+                errors.append(f"Missing required parameter: {required_param}")
+        
+        # Validate price is required for limit/stop orders
+        order_type = params.get("order_type", "MARKET").upper()
+        if order_type in ["LIMIT", "STOP", "STOP_MARKET"]:
+            if not (params.get("price") is not None or params.get("entry_price") is not None):
+                errors.append(f"Price (or entry_price) is required for {order_type} orders")
+        
+        if errors:
+            raise ValueError(f"Parameter validation failed: {'; '.join(errors)}")
+        
+        return params
 
-        # Default fallback
-        return unified_params
+    @classmethod
+    def convert_parameter_types(cls, **params: Any) -> Dict[str, Any]:
+        """Convert and validate parameter types."""
+        converted = {}
+        
+        for key, value in params.items():
+            if value is None:
+                converted[key] = value
+                continue
+                
+            if key in ["quantity", "total_quantity", "price", "entry_price", "stop_price"]:
+                try:
+                    converted[key] = float(value)
+                except (ValueError, TypeError):
+                    raise ValueError(f"Invalid numeric value for {key}: {value}")
+            elif key in ["leverage"]:
+                try:
+                    converted[key] = int(value)
+                except (ValueError, TypeError):
+                    raise ValueError(f"Invalid integer value for {key}: {value}")
+            elif key in ["reduce_only"]:
+                # Proper boolean parsing for string values
+                if isinstance(value, str):
+                    converted[key] = value.lower() in ["true", "1", "yes", "on"]
+                else:
+                    converted[key] = bool(value)
+            else:
+                converted[key] = str(value) if value is not None else None
+        
+        return converted
+
+    @classmethod
+    def to_exchange_params(cls, exchange_type: str, **unified_params: Any) -> Dict[str, Any]:
+        """Convert unified parameters to exchange-specific format with validation."""
+        try:
+            exchange = exchange_type.lower()
+            
+            # Convert types first
+            typed_params = cls.convert_parameter_types(**unified_params)
+            
+            # Validate parameters
+            cls.validate_params(exchange, **typed_params)
+            
+            if exchange == "toobit":
+                return cls._to_toobit_params(**typed_params)
+            elif exchange == "lbank":
+                return cls._to_lbank_params(**typed_params)
+            elif exchange == "hyperliquid":
+                return cls._to_hyperliquid_params(**typed_params)
+            else:
+                raise ValueError(f"Unsupported exchange: {exchange_type}")
+                
+        except Exception as e:
+            logging.error(f"Parameter conversion failed for {exchange_type}: {e}")
+            raise
+
+    @classmethod
+    def _to_toobit_params(cls, **params: Any) -> Dict[str, Any]:
+        """Convert to Toobit-specific parameter format."""
+        mapping = cls.EXCHANGE_MAPPINGS["toobit"]
+        
+        result = {
+            "symbol": params["symbol"],
+            "side": mapping["side_map"].get(params["side"].upper(), params["side"]),
+            "quantity": params.get("total_quantity") or params.get("quantity"),
+            "order_type": mapping["order_type_map"].get(
+                params.get("order_type", "MARKET").upper(), "MARKET"
+            )
+        }
+        
+        # Add price for limit orders
+        if result["order_type"] in ["LIMIT", "STOP"]:
+            price_value = params.get("entry_price", params.get("price"))
+            if price_value is not None:
+                result["price"] = price_value
+        
+        # Add optional parameters if present
+        for opt_param in ["time_in_force", "reduce_only"]:
+            if opt_param in params:
+                result[opt_param] = params[opt_param]
+        
+        return result
+
+    @classmethod
+    def _to_lbank_params(cls, **params: Any) -> Dict[str, Any]:
+        """Convert to LBank-specific parameter format."""
+        mapping = cls.EXCHANGE_MAPPINGS["lbank"]
+        
+        result = {
+            "symbol": params["symbol"],
+            "side": mapping["side_map"].get(params["side"].upper(), params["side"].lower()),
+            "quantity": params.get("total_quantity") or params.get("quantity"),
+            "order_type": mapping["order_type_map"].get(
+                params.get("order_type", "MARKET").upper(), "MARKET"
+            )
+        }
+        
+        # Add price for limit orders
+        if result["order_type"] == "LIMIT":
+            price_value = params.get("entry_price", params.get("price"))
+            if price_value is not None:
+                result["price"] = price_value
+        
+        return result
+
+    @classmethod
+    def _to_hyperliquid_params(cls, **params: Any) -> Dict[str, Any]:
+        """Convert to Hyperliquid-specific parameter format."""
+        mapping = cls.EXCHANGE_MAPPINGS["hyperliquid"]
+        
+        result = {
+            "symbol": params["symbol"],
+            "side": mapping["side_map"].get(params["side"].upper(), params["side"].lower()),
+            "quantity": params.get("total_quantity") or params.get("quantity"),
+            "order_type": mapping["order_type_map"].get(
+                params.get("order_type", "MARKET").upper(), "market"
+            )
+        }
+        
+        # Add price for non-market orders
+        if result["order_type"] != "market":
+            price_value = params.get("entry_price", params.get("price"))
+            if price_value is not None:
+                result["price"] = price_value
+        
+        # Add Hyperliquid-specific parameters
+        if "leverage" in params:
+            result["leverage"] = params["leverage"]
+        if "reduce_only" in params:
+            result["reduce_only"] = params["reduce_only"]
+        
+        return result
+
+    @classmethod
+    def from_exchange_response(cls, exchange_type: str, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert exchange-specific response to unified format."""
+        exchange = exchange_type.lower()
+        
+        if exchange == "toobit":
+            return cls._from_toobit_response(response)
+        elif exchange == "lbank":
+            return cls._from_lbank_response(response)
+        elif exchange == "hyperliquid":
+            return cls._from_hyperliquid_response(response)
+        else:
+            return response
+
+    @classmethod
+    def _from_toobit_response(cls, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Toobit response to unified format."""
+        return {
+            "order_id": response.get("orderId"),
+            "symbol": response.get("symbol"),
+            "status": response.get("status", "unknown").lower(),
+            "side": response.get("side"),
+            "quantity": float(response.get("origQty", 0)),
+            "filled_quantity": float(response.get("executedQty", 0)),
+            "price": float(response.get("price", 0)) if response.get("price") else None,
+            "average_price": float(response.get("avgPrice", 0)) if response.get("avgPrice") else None,
+            "timestamp": response.get("time"),
+            "raw_response": response
+        }
+
+    @classmethod
+    def _from_lbank_response(cls, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert LBank response to unified format."""
+        return {
+            "order_id": response.get("order_id"),
+            "symbol": response.get("symbol"),
+            "status": "submitted",  # LBank doesn't return status in create response
+            "side": response.get("type"),
+            "quantity": float(response.get("amount", 0)),
+            "price": float(response.get("price", 0)) if response.get("price") else None,
+            "timestamp": response.get("timestamp"),
+            "raw_response": response
+        }
+
+    @classmethod
+    def _from_hyperliquid_response(cls, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Hyperliquid response to unified format."""
+        if response.get("status") == "ok":
+            data = response.get("response", {}).get("data", {})
+            statuses = data.get("statuses", [{}])
+            first_status = statuses[0] if statuses else {}
+            
+            return {
+                "order_id": first_status.get("resting", {}).get("oid"),
+                "status": "submitted" if first_status.get("resting") else "filled",
+                "raw_response": response
+            }
+        else:
+            return {
+                "status": "rejected",
+                "error": response.get("response"),
+                "raw_response": response
+            }
 
 
 from config import APIConfig, TradingConfig
@@ -2315,11 +2547,14 @@ class HyperliquidClient:
         quantity: float,
         price: Optional[float] = None,
         order_type: str = "MARKET",
-        leverage: int = 1,
-        reduce_only: bool = False,
+        **kwargs,
     ) -> Optional[Dict]:
         """Place an order"""
         try:
+            # Extract Hyperliquid-specific parameters from kwargs
+            leverage = kwargs.get("leverage", 1)
+            reduce_only = kwargs.get("reduce_only", False)
+            
             if not self.exchange_client:
                 self.last_error = (
                     "Exchange client not initialized (missing credentials)"
@@ -2392,7 +2627,7 @@ class HyperliquidClient:
             logging.error(self.last_error)
             return None
 
-    def cancel_order(self, order_id: str, symbol: str) -> bool:
+    def cancel_order(self, symbol: str, order_id: str) -> bool:
         """Cancel an order"""
         try:
             if not self.exchange_client:
@@ -3230,6 +3465,104 @@ def create_exchange_client(user_credentials, testnet: bool = False):
     except Exception as e:
         logging.error(f"Failed to create exchange client for {exchange_name}: {e}")
         raise
+
+
+class UnifiedExchangeInterface:
+    """
+    Unified interface that uses the enhanced OrderParameterAdapter to provide
+    consistent method signatures and parameter handling across all exchanges.
+    """
+    
+    def __init__(self, client, exchange_name: str):
+        """Initialize with an exchange client and its name."""
+        self.client = client
+        self.exchange_name = exchange_name.lower()
+        
+    def place_order_unified(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: Optional[float] = None,
+        order_type: str = "MARKET",
+        leverage: int = 1,
+        reduce_only: bool = False,
+        **additional_params: Any
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Place an order using unified parameters that get converted to exchange-specific format.
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            side: "BUY" or "SELL" 
+            quantity: Order quantity
+            price: Order price (required for limit orders)
+            order_type: "MARKET", "LIMIT", "STOP", etc.
+            leverage: Leverage (Hyperliquid-specific)
+            reduce_only: Reduce only flag (Hyperliquid/Toobit-specific)
+            **additional_params: Additional exchange-specific parameters
+            
+        Returns:
+            Unified order response or None if failed
+        """
+        try:
+            # Prepare unified parameters
+            unified_params = {
+                "symbol": symbol,
+                "side": side,
+                "quantity": quantity,
+                "price": price,
+                "order_type": order_type,
+                "leverage": leverage,
+                "reduce_only": reduce_only,
+                **additional_params
+            }
+            
+            # Convert to exchange-specific parameters
+            exchange_params = OrderParameterAdapter.to_exchange_params(
+                self.exchange_name, **unified_params
+            )
+            
+            # Call the exchange client's place_order method
+            raw_response = self.client.place_order(**exchange_params)
+            
+            if raw_response is None:
+                return None
+                
+            # Convert response to unified format
+            unified_response = OrderParameterAdapter.from_exchange_response(
+                self.exchange_name, raw_response
+            )
+            
+            return unified_response
+            
+        except Exception as e:
+            logging.error(f"Unified place_order failed for {self.exchange_name}: {e}")
+            return None
+    
+    def cancel_order_unified(self, symbol: str, order_id: str) -> bool:
+        """Cancel an order using unified parameters."""
+        try:
+            return self.client.cancel_order(symbol, order_id)
+        except Exception as e:
+            logging.error(f"Unified cancel_order failed for {self.exchange_name}: {e}")
+            return False
+    
+    def get_positions_unified(self) -> List[Dict[str, Any]]:
+        """Get positions in unified format."""
+        try:
+            return self.client.get_positions()
+        except Exception as e:
+            logging.error(f"Unified get_positions failed for {self.exchange_name}: {e}")
+            return []
+    
+    def get_account_balance_unified(self) -> Optional[Dict[str, Any]]:
+        """Get account balance in unified format."""
+        try:
+            return self.client.get_account_balance()
+        except Exception as e:
+            logging.error(f"Unified get_account_balance failed for {self.exchange_name}: {e}")
+            return None
 
 
 class ExchangeClientWrapper:
