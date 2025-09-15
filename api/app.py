@@ -3974,25 +3974,35 @@ def create_auto_trade_from_smc():
         trade_config.leverage = 5  # Conservative leverage for auto-trades
         trade_config.entry_price = signal.entry_price
         
-        # CRITICAL FIX: Use proper STOP orders for SMC signals that need to wait for entry
-        if price_diff_percent > 0.1:  # More than 0.1% difference - use stop order for proper trigger behavior
-            # Validate entry price direction makes sense
-            if signal.direction == "long" and signal_entry_float > current_price_float:
-                trade_config.entry_type = "STOP_MARKET"  # Proper STOP order - wait for price trigger
-                logging.info(f"SMC Long STOP_MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
-            elif signal.direction == "short" and signal_entry_float < current_price_float:
-                trade_config.entry_type = "STOP_MARKET"  # Proper STOP order - wait for price trigger
-                logging.info(f"SMC Short STOP_MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+        # INTERIM FIX: SMC order type logic with current system limitations
+        # Note: This system lacks proper stop order support for breakout entries
+        
+        # Check if this is a "stop" type entry (breakout/breakdown) vs "limit" type entry (discount/premium)
+        is_stop_entry = False
+        if signal.direction == "long" and signal_entry_float > current_price_float:
+            is_stop_entry = True  # Long breakout entry (needs to wait for higher price)
+        elif signal.direction == "short" and signal_entry_float < current_price_float:
+            is_stop_entry = True  # Short breakdown entry (needs to wait for lower price)
+        
+        if price_diff_percent > 0.1:  # Significant price difference
+            if is_stop_entry:
+                # WARNING: This is a stop-type entry but system lacks stop order support
+                # Using MARKET order as workaround - will execute immediately at current price
+                trade_config.entry_type = "market"
+                trade_config.entry_price = current_price_float  # Use current price since it will fill immediately
+                logging.warning(f"SMC {signal.direction.upper()} STOP entry converted to MARKET order - Original SMC entry: {signal_entry_float:.4f}, Current: {current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+                logging.warning("NOTE: Stop order behavior not fully supported - trade will execute immediately at market price")
             else:
-                # Entry price direction doesn't match signal direction - use market
-                trade_config.entry_type = "market"  
-                logging.warning(f"SMC Signal direction mismatch - using MARKET: {signal.direction} entry={signal_entry_float:.4f}, current={current_price_float:.4f}")
+                # This is a limit-type entry (discount for longs, premium for shorts) - safe to use LIMIT
+                trade_config.entry_type = "limit"
+                logging.info(f"SMC {signal.direction.upper()} LIMIT order (favorable entry): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
         else:
-            trade_config.entry_type = "market"  # Entry price close to current - immediate execution
-            logging.info(f"SMC Signal using MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            # Entry price very close to current price - use market for immediate execution
+            trade_config.entry_type = "market"
+            logging.info(f"SMC MARKET order (price close): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
 
-        # FIXED: Calculate stop loss percentage on margin for consistency
-        # The issue was: SL calculation used raw price percentage, but system expected margin percentage
+        # FIXED: Calculate stop loss percentage on margin for system compatibility
+        # The monitoring system expects margin-based percentages for trigger comparison
         if signal.direction == "long":
             sl_price_movement_percent = (
                 (signal.entry_price - signal.stop_loss) / signal.entry_price
@@ -4002,12 +4012,15 @@ def create_auto_trade_from_smc():
                 (signal.stop_loss - signal.entry_price) / signal.entry_price
             ) * 100
 
-        # Convert to margin percentage: sl_percent_on_margin = price_movement_percent * leverage
+        # Convert to margin percentage for system compatibility while preserving SMC intent
         sl_percent_on_margin = sl_price_movement_percent * trade_config.leverage
-
         trade_config.stop_loss_percent = min(
             sl_percent_on_margin, 25.0
         )  # Cap at 25% margin loss for safety
+        
+        # Store SMC references for debugging/analysis (internal use)
+        trade_config._smc_stop_loss_price = signal.stop_loss
+        trade_config._smc_price_movement = sl_price_movement_percent
 
         # Set up take profit levels with proper allocation logic
         tp_levels = []
@@ -4028,9 +4041,8 @@ def create_auto_trade_from_smc():
         allocations = allocation_strategies.get(num_tp_levels, [100])
 
         for i, tp_price in enumerate(signal.take_profit_levels[:3]):
-            # FIXED: Calculate TP percentage on margin (not price movement) for consistency with leverage calculation
-            # The issue was: SMC signal generation calculated raw price percentage, but the system expected margin percentage
-            # This caused differences when saving/loading from database because calculate_tp_sl_prices_and_amounts uses leverage
+            # FIXED: Calculate TP percentage on margin for system compatibility while preserving SMC intent
+            # The monitoring system expects margin-based percentages for trigger comparison
 
             if signal.direction == "long":
                 price_movement_percent = (
@@ -4041,17 +4053,18 @@ def create_auto_trade_from_smc():
                     (signal.entry_price - tp_price) / signal.entry_price
                 ) * 100
 
-            # Convert to margin percentage: tp_percent_on_margin = price_movement_percent * leverage
-            # This ensures consistency with how TP calculations work throughout the system
+            # Convert to margin percentage for system compatibility
+            # This maintains proper trigger levels while preserving SMC accuracy
             tp_percent_on_margin = price_movement_percent * trade_config.leverage
-
             allocation = allocations[i] if i < len(allocations) else 10
 
             tp_levels.append(
                 {
-                    "percentage": tp_percent_on_margin,  # Store margin percentage for consistency
+                    "percentage": tp_percent_on_margin,  # Store margin percentage for trigger compatibility
                     "allocation": allocation,
                     "triggered": False,
+                    "_smc_price_target": tp_price,  # Internal reference to original SMC price
+                    "_smc_price_movement": price_movement_percent,  # Internal reference to price movement
                 }
             )
 
