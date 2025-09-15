@@ -72,22 +72,22 @@ class OrderParameterAdapter:
                 "order_type": unified_params.get("order_type", "MARKET"),
             }
         elif exchange_type.lower() == "lbank":
-            # LBankClient expects: amount (not quantity), price, order_type
+            # LBankClient expects: quantity, price, order_type (matching method signature)
             return {
                 "symbol": unified_params.get("symbol"),
                 "side": unified_params.get("side"),
-                "amount": unified_params.get(
+                "quantity": unified_params.get(
                     "total_quantity", unified_params.get("quantity")
                 ),
                 "price": unified_params.get("entry_price", unified_params.get("price")),
                 "order_type": unified_params.get("order_type", "MARKET"),
             }
         elif exchange_type.lower() == "hyperliquid":
-            # HyperliquidClient expects: amount (mapped to sz), price (mapped to limit_px)
+            # HyperliquidClient expects: quantity, price (matching method signature)  
             return {
                 "symbol": unified_params.get("symbol"),
                 "side": unified_params.get("side"),
-                "amount": unified_params.get(
+                "quantity": unified_params.get(
                     "total_quantity", unified_params.get("quantity")
                 ),
                 "price": unified_params.get("entry_price", unified_params.get("price")),
@@ -2116,9 +2116,24 @@ class HyperliquidClient:
     def __init__(
         self, api_key: str, api_secret: str, passphrase: str = "", testnet: bool = False
     ):
+        # Enforce SDK availability with clear error message
         if not HYPERLIQUID_SDK_AVAILABLE:
             raise ImportError(
-                "Hyperliquid SDK is required. Please install hyperliquid-python-sdk"
+                "Hyperliquid SDK is required but not available. "
+                "Please install with: pip install hyperliquid-python-sdk"
+            )
+        
+        # Validate required credentials
+        if not api_key or not api_secret:
+            raise ValueError(
+                "Hyperliquid client requires both account address (api_key) and private key (api_secret). "
+                "api_key should be the wallet address, api_secret should be the private key."
+            )
+        
+        # Validate private key format (should be hex string)
+        if not isinstance(api_secret, str) or len(api_secret) < 32:
+            raise ValueError(
+                "Invalid private key format. Private key should be a hex string (64+ characters) or 0x-prefixed hex."
             )
 
         # For Hyperliquid, api_key is the account address and api_secret is the private key
