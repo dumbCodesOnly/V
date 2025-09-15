@@ -890,8 +890,8 @@ class ToobitClient:
                     symbol=symbol,
                     side=tp_side,
                     order_type="LIMIT",
-                    quantity=quantity,
-                    price=take_profit_price,
+                    quantity=float(quantity),
+                    price=float(take_profit_price),
                     priceType="INPUT",
                     timeInForce="GTC",
                     newClientOrderId=f"tp{int(time.time() * 1000)}"[:36],
@@ -2073,7 +2073,7 @@ class LBankClient:
 
             # 2. Place main position order (market order for immediate execution)
             main_order = self.place_order(
-                symbol=symbol, side=side, order_type="MARKET", quantity=quantity
+                symbol=symbol, side=side, order_type="MARKET", quantity=float(quantity)
             )
 
             if not main_order:
@@ -2088,8 +2088,8 @@ class LBankClient:
                     symbol=symbol,
                     side=tp_side,
                     order_type="LIMIT",
-                    quantity=str(float(quantity) * tp["allocation"] / 100),
-                    price=str(tp["price"]),
+                    quantity=float(quantity) * tp["allocation"] / 100,
+                    price=float(tp["price"]),
                 )
                 if tp_order:
                     tp_orders.append(tp_order)
@@ -2102,8 +2102,8 @@ class LBankClient:
                     symbol=symbol,
                     side=sl_side,
                     order_type="STOP_LOSS",
-                    quantity=quantity,
-                    price=str(stop_loss["price"]),
+                    quantity=float(quantity),
+                    price=float(stop_loss["price"]),
                 )
 
             return {
@@ -2812,6 +2812,8 @@ class HyperliquidClient:
         """Test connectivity to Hyperliquid API"""
         try:
             # Test with a simple meta request
+            if not self.info_client:
+                return False
             meta = self.info_client.meta()
             return meta is not None
         except Exception as e:
@@ -2838,6 +2840,8 @@ class HyperliquidClient:
                 return []
 
             try:
+                if not self.info_client:
+                    return []
                 open_orders = self.info_client.open_orders(self.account_address)
                 orders = []
 
@@ -2902,6 +2906,8 @@ class HyperliquidClient:
 
             # Check if account has any restrictions by attempting to get account info
             try:
+                if not self.info_client:
+                    return {"status": "error", "message": "Info client not available"}
                 account_state = self.info_client.user_state(self.account_address)
                 if account_state:
                     # Account is accessible, check if trading is possible
@@ -2943,6 +2949,9 @@ class HyperliquidClient:
         """Get exchange information"""
         try:
             # Get meta information from Hyperliquid
+            if not self.info_client:
+                self.last_error = "Info client not available"
+                return None
             meta = self.info_client.meta()
             if meta:
                 symbols = []
