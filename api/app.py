@@ -179,12 +179,65 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> Optional[Dict
         return None
 
 
+def parse_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Telegram WebApp initData without signature verification.
+    Used for development mode when bot token is not configured.
+    
+    Returns:
+        dict: Parsed user data if valid, None if invalid
+    """
+    try:
+        if not init_data:
+            return None
+            
+        # Parse URL-encoded init data
+        parsed_data = dict(urllib.parse.parse_qsl(init_data))
+        
+        # Parse user data if present
+        user_data = None
+        if 'user' in parsed_data:
+            try:
+                user_data = json.loads(parsed_data['user'])
+            except json.JSONDecodeError:
+                logging.warning("Invalid user JSON in Telegram WebApp data")
+                return None
+                
+        # Check auth_date for basic validity (allow 24 hour window)
+        auth_date = parsed_data.get('auth_date')
+        if auth_date:
+            try:
+                auth_timestamp = int(auth_date)
+                current_timestamp = int(time.time())
+                if current_timestamp - auth_timestamp > 86400:
+                    logging.warning("Expired Telegram WebApp data (development mode)")
+                    # Don't reject in development mode, but log warning
+            except ValueError:
+                logging.warning("Invalid auth_date in Telegram WebApp data")
+                
+        return {
+            'user': user_data,
+            'auth_date': auth_date,
+            'query_id': parsed_data.get('query_id'),
+            'start_param': parsed_data.get('start_param'),
+            'chat_type': parsed_data.get('chat_type'),
+            'chat_instance': parsed_data.get('chat_instance'),
+            'verified': False  # Mark as unverified for development mode
+        }
+        
+    except Exception as e:
+        logging.error(f"Error parsing Telegram WebApp data: {e}")
+        return None
+
+
 def get_authenticated_user_id() -> Optional[str]:
     """
     SECURE: Get authenticated user ID from verified Telegram WebApp data.
     
     This function replaces the vulnerable get_user_id_from_request() and only
     returns user_id if the Telegram WebApp authentication is valid.
+    
+    In development mode (no bot token), it will parse initData without verification.
     
     Returns:
         str: Verified user_id if authentication is valid
@@ -216,33 +269,56 @@ def get_authenticated_user_id() -> Optional[str]:
                 init_data = urllib.parse.unquote(init_data)
             
         if not init_data:
-            # Debug information
-            logging.warning(f"No Telegram WebApp initData found in request")
+            # Check if this is a Telegram browser request without initData
+            user_agent = request.headers.get('User-Agent', '')
+            if 'Telegram' in user_agent:
+                logging.warning("Telegram WebApp request detected but no initData found")
+                logging.debug(f"User-Agent: {user_agent}")
+            else:
+                logging.warning(f"No Telegram WebApp initData found in request")
             logging.debug(f"Request headers: {dict(request.headers)}")
             logging.debug(f"Request args: {dict(request.args)}")
             logging.debug(f"Request URL: {request.url}")
-            logging.debug(f"User-Agent: {request.headers.get('User-Agent', 'Not provided')}")
             return None
             
-        # Verify initData using bot token
-        if not BOT_TOKEN:
-            logging.error("Bot token not configured - cannot verify authentication")
-            return None
+        # Verify initData using bot token (production mode)
+        if BOT_TOKEN:
+            verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
+            if not verified_data:
+                logging.warning("Telegram WebApp authentication failed")
+                return None
             
-        verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
-        if not verified_data:
-            logging.warning("Telegram WebApp authentication failed")
-            return None
+            # Extract user ID from verified data
+            user_data = verified_data.get('user')
+            if not user_data or 'id' not in user_data:
+                logging.warning("No user ID in verified Telegram WebApp data")
+                return None
+                
+            user_id = str(user_data['id'])
+            logging.info(f"Successfully authenticated Telegram user: {user_id} (verified)")
+            return user_id
             
-        # Extract user ID from verified data
-        user_data = verified_data.get('user')
-        if not user_data or 'id' not in user_data:
-            logging.warning("No user ID in verified Telegram WebApp data")
-            return None
-            
-        user_id = str(user_data['id'])
-        logging.info(f"Successfully authenticated Telegram user: {user_id}")
-        return user_id
+        else:
+            # Development mode - parse without verification
+            from config import Environment
+            if Environment.IS_DEVELOPMENT or Environment.IS_REPLIT:
+                parsed_data = parse_telegram_init_data(init_data)
+                if not parsed_data:
+                    logging.error("Failed to parse Telegram WebApp data in development mode")
+                    return None
+                    
+                # Extract user ID from parsed data
+                user_data = parsed_data.get('user')
+                if not user_data or 'id' not in user_data:
+                    logging.warning("No user ID in parsed Telegram WebApp data (development mode)")
+                    return None
+                    
+                user_id = str(user_data['id'])
+                logging.warning(f"Development mode: Using unverified Telegram user: {user_id}")
+                return user_id
+            else:
+                logging.error("Bot token not configured - cannot verify authentication in production")
+                return None
         
     except Exception as e:
         logging.error(f"Error in get_authenticated_user_id: {e}")
