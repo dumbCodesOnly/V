@@ -7436,19 +7436,11 @@ def _process_pending_limit_orders(user_id, trade_id, config):
     ):
         should_execute = False
         if config.side == "long":
-            if config.entry_price <= config.current_price:
-                # Long limit (buy limit): executes when market drops to or below limit price
-                should_execute = config.current_price <= config.entry_price
-            else:
-                # Long stop (buy stop): executes when market rises to or above stop price
-                should_execute = config.current_price >= config.entry_price
+            # Long limit (buy limit): executes when market drops to or below limit price
+            should_execute = config.current_price <= config.entry_price
         elif config.side == "short":
-            if config.entry_price >= config.current_price:
-                # Short limit (sell limit): executes when market rises to or above limit price
-                should_execute = config.current_price >= config.entry_price
-            else:
-                # Short stop (sell stop): executes when market drops to or below stop price
-                should_execute = config.current_price <= config.entry_price
+            # Short limit (sell limit): executes when market rises to or above limit price
+            should_execute = config.current_price >= config.entry_price
 
         if should_execute:
             # Execute the pending limit order
