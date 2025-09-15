@@ -268,14 +268,20 @@
                     if (initData && !authProcessed) {
                         console.log('Telegram WebApp initData found, processing authentication...');
                         
-                        // Add auth processed flag to prevent infinite reload
-                        const newUrl = new URL(window.location);
-                        newUrl.searchParams.set('tg_auth_processed', '1');
-                        newUrl.searchParams.set('tg_init_data', encodeURIComponent(initData));
-                        
-                        // Reload page with auth data
-                        window.location.href = newUrl.toString();
-                        return; // Stop execution since we're reloading
+                        // Check if URL already has tg_init_data to prevent double processing
+                        const hasInitData = urlParams.get('tg_init_data');
+                        if (!hasInitData) {
+                            // Add auth processed flag to prevent infinite reload
+                            const newUrl = new URL(window.location);
+                            newUrl.searchParams.set('tg_auth_processed', '1');
+                            newUrl.searchParams.set('tg_init_data', encodeURIComponent(initData));
+                            
+                            // Reload page with auth data only once
+                            window.location.href = newUrl.toString();
+                            return; // Stop execution since we're reloading
+                        } else {
+                            console.log('Auth data already in URL, skipping reload');
+                        }
                     }
                 }
             } catch (error) {

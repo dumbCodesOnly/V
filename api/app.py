@@ -2254,7 +2254,11 @@ def logout():
 def mini_app():
     """Telegram Mini App interface - Main route with session-based authentication"""
     # Check for Telegram WebApp initData in URL (new authentication)
-    if request.args.get('tg_init_data') or request.args.get('initData'):
+    # Skip if this is already a processed auth request to avoid loops
+    has_auth_data = request.args.get('tg_init_data') or request.args.get('initData')
+    is_auth_processed = request.args.get('tg_auth_processed')
+    
+    if has_auth_data and not is_auth_processed:
         # Only pass the authentication data, not all URL parameters to avoid redirect loops
         auth_params = {}
         if request.args.get('tg_init_data'):
