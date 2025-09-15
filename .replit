@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Trading Bot Web App"
+args = "Flask Web App"
 
 [[workflows.workflow]]
-name = "Trading Bot Web App"
+name = "Flask Web App"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -33,10 +33,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 37449
-externalPort = 3000
 
 [[ports]]
 localPort = 45013
