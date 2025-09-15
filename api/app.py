@@ -207,6 +207,13 @@ def get_authenticated_user_id() -> Optional[str]:
         if not init_data:
             init_data = request.headers.get('X-Telegram-Init-Data')
             
+        # Check URL parameters for tg_init_data (frontend auth reload)
+        if not init_data:
+            init_data = request.args.get('tg_init_data')
+            if init_data:
+                # URL decode the initData since it's encoded in the URL
+                init_data = urllib.parse.unquote(init_data)
+            
         if not init_data:
             # Debug information
             logging.warning(f"No Telegram WebApp initData found in request")

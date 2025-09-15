@@ -255,6 +255,37 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+        // CRITICAL: Telegram WebApp Authentication
+        // This handles sending initData to backend for authentication on page load
+        function handleTelegramAuth() {
+            try {
+                if (window.Telegram?.WebApp) {
+                    const initData = window.Telegram.WebApp.initData || '';
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const authProcessed = urlParams.get('tg_auth_processed');
+                    
+                    // If we have initData but haven't processed auth yet, reload with auth data
+                    if (initData && !authProcessed) {
+                        console.log('Telegram WebApp initData found, processing authentication...');
+                        
+                        // Add auth processed flag to prevent infinite reload
+                        const newUrl = new URL(window.location);
+                        newUrl.searchParams.set('tg_auth_processed', '1');
+                        newUrl.searchParams.set('tg_init_data', encodeURIComponent(initData));
+                        
+                        // Reload page with auth data
+                        window.location.href = newUrl.toString();
+                        return; // Stop execution since we're reloading
+                    }
+                }
+            } catch (error) {
+                console.error('Telegram auth handling error:', error);
+            }
+        }
+        
+        // Call auth handler immediately
+        handleTelegramAuth();
+        
         // Initialize Telegram Web App with safety checks
         if (window.Telegram?.WebApp) {
             window.Telegram.WebApp.ready();
