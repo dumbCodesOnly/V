@@ -1890,17 +1890,34 @@ class SMCAnalyzer:
     def _calculate_long_prices(
         self, relevant_obs, relevant_fvgs, current_price, atr, order_blocks
     ):
-        """Calculate entry, stop loss, and take profit prices for long positions."""
+        """Calculate entry, stop loss, and take profit prices for long positions using SMC discount zone logic."""
         entry_price = current_price
 
+        # SMC Long Logic: Look for bullish OBs BELOW current price (discount zone)
         if relevant_obs:
-            entry_price = max(
-                ob.price_high for ob in relevant_obs if ob.direction == "bullish"
-            )
+            # Filter for bullish OBs below current price only (discount zone)
+            discount_obs = [
+                ob for ob in relevant_obs 
+                if ob.direction == "bullish" and ob.price_high < current_price
+            ]
+            if discount_obs:
+                # Use the highest bullish OB below current price (closest to current price)
+                entry_price = max(ob.price_high for ob in discount_obs)
+            else:
+                # Fallback: slight discount from current price
+                entry_price = current_price * 0.998  # 0.2% below
         elif relevant_fvgs:
-            entry_price = max(
-                fvg.gap_low for fvg in relevant_fvgs if fvg.direction == "bullish"
-            )
+            # Filter for bullish FVGs below current price (discount zone)
+            discount_fvgs = [
+                fvg for fvg in relevant_fvgs 
+                if fvg.direction == "bullish" and fvg.gap_high < current_price
+            ]
+            if discount_fvgs:
+                # Use the highest FVG below current price
+                entry_price = max(fvg.gap_high for fvg in discount_fvgs)
+            else:
+                # Fallback: slight discount from current price
+                entry_price = current_price * 0.998  # 0.2% below
 
         # ATR-based stop loss
         atr_stop = current_price - (atr * 1.5)
@@ -1922,17 +1939,34 @@ class SMCAnalyzer:
     def _calculate_short_prices(
         self, relevant_obs, relevant_fvgs, current_price, atr, order_blocks
     ):
-        """Calculate entry, stop loss, and take profit prices for short positions."""
+        """Calculate entry, stop loss, and take profit prices for short positions using SMC premium zone logic."""
         entry_price = current_price
 
+        # SMC Short Logic: Look for bearish OBs ABOVE current price (premium zone)
         if relevant_obs:
-            entry_price = max(
-                ob.price_low for ob in relevant_obs if ob.direction == "bearish"
-            )
+            # Filter for bearish OBs above current price only (premium zone)
+            premium_obs = [
+                ob for ob in relevant_obs 
+                if ob.direction == "bearish" and ob.price_low > current_price
+            ]
+            if premium_obs:
+                # Use the lowest bearish OB above current price (closest to current price)
+                entry_price = min(ob.price_low for ob in premium_obs)
+            else:
+                # Fallback: slight premium from current price
+                entry_price = current_price * 1.002  # 0.2% above
         elif relevant_fvgs:
-            entry_price = min(
-                fvg.gap_high for fvg in relevant_fvgs if fvg.direction == "bearish"
-            )
+            # Filter for bearish FVGs above current price (premium zone)
+            premium_fvgs = [
+                fvg for fvg in relevant_fvgs 
+                if fvg.direction == "bearish" and fvg.gap_low > current_price
+            ]
+            if premium_fvgs:
+                # Use the lowest FVG above current price
+                entry_price = min(fvg.gap_low for fvg in premium_fvgs)
+            else:
+                # Fallback: slight premium from current price
+                entry_price = current_price * 1.002  # 0.2% above
 
         # ATR-based stop loss
         atr_stop = current_price + (atr * 1.5)
