@@ -105,10 +105,15 @@ try:
     from hyperliquid.exchange import Exchange
     from hyperliquid.info import Info
     from hyperliquid.utils import constants
+    from hyperliquid.utils.signing import sign_l1_action
 
     HYPERLIQUID_SDK_AVAILABLE = True
 except ImportError:
     HYPERLIQUID_SDK_AVAILABLE = False
+    Exchange = None
+    Info = None
+    constants = None
+    sign_l1_action = None
     logging.warning(
         "Hyperliquid SDK not available. Please install hyperliquid-python-sdk."
     )
@@ -2121,19 +2126,22 @@ class HyperliquidClient:
         # Initialize Hyperliquid clients
         try:
             # Info client for market data and account info (no signing required)
-            self.info_client = Info(self.base_url, skip_ws=True)
+            if Info is not None:
+                self.info_client = Info(self.base_url, skip_ws=True)
+            else:
+                self.info_client = None
 
             # Exchange client for trading (requires signing)
-            if self.account_address and self.private_key:
-                config = {
-                    "account_address": self.account_address,
-                    "secret_key": self.private_key,
-                }
-                self.exchange_client = Exchange(config, self.base_url)
+            if self.account_address and self.private_key and Exchange is not None:
+                # Create wallet from private key
+                from eth_account import Account
+                wallet = Account.from_key(self.private_key)
+                
+                self.exchange_client = Exchange(wallet, self.base_url)
             else:
                 self.exchange_client = None
                 logging.debug(
-                    "Hyperliquid client created without trading capabilities (missing credentials)"
+                    "Hyperliquid client created without trading capabilities (missing credentials or SDK)"
                 )
 
         except Exception as e:
@@ -2291,11 +2299,13 @@ class HyperliquidClient:
             is_buy = side.lower() == "buy"
 
             if order_type.lower() == "market":
-                # Market order
-                order_result = self.exchange_client.market_order(
+                # Market order using order method with market type
+                order_result = self.exchange_client.order(
                     name=hyperliquid_symbol,
                     is_buy=is_buy,
                     sz=quantity,
+                    limit_px=None,
+                    order_type={"market": {}},
                     reduce_only=reduce_only,
                 )
             else:
@@ -2347,7 +2357,7 @@ class HyperliquidClient:
 
             hyperliquid_symbol = self._convert_symbol(symbol)
 
-            cancel_result = self.exchange_client.cancel_order(
+            cancel_result = self.exchange_client.cancel(
                 name=hyperliquid_symbol, oid=int(order_id)
             )
 
@@ -2904,7 +2914,7 @@ class HyperliquidClient:
 
             # Cancel the original stop loss order
             try:
-                cancel_result = self.exchange_client.cancel_order(
+                cancel_result = self.exchange_client.cancel(
                     name=hyperliquid_symbol, oid=int(original_sl_id)
                 )
 
