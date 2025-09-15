@@ -3198,16 +3198,80 @@ class HyperliquidClient:
             logging.error(self.last_error)
             return False
 
+    def monitor_tp_fills_and_manage_breakeven(self, symbol: str) -> bool:
+        """
+        Monitor TP fills and automatically manage break-even adjustments
+        Production-ready fill monitoring for HyperLiquid
+        """
+        try:
+            if not self.info_client or not hasattr(self, "active_orders_tracking"):
+                return False
+
+            if symbol not in self.active_orders_tracking:
+                return False
+
+            tracking_info = self.active_orders_tracking[symbol]
+            
+            # Get current fills from HyperLiquid
+            user_state = self.info_client.user_state(self.account_address)
+            if not user_state:
+                return False
+
+            # HyperLiquid uses specific field names for fills
+            fills = user_state.get("userFills", []) or user_state.get("fills", [])
+            
+            # Check recent fills for our TP orders
+            for fill in fills:
+                fill_symbol = fill.get("coin", "")
+                if fill_symbol != self._convert_symbol(symbol):
+                    continue
+                
+                # Check if this fill matches any of our TP orders
+                fill_oid = fill.get("oid")
+                for order in tracking_info["orders"]:
+                    if (order.get("type") == "take_profit" 
+                        and order.get("order_id") == fill_oid 
+                        and not order.get("filled", False)):
+                        
+                        # Mark this TP as filled (standardize on "filled" boolean)
+                        order["filled"] = True
+                        order["status"] = "filled"  # Also set status for consistency
+                        order["fill_price"] = float(fill.get("px", 0))
+                        order["fill_time"] = fill.get("time", int(time.time() * 1000))
+                        
+                        logging.info(f"TP{order.get('level')} filled for {symbol} at {order['fill_price']}")
+                        
+                        # Trigger break-even if this TP is configured for it
+                        if order.get("is_breakeven_trigger", False):
+                            self._move_sl_to_breakeven(symbol, tracking_info)
+                        
+                        return True
+            
+            return True
+
+        except Exception as e:
+            logging.error(f"Error monitoring TP fills: {e}")
+            return False
+
     def _move_sl_to_breakeven(self, symbol: str, tracking_info: Dict) -> bool:
         """Move stop loss to entry price (break-even)"""
         try:
             if not self.exchange_client:
                 return False
 
+            # IDEMPOTENCY GUARD: Prevent duplicate break-even triggers
+            if tracking_info.get("breakeven_done") or tracking_info.get("breakeven_in_progress"):
+                logging.info(f"Break-even already processed or in progress for {symbol}")
+                return True
+            
+            # Set in-progress flag to prevent reentrancy
+            tracking_info["breakeven_in_progress"] = True
+
             original_sl_id = tracking_info.get("original_sl_id")
             entry_price = tracking_info.get("entry_price")
 
             if not original_sl_id or not entry_price:
+                tracking_info["breakeven_in_progress"] = False  # Clear flag on error
                 logging.warning(
                     f"Missing SL ID or entry price for break-even: {symbol}"
                 )
@@ -3215,23 +3279,8 @@ class HyperliquidClient:
 
             hyperliquid_symbol = self._convert_symbol(symbol)
 
-            # Cancel the original stop loss order
-            try:
-                cancel_result = self.exchange_client.cancel(
-                    name=hyperliquid_symbol, oid=int(original_sl_id)
-                )
-
-                if cancel_result and cancel_result.get("status") == "ok":
-                    logging.info(
-                        f"Original SL order {original_sl_id} cancelled for break-even"
-                    )
-                else:
-                    logging.warning(f"Failed to cancel original SL: {cancel_result}")
-
-            except Exception as e:
-                logging.error(f"Error cancelling original SL: {e}")
-
-            # Place new break-even stop loss at entry price
+            # CRITICAL FIX: Place new SL BEFORE canceling old one to avoid unprotected position
+            # Place new break-even stop loss at entry price first
             try:
                 # Determine remaining position size (subtract filled TP amounts)
                 remaining_amount = self._calculate_remaining_position_size(
@@ -3266,9 +3315,41 @@ class HyperliquidClient:
                         .get("oid")
                     )
 
-                    # Update tracking info
+                    # NOW safely cancel the original SL (position is protected by new SL)
+                    # CRITICAL: Must cancel original SL before updating tracking_info
+                    cancel_success = False
+                    try:
+                        cancel_result = self.exchange_client.cancel(
+                            name=hyperliquid_symbol, oid=int(original_sl_id)
+                        )
+                        if cancel_result and cancel_result.get("status") == "ok":
+                            cancel_success = True
+                            logging.info(f"✅ Original SL {original_sl_id} cancelled after placing new break-even SL")
+                        else:
+                            logging.error(f"❌ CRITICAL: Failed to cancel original SL {original_sl_id}: {cancel_result}")
+                            logging.error(f"❌ RISK: Two SLs may now be active for {symbol}")
+                    except Exception as e:
+                        logging.error(f"❌ CRITICAL: Error cancelling original SL {original_sl_id}: {e}")
+                        logging.error(f"❌ RISK: Two SLs may now be active for {symbol}")
+
+                    # INVARIANT LOGGING: Log complete sequence for verification
+                    logging.info(f"🔍 INVARIANT LOG - Original SL ID: {original_sl_id}, New SL ID: {new_sl_id}, Cancel Success: {cancel_success}")
+                    
+                    # Update tracking info ONLY after confirming original SL cancellation
                     tracking_info["breakeven_triggered"] = True
-                    tracking_info["original_sl_id"] = new_sl_id
+                    tracking_info["breakeven_in_progress"] = False  # Clear in-progress flag
+                    
+                    if cancel_success:
+                        tracking_info["original_sl_id"] = new_sl_id
+                        tracking_info["breakeven_done"] = True
+                        logging.info(f"🔍 INVARIANT LOG - Final tracking SL ID: {new_sl_id} (dual-SL risk eliminated)")
+                    else:
+                        # Keep both SL IDs for manual intervention
+                        tracking_info["original_sl_id"] = original_sl_id  # Keep original
+                        tracking_info["new_sl_id"] = new_sl_id  # Add new for tracking
+                        tracking_info["needs_manual_sl_cleanup"] = True  # Flag for manual intervention
+                        logging.error(f"❌ MANUAL INTERVENTION REQUIRED: Both SL IDs stored for {symbol}")
+                        logging.error(f"🔍 INVARIANT LOG - Dual SL state: Original={original_sl_id}, New={new_sl_id}")
 
                     logging.info(
                         f"✅ BREAK-EVEN ACTIVATED: SL moved to entry price {entry_price} for {symbol} (remaining: {remaining_amount})"
@@ -3298,7 +3379,9 @@ class HyperliquidClient:
             positions = self.get_positions()
 
             for pos in positions:
-                if pos.get("symbol") == symbol:
+                # Use consistent symbol comparison (convert both to same format)
+                pos_symbol = self._convert_symbol_back(pos.get("symbol", ""))
+                if pos_symbol == symbol:
                     return abs(float(pos.get("size", 0)))
 
             # Fallback: calculate based on original amount minus filled TPs
@@ -3310,7 +3393,7 @@ class HyperliquidClient:
                     original_amount = float(order.get("amount", 0))
                 elif (
                     order.get("type") == "take_profit"
-                    and order.get("status") == "filled"
+                    and order.get("filled") is True  # Use consistent fill tracking
                 ):
                     filled_tp_amount += float(order.get("amount", 0))
 
