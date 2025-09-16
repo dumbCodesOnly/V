@@ -6044,8 +6044,34 @@
             const indicator = document.getElementById('smc-indicator');
             const lastUpdate = document.getElementById('smc-last-update');
             
-            try {
-                // Update status to connecting
+            // Try to load cached signals first
+            const cachedSignals = loadCachedSmcSignals();
+            if (cachedSignals && cachedSignals.data && cachedSignals.data.length > 0) {
+                // Show cached signals immediately
+                smcSignalsData = cachedSignals.data;
+                updateSmcSummary();
+                renderSmcSignals();
+                
+                // Show cached indicator
+                if (indicator) {
+                    indicator.className = 'live-indicator-dot warning';
+                }
+                if (lastUpdate) {
+                    const cacheTime = new Date(cachedSignals.timestamp);
+                    lastUpdate.textContent = `📋 Cached: ${cacheTime.toLocaleTimeString()}`;
+                }
+                
+                // Add a small loading indicator for background refresh
+                const loadingBadge = document.createElement('div');
+                loadingBadge.id = 'background-loading';
+                loadingBadge.className = 'badge bg-primary ms-2';
+                loadingBadge.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Refreshing...';
+                loadingBadge.style.fontSize = '10px';
+                if (lastUpdate && !document.getElementById('background-loading')) {
+                    lastUpdate.appendChild(loadingBadge);
+                }
+            } else {
+                // No cache, show loading state
                 if (indicator) {
                     indicator.className = 'live-indicator-dot slow';
                 }
@@ -6056,16 +6082,24 @@
                         Analyzing Smart Money Concepts...
                     </div>
                 `;
-
+            }
+            
+            try {
+                // Always fetch fresh data in background
                 const response = await fetch('/api/smc-signals');
                 const data = await response.json();
 
                 if (data.signals) {
-                    smcSignalsData = Object.entries(data.signals).map(([symbol, signal]) => ({
+                    const newSignalsData = Object.entries(data.signals).map(([symbol, signal]) => ({
                         symbol,
                         ...signal
                     }));
                     
+                    // Cache the new signals
+                    cacheSmcSignals(newSignalsData);
+                    
+                    // Update display with fresh data
+                    smcSignalsData = newSignalsData;
                     updateSmcSummary();
                     renderSmcSignals();
                     
@@ -6075,24 +6109,83 @@
                     }
                     if (lastUpdate) {
                         lastUpdate.textContent = new Date().toLocaleTimeString();
+                        // Remove background loading indicator
+                        const loadingBadge = document.getElementById('background-loading');
+                        if (loadingBadge) {
+                            loadingBadge.remove();
+                        }
                     }
                 } else {
                     throw new Error('Invalid response format');
                 }
             } catch (error) {
                 console.error('Error loading SMC signals:', error);
-                container.innerHTML = `
-                    <div class="smc-no-signals">
-                        <div class="smc-no-signals-icon">⚠️</div>
-                        <div class="smc-no-signals-text">Error Loading Signals</div>
-                        <div class="smc-no-signals-subtitle">Please try refreshing or check your connection</div>
-                    </div>
-                `;
+                
+                // Only show error if we don't have cached data
+                if (!cachedSignals || !cachedSignals.data || cachedSignals.data.length === 0) {
+                    container.innerHTML = `
+                        <div class="smc-no-signals">
+                            <div class="smc-no-signals-icon">⚠️</div>
+                            <div class="smc-no-signals-text">Error Loading Signals</div>
+                            <div class="smc-no-signals-subtitle">Please try refreshing or check your connection</div>
+                        </div>
+                    `;
+                }
                 
                 // Update status to error
                 if (indicator) {
                     indicator.className = 'live-indicator-dot error';
                 }
+                if (lastUpdate) {
+                    const loadingBadge = document.getElementById('background-loading');
+                    if (loadingBadge) {
+                        loadingBadge.textContent = 'Failed to refresh';
+                        loadingBadge.className = 'badge bg-danger ms-2';
+                        loadingBadge.style.fontSize = '10px';
+                    }
+                }
+            }
+        }
+
+        // Cache management functions for SMC signals
+        function cacheSmcSignals(signalsData) {
+            try {
+                const cacheData = {
+                    data: signalsData,
+                    timestamp: new Date().toISOString(),
+                    userId: getUserId() || 'default'
+                };
+                localStorage.setItem('smcSignalsCache', JSON.stringify(cacheData));
+            } catch (error) {
+                console.warn('Failed to cache SMC signals:', error);
+            }
+        }
+
+        function loadCachedSmcSignals() {
+            try {
+                const cached = localStorage.getItem('smcSignalsCache');
+                if (!cached) return null;
+                
+                const cacheData = JSON.parse(cached);
+                const cacheAge = Date.now() - new Date(cacheData.timestamp).getTime();
+                const maxCacheAge = 30 * 60 * 1000; // 30 minutes
+                
+                // Check if cache is too old
+                if (cacheAge > maxCacheAge) {
+                    localStorage.removeItem('smcSignalsCache');
+                    return null;
+                }
+                
+                // Check if cache is for current user
+                const currentUserId = getUserId() || 'default';
+                if (cacheData.userId !== currentUserId) {
+                    return null;
+                }
+                
+                return cacheData;
+            } catch (error) {
+                console.warn('Failed to load cached SMC signals:', error);
+                return null;
             }
         }
 
