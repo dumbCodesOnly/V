@@ -3906,8 +3906,8 @@
                     document.getElementById('margin-ratio').textContent = `${summary.margin_utilization?.toFixed(1) || '0'}%`;
                 }
             } else {
-                // Paper trading mode - show paper balance
-                const paperBalance = paperTradingStatus?.paper_balance || 10000; // Default to $10,000
+                // Paper trading mode - show paper balance (using config default)
+                const paperBalance = paperTradingStatus?.paper_balance || window.appConfig?.defaultTrialBalance || 10000;
                 
                 document.getElementById('account-balance').textContent = `$${paperBalance.toFixed(2)}`;
                 document.getElementById('margin-used').textContent = `$${summary.total_margin_used?.toFixed(2) || '0.00'}`;

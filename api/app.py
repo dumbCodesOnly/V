@@ -10351,8 +10351,15 @@ if __name__ == "__main__":
 # ============================================================================
 
 # Admin configuration from environment variables
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+# Security check for admin credentials
+if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    logging.error("SECURITY WARNING: ADMIN_USERNAME and ADMIN_PASSWORD environment variables must be set!")
+    logging.error("Using temporary defaults for development only - THIS IS NOT SECURE!")
+    ADMIN_USERNAME = ADMIN_USERNAME or "admin"
+    ADMIN_PASSWORD = ADMIN_PASSWORD or "temp_dev_password_123"
 
 def admin_login_required(f):
     """
