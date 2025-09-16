@@ -6742,17 +6742,15 @@ def reset_paper_balance():
 def request_access():
     """Allow users to request access to the bot"""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "message": "No data provided"}), 400
+        # Get authenticated user ID from Telegram WebApp authentication
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({"success": False, "message": "Authentication required. Please access this app through Telegram."}), 401
         
-        user_id = data.get("user_id")
+        data = request.get_json() or {}
         username = data.get("username", "")
         first_name = data.get("first_name", "")
         last_name = data.get("last_name", "")
-        
-        if not user_id:
-            return jsonify({"success": False, "message": "User ID is required"}), 400
         
         # Register user for whitelist
         result = register_user_for_whitelist(user_id, username, first_name, last_name)
