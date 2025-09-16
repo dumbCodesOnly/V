@@ -10330,3 +10330,233 @@ if __name__ == "__main__":
     # Bot functionality is available via webhooks, no separate execution needed
     print("Note: This API module is part of the main web application.")
     print("Use 'python main.py' or the main workflow to start the application.")
+
+# ============================================================================
+# ADMIN AUTHENTICATION SYSTEM  
+# ============================================================================
+
+# Admin configuration from environment variables
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "password")
+
+def admin_login_required(f):
+    """
+    Decorator for routes that require admin authentication.
+    """
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("admin_authenticated"):
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def verify_admin_credentials(username: str, password: str) -> bool:
+    """Verify admin credentials against environment variables."""
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+def establish_admin_session():
+    """Establish admin session."""
+    session.permanent = True
+    session["admin_authenticated"] = True
+    session["admin_username"] = ADMIN_USERNAME
+    session["admin_login_time"] = int(time.time())
+
+def clear_admin_session():
+    """Clear admin session."""
+    session.pop("admin_authenticated", None)
+    session.pop("admin_username", None)
+    session.pop("admin_login_time", None)
+
+# ============================================================================
+# ADMIN ROUTES
+# ============================================================================
+
+@app.route("/admin")
+@admin_login_required
+def admin_dashboard():
+    """Admin dashboard for whitelist management"""
+    return render_template("admin.html")
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    """Admin login page"""
+    if session.get("admin_authenticated"):
+        return redirect(url_for("admin_dashboard"))
+    
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        
+        if verify_admin_credentials(username, password):
+            establish_admin_session()
+            logging.info(f"Admin login successful for user: {username}")
+            return redirect(url_for("admin_dashboard"))
+        else:
+            logging.warning(f"Failed admin login attempt for user: {username}")
+            return render_template("admin_login.html", error="Invalid credentials")
+    
+    return render_template("admin_login.html")
+
+@app.route("/admin/logout")
+def admin_logout():
+    """Admin logout"""
+    clear_admin_session()
+    logging.info("Admin logged out")
+    return redirect(url_for("admin_login"))
+
+# ============================================================================
+# ADMIN API ENDPOINTS
+# ============================================================================
+
+@app.route("/api/admin/whitelist/stats")
+@admin_login_required
+def admin_whitelist_stats():
+    """Get whitelist statistics"""
+    try:
+        # Get counts by status
+        pending_count = UserWhitelist.query.filter_by(status="pending").count()
+        approved_count = UserWhitelist.query.filter_by(status="approved").count()
+        rejected_count = UserWhitelist.query.filter_by(status="rejected").count()
+        banned_count = UserWhitelist.query.filter_by(status="banned").count()
+        total_count = UserWhitelist.query.count()
+        
+        return jsonify({
+            "success": True,
+            "stats": {
+                "pending": pending_count,
+                "approved": approved_count,
+                "rejected": rejected_count,
+                "banned": banned_count,
+                "total": total_count
+            },
+            "timestamp": get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error getting whitelist stats: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/whitelist/users")
+@admin_login_required  
+def admin_whitelist_users():
+    """Get all whitelist users"""
+    try:
+        users = UserWhitelist.query.order_by(UserWhitelist.requested_at.desc()).all()
+        
+        users_data = []
+        for user in users:
+            users_data.append({
+                "id": user.id,
+                "telegram_user_id": user.telegram_user_id,
+                "telegram_username": user.telegram_username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "status": user.status,
+                "reviewed_by": user.reviewed_by,
+                "review_notes": user.review_notes,
+                "requested_at": format_iran_time(user.requested_at) if user.requested_at else None,
+                "reviewed_at": format_iran_time(user.reviewed_at) if user.reviewed_at else None,
+                "last_access": format_iran_time(user.last_access) if user.last_access else None,
+                "access_count": user.access_count or 0
+            })
+        
+        return jsonify({
+            "success": True,
+            "users": users_data,
+            "timestamp": get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error getting whitelist users: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/whitelist/approve", methods=["POST"])
+@admin_login_required
+def admin_approve_user():
+    """Approve a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get("user_id")
+        notes = data.get("notes", "")
+        
+        user = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Approve user
+        admin_username = session.get("admin_username", "admin")
+        user.approve(admin_username, notes)
+        db.session.commit()
+        
+        logging.info(f"User {user_id} approved by admin {admin_username}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {user_id} approved successfully",
+            "timestamp": get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error approving user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/whitelist/reject", methods=["POST"])
+@admin_login_required
+def admin_reject_user():
+    """Reject a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get("user_id")
+        notes = data.get("notes", "")
+        
+        user = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Reject user
+        admin_username = session.get("admin_username", "admin")
+        user.reject(admin_username, notes)
+        db.session.commit()
+        
+        logging.info(f"User {user_id} rejected by admin {admin_username}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {user_id} rejected successfully",
+            "timestamp": get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error rejecting user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/admin/whitelist/ban", methods=["POST"])
+@admin_login_required
+def admin_ban_user():
+    """Ban a user"""
+    try:
+        data = request.get_json()
+        user_id = data.get("user_id")
+        notes = data.get("notes", "")
+        
+        user = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Ban user
+        admin_username = session.get("admin_username", "admin")
+        user.ban(admin_username, notes)
+        db.session.commit()
+        
+        logging.info(f"User {user_id} banned by admin {admin_username}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"User {user_id} banned successfully",
+            "timestamp": get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error banning user: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
