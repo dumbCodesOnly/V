@@ -3910,15 +3910,28 @@ def get_multiple_smc_signals():
 
 @app.route("/api/smc-auto-trade", methods=["POST"])
 def create_auto_trade_from_smc():
-    """Create a trade configuration automatically based on SMC analysis"""
+    """Create a trade configuration automatically based on SMC analysis
+    
+    Parameters:
+    - symbol: Trading symbol (required)
+    - user_id: User ID (required)  
+    - margin_amount: Margin amount for the trade (default: 100)
+    - entry_type: Order type preference - 'market' or 'limit' (optional)
+                 If not provided, automatically determined based on price difference
+    """
     try:
         data = request.get_json()
         symbol = data.get("symbol", "").upper()
         user_id = data.get("user_id")
         margin_amount = float(data.get("margin_amount", 100))
+        user_entry_type = data.get("entry_type")  # Optional user preference for order type
 
         if not symbol or not user_id:
             return jsonify({"error": "Symbol and user_id required"}), 400
+        
+        # Validate entry_type if provided
+        if user_entry_type and user_entry_type.lower() not in ["market", "limit"]:
+            return jsonify({"error": f"Invalid entry_type '{user_entry_type}'. Must be 'market' or 'limit'"}), 400
 
         from .smc_analyzer import SMCAnalyzer
 
@@ -3984,16 +3997,24 @@ def create_auto_trade_from_smc():
         trade_config.leverage = 5  # Conservative leverage for auto-trades
         trade_config.entry_price = signal.entry_price
         
-        # SMC order type logic - Use market orders for immediate execution or limit orders for better price
-        if price_diff_percent > 0.5:  # Price difference threshold for limit vs market order
-            # Significant price difference - use limit order to wait for better price
-            trade_config.entry_type = "limit"
-            logging.info(f"SMC {signal.direction.upper()} LIMIT order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+        # SMC order type logic - Respect user preference or auto-determine based on price difference
+        if user_entry_type and user_entry_type.lower() in ["market", "limit"]:
+            # Use user-specified order type
+            trade_config.entry_type = user_entry_type.lower()
+            if trade_config.entry_type == "market":
+                trade_config.entry_price = current_price_float  # Use current price for market execution
+            logging.info(f"SMC {signal.direction.upper()} {trade_config.entry_type.upper()} order (user specified): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
         else:
-            # Entry price close to current price - use market for immediate execution
-            trade_config.entry_type = "market"
-            trade_config.entry_price = current_price_float  # Use current price for market execution
-            logging.info(f"SMC {signal.direction.upper()} MARKET order: entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            # Auto-determine order type based on price difference (legacy behavior)
+            if price_diff_percent > 0.5:  # Price difference threshold for limit vs market order
+                # Significant price difference - use limit order to wait for better price
+                trade_config.entry_type = "limit"
+                logging.info(f"SMC {signal.direction.upper()} LIMIT order (auto): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
+            else:
+                # Entry price close to current price - use market for immediate execution
+                trade_config.entry_type = "market"
+                trade_config.entry_price = current_price_float  # Use current price for market execution
+                logging.info(f"SMC {signal.direction.upper()} MARKET order (auto): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
 
         # FIXED: Calculate stop loss percentage on margin for system compatibility
         # The monitoring system expects margin-based percentages for trigger comparison
