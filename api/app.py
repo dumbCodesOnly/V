@@ -4435,6 +4435,23 @@ def _validate_and_get_user_id():
     except ValueError:
         return None, jsonify({"error": "Invalid user ID format"}), 400
 
+def _validate_authenticated_user():
+    """Validate user is authenticated and whitelisted for API access."""
+    # Get authenticated user from session or Telegram WebApp data
+    user_id = get_authenticated_user()
+    if not user_id:
+        return None, jsonify({"error": "Authentication required"}), 401
+    
+    # Check whitelist if enabled
+    if WHITELIST_ENABLED and not is_user_whitelisted(user_id):
+        return None, jsonify({"error": "Access not authorized"}), 403
+    
+    try:
+        chat_id = int(user_id)
+        return chat_id, None
+    except ValueError:
+        return None, jsonify({"error": "Invalid user ID format"}), 400
+
 
 def _handle_environment_sync(user_id, chat_id):
     """Handle environment-specific synchronization."""
@@ -4553,8 +4570,8 @@ def _calculate_total_realized_pnl(chat_id):
 @app.route("/api/positions/live-update")
 def live_position_update():
     """Get only current prices and P&L for active positions (lightweight update)"""
-    # Validate and get user ID
-    chat_id, error_response = _validate_and_get_user_id()
+    # Validate authentication and whitelist
+    chat_id, error_response = _validate_authenticated_user()
     if error_response:
         return error_response
 
@@ -10384,6 +10401,12 @@ def admin_login():
         return redirect(url_for("admin_dashboard"))
     
     if request.method == "POST":
+        # Verify CSRF token
+        csrf_token = request.form.get("csrf_token")
+        if not csrf_token or not verify_csrf_token(csrf_token):
+            logging.warning("Admin login attempt with invalid CSRF token")
+            return render_template("admin_login.html", error="Invalid security token. Please try again.", csrf_token=generate_csrf_token())
+        
         username = request.form.get("username")
         password = request.form.get("password")
         
@@ -10393,9 +10416,9 @@ def admin_login():
             return redirect(url_for("admin_dashboard"))
         else:
             logging.warning(f"Failed admin login attempt for user: {username}")
-            return render_template("admin_login.html", error="Invalid credentials")
+            return render_template("admin_login.html", error="Invalid credentials", csrf_token=generate_csrf_token())
     
-    return render_template("admin_login.html")
+    return render_template("admin_login.html", csrf_token=generate_csrf_token())
 
 @app.route("/admin/logout")
 def admin_logout():
