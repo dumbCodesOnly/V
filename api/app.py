@@ -2394,7 +2394,7 @@ def _monitor_memory_paper_positions():
             if (
                 hasattr(config, "paper_trading_mode")
                 and config.paper_trading_mode
-                and config.status == "active"
+                and config.status in ["active", "pending"]  # Monitor both active and pending limit orders
             ):
 
                 try:
@@ -2404,8 +2404,18 @@ def _monitor_memory_paper_positions():
                         )
                         if current_price:
                             config.current_price = current_price
-                            process_paper_trading_position(user_id, trade_id, config)
-                            processed += 1
+                            
+                            # For pending limit orders, check if they should be executed
+                            if config.status == "pending" and config.entry_type == "limit":
+                                limit_executed = _process_pending_limit_orders(user_id, trade_id, config)
+                                if limit_executed:
+                                    processed += 1
+                            
+                            # For active positions, process TP/SL monitoring
+                            if config.status == "active":
+                                process_paper_trading_position(user_id, trade_id, config)
+                                processed += 1
+                            
                 except Exception as e:
                     logging.warning(
                         f"Paper position processing failed for {config.symbol}: {e}"
@@ -5226,13 +5236,65 @@ def _handle_paper_trading_execution(config, chat_id):
 
     # Mark as paper trading and initialize monitoring
     config.paper_trading_mode = True
+    
     if config.entry_type == "market":
+        # Market orders are immediately active - initialize full monitoring
         initialize_paper_trading_monitoring(config)
-    logging.info(
-        f"Paper Trading: Position opened for {config.symbol} {config.side} - Real-time monitoring enabled"
-    )
+        logging.info(
+            f"Paper Trading: Market position opened for {config.symbol} {config.side} - Real-time monitoring enabled"
+        )
+    else:
+        # Limit orders need special monitoring to check when limit price is hit
+        _initialize_limit_order_monitoring(config, chat_id)
+        logging.info(
+            f"Paper Trading: Limit order placed for {config.symbol} {config.side} at ${config.entry_price:.4f} - Monitoring until filled"
+        )
 
     return True
+
+
+def _initialize_limit_order_monitoring(config, user_id):
+    """Initialize monitoring for paper trading limit orders."""
+    # Explicitly set status to pending for limit orders
+    config.status = "pending"
+    
+    # Set up paper trading attributes
+    config.paper_trading_mode = True
+    
+    # Ensure the position has the required attributes for monitoring
+    if not hasattr(config, 'current_price'):
+        config.current_price = 0.0
+    
+    # Set up TP/SL data structure for when the limit order gets filled
+    if config.take_profits:
+        tp_sl_data = calculate_tp_sl_prices_and_amounts(config)
+        config.paper_tp_levels = []
+        
+        if tp_sl_data.get("take_profits"):
+            for i, tp_data in enumerate(tp_sl_data["take_profits"]):
+                config.paper_tp_levels.append({
+                    "order_id": f"paper_tp_{i+1}_{uuid.uuid4().hex[:6]}",
+                    "level": i + 1,
+                    "price": tp_data["price"],
+                    "percentage": tp_data["percentage"],
+                    "allocation": tp_data["allocation"],
+                    "triggered": False,
+                })
+        
+        if config.stop_loss_percent > 0 and tp_sl_data.get("stop_loss"):
+            config.paper_sl_data = {
+                "order_id": f"paper_sl_{uuid.uuid4().hex[:6]}",
+                "price": tp_sl_data["stop_loss"]["price"],
+                "percentage": config.stop_loss_percent,
+                "triggered": False,
+            }
+    
+    # Persist the pending status to database
+    save_trade_to_db(user_id, config)
+    
+    logging.info(
+        f"Paper Trading: Limit order monitoring initialized for {config.symbol} {config.side} at ${config.entry_price:.4f} - Status: {config.status}"
+    )
 
 
 def _configure_trade_position(config, current_market_price):
