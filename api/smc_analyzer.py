@@ -1155,8 +1155,9 @@ class SMCAnalyzer:
             rsi = self.calculate_rsi(h1_data)
             mas = self.calculate_moving_averages(h1_data)
 
-            # Generate signal analysis
-            reasoning = []
+            # Generate signal analysis with separate reasoning lists
+            bullish_reasoning = []
+            bearish_reasoning = []
 
             # Analyze bullish and bearish signals
             bullish_signals = self._analyze_bullish_signals(
@@ -1167,7 +1168,7 @@ class SMCAnalyzer:
                 current_price,
                 rsi,
                 mas,
-                reasoning,
+                bullish_reasoning,
             )
 
             bearish_signals = self._analyze_bearish_signals(
@@ -1178,7 +1179,7 @@ class SMCAnalyzer:
                 current_price,
                 rsi,
                 mas,
-                reasoning,
+                bearish_reasoning,
             )
 
             # Determine direction and calculate trade levels
@@ -1194,6 +1195,15 @@ class SMCAnalyzer:
                     entry_price, stop_loss, take_profits, confidence
                 )
 
+                # Use reasoning that matches the final signal direction with defensive check
+                if direction == "long":
+                    final_reasoning = bullish_reasoning
+                elif direction == "short":
+                    final_reasoning = bearish_reasoning
+                else:
+                    # Fallback: use the reasoning from the stronger signal side
+                    final_reasoning = bullish_reasoning if bullish_signals > bearish_signals else bearish_reasoning
+
                 return SMCSignal(
                     symbol=symbol,
                     direction=direction,
@@ -1201,7 +1211,7 @@ class SMCAnalyzer:
                     stop_loss=stop_loss,
                     take_profit_levels=take_profits,
                     confidence=confidence,
-                    reasoning=reasoning,
+                    reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.now(),
