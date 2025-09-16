@@ -10403,7 +10403,7 @@ def admin_login():
     if request.method == "POST":
         # Verify CSRF token
         csrf_token = request.form.get("csrf_token")
-        if not csrf_token or not verify_csrf_token(csrf_token):
+        if not csrf_token or not validate_csrf_token(csrf_token):
             logging.warning("Admin login attempt with invalid CSRF token")
             return render_template("admin_login.html", error="Invalid security token. Please try again.", csrf_token=generate_csrf_token())
         
