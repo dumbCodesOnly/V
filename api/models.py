@@ -419,7 +419,9 @@ class SMCSignalCache(db.Model):
 
     def is_expired(self):
         """Check if the signal has expired"""
-        return datetime.utcnow() > self.expires_at
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at
+        return now > expires
 
     def is_price_still_valid(self, current_price, tolerance_percent=2.0):
         """Check if current price is still within tolerance of signal price"""
@@ -467,7 +469,7 @@ class SMCSignalCache(db.Model):
         """Create database model from SMCSignal object"""
         import json
 
-        expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=cache_duration_minutes)
 
         return cls(
             symbol=signal.symbol,
@@ -485,10 +487,12 @@ class SMCSignalCache(db.Model):
 
     @classmethod
     def get_valid_signal(cls, symbol, current_price=None):
-        """Get a valid cached signal for symbol, considering expiration"""
+        """Get a valid cached signal for symbol, considering expiration and price tolerance"""
+        now = datetime.now(timezone.utc)
+        
         # Get most recent non-expired signal
         signal = (
-            cls.query.filter(cls.symbol == symbol, cls.expires_at > datetime.utcnow())
+            cls.query.filter(cls.symbol == symbol, cls.expires_at > now)
             .order_by(cls.created_at.desc())
             .first()
         )
@@ -497,16 +501,18 @@ class SMCSignalCache(db.Model):
             return None
 
         # Check if price is still within tolerance if current_price provided
-        if current_price and not signal.is_price_still_valid(current_price):
-            # Price moved too much, signal is no longer valid
-            return None
+        if current_price is not None:
+            if not signal.is_price_still_valid(current_price, tolerance_percent=5.0):
+                # Price moved too much, invalidate and return None to force regeneration
+                logging.info(f"Signal for {symbol} invalidated due to price change beyond 5% tolerance")
+                return None
 
         return signal
 
     @classmethod
     def cleanup_expired(cls):
         """Remove expired signals from cache"""
-        expired_count = cls.query.filter(cls.expires_at <= datetime.utcnow()).delete()
+        expired_count = cls.query.filter(cls.expires_at <= datetime.now(timezone.utc)).delete()
         db.session.commit()
         return expired_count
 

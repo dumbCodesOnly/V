@@ -6,7 +6,7 @@ Analyzes market structure and provides trade suggestions based on institutional 
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -167,7 +167,7 @@ class SMCAnalyzer:
         candlesticks = []
         for kline in klines:
             candlestick = {
-                "timestamp": datetime.fromtimestamp(kline[0] / 1000),
+                "timestamp": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
                 "open": float(kline[1]),
                 "high": float(kline[2]),
                 "low": float(kline[3]),
