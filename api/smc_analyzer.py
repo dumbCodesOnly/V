@@ -1189,8 +1189,8 @@ class SMCAnalyzer:
                 )
             )
 
-            # Only generate signal if confidence is above threshold
-            if direction and confidence >= 0.6:
+            # Only generate signal if confidence is above threshold (lowered for better signal generation)
+            if direction and confidence >= 0.4:
                 rr_ratio, signal_strength = self._calculate_trade_metrics(
                     entry_price, stop_loss, take_profits, confidence
                 )
@@ -1214,7 +1214,7 @@ class SMCAnalyzer:
                     reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(timezone.utc),
                 )
 
             return None
@@ -2111,7 +2111,7 @@ class SMCAnalyzer:
                     reasoning=reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(timezone.utc),
                 )
 
             return None
