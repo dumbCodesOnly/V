@@ -419,11 +419,11 @@ class SMCSignalCache(db.Model):
 
     def is_expired(self):
         """Check if the signal has expired"""
-        now = datetime.now(timezone.utc)
-        expires = self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at
-        return now > expires
+        # Use naive UTC datetime for consistency with database storage
+        now = datetime.utcnow()
+        return now > self.expires_at
 
-    def is_price_still_valid(self, current_price, tolerance_percent=2.0):
+    def is_price_still_valid(self, current_price, tolerance_percent=5.0):
         """Check if current price is still within tolerance of signal price"""
         price_change = (
             abs(current_price - self.market_price_at_signal)
@@ -431,6 +431,30 @@ class SMCSignalCache(db.Model):
             * 100
         )
         return price_change <= tolerance_percent
+    
+    def get_age_in_minutes(self):
+        """Get the age of the signal in minutes"""
+        # Use naive UTC datetime for consistency
+        now = datetime.utcnow()
+        # Assume created_at is already naive UTC (as stored in DB)
+        return (now - self.created_at).total_seconds() / 60
+    
+    def get_adjusted_confidence(self, current_price=None):
+        """Get confidence adjusted for signal age and price movement"""
+        base_confidence = self.confidence
+        
+        # Age-based degradation: reduce confidence over time
+        age_minutes = self.get_age_in_minutes()
+        age_factor = max(0.5, 1.0 - (age_minutes / 30.0))  # Degrade over 30 minutes
+        
+        # Price movement penalty
+        price_factor = 1.0
+        if current_price is not None:
+            price_change = abs(current_price - self.market_price_at_signal) / self.market_price_at_signal * 100
+            if price_change > 2.0:  # If price moved more than 2%
+                price_factor = max(0.3, 1.0 - (price_change - 2.0) / 10.0)  # Reduce confidence
+        
+        return base_confidence * age_factor * price_factor
 
     def to_smc_signal(self):
         """Convert database model to SMCSignal object"""
@@ -465,11 +489,26 @@ class SMCSignalCache(db.Model):
         )
 
     @classmethod
-    def from_smc_signal(cls, signal, cache_duration_minutes=15):
-        """Create database model from SMCSignal object"""
+    def from_smc_signal(cls, signal, cache_duration_minutes=None):
+        """Create database model from SMCSignal object with dynamic cache duration"""
         import json
+        
+        # Dynamic cache duration based on signal strength and market conditions
+        if cache_duration_minutes is None:
+            # Use enum name comparison for robustness
+            strength_name = signal.signal_strength.name if hasattr(signal.signal_strength, 'name') else str(signal.signal_strength)
+            
+            if strength_name == "VERY_STRONG":
+                cache_duration_minutes = 20  # Longer for very strong signals
+            elif strength_name == "STRONG":
+                cache_duration_minutes = 15  # Standard duration
+            elif strength_name == "MODERATE":
+                cache_duration_minutes = 10  # Shorter for moderate signals
+            else:  # WEAK or unknown
+                cache_duration_minutes = 5   # Very short for weak signals
 
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=cache_duration_minutes)
+        # Use naive UTC datetime for consistent database storage
+        expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
 
         return cls(
             symbol=signal.symbol,
@@ -479,16 +518,17 @@ class SMCSignalCache(db.Model):
             take_profit_levels=json.dumps(signal.take_profit_levels),
             confidence=signal.confidence,
             reasoning=json.dumps(signal.reasoning),
-            signal_strength=signal.signal_strength.value,
+            signal_strength=signal.signal_strength.name,  # Store enum name for consistency
             risk_reward_ratio=signal.risk_reward_ratio,
             expires_at=expires_at,
             market_price_at_signal=signal.entry_price,
         )
 
     @classmethod
-    def get_valid_signal(cls, symbol, current_price=None):
-        """Get a valid cached signal for symbol, considering expiration and price tolerance"""
-        now = datetime.now(timezone.utc)
+    def get_valid_signal(cls, symbol, current_price=None, min_confidence=0.3):
+        """Get a valid cached signal for symbol with enhanced validation"""
+        # Use naive UTC datetime for consistent database comparison
+        now = datetime.utcnow()
         
         # Get most recent non-expired signal
         signal = (
@@ -500,19 +540,34 @@ class SMCSignalCache(db.Model):
         if not signal:
             return None
 
-        # Check if price is still within tolerance if current_price provided
+        # Enhanced validation with multiple checks
+        
+        # 1. Price tolerance check (5% default)
         if current_price is not None:
             if not signal.is_price_still_valid(current_price, tolerance_percent=5.0):
-                # Price moved too much, invalidate and return None to force regeneration
                 logging.info(f"Signal for {symbol} invalidated due to price change beyond 5% tolerance")
                 return None
+        
+        # 2. Age-adjusted confidence check
+        adjusted_confidence = signal.get_adjusted_confidence(current_price)
+        if adjusted_confidence < min_confidence:
+            logging.info(f"Signal for {symbol} invalidated due to low adjusted confidence: {adjusted_confidence:.2f}")
+            return None
+        
+        # 3. Check if signal is too old (additional safety check)
+        age_minutes = signal.get_age_in_minutes()
+        max_age_minutes = 30  # Maximum age regardless of expiration
+        if age_minutes > max_age_minutes:
+            logging.info(f"Signal for {symbol} invalidated due to age: {age_minutes:.1f} minutes")
+            return None
 
         return signal
 
     @classmethod
     def cleanup_expired(cls):
         """Remove expired signals from cache"""
-        expired_count = cls.query.filter(cls.expires_at <= datetime.now(timezone.utc)).delete()
+        # Use naive UTC datetime for consistency with database storage
+        expired_count = cls.query.filter(cls.expires_at <= datetime.utcnow()).delete()
         db.session.commit()
         return expired_count
 
