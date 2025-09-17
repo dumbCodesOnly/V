@@ -423,7 +423,7 @@ class SMCSignalCache(db.Model):
         now = datetime.utcnow()
         return now > self.expires_at
 
-    def is_price_still_valid(self, current_price, tolerance_percent=5.0):
+    def is_price_still_valid(self, current_price, tolerance_percent=2.0):
         """Check if current price is still within tolerance of signal price"""
         price_change = (
             abs(current_price - self.market_price_at_signal)
@@ -542,10 +542,10 @@ class SMCSignalCache(db.Model):
 
         # Enhanced validation with multiple checks
         
-        # 1. Price tolerance check (5% default)
+        # 1. Price tolerance check (2% default)
         if current_price is not None:
-            if not signal.is_price_still_valid(current_price, tolerance_percent=5.0):
-                logging.info(f"Signal for {symbol} invalidated due to price change beyond 5% tolerance")
+            if not signal.is_price_still_valid(current_price, tolerance_percent=2.0):
+                logging.info(f"Signal for {symbol} invalidated due to price change beyond 2% tolerance")
                 return None
         
         # 2. Age-adjusted confidence check
