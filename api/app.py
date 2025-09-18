@@ -10758,12 +10758,19 @@ def admin_clear_cache():
                 cleared_caches.append('enhanced_cache')
         
         if cache_type in ['all', 'smc']:
-            # Clear SMC cache from database
+            # Clear SMC cache using proper model methods
             try:
-                from sqlalchemy import text
-                db.session.execute(text("DELETE FROM smc_signal_cache WHERE created_at < NOW() - INTERVAL '1 hour'"))
-                db.session.commit()
-                cleared_caches.append('smc_signals')
+                from .models import SMCSignalCache
+                # Clear expired entries first
+                expired_count = SMCSignalCache.cleanup_expired()
+                # Clear remaining entries if requested
+                total_count = db.session.query(SMCSignalCache).count()
+                if total_count > 0:
+                    db.session.query(SMCSignalCache).delete()
+                    db.session.commit()
+                    cleared_caches.append(f'smc_signals ({total_count} total, {expired_count} expired)')
+                else:
+                    cleared_caches.append(f'smc_signals ({expired_count} expired, already clean)')
             except Exception as e:
                 logging.warning(f"Could not clear SMC cache: {e}")
                 db.session.rollback()
@@ -10821,9 +10828,20 @@ def admin_cleanup_worker_status():
         
         # Check for active threads
         import threading
-        active_threads = [t.name for t in threading.enumerate() if 'cache' in t.name.lower()]
+        active_threads = [t.name for t in threading.enumerate() if 'cache' in t.name.lower() or 'cleanup' in t.name.lower()]
         status['worker_thread'] = active_threads[0] if active_threads else None
         status['running'] = len(active_threads) > 0
+        
+        # Get database cache counts for better monitoring
+        try:
+            from .models import SMCSignalCache, KlinesCache
+            status['smc_signals_count'] = db.session.query(SMCSignalCache).count()
+            status['klines_cache_count'] = db.session.query(KlinesCache).count()
+            status['enabled'] = True  # If we can count DB items, worker is functional
+        except Exception as e:
+            logging.debug(f"Could not get cache counts: {e}")
+            status['smc_signals_count'] = 0
+            status['klines_cache_count'] = 0
         
         return jsonify({
             'success': True,
@@ -11037,5 +11055,50 @@ def admin_database_backup():
         
     except Exception as e:
         logging.error(f"Database backup failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/smc/clear", methods=["POST"])
+@admin_login_required
+def admin_clear_smc_signals():
+    """Clear SMC signals from database specifically"""
+    try:
+        from .models import SMCSignalCache
+        
+        admin_username = session.get("admin_username", "admin")
+        
+        # Get current counts before clearing
+        total_count_before = db.session.query(SMCSignalCache).count()
+        
+        # Clear expired entries first
+        expired_count = SMCSignalCache.cleanup_expired()
+        
+        # Get remaining count after expired cleanup
+        total_count_after_expired = db.session.query(SMCSignalCache).count()
+        
+        # Clear all remaining SMC signals
+        remaining_cleared = 0
+        if total_count_after_expired > 0:
+            remaining_cleared = total_count_after_expired
+            db.session.query(SMCSignalCache).delete()
+            db.session.commit()
+        
+        total_cleared = expired_count + remaining_cleared
+        
+        logging.info(f"SMC signals cleared by admin {admin_username}: {total_cleared} total ({expired_count} expired, {remaining_cleared} remaining)")
+        
+        return jsonify({
+            'success': True,
+            'message': f'SMC signals cleared successfully',
+            'cleared_count': total_cleared,
+            'expired_count': expired_count,
+            'remaining_count': remaining_cleared,
+            'total_before': total_count_before,
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error clearing SMC signals: {e}")
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
