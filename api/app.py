@@ -10605,21 +10605,21 @@ def admin_database_stats():
             'UserTradingSession': UserTradingSession, 
             'TradeConfiguration': TradeConfiguration,
             'UserWhitelist': UserWhitelist,
-            'SMCSignalCache': None,  # Will be handled separately
-            'KlinesCache': None      # Will be handled separately
+            'SMCSignalCache': 'smc_signal_cache',  # Direct table name
+            'KlinesCache': 'klines_cache'          # Direct table name
         }
         
-        for table_name, model in tables.items():
+        for table_name, model_or_table in tables.items():
             try:
-                if model:
-                    count = db.session.query(model).count()
+                if hasattr(model_or_table, 'query'):  # It's a model
+                    count = db.session.query(model_or_table).count()
                     stats[table_name] = {
                         'count': count,
                         'status': 'healthy'
                     }
                 else:
-                    # For tables without models, query directly
-                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table_name.lower()};"))
+                    # It's a table name string, query directly
+                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {model_or_table};"))
                     count = result.scalar()
                     stats[table_name] = {
                         'count': count,
@@ -10664,7 +10664,7 @@ def admin_database_stats():
 def admin_view_table(table_name):
     """View table contents"""
     try:
-        from sqlalchemy import text
+        from sqlalchemy import text, inspect
         
         # Security: Only allow predefined tables
         allowed_tables = {
@@ -10672,8 +10672,8 @@ def admin_view_table(table_name):
             'usertradingsession': 'user_trading_sessions', 
             'tradeconfiguration': 'trade_configurations',
             'userwhitelist': 'user_whitelist',
-            'smcsignalcache': 'smcsignalcache',
-            'klinescache': 'klinescache'
+            'smcsignalcache': 'smc_signal_cache',
+            'klinescache': 'klines_cache'
         }
         
         if table_name.lower() not in allowed_tables:
@@ -10683,8 +10683,17 @@ def admin_view_table(table_name):
         limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 records
         offset = int(request.args.get('offset', 0))
         
-        # Get table structure
+        # Check if table exists first
         inspector = inspect(db.engine)
+        existing_tables = inspector.get_table_names()
+        
+        if actual_table not in existing_tables:
+            return jsonify({
+                "error": f"Table '{actual_table}' does not exist in database",
+                "suggestion": "Use the database migration function to create missing tables"
+            }), 404
+        
+        # Get table structure
         try:
             columns = [col['name'] for col in inspector.get_columns(actual_table)]
         except Exception:
@@ -10752,21 +10761,23 @@ def admin_clear_cache():
             # Clear SMC cache from database
             try:
                 from sqlalchemy import text
-                db.session.execute(text("DELETE FROM smcsignalcache WHERE created_at < NOW() - INTERVAL '1 hour'"))
+                db.session.execute(text("DELETE FROM smc_signal_cache WHERE created_at < NOW() - INTERVAL '1 hour'"))
                 db.session.commit()
                 cleared_caches.append('smc_signals')
             except Exception as e:
                 logging.warning(f"Could not clear SMC cache: {e}")
+                db.session.rollback()
         
         if cache_type in ['all', 'klines']:
             # Clear old klines cache
             try:
                 from sqlalchemy import text
-                db.session.execute(text("DELETE FROM klinescache WHERE created_at < NOW() - INTERVAL '24 hours'"))
+                db.session.execute(text("DELETE FROM klines_cache WHERE created_at < NOW() - INTERVAL '24 hours'"))
                 db.session.commit()
                 cleared_caches.append('klines_cache')
             except Exception as e:
                 logging.warning(f"Could not clear klines cache: {e}")
+                db.session.rollback()
         
         admin_username = session.get("admin_username", "admin")
         logging.info(f"Cache cleared by admin {admin_username}: {cleared_caches}")
@@ -10911,5 +10922,120 @@ def admin_database_health():
         })
     except Exception as e:
         logging.error(f"Error getting database health: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/migrate", methods=["POST"])
+@admin_login_required
+def admin_database_migrate():
+    """Migrate/update database schema to match current models"""
+    try:
+        from sqlalchemy import text
+        
+        migration_results = []
+        admin_username = session.get("admin_username", "admin")
+        
+        # Drop and recreate all tables to match current models
+        # This is for development - in production you'd want proper migrations
+        try:
+            # Get current tables
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            migration_results.append(f"Found {len(existing_tables)} existing tables")
+            
+            # Drop all tables except alembic version table (if it exists)
+            for table_name in existing_tables:
+                if table_name != 'alembic_version':  # Preserve migration history if exists
+                    db.session.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                    migration_results.append(f"Dropped table: {table_name}")
+            
+            db.session.commit()
+            migration_results.append("All existing tables dropped successfully")
+            
+            # Recreate all tables based on current models
+            db.create_all()
+            migration_results.append("All tables recreated from current models")
+            
+            # Verify table creation
+            new_inspector = inspect(db.engine)
+            new_tables = new_inspector.get_table_names()
+            migration_results.append(f"Created {len(new_tables)} tables: {', '.join(new_tables)}")
+            
+            logging.info(f"Database migration completed by admin {admin_username}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Database schema updated successfully',
+                'results': migration_results,
+                'tables_created': new_tables,
+                'timestamp': get_iran_time().isoformat()
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            migration_results.append(f"Migration failed: {str(e)}")
+            raise e
+            
+    except Exception as e:
+        logging.error(f"Database migration failed: {e}")
+        db.session.rollback()
+        return jsonify({
+            "error": str(e),
+            "results": migration_results,
+            "suggestion": "Check logs for detailed error information"
+        }), 500
+
+
+@app.route("/api/admin/database/backup", methods=["POST"])
+@admin_login_required  
+def admin_database_backup():
+    """Create a simple data backup before migration (development only)"""
+    try:
+        from sqlalchemy import text
+        import json
+        
+        backup_data = {}
+        admin_username = session.get("admin_username", "admin")
+        
+        # Simple backup - export data as JSON for small development databases
+        tables_to_backup = ['user_credentials', 'user_whitelist', 'trade_configurations']
+        
+        for table_name in tables_to_backup:
+            try:
+                result = db.session.execute(text(f"SELECT * FROM {table_name}"))
+                rows = []
+                for row in result:
+                    # Convert row to dict, handling various data types
+                    row_dict = {}
+                    for i, col in enumerate(result.keys()):
+                        value = row[i]
+                        # Convert datetime and other non-JSON serializable types to string
+                        if hasattr(value, 'isoformat'):
+                            value = value.isoformat()
+                        elif value is not None:
+                            value = str(value)
+                        row_dict[col] = value
+                    rows.append(row_dict)
+                
+                backup_data[table_name] = rows
+                
+            except Exception as e:
+                backup_data[table_name] = f"Error backing up table: {str(e)}"
+        
+        logging.info(f"Database backup created by admin {admin_username}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Backup created for {len(backup_data)} tables',
+            'backup_summary': {table: len(data) if isinstance(data, list) else data 
+                             for table, data in backup_data.items()},
+            'timestamp': get_iran_time().isoformat(),
+            'note': 'This is a simple development backup - use proper database backups for production'
+        })
+        
+    except Exception as e:
+        logging.error(f"Database backup failed: {e}")
         return jsonify({"error": str(e)}), 500
 

@@ -127,11 +127,19 @@
                 <div>
                     <button class="btn btn-sm btn-warning" onclick="clearCache('all')">
                         <i class="bi bi-trash"></i>
-                        Clear All Cache
+                        Clear Cache
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="migrateDatabase()">
+                        <i class="bi bi-database-gear"></i>
+                        Migrate Schema
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="backupDatabase()">
+                        <i class="bi bi-download"></i>
+                        Backup Data
                     </button>
                     <button class="btn btn-sm btn-info" onclick="loadDatabaseStats()">
                         <i class="bi bi-arrow-clockwise"></i>
-                        Refresh Stats
+                        Refresh
                     </button>
                 </div>
             </div>
@@ -638,6 +646,68 @@
             } catch (error) {
                 console.error('Error clearing cache:', error);
                 showError('Failed to clear cache: ' + error.message);
+            }
+        }
+
+        async function migrateDatabase() {
+            if (!confirm('⚠️ WARNING: This will drop and recreate all database tables!\n\nThis will DELETE ALL DATA in the database.\n\nOnly proceed if this is a development environment.\n\nAre you absolutely sure?')) {
+                return;
+            }
+            
+            if (!confirm('⚠️ FINAL WARNING: This action is IRREVERSIBLE!\n\nAll data will be permanently lost.\n\nClick OK only if you understand the consequences.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/database/migrate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showSuccess(`Database migrated successfully!\n\nTables created: ${result.tables_created.join(', ')}`);
+                    loadDatabaseStats(); // Refresh stats
+                } else {
+                    showError(`Migration failed: ${result.error}\n\nResults: ${result.results ? result.results.join('\n') : 'No details available'}`);
+                }
+            } catch (error) {
+                console.error('Error migrating database:', error);
+                showError('Failed to migrate database: ' + error.message);
+            }
+        }
+
+        async function backupDatabase() {
+            if (!confirm('Create a development backup of important data?\n\nThis will export user credentials, whitelist, and trade configurations as JSON.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/database/backup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    let message = `Backup created successfully!\n\n`;
+                    Object.entries(result.backup_summary).forEach(([table, count]) => {
+                        message += `${table}: ${count} records\n`;
+                    });
+                    message += `\nNote: ${result.note}`;
+                    showSuccess(message);
+                } else {
+                    showError('Backup failed: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error creating backup:', error);
+                showError('Failed to create backup: ' + error.message);
             }
         }
     </script>
