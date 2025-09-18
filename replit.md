@@ -4,8 +4,17 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **September 18, 2025**: Enhanced admin panel with comprehensive database management functionality
+  - Added database statistics dashboard showing table counts and statuses
+  - Implemented table viewer with secure data browsing (sensitive data masked)
+  - Added cache cleanup worker monitoring and status tracking
+  - Built database health checker with memory usage, connection tests, and integrity checks
+  - Created cache clearing functionality for enhanced, SMC, and klines caches
+  - Fixed workflow configuration to use Python module system for gunicorn
+  - Cleaned up requirements.txt removing duplicates and added psutil dependency
+  - All services running smoothly: database, cache cleanup worker, circuit breakers, exchange sync
+
 - **September 16, 2025**: Successfully set up GitHub project import in Replit environment
-  - Cleaned up duplicate entries in requirements.txt and installed all dependencies
   - Verified PostgreSQL database connection (DATABASE_URL already configured)
   - Set up Flask application workflow on port 5000 with webview output type
   - Configured deployment settings for Replit autoscale deployment
