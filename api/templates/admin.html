@@ -117,6 +117,76 @@
             </div>
         </div>
 
+        <!-- Database Management -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-database"></i>
+                    Database Management
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-warning" onclick="clearCache('all')">
+                        <i class="bi bi-trash"></i>
+                        Clear All Cache
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="loadDatabaseStats()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        Refresh Stats
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Database Stats Row -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-table"></i> Database Tables</h6>
+                        <div id="database-tables" class="table-responsive">
+                            <div class="text-center p-3">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Loading database stats...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-cpu"></i> System Status</h6>
+                        <div id="system-status">
+                            <div class="text-center p-3">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Loading system status...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table Viewer -->
+                <div class="row">
+                    <div class="col-12">
+                        <h6><i class="bi bi-eye"></i> Table Viewer</h6>
+                        <div class="mb-2">
+                            <select class="form-select form-select-sm d-inline-block" id="table-selector" style="width: auto;" onchange="loadTableData()">
+                                <option value="">Select a table to view...</option>
+                                <option value="userwhitelist">User Whitelist</option>
+                                <option value="usercredentials">User Credentials</option>
+                                <option value="tradeconfiguration">Trade Configurations</option>
+                                <option value="usertradingsession">Trading Sessions</option>
+                                <option value="smcsignalcache">SMC Signal Cache</option>
+                                <option value="klinescache">Klines Cache</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary ms-2" onclick="loadTableData()">
+                                <i class="bi bi-search"></i>
+                                Load Data
+                            </button>
+                        </div>
+                        <div id="table-data" class="border rounded">
+                            <div class="text-center text-muted p-4">
+                                Select a table above to view its contents
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- User Management -->
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -196,6 +266,7 @@
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
             loadWhitelistData();
+            loadDatabaseStats();
             
             // Filter events
             document.getElementById('status-filter').addEventListener('change', filterUsers);
@@ -393,6 +464,181 @@
 
         function showError(message) {
             alert('❌ ' + message);
+        }
+
+        // DATABASE MANAGEMENT FUNCTIONS
+        async function loadDatabaseStats() {
+            try {
+                const response = await fetch('/api/admin/database/stats');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateDatabaseStats(data.stats);
+                    updateSystemStatus(data.stats);
+                }
+            } catch (error) {
+                console.error('Error loading database stats:', error);
+                showError('Failed to load database stats: ' + error.message);
+            }
+        }
+
+        function updateDatabaseStats(stats) {
+            const tablesDiv = document.getElementById('database-tables');
+            
+            if (!stats.tables) {
+                tablesDiv.innerHTML = '<div class="text-danger p-3">Failed to load table stats</div>';
+                return;
+            }
+
+            let html = '<table class="table table-sm"><thead><tr><th>Table</th><th>Records</th><th>Status</th></tr></thead><tbody>';
+            
+            Object.entries(stats.tables).forEach(([tableName, info]) => {
+                const statusColor = info.status === 'healthy' ? 'text-success' : 'text-danger';
+                html += `
+                    <tr>
+                        <td><strong>${tableName}</strong></td>
+                        <td><span class="badge bg-primary">${info.count}</span></td>
+                        <td><span class="${statusColor}">${info.status}</span></td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            tablesDiv.innerHTML = html;
+        }
+
+        function updateSystemStatus(stats) {
+            const statusDiv = document.getElementById('system-status');
+            
+            let html = '<div class="row g-2">';
+            
+            // Database status
+            const dbColor = stats.database_status === 'healthy' ? 'success' : 'danger';
+            html += `
+                <div class="col-12">
+                    <div class="alert alert-${dbColor} py-2 mb-1">
+                        <i class="bi bi-database"></i> Database: ${stats.database_status}
+                    </div>
+                </div>
+            `;
+            
+            // Cache status
+            if (stats.cache) {
+                const cacheColor = stats.cache.enabled ? 'info' : 'warning';
+                html += `
+                    <div class="col-12">
+                        <div class="alert alert-${cacheColor} py-2 mb-1">
+                            <i class="bi bi-cpu"></i> Cache: ${stats.cache.cache_size} items
+                            ${stats.cache.enabled ? '(Worker enabled)' : '(Worker disabled)'}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            statusDiv.innerHTML = html;
+        }
+
+        async function loadTableData() {
+            const tableName = document.getElementById('table-selector').value;
+            const tableDataDiv = document.getElementById('table-data');
+            
+            if (!tableName) {
+                tableDataDiv.innerHTML = '<div class="text-center text-muted p-4">Select a table above to view its contents</div>';
+                return;
+            }
+            
+            try {
+                tableDataDiv.innerHTML = '<div class="text-center p-4"><div class="spinner-border spinner-border-sm"></div> Loading table data...</div>';
+                
+                const response = await fetch(`/api/admin/database/table/${tableName}?limit=20`);
+                if (response.ok) {
+                    const data = await response.json();
+                    renderTableData(data.data);
+                } else {
+                    const error = await response.json();
+                    tableDataDiv.innerHTML = `<div class="text-danger p-4">Error: ${error.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error loading table data:', error);
+                tableDataDiv.innerHTML = `<div class="text-danger p-4">Error loading table data: ${error.message}</div>`;
+            }
+        }
+
+        function renderTableData(data) {
+            const tableDataDiv = document.getElementById('table-data');
+            
+            if (!data.records || data.records.length === 0) {
+                tableDataDiv.innerHTML = '<div class="text-center text-muted p-4">No records found in this table</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">
+                            <i class="bi bi-table"></i> ${data.table_name} 
+                            <span class="badge bg-secondary">${data.total_count} total records</span>
+                        </h6>
+                        <small class="text-muted">Showing ${data.records.length} of ${data.total_count}</small>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-light">
+                                <tr>
+            `;
+            
+            // Add column headers
+            data.columns.forEach(col => {
+                html += `<th>${col}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            
+            // Add data rows
+            data.records.forEach(record => {
+                html += '<tr>';
+                data.columns.forEach(col => {
+                    let value = record[col] || '';
+                    // Truncate long values
+                    if (value.length > 50) {
+                        value = value.substring(0, 50) + '...';
+                    }
+                    html += `<td><small>${value}</small></td>`;
+                });
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table></div></div>';
+            tableDataDiv.innerHTML = html;
+        }
+
+        async function clearCache(cacheType = 'all') {
+            if (!confirm(`Are you sure you want to clear ${cacheType} cache? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/database/cache/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        cache_type: cacheType
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showSuccess(`Cache cleared: ${result.cleared_caches.join(', ')}`);
+                    loadDatabaseStats(); // Refresh stats
+                } else {
+                    showError(result.error || 'Failed to clear cache');
+                }
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                showError('Failed to clear cache: ' + error.message);
+            }
         }
     </script>
 </body>

@@ -10588,3 +10588,328 @@ def admin_ban_user():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+# DATABASE MANAGEMENT ROUTES
+@app.route("/api/admin/database/stats")
+@admin_login_required
+def admin_database_stats():
+    """Get database statistics and table information"""
+    try:
+        from sqlalchemy import inspect, text
+        
+        stats = {}
+        
+        # Get all table names and counts
+        tables = {
+            'UserCredentials': UserCredentials,
+            'UserTradingSession': UserTradingSession, 
+            'TradeConfiguration': TradeConfiguration,
+            'UserWhitelist': UserWhitelist,
+            'SMCSignalCache': None,  # Will be handled separately
+            'KlinesCache': None      # Will be handled separately
+        }
+        
+        for table_name, model in tables.items():
+            try:
+                if model:
+                    count = db.session.query(model).count()
+                    stats[table_name] = {
+                        'count': count,
+                        'status': 'healthy'
+                    }
+                else:
+                    # For tables without models, query directly
+                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table_name.lower()};"))
+                    count = result.scalar()
+                    stats[table_name] = {
+                        'count': count,
+                        'status': 'healthy'
+                    }
+            except Exception as e:
+                stats[table_name] = {
+                    'count': 0,
+                    'status': f'error: {str(e)}'
+                }
+        
+        # Cache cleanup worker status
+        cache_status = {
+            'enabled': hasattr(enhanced_cache, 'cleanup_worker_running'),
+            'last_cleanup': 'unknown',
+            'cache_size': len(enhanced_cache._cache) if hasattr(enhanced_cache, '_cache') else 0
+        }
+        
+        # Database connection status
+        try:
+            db.session.execute(text("SELECT 1"))
+            db_status = 'healthy'
+        except Exception as e:
+            db_status = f'error: {str(e)}'
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'tables': stats,
+                'cache': cache_status,
+                'database_status': db_status,
+                'timestamp': get_iran_time().isoformat()
+            }
+        })
+    except Exception as e:
+        logging.error(f"Error getting database stats: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/table/<table_name>")
+@admin_login_required
+def admin_view_table(table_name):
+    """View table contents"""
+    try:
+        from sqlalchemy import text
+        
+        # Security: Only allow predefined tables
+        allowed_tables = {
+            'usercredentials': 'user_credentials',
+            'usertradingsession': 'user_trading_sessions', 
+            'tradeconfiguration': 'trade_configurations',
+            'userwhitelist': 'user_whitelist',
+            'smcsignalcache': 'smcsignalcache',
+            'klinescache': 'klinescache'
+        }
+        
+        if table_name.lower() not in allowed_tables:
+            return jsonify({"error": "Table not allowed"}), 403
+            
+        actual_table = allowed_tables[table_name.lower()]
+        limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 records
+        offset = int(request.args.get('offset', 0))
+        
+        # Get table structure
+        inspector = inspect(db.engine)
+        try:
+            columns = [col['name'] for col in inspector.get_columns(actual_table)]
+        except Exception:
+            # Fallback - try to get from a sample query
+            result = db.session.execute(text(f"SELECT * FROM {actual_table} LIMIT 1"))
+            columns = list(result.keys()) if result.rowcount > 0 else []
+        
+        # Get records
+        query = f"SELECT * FROM {actual_table} ORDER BY id DESC LIMIT :limit OFFSET :offset"
+        result = db.session.execute(text(query), {'limit': limit, 'offset': offset})
+        
+        records = []
+        for row in result:
+            record = {}
+            for i, col in enumerate(columns):
+                value = row[i] if i < len(row) else None
+                # Mask sensitive data
+                if col.lower() in ['api_key_encrypted', 'api_secret_encrypted', 'passphrase_encrypted']:
+                    record[col] = '***ENCRYPTED***' if value else None
+                else:
+                    record[col] = str(value) if value is not None else None
+            records.append(record)
+        
+        # Get total count
+        count_result = db.session.execute(text(f"SELECT COUNT(*) FROM {actual_table}"))
+        total_count = count_result.scalar()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'table_name': actual_table,
+                'columns': columns,
+                'records': records,
+                'total_count': total_count,
+                'limit': limit,
+                'offset': offset,
+                'timestamp': get_iran_time().isoformat()
+            }
+        })
+    except Exception as e:
+        logging.error(f"Error viewing table {table_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/cache/clear", methods=["POST"])
+@admin_login_required
+def admin_clear_cache():
+    """Clear application cache"""
+    try:
+        data = request.get_json() or {}
+        cache_type = data.get('cache_type', 'all')
+        
+        cleared_caches = []
+        
+        if cache_type in ['all', 'enhanced']:
+            # Clear enhanced cache
+            if hasattr(enhanced_cache, 'clear'):
+                enhanced_cache.clear()
+                cleared_caches.append('enhanced_cache')
+            elif hasattr(enhanced_cache, '_cache'):
+                enhanced_cache._cache.clear()
+                cleared_caches.append('enhanced_cache')
+        
+        if cache_type in ['all', 'smc']:
+            # Clear SMC cache from database
+            try:
+                from sqlalchemy import text
+                db.session.execute(text("DELETE FROM smcsignalcache WHERE created_at < NOW() - INTERVAL '1 hour'"))
+                db.session.commit()
+                cleared_caches.append('smc_signals')
+            except Exception as e:
+                logging.warning(f"Could not clear SMC cache: {e}")
+        
+        if cache_type in ['all', 'klines']:
+            # Clear old klines cache
+            try:
+                from sqlalchemy import text
+                db.session.execute(text("DELETE FROM klinescache WHERE created_at < NOW() - INTERVAL '24 hours'"))
+                db.session.commit()
+                cleared_caches.append('klines_cache')
+            except Exception as e:
+                logging.warning(f"Could not clear klines cache: {e}")
+        
+        admin_username = session.get("admin_username", "admin")
+        logging.info(f"Cache cleared by admin {admin_username}: {cleared_caches}")
+        
+        return jsonify({
+            'success': True,
+            'message': f"Cleared caches: {', '.join(cleared_caches)}",
+            'cleared_caches': cleared_caches,
+            'timestamp': get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error clearing cache: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/cleanup-worker/status")
+@admin_login_required
+def admin_cleanup_worker_status():
+    """Get cache cleanup worker status"""
+    try:
+        # Check if cleanup worker is running
+        status = {
+            'enabled': False,
+            'running': False,
+            'last_run': 'unknown',
+            'cache_size': 0,
+            'worker_thread': None
+        }
+        
+        # Check enhanced cache status
+        if hasattr(enhanced_cache, '_cache'):
+            status['cache_size'] = len(enhanced_cache._cache)
+        
+        if hasattr(enhanced_cache, 'cleanup_worker_running'):
+            status['enabled'] = True
+            status['running'] = enhanced_cache.cleanup_worker_running
+            
+        if hasattr(enhanced_cache, '_last_cleanup'):
+            status['last_run'] = enhanced_cache._last_cleanup.isoformat() if enhanced_cache._last_cleanup else 'never'
+        
+        # Check for active threads
+        import threading
+        active_threads = [t.name for t in threading.enumerate() if 'cache' in t.name.lower()]
+        status['worker_thread'] = active_threads[0] if active_threads else None
+        status['running'] = len(active_threads) > 0
+        
+        return jsonify({
+            'success': True,
+            'status': status,
+            'timestamp': get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error getting cleanup worker status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/health")
+@admin_login_required
+def admin_database_health():
+    """Get comprehensive database health check"""
+    try:
+        from sqlalchemy import text
+        import psutil
+        import time
+        
+        health = {
+            'overall_status': 'healthy',
+            'checks': {},
+            'recommendations': []
+        }
+        
+        # Database connection test
+        try:
+            start_time = time.time()
+            db.session.execute(text("SELECT 1"))
+            connection_time = time.time() - start_time
+            health['checks']['database_connection'] = {
+                'status': 'healthy',
+                'response_time_ms': round(connection_time * 1000, 2)
+            }
+        except Exception as e:
+            health['checks']['database_connection'] = {
+                'status': 'error',
+                'error': str(e)
+            }
+            health['overall_status'] = 'unhealthy'
+        
+        # Cache status
+        cache_size = len(enhanced_cache._cache) if hasattr(enhanced_cache, '_cache') else 0
+        health['checks']['cache_system'] = {
+            'status': 'healthy' if cache_size < 1000 else 'warning',
+            'cache_size': cache_size
+        }
+        
+        if cache_size > 500:
+            health['recommendations'].append("Consider clearing cache - size is getting large")
+        
+        # Memory usage
+        try:
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            health['checks']['memory_usage'] = {
+                'status': 'healthy' if memory_mb < 512 else 'warning',
+                'memory_mb': round(memory_mb, 2)
+            }
+            
+            if memory_mb > 400:
+                health['recommendations'].append("High memory usage detected - consider restarting")
+        except Exception:
+            health['checks']['memory_usage'] = {'status': 'unknown'}
+        
+        # Table integrity
+        table_issues = []
+        try:
+            # Check for orphaned records or inconsistencies
+            result = db.session.execute(text("""
+                SELECT 
+                    COUNT(*) as orphaned_sessions
+                FROM user_trading_sessions uts 
+                WHERE uts.telegram_user_id NOT IN (
+                    SELECT DISTINCT telegram_user_id FROM user_credentials
+                )
+            """))
+            orphaned_sessions = result.scalar()
+            
+            if orphaned_sessions > 0:
+                table_issues.append(f"{orphaned_sessions} orphaned trading sessions")
+                
+        except Exception:
+            pass
+            
+        health['checks']['table_integrity'] = {
+            'status': 'healthy' if not table_issues else 'warning',
+            'issues': table_issues
+        }
+        
+        return jsonify({
+            'success': True,
+            'health': health,
+            'timestamp': get_iran_time().isoformat()
+        })
+    except Exception as e:
+        logging.error(f"Error getting database health: {e}")
+        return jsonify({"error": str(e)}), 500
+
