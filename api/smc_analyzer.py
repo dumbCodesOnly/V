@@ -200,20 +200,27 @@ class SMCAnalyzer:
             if len(cached_data) > 0 and len(candlesticks) > 0:
                 # Combine and deduplicate data
                 combined_data = cached_data + candlesticks
-                # Remove duplicates based on timestamp
+                # Remove duplicates based on timestamp and normalize timezone
                 seen_timestamps = set()
                 unique_data = []
                 for candle in combined_data:
-                    timestamp_key = (
-                        candle["timestamp"].isoformat()
-                        if isinstance(candle["timestamp"], datetime)
-                        else str(candle["timestamp"])
-                    )
+                    # Normalize timestamp to timezone-aware UTC for consistent comparison
+                    if isinstance(candle["timestamp"], datetime):
+                        # Ensure all timestamps are timezone-aware UTC
+                        if candle["timestamp"].tzinfo is None:
+                            normalized_timestamp = candle["timestamp"].replace(tzinfo=timezone.utc)
+                        else:
+                            normalized_timestamp = candle["timestamp"].astimezone(timezone.utc)
+                        candle["timestamp"] = normalized_timestamp
+                        timestamp_key = normalized_timestamp.isoformat()
+                    else:
+                        timestamp_key = str(candle["timestamp"])
+                        
                     if timestamp_key not in seen_timestamps:
                         seen_timestamps.add(timestamp_key)
                         unique_data.append(candle)
 
-                # Sort by timestamp and limit
+                # Sort by timestamp (now all timezone-aware) and limit
                 unique_data.sort(key=lambda x: x["timestamp"])
                 return unique_data[-limit:] if len(unique_data) > limit else unique_data
             else:
