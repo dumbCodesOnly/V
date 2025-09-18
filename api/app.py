@@ -10632,10 +10632,19 @@ def admin_database_stats():
                 }
         
         # Cache cleanup worker status
+        from .enhanced_cache import get_cache_cleanup_worker_status
+        worker_status = get_cache_cleanup_worker_status()
+        
+        # Get actual cache sizes from enhanced cache
+        cache_stats = enhanced_cache.get_cache_stats()
+        total_cache_items = sum(cache_stats['cache_sizes'].values())
+        
         cache_status = {
-            'enabled': hasattr(enhanced_cache, 'cleanup_worker_running'),
-            'last_cleanup': 'unknown',
-            'cache_size': len(enhanced_cache._cache) if hasattr(enhanced_cache, '_cache') else 0
+            'enabled': worker_status['enabled'],
+            'last_cleanup': worker_status['last_cleanup'],
+            'cache_size': total_cache_items,
+            'thread_alive': worker_status['thread_alive'],
+            'details': cache_stats['cache_sizes']
         }
         
         # Database connection status
@@ -11055,6 +11064,37 @@ def admin_database_backup():
         
     except Exception as e:
         logging.error(f"Database backup failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/database/cache/restart-worker", methods=["POST"])
+@admin_login_required  
+def admin_restart_cache_worker():
+    """Restart the cache cleanup worker"""
+    try:
+        from .enhanced_cache import restart_cache_cleanup_worker
+        
+        admin_username = session.get("admin_username", "admin")
+        
+        # Restart the cache cleanup worker
+        success = restart_cache_cleanup_worker(app)
+        
+        if success:
+            logging.info(f"Cache cleanup worker restarted by admin {admin_username}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Cache cleanup worker restarted successfully',
+                'timestamp': get_iran_time().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to restart cache cleanup worker'
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Error restarting cache cleanup worker: {e}")
         return jsonify({"error": str(e)}), 500
 
 

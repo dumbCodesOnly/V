@@ -310,6 +310,10 @@
                             <span class="d-none d-sm-inline">Cache Actions</span>
                         </button>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="restartCacheWorker()">
+                                <i class="bi bi-arrow-clockwise me-2"></i>Restart Cache Worker
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="#" onclick="clearCache('all')">
                                 <i class="bi bi-trash me-2"></i>Clear All Cache
                             </a></li>
@@ -913,6 +917,33 @@
             } catch (error) {
                 console.error('Error clearing SMC signals:', error);
                 showError('Failed to clear SMC signals: ' + error.message);
+            }
+        }
+
+        async function restartCacheWorker() {
+            if (!confirm('Are you sure you want to restart the cache cleanup worker?\n\nThis will restart the background worker responsible for cleaning up expired cache entries.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/database/cache/restart-worker', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showSuccess('Cache cleanup worker restarted successfully!\n\nThe worker should now be active and running.');
+                    loadDatabaseStats(); // Refresh stats to show updated worker status
+                } else {
+                    showError(result.error || 'Failed to restart cache cleanup worker');
+                }
+            } catch (error) {
+                console.error('Error restarting cache worker:', error);
+                showError('Failed to restart cache cleanup worker: ' + error.message);
             }
         }
 

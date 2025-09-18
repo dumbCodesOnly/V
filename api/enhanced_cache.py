@@ -425,14 +425,24 @@ class SmartCache:
 enhanced_cache = SmartCache()
 
 
+# Global variables to track cache cleanup worker status
+_cleanup_worker_thread = None
+_cleanup_worker_running = False
+_last_cleanup_time = None
+
 def start_cache_cleanup_worker(app=None):
     """Start background worker to clean up expired cache entries including klines data"""
-
+    global _cleanup_worker_thread, _cleanup_worker_running, _last_cleanup_time
+    
     def cleanup_worker():
+        global _cleanup_worker_running, _last_cleanup_time
+        _cleanup_worker_running = True
+        
         while True:
             try:
                 # Clean up enhanced cache (price data, user data, etc.)
                 enhanced_cache.cleanup_expired()
+                _last_cleanup_time = datetime.utcnow()
 
                 # Clean up klines cache data with proper app context
                 if app:
@@ -482,6 +492,33 @@ def start_cache_cleanup_worker(app=None):
 
     import threading
 
-    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-    cleanup_thread.start()
+    # Stop existing worker if running
+    if _cleanup_worker_thread and _cleanup_worker_thread.is_alive():
+        _cleanup_worker_running = False
+        # Note: Daemon threads will stop when main program exits
+
+    _cleanup_worker_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    _cleanup_worker_thread.start()
     logging.info("Cache cleanup worker started")
+
+def restart_cache_cleanup_worker(app=None):
+    """Restart the cache cleanup worker"""
+    global _cleanup_worker_running
+    logging.info("Restarting cache cleanup worker...")
+    _cleanup_worker_running = False
+    time.sleep(1)  # Allow current worker to stop
+    start_cache_cleanup_worker(app)
+    return True
+
+def get_cache_cleanup_worker_status():
+    """Get current cache cleanup worker status"""
+    global _cleanup_worker_thread, _cleanup_worker_running, _last_cleanup_time
+    
+    is_alive = _cleanup_worker_thread and _cleanup_worker_thread.is_alive()
+    
+    return {
+        'enabled': is_alive and _cleanup_worker_running,
+        'thread_alive': is_alive,
+        'last_cleanup': _last_cleanup_time.isoformat() if _last_cleanup_time else 'never',
+        'worker_running_flag': _cleanup_worker_running
+    }
