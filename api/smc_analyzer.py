@@ -83,7 +83,7 @@ class LiquidityPool:
     strength: float
     swept: bool = False
     sweep_confirmed: bool = False
-    sweep_timestamp: datetime = None
+    sweep_timestamp: Optional[datetime] = None
 
 
 @dataclass
@@ -1221,7 +1221,7 @@ class SMCAnalyzer:
                     reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.utcnow(),
                 )
 
             return None
@@ -1498,7 +1498,7 @@ class SMCAnalyzer:
         self,
         h1_structure: MarketStructure,
         h4_structure: MarketStructure,
-        d1_structure: MarketStructure = None,
+        d1_structure: Optional[MarketStructure] = None,
     ) -> Dict[str, bool]:
         """Categorize structure types for each timeframe."""
         bullish_structures = [
@@ -1628,7 +1628,7 @@ class SMCAnalyzer:
             "filtered": False,
         }
 
-    def _determine_alignment_direction(self, categories: Dict[str, bool]) -> str:
+    def _determine_alignment_direction(self, categories: Dict[str, bool]) -> Optional[str]:
         """Determine overall direction from structure alignment."""
         if categories["h1_bullish"] and categories["h4_bullish"]:
             return "long"
@@ -1637,7 +1637,7 @@ class SMCAnalyzer:
         return None
 
     def _create_alignment_result(
-        self, aligned: bool, score: float, details: list, direction: str
+        self, aligned: bool, score: float, details: list, direction: Optional[str]
     ) -> Dict[str, Any]:
         """Create standardized alignment result."""
         return {
@@ -1651,7 +1651,7 @@ class SMCAnalyzer:
         self,
         h1_structure: MarketStructure,
         h4_structure: MarketStructure,
-        d1_structure: MarketStructure = None,
+        d1_structure: Optional[MarketStructure] = None,
     ) -> Dict[str, Any]:
         """Check alignment between multiple timeframes"""
         # Categorize structure types
@@ -1664,8 +1664,9 @@ class SMCAnalyzer:
             h1_structure, h4_structure, categories
         )
         if h1_h4_result["conflict"]:
+            direction = self._determine_alignment_direction(categories)
             return self._create_alignment_result(
-                False, h1_h4_result["score"], h1_h4_result["details"], None
+                False, h1_h4_result["score"], h1_h4_result["details"], direction
             )
 
         # Analyze daily bias confirmation
@@ -1673,11 +1674,12 @@ class SMCAnalyzer:
             d1_structure, categories, h1_h4_result["score"]
         )
         if daily_result["filtered"]:
+            direction = self._determine_alignment_direction(categories)
             return self._create_alignment_result(
                 False,
                 daily_result["score"],
                 h1_h4_result["details"] + daily_result["details"],
-                None,
+                direction,
             )
 
         # Determine overall direction
@@ -2021,8 +2023,8 @@ class SMCAnalyzer:
         self,
         symbol: str,
         h1_candlesticks: List[Dict],
-        h4_candlesticks: List[Dict] = None,
-        d1_candlesticks: List[Dict] = None,
+        h4_candlesticks: Optional[List[Dict]] = None,
+        d1_candlesticks: Optional[List[Dict]] = None,
     ) -> Optional[SMCSignal]:
         """Enhanced SMC signal generation with multi-timeframe analysis and improved filtering"""
         try:
