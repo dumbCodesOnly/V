@@ -6289,6 +6289,9 @@
         }
 
         async function refreshSmcSignals() {
+            // Clear localStorage cache to force fresh data from backend
+            localStorage.removeItem('smcSignalsCache');
+            
             await loadSmcSignals();
             alert('✅ SMC signals refreshed');
         }
