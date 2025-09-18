@@ -10,19 +10,76 @@
         body {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             min-height: 100vh;
+            font-size: 14px;
         }
         .navbar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
         }
         .card {
             border: none;
             border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
         }
         .card-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border-radius: 15px 15px 0 0 !important;
+            padding: 1rem 1.5rem;
+        }
+        .card-header h5 {
+            margin: 0;
+            font-weight: 600;
+        }
+        .stats-card {
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        .stats-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Mobile-first responsive design */
+        @media (max-width: 768px) {
+            .container-fluid {
+                padding: 0.5rem;
+            }
+            .card {
+                margin-bottom: 1rem;
+            }
+            .card-header {
+                padding: 0.75rem 1rem;
+            }
+            .card-header h5 {
+                font-size: 1rem;
+            }
+            .stats-card .card-body {
+                padding: 1rem 0.5rem;
+            }
+            .stats-card .fs-1 {
+                font-size: 2rem !important;
+            }
+            .stats-card h4 {
+                font-size: 1.25rem;
+            }
+        }
+        
+        /* Button styles */
+        .btn {
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-height: 38px;
+        }
+        .btn-sm {
+            min-height: 32px;
+            font-size: 0.85rem;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .btn-success {
             background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
@@ -36,26 +93,144 @@
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             border: none;
         }
+        .btn-info {
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            border: none;
+        }
+        
+        /* Mobile-responsive button groups */
+        .mobile-btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        @media (max-width: 768px) {
+            .mobile-btn-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .mobile-btn-group .btn {
+                width: 100%;
+                justify-content: center;
+            }
+            .mobile-header {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 1rem;
+            }
+            .mobile-header > div {
+                width: 100%;
+            }
+        }
+        
+        /* Table improvements */
         .table {
             border-radius: 10px;
             overflow: hidden;
+            background: white;
         }
-        .stats-card {
-            transition: transform 0.2s;
+        .table-responsive {
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
-        .stats-card:hover {
-            transform: translateY(-5px);
+        
+        /* Enhanced mobile table */
+        @media (max-width: 768px) {
+            .mobile-table-card {
+                display: block;
+                width: 100%;
+                background: white;
+                border-radius: 10px;
+                padding: 1rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .mobile-table-header {
+                font-weight: 600;
+                color: #333;
+                margin-bottom: 0.5rem;
+            }
+            .mobile-table-content {
+                font-size: 0.9rem;
+                color: #666;
+            }
         }
+        
+        /* Status badges */
         .status-badge {
             font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 500;
         }
+        
+        /* Loading states */
         .loading {
             display: none;
         }
+        .spinner-border-sm {
+            width: 1rem;
+            height: 1rem;
+        }
+        
+        /* Modal enhancements */
         .modal-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+            border-radius: 15px 15px 0 0;
+        }
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+            overflow: hidden;
+        }
+        
+        /* Form enhancements */
+        .form-select, .form-control {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            transition: all 0.2s ease;
+        }
+        .form-select:focus, .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        /* System status indicators */
+        .system-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .system-indicator.healthy {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+        .system-indicator.warning {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+        .system-indicator.error {
+            background: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+        
+        /* Improved spacing and layout */
+        .section-spacing {
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 768px) {
+            .section-spacing {
+                margin-bottom: 1rem;
+            }
         }
     </style>
 </head>
@@ -78,119 +253,149 @@
 
     <div class="container-fluid mt-4">
         <!-- Statistics Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card stats-card text-center">
-                    <div class="card-body">
+        <div class="row section-spacing g-3">
+            <div class="col-6 col-lg-3">
+                <div class="card stats-card text-center h-100">
+                    <div class="card-body d-flex flex-column justify-content-center">
                         <i class="bi bi-clock-history text-warning fs-1"></i>
-                        <h4 class="mt-2" id="pending-count">-</h4>
-                        <p class="text-muted mb-0">Pending</p>
+                        <h4 class="mt-2 mb-1" id="pending-count">-</h4>
+                        <p class="text-muted mb-0 small">Pending</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-center">
-                    <div class="card-body">
+            <div class="col-6 col-lg-3">
+                <div class="card stats-card text-center h-100">
+                    <div class="card-body d-flex flex-column justify-content-center">
                         <i class="bi bi-check-circle text-success fs-1"></i>
-                        <h4 class="mt-2" id="approved-count">-</h4>
-                        <p class="text-muted mb-0">Approved</p>
+                        <h4 class="mt-2 mb-1" id="approved-count">-</h4>
+                        <p class="text-muted mb-0 small">Approved</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-center">
-                    <div class="card-body">
+            <div class="col-6 col-lg-3">
+                <div class="card stats-card text-center h-100">
+                    <div class="card-body d-flex flex-column justify-content-center">
                         <i class="bi bi-x-circle text-danger fs-1"></i>
-                        <h4 class="mt-2" id="rejected-count">-</h4>
-                        <p class="text-muted mb-0">Rejected</p>
+                        <h4 class="mt-2 mb-1" id="rejected-count">-</h4>
+                        <p class="text-muted mb-0 small">Rejected</p>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-center">
-                    <div class="card-body">
+            <div class="col-6 col-lg-3">
+                <div class="card stats-card text-center h-100">
+                    <div class="card-body d-flex flex-column justify-content-center">
                         <i class="bi bi-ban text-dark fs-1"></i>
-                        <h4 class="mt-2" id="banned-count">-</h4>
-                        <p class="text-muted mb-0">Banned</p>
+                        <h4 class="mt-2 mb-1" id="banned-count">-</h4>
+                        <p class="text-muted mb-0 small">Banned</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Database Management -->
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card section-spacing">
+            <div class="card-header mobile-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
-                    <i class="bi bi-database"></i>
+                    <i class="bi bi-database me-2"></i>
                     Database Management
                 </h5>
-                <div>
-                    <button class="btn btn-sm btn-warning" onclick="clearCache('all')">
-                        <i class="bi bi-trash"></i>
-                        Clear All Cache
+                <div class="mobile-btn-group">
+                    <button class="btn btn-sm btn-info" onclick="loadDatabaseStats()" title="Refresh Stats">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        <span class="d-none d-sm-inline">Refresh</span>
                     </button>
-                    <button class="btn btn-sm btn-outline-warning" onclick="clearSMCSignals()">
-                        <i class="bi bi-graph-down"></i>
-                        Clear SMC Signals
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="migrateDatabase()">
-                        <i class="bi bi-database-gear"></i>
-                        Migrate Schema
-                    </button>
-                    <button class="btn btn-sm btn-secondary" onclick="backupDatabase()">
-                        <i class="bi bi-download"></i>
-                        Backup Data
-                    </button>
-                    <button class="btn btn-sm btn-info" onclick="loadDatabaseStats()">
-                        <i class="bi bi-arrow-clockwise"></i>
-                        Refresh
-                    </button>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-trash me-1"></i>
+                            <span class="d-none d-sm-inline">Cache Actions</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="clearCache('all')">
+                                <i class="bi bi-trash me-2"></i>Clear All Cache
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="clearSMCSignals()">
+                                <i class="bi bi-graph-down me-2"></i>Clear SMC Signals
+                            </a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-danger dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-tools me-1"></i>
+                            <span class="d-none d-sm-inline">Database Tools</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="migrateDatabase()">
+                                <i class="bi bi-database-gear me-2"></i>Migrate Schema
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="backupDatabase()">
+                                <i class="bi bi-download me-2"></i>Backup Data
+                            </a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
             <div class="card-body">
                 <!-- Database Stats Row -->
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <h6><i class="bi bi-table"></i> Database Tables</h6>
-                        <div id="database-tables" class="table-responsive">
-                            <div class="text-center p-3">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                                <span class="ms-2">Loading database stats...</span>
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-table text-primary me-2"></i>Database Tables
+                                </h6>
+                                <div id="database-tables" class="table-responsive">
+                                    <div class="text-center p-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                        <span class="ms-2">Loading database stats...</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <h6><i class="bi bi-cpu"></i> System Status</h6>
-                        <div id="system-status">
-                            <div class="text-center p-3">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                                <span class="ms-2">Loading system status...</span>
+                    <div class="col-lg-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-cpu text-success me-2"></i>System Status
+                                </h6>
+                                <div id="system-status">
+                                    <div class="text-center p-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                        <span class="ms-2">Loading system status...</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Table Viewer -->
-                <div class="row">
-                    <div class="col-12">
-                        <h6><i class="bi bi-eye"></i> Table Viewer</h6>
-                        <div class="mb-2">
-                            <select class="form-select form-select-sm d-inline-block" id="table-selector" style="width: auto;" onchange="loadTableData()">
-                                <option value="">Select a table to view...</option>
-                                <option value="userwhitelist">User Whitelist</option>
-                                <option value="usercredentials">User Credentials</option>
-                                <option value="tradeconfiguration">Trade Configurations</option>
-                                <option value="usertradingsession">Trading Sessions</option>
-                                <option value="smcsignalcache">SMC Signal Cache</option>
-                                <option value="klinescache">Klines Cache</option>
-                            </select>
-                            <button class="btn btn-sm btn-outline-primary ms-2" onclick="loadTableData()">
-                                <i class="bi bi-search"></i>
-                                Load Data
-                            </button>
+                <div class="card border-0 bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title mb-3">
+                            <i class="bi bi-eye text-info me-2"></i>Table Viewer
+                        </h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-8">
+                                <select class="form-select" id="table-selector" onchange="loadTableData()">
+                                    <option value="">Select a table to view...</option>
+                                    <option value="userwhitelist">👥 User Whitelist</option>
+                                    <option value="usercredentials">🔐 User Credentials</option>
+                                    <option value="tradeconfiguration">📈 Trade Configurations</option>
+                                    <option value="usertradingsession">⚡ Trading Sessions</option>
+                                    <option value="smcsignalcache">📊 SMC Signal Cache</option>
+                                    <option value="klinescache">💹 Klines Cache</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-outline-primary w-100" onclick="loadTableData()">
+                                    <i class="bi bi-search me-2"></i>Load Data
+                                </button>
+                            </div>
                         </div>
-                        <div id="table-data" class="border rounded">
+                        <div id="table-data" class="border rounded bg-white">
                             <div class="text-center text-muted p-4">
+                                <i class="bi bi-table fs-1 text-muted d-block mb-2"></i>
                                 Select a table above to view its contents
                             </div>
                         </div>
@@ -200,23 +405,23 @@
         </div>
 
         <!-- User Management -->
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card section-spacing">
+            <div class="card-header mobile-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
-                    <i class="bi bi-people"></i>
+                    <i class="bi bi-people me-2"></i>
                     User Whitelist Management
                 </h5>
-                <div>
-                    <select class="form-select form-select-sm" id="status-filter" style="width: auto; display: inline-block;">
+                <div class="mobile-btn-group">
+                    <select class="form-select form-select-sm" id="status-filter" style="min-width: 120px;">
                         <option value="">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                        <option value="banned">Banned</option>
+                        <option value="pending">⏳ Pending</option>
+                        <option value="approved">✅ Approved</option>
+                        <option value="rejected">❌ Rejected</option>
+                        <option value="banned">🚫 Banned</option>
                     </select>
-                    <button class="btn btn-sm btn-light ms-2" onclick="refreshData()">
-                        <i class="bi bi-arrow-clockwise"></i>
-                        Refresh
+                    <button class="btn btn-sm btn-outline-secondary" onclick="refreshData()" title="Refresh Data">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        <span class="d-none d-sm-inline">Refresh</span>
                     </button>
                 </div>
             </div>
@@ -470,12 +675,43 @@
         }
 
         function showSuccess(message) {
-            // Simple alert for now - could be replaced with toast notifications
-            alert('✅ ' + message);
+            // Create a dismissible success alert at the top of the page
+            const alertContainer = document.querySelector('.container-fluid');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+            alertDiv.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            alertContainer.insertBefore(alertDiv, alertContainer.firstChild);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 5000);
         }
 
         function showError(message) {
-            alert('❌ ' + message);
+            // Create a dismissible error alert at the top of the page
+            const alertContainer = document.querySelector('.container-fluid');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+            alertDiv.innerHTML = `
+                <i class="bi bi-exclamation-circle me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            alertContainer.insertBefore(alertDiv, alertContainer.firstChild);
+            
+            // Auto-dismiss after 7 seconds
+            setTimeout(() => {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 7000);
         }
 
         // DATABASE MANAGEMENT FUNCTIONS
