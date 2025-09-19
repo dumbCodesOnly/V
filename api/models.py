@@ -443,9 +443,17 @@ class SMCSignalCache(db.Model):
         """Get confidence adjusted for signal age and price movement"""
         base_confidence = self.confidence
         
-        # Age-based degradation: reduce confidence over time
+        # Age-based degradation: reduce confidence over time based on signal strength
         age_minutes = self.get_age_in_minutes()
-        age_factor = max(0.5, 1.0 - (age_minutes / 30.0))  # Degrade over 30 minutes
+        # Use signal strength to determine degradation window
+        strength_to_duration = {
+            "VERY_STRONG": 20,
+            "STRONG": 15,
+            "MODERATE": 10, 
+            "WEAK": 5
+        }
+        degradation_window = strength_to_duration.get(self.signal_strength, 15)
+        age_factor = max(0.3, 1.0 - (age_minutes / degradation_window))
         
         # Price movement penalty
         price_factor = 1.0
@@ -554,11 +562,18 @@ class SMCSignalCache(db.Model):
             logging.info(f"Signal for {symbol} invalidated due to low adjusted confidence: {adjusted_confidence:.2f}")
             return None
         
-        # 3. Check if signal is too old (additional safety check)
+        # 3. Check if signal is too old (respect the original cache duration)
         age_minutes = signal.get_age_in_minutes()
-        max_age_minutes = 30  # Maximum age regardless of expiration
+        # Calculate original cache duration from signal strength
+        strength_to_duration = {
+            "VERY_STRONG": 20,
+            "STRONG": 15, 
+            "MODERATE": 10,
+            "WEAK": 5
+        }
+        max_age_minutes = strength_to_duration.get(signal.signal_strength, 15)
         if age_minutes > max_age_minutes:
-            logging.info(f"Signal for {symbol} invalidated due to age: {age_minutes:.1f} minutes")
+            logging.info(f"Signal for {symbol} invalidated due to age: {age_minutes:.1f} minutes (max: {max_age_minutes})")
             return None
 
         return signal
