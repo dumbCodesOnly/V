@@ -10781,12 +10781,18 @@ def admin_clear_cache():
                 db.session.rollback()
         
         if cache_type in ['all', 'klines']:
-            # Clear old klines cache
+            # Clear all klines cache entries
             try:
-                from sqlalchemy import text
-                db.session.execute(text("DELETE FROM klines_cache WHERE created_at < NOW() - INTERVAL '24 hours'"))
-                db.session.commit()
-                cleared_caches.append('klines_cache')
+                from .models import KlinesCache
+                # Get current count before clearing
+                total_count = db.session.query(KlinesCache).count()
+                if total_count > 0:
+                    # Delete all klines cache entries
+                    db.session.query(KlinesCache).delete()
+                    db.session.commit()
+                    cleared_caches.append(f'klines_cache ({total_count} entries)')
+                else:
+                    cleared_caches.append('klines_cache (already empty)')
             except Exception as e:
                 logging.warning(f"Could not clear klines cache: {e}")
                 db.session.rollback()
