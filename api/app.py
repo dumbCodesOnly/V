@@ -3762,10 +3762,8 @@ def get_smc_analysis(symbol):
         signal = analyzer.generate_trade_signal(symbol)
 
         if signal:
-            # Cache the new signal for 15 minutes
-            cache_entry = SMCSignalCache.from_smc_signal(
-                signal, cache_duration_minutes=15
-            )
+            # Cache the new signal with dynamic duration based on signal strength
+            cache_entry = SMCSignalCache.from_smc_signal(signal)
             db.session.add(cache_entry)
             db.session.commit()
 
@@ -3851,10 +3849,8 @@ def get_multiple_smc_signals():
                     # Generate new signal
                     signal = analyzer.generate_trade_signal(symbol)
                     if signal:
-                        # Cache the new signal
-                        cache_entry = SMCSignalCache.from_smc_signal(
-                            signal, cache_duration_minutes=15
-                        )
+                        # Cache the new signal with dynamic duration based on signal strength
+                        cache_entry = SMCSignalCache.from_smc_signal(signal)
                         db.session.add(cache_entry)
                         new_signals_generated += 1
 
