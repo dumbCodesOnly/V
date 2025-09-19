@@ -469,9 +469,11 @@ def start_cache_cleanup_worker(app=None):
                             # Clean up expired SMC signals
                             smc_cleaned = SMCSignalCache.cleanup_expired()
                             if smc_cleaned > 0:
-                                logging.debug(
+                                logging.info(
                                     f"Cleaned up {smc_cleaned} expired SMC signal cache entries"
                                 )
+                            else:
+                                logging.debug("No expired SMC signals to clean up")
 
                     except Exception as db_cleanup_error:
                         logging.error(
