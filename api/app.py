@@ -11138,3 +11138,48 @@ def admin_clear_smc_signals():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/admin/database/klines/clear", methods=["POST"])
+@admin_login_required
+def admin_clear_klines_cache():
+    """Clear klines cache data from database specifically"""
+    try:
+        from .models import KlinesCache
+        
+        admin_username = session.get("admin_username", "admin")
+        
+        # Get current counts before clearing
+        total_count_before = db.session.query(KlinesCache).count()
+        
+        # Clear expired entries first
+        expired_count = KlinesCache.cleanup_expired()
+        
+        # Get remaining count after expired cleanup
+        total_count_after_expired = db.session.query(KlinesCache).count()
+        
+        # Clear all remaining klines cache data
+        remaining_cleared = 0
+        if total_count_after_expired > 0:
+            remaining_cleared = total_count_after_expired
+            db.session.query(KlinesCache).delete()
+            db.session.commit()
+        
+        total_cleared = expired_count + remaining_cleared
+        
+        logging.info(f"Klines cache cleared by admin {admin_username}: {total_cleared} total ({expired_count} expired, {remaining_cleared} remaining)")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Klines cache cleared successfully',
+            'cleared_count': total_cleared,
+            'expired_count': expired_count,
+            'remaining_count': remaining_cleared,
+            'total_before': total_count_before,
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error clearing klines cache: {e}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
