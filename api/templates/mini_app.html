@@ -5190,6 +5190,13 @@
 
         // Initialize app
         document.addEventListener('DOMContentLoaded', async function() {
+            // Clean up any existing SMC localStorage cache on page load
+            try {
+                localStorage.removeItem('smcSignalsCache');
+                console.log('Cleaned up existing SMC localStorage cache on page load');
+            } catch (error) {
+                console.warn('Failed to clean up SMC localStorage cache:', error);
+            }
             // Load paper trading status first and wait for it to complete
             await loadPaperTradingStatus();
             // Only then load positions to avoid race condition
@@ -6147,46 +6154,17 @@
             }
         }
 
-        // Cache management functions for SMC signals
+        // Cache management functions for SMC signals (DISABLED - localStorage cache disabled)
         function cacheSmcSignals(signalsData) {
-            try {
-                const cacheData = {
-                    data: signalsData,
-                    timestamp: new Date().toISOString(),
-                    userId: getUserId() || 'default'
-                };
-                localStorage.setItem('smcSignalsCache', JSON.stringify(cacheData));
-            } catch (error) {
-                console.warn('Failed to cache SMC signals:', error);
-            }
+            // localStorage cache disabled - SMC signals will always fetch fresh data from backend
+            console.log('SMC localStorage cache disabled - using fresh data from backend');
+            return;
         }
 
         function loadCachedSmcSignals() {
-            try {
-                const cached = localStorage.getItem('smcSignalsCache');
-                if (!cached) return null;
-                
-                const cacheData = JSON.parse(cached);
-                const cacheAge = Date.now() - new Date(cacheData.timestamp).getTime();
-                const maxCacheAge = 30 * 60 * 1000; // 30 minutes
-                
-                // Check if cache is too old
-                if (cacheAge > maxCacheAge) {
-                    localStorage.removeItem('smcSignalsCache');
-                    return null;
-                }
-                
-                // Check if cache is for current user
-                const currentUserId = getUserId() || 'default';
-                if (cacheData.userId !== currentUserId) {
-                    return null;
-                }
-                
-                return cacheData;
-            } catch (error) {
-                console.warn('Failed to load cached SMC signals:', error);
-                return null;
-            }
+            // localStorage cache disabled - always return null to force fresh data from backend
+            console.log('SMC localStorage cache disabled - returning null to force fresh backend fetch');
+            return null;
         }
 
         function updateSmcSummary() {
@@ -6289,8 +6267,8 @@
         }
 
         async function refreshSmcSignals() {
-            // Clear localStorage cache to force fresh data from backend
-            localStorage.removeItem('smcSignalsCache');
+            // localStorage cache disabled - no need to clear cache, always using fresh backend data
+            console.log('Refreshing SMC signals from backend (localStorage cache disabled)');
             
             await loadSmcSignals();
             alert('✅ SMC signals refreshed');
