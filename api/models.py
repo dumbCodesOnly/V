@@ -507,13 +507,13 @@ class SMCSignalCache(db.Model):
             strength_name = signal.signal_strength.name if hasattr(signal.signal_strength, 'name') else str(signal.signal_strength)
             
             if strength_name == "VERY_STRONG":
-                cache_duration_minutes = 20  # Longer for very strong signals
+                cache_duration_minutes = 30  # Longer for very strong signals (50% increase: 20→30)
             elif strength_name == "STRONG":
-                cache_duration_minutes = 15  # Standard duration
+                cache_duration_minutes = 23  # Standard duration (50% increase: 15→23)
             elif strength_name == "MODERATE":
-                cache_duration_minutes = 10  # Shorter for moderate signals
+                cache_duration_minutes = 15  # Shorter for moderate signals (50% increase: 10→15)
             else:  # WEAK or unknown
-                cache_duration_minutes = 5   # Very short for weak signals
+                cache_duration_minutes = 8   # Very short for weak signals (50% increase: 5→8)
 
         # Use naive UTC datetime for consistent database storage
         expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
