@@ -219,6 +219,37 @@
             .smc-chart-wrapper.fullscreen canvas {
                 height: calc(100vh - 60px) !important;
             }
+            
+            /* Floating exit button for fullscreen mode */
+            .chart-fullscreen-exit {
+                position: fixed !important;
+                top: 15px !important;
+                right: 15px !important;
+                z-index: 10000 !important;
+                width: 50px !important;
+                height: 50px !important;
+                border-radius: 50% !important;
+                background: rgba(0, 0, 0, 0.8) !important;
+                border: 2px solid var(--tg-theme-button-color) !important;
+                color: white !important;
+                display: none !important;
+                align-items: center !important;
+                justify-content: center !important;
+                cursor: pointer !important;
+                font-size: 20px !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+                backdrop-filter: blur(8px) !important;
+                transition: all 0.3s ease !important;
+            }
+            
+            .chart-fullscreen-exit:hover {
+                background: rgba(0, 0, 0, 0.9) !important;
+                transform: scale(1.1) !important;
+            }
+            
+            .smc-chart-wrapper.fullscreen .chart-fullscreen-exit {
+                display: flex !important;
+            }
         }
 
         /* SMC Analysis Compact Info Boxes */
@@ -6453,7 +6484,8 @@
                                             </div>
                                             <div id="chart-container" style="display: none;">
                                                 <div class="smc-chart-wrapper" style="height: 85vh; min-height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 15px; border: 1px solid var(--tg-theme-border-color); position: relative; z-index: 1;">
-                                                    <canvas id="smc-chart" style="width: 100%;"></canvas>
+                                                    <canvas id="smc-chart" style="width: 100%; max-width: 1200px;"></canvas>
+                                                    <button class="chart-fullscreen-exit" onclick="toggleChartFullscreen()" title="Exit Fullscreen">✕</button>
                                                 </div>
                                                 <div class="mt-3 p-2" style="background: rgba(107, 139, 179, 0.05); border-radius: 6px;">
                                                     <div class="d-flex flex-wrap justify-content-center gap-3">
