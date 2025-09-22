@@ -897,6 +897,115 @@ class KlinesCache(db.Model):
         return 0
 
     @classmethod
+    def update_open_candle(cls, symbol: str, timeframe: str, open_price: float, high: float, low: float, close: float, volume: float, timestamp: datetime, cache_ttl_minutes: int = 5) -> bool:
+        """
+        Efficiently update an existing open candle in place, or create if doesn't exist.
+        This is much more efficient than deleting and refetching open candles.
+        
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe ('1h', '4h', '1d')
+            open_price, high, low, close, volume: OHLCV data
+            timestamp: Candle timestamp
+            cache_ttl_minutes: TTL for the open candle
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            current_time = get_utc_now()
+            
+            # Normalize timestamp to UTC
+            candle_time = normalize_to_utc(timestamp)
+            
+            # Determine if this candle is complete
+            candle_period_start = floor_to_period(candle_time, timeframe)
+            current_period_start = floor_to_period(current_time, timeframe)
+            is_complete = candle_period_start < current_period_start
+            
+            # Set appropriate expiry time
+            if is_complete:
+                expires_at = current_time + timedelta(days=21)  # Long TTL for complete candles
+            else:
+                expires_at = current_time + timedelta(minutes=cache_ttl_minutes)  # Short TTL for open candles
+            
+            # Check if candle already exists
+            existing_candle = cls.query.filter(
+                cls.symbol == symbol,
+                cls.timeframe == timeframe,
+                cls.timestamp == candle_time
+            ).first()
+            
+            if existing_candle:
+                # Update existing candle in place (much more efficient)
+                existing_candle.high = max(existing_candle.high, high)  # Keep highest high
+                existing_candle.low = min(existing_candle.low, low)     # Keep lowest low
+                existing_candle.close = close                           # Update current close
+                existing_candle.volume = volume                         # Update current volume
+                existing_candle.expires_at = expires_at               # Update expiry
+                existing_candle.created_at = current_time              # Update timestamp
+                
+                # Only promote incomplete→complete, never downgrade
+                if not existing_candle.is_complete and is_complete:
+                    existing_candle.is_complete = True
+                    
+                logging.debug(f"Updated open candle for {symbol} {timeframe}: H:{high} L:{low} C:{close} V:{volume}")
+                
+            else:
+                # Create new candle if doesn't exist
+                new_candle = cls(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    timestamp=candle_time,
+                    open=open_price,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                    expires_at=expires_at,
+                    is_complete=is_complete,
+                    created_at=current_time
+                )
+                db.session.add(new_candle)
+                logging.debug(f"Created new candle for {symbol} {timeframe}: O:{open_price} H:{high} L:{low} C:{close} V:{volume}")
+            
+            db.session.commit()
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error updating open candle for {symbol} {timeframe}: {e}")
+            db.session.rollback()
+            return False
+
+    @classmethod
+    def get_current_open_candle(cls, symbol: str, timeframe: str) -> Optional['KlinesCache']:
+        """
+        Get the current open candle for a symbol/timeframe if it exists.
+        This is used to check if we need to fetch new data or just update existing.
+        
+        Returns:
+            KlinesCache object if open candle exists, None otherwise
+        """
+        try:
+            current_time = get_utc_now()
+            current_period_start = floor_to_period(current_time, timeframe)
+            
+            # Look for incomplete candle for the current period
+            open_candle = cls.query.filter(
+                cls.symbol == symbol,
+                cls.timeframe == timeframe,
+                cls.timestamp == current_period_start,
+                cls.is_complete == False,
+                cls.expires_at > current_time.replace(tzinfo=None)
+            ).first()
+            
+            return open_candle
+            
+        except Exception as e:
+            logging.error(f"Error getting current open candle for {symbol} {timeframe}: {e}")
+            return None
+
+    @classmethod
     def get_data_gaps(cls, symbol: str, timeframe: str, required_count: int):
         """Identify gaps in cached data to determine what needs fetching"""
         # Get the most recent cached complete data

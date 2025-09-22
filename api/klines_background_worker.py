@@ -291,9 +291,13 @@ class KlinesBackgroundWorker:
 
     def _update_recent_data(self, symbol: str, timeframe: str) -> bool:
         """
-        Update only recent and open candles for a symbol/timeframe - OPTIMIZED VERSION
+        EFFICIENT: Update only the current open candle in place instead of fetching multiple candles
         
-        Fetches minimal data: just the last few candles to update current/recent periods
+        This approach:
+        1. Checks if an open candle exists for current period
+        2. Fetches ONLY the current open candle (1 API call)
+        3. Updates existing candle in place or creates new one
+        4. Much more efficient than fetching multiple candles and using batch upsert
         
         Args:
             symbol: Trading symbol
@@ -303,66 +307,59 @@ class KlinesBackgroundWorker:
             True if successful, False otherwise
         """
         try:
-            # Fetch minimal recent data - just enough to update current period + few previous
-            # 1h: last 3 candles (covers current + 2 previous hours)
-            # 4h: last 2 candles (covers current + 1 previous 4h period) 
-            # 1d: last 2 candles (covers current + 1 previous day)
-            recent_limit = 3 if timeframe == "1h" else 2
-            
-            logging.debug(f"Updating recent data: {symbol} {timeframe} ({recent_limit} candles - minimal fetch)")
-            
-            # Fetch recent data  
-            try:
-                recent_klines = self._fetch_binance_klines(symbol, timeframe, recent_limit)
-            except Exception as e:
-                logging.warning(f"Recent update failed for {symbol} {timeframe}: {e}")
-                # Brief delay before giving up
-                time.sleep(TimeConfig.API_RETRY_DELAY * 0.5)
-                return False
-                
-            if not recent_klines:
-                return False
-            
-            # Filter to only update the most recent periods (avoid unnecessary overwrites)
-            current_time = get_utc_now()
-            
-            # Only update candles from the last few periods to minimize database writes
-            cutoff_hours = {"1h": 6, "4h": 12, "1d": 48}  # 6h, 12h, 48h cutoff
-            cutoff_time = current_time - timedelta(hours=cutoff_hours.get(timeframe, 12))
-            
-            filtered_klines = [
-                kline for kline in recent_klines 
-                if kline["timestamp"] >= cutoff_time
-            ]
-            
-            if not filtered_klines:
-                logging.debug(f"No recent candles to update for {symbol} {timeframe}")
-                return True  # Success but nothing to do
-                
-            # Calculate TTL for recent updates (shorter for open candles)
-            if timeframe == "1h":
-                ttl_minutes = 2  # Very short TTL for hourly open candles
-            elif timeframe == "4h":
-                ttl_minutes = 5  # Short TTL for 4h open candles
-            elif timeframe == "1d":
-                ttl_minutes = 15  # Medium TTL for daily open candles
-            else:
-                ttl_minutes = 3  # Default short TTL
-                
-            # Save recent data (will update existing entries due to unique constraint)
             if not self.app:
-                logging.warning(f"No app context available for saving recent {symbol} {timeframe} data")
+                logging.warning(f"No app context available for updating {symbol} {timeframe}")
                 return False
                 
             with self.app.app_context():
-                saved_count = KlinesCache.save_klines_batch(
+                # Check if open candle already exists for current period
+                existing_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+                
+                # Fetch ONLY the current open candle (1 API call instead of multiple)
+                try:
+                    current_klines = self._fetch_binance_klines(symbol, timeframe, 1)  # Only fetch 1 candle
+                except Exception as e:
+                    logging.warning(f"Open candle update failed for {symbol} {timeframe}: {e}")
+                    time.sleep(TimeConfig.API_RETRY_DELAY * 0.5)
+                    return False
+                    
+                if not current_klines:
+                    return False
+                
+                # Get the most recent candle (current open candle)
+                current_candle = current_klines[0]
+                
+                # Calculate appropriate TTL for open candle
+                if timeframe == "1h":
+                    ttl_minutes = 2  # Very short TTL for hourly open candles
+                elif timeframe == "4h":
+                    ttl_minutes = 5  # Short TTL for 4h open candles
+                elif timeframe == "1d":
+                    ttl_minutes = 15  # Medium TTL for daily open candles
+                else:
+                    ttl_minutes = 3  # Default short TTL
+                    
+                # Use efficient in-place update method
+                success = KlinesCache.update_open_candle(
                     symbol=symbol,
                     timeframe=timeframe,
-                    candlesticks=filtered_klines,
+                    open_price=current_candle["open"],
+                    high=current_candle["high"],
+                    low=current_candle["low"],
+                    close=current_candle["close"],
+                    volume=current_candle["volume"],
+                    timestamp=current_candle["timestamp"],
                     cache_ttl_minutes=ttl_minutes
                 )
-            
-            logging.debug(f"Updated {saved_count}/{len(recent_klines)} recent candles for {symbol} {timeframe}")
+                
+                if success:
+                    if existing_open_candle:
+                        logging.debug(f"Updated existing open candle for {symbol} {timeframe}: C:{current_candle['close']}")
+                    else:
+                        logging.debug(f"Created new open candle for {symbol} {timeframe}: C:{current_candle['close']}")
+                else:
+                    logging.warning(f"Failed to update open candle for {symbol} {timeframe}")
+                    return False
             
             # Update tracking
             with self.lock:
@@ -373,7 +370,7 @@ class KlinesBackgroundWorker:
             return True
             
         except Exception as e:
-            logging.error(f"Error updating recent data for {symbol} {timeframe}: {e}")
+            logging.error(f"Error updating open candle for {symbol} {timeframe}: {e}")
             return False
 
     def _cleanup_old_data(self):
