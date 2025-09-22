@@ -1066,7 +1066,7 @@ logging.info("Enhanced caching system initialized with smart volatility-based TT
 
 # Initialize klines background worker for efficient data management
 from .klines_background_worker import start_klines_background_worker
-start_klines_background_worker()
+start_klines_background_worker(app)
 logging.info("Klines background worker started for efficient candlestick data management")
 
 

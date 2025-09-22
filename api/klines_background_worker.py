@@ -32,8 +32,9 @@ class KlinesBackgroundWorker:
     Comprehensive background worker for efficient klines data management
     """
 
-    def __init__(self):
+    def __init__(self, app=None):
         """Initialize the background klines worker"""
+        self.app = app
         self.is_running = False
         self.worker_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
@@ -193,15 +194,9 @@ class KlinesBackgroundWorker:
             Dict with keys: count, oldest_timestamp, newest_timestamp, gaps
         """
         try:
-            # Get existing cached data
-            cached_data = KlinesCache.get_cached_data(
-                symbol=symbol,
-                timeframe=timeframe, 
-                limit=self._get_required_initial_candles(timeframe),
-                include_incomplete=True
-            )
-            
-            if not cached_data:
+            # Skip database operations if no app context available
+            if not self.app:
+                logging.debug(f"No app context available for {symbol} {timeframe} data check")
                 return {
                     "count": 0,
                     "oldest_timestamp": None,
@@ -209,15 +204,32 @@ class KlinesBackgroundWorker:
                     "needs_initial_population": True
                 }
                 
-            timestamps = [candle["timestamp"] for candle in cached_data]
-            timestamps.sort()
-            
-            return {
-                "count": len(cached_data),
-                "oldest_timestamp": timestamps[0] if timestamps else None,
-                "newest_timestamp": timestamps[-1] if timestamps else None, 
-                "needs_initial_population": len(cached_data) < self._get_required_initial_candles(timeframe) * 0.8
-            }
+            # Get existing cached data with proper app context
+            with self.app.app_context():
+                cached_data = KlinesCache.get_cached_data(
+                    symbol=symbol,
+                    timeframe=timeframe, 
+                    limit=self._get_required_initial_candles(timeframe),
+                    include_incomplete=True
+                )
+                
+                if not cached_data:
+                    return {
+                        "count": 0,
+                        "oldest_timestamp": None,
+                        "newest_timestamp": None,
+                        "needs_initial_population": True
+                    }
+                    
+                timestamps = [candle["timestamp"] for candle in cached_data]
+                timestamps.sort()
+                
+                return {
+                    "count": len(cached_data),
+                    "oldest_timestamp": timestamps[0] if timestamps else None,
+                    "newest_timestamp": timestamps[-1] if timestamps else None, 
+                    "needs_initial_population": len(cached_data) < self._get_required_initial_candles(timeframe) * 0.8
+                }
             
         except Exception as e:
             logging.warning(f"Error checking existing data for {symbol} {timeframe}: {e}")
@@ -272,12 +284,17 @@ class KlinesBackgroundWorker:
                 ttl_minutes = 60  # Default 1 hour
                 
             # Save to database in batches for efficiency
-            saved_count = KlinesCache.save_klines_batch(
-                symbol=symbol,
-                timeframe=timeframe,
-                klines_data=klines_data,
-                ttl_minutes=ttl_minutes
-            )
+            if not self.app:
+                logging.warning(f"No app context available for saving {symbol} {timeframe} data")
+                return False
+            
+            with self.app.app_context():
+                saved_count = KlinesCache.save_klines_batch(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    klines_data=klines_data,
+                    ttl_minutes=ttl_minutes
+                )
             
             logging.info(f"Successfully populated {saved_count} candles for {symbol} {timeframe}")
             
@@ -331,12 +348,17 @@ class KlinesBackgroundWorker:
                 ttl_minutes = 60
                 
             # Save recent data (will update existing entries due to unique constraint)
-            saved_count = KlinesCache.save_klines_batch(
-                symbol=symbol,
-                timeframe=timeframe,
-                klines_data=recent_klines,
-                ttl_minutes=ttl_minutes
-            )
+            if not self.app:
+                logging.warning(f"No app context available for saving recent {symbol} {timeframe} data")
+                return False
+                
+            with self.app.app_context():
+                saved_count = KlinesCache.save_klines_batch(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    klines_data=recent_klines,
+                    ttl_minutes=ttl_minutes
+                )
             
             logging.debug(f"Updated {saved_count} recent candles for {symbol} {timeframe}")
             
@@ -355,23 +377,22 @@ class KlinesBackgroundWorker:
     def _cleanup_old_data(self):
         """Clean up old klines data beyond retention period"""
         try:
-            # Need Flask app context for database operations
-            from flask import has_app_context, current_app
-            
-            if not has_app_context():
-                # Skip cleanup if no app context available
+            # Skip cleanup if no app context available
+            if not self.app:
                 logging.debug("Skipping klines cleanup - no app context available")
                 return
                 
-            # Clean up expired cache entries
-            expired_count = KlinesCache.cleanup_expired()
-            if expired_count > 0:
-                logging.info(f"Cleaned up {expired_count} expired klines cache entries")
-                
-            # Clean up very old data beyond retention period  
-            old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
-            if old_count > 0:
-                logging.info(f"Cleaned up {old_count} old klines entries beyond retention period")
+            # Need Flask app context for database operations
+            with self.app.app_context():
+                # Clean up expired cache entries
+                expired_count = KlinesCache.cleanup_expired()
+                if expired_count > 0:
+                    logging.info(f"Cleaned up {expired_count} expired klines cache entries")
+                    
+                # Clean up very old data beyond retention period  
+                old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
+                if old_count > 0:
+                    logging.info(f"Cleaned up {old_count} old klines entries beyond retention period")
                 
         except Exception as e:
             logging.error(f"Error during klines data cleanup: {e}")
@@ -508,12 +529,15 @@ class KlinesBackgroundWorker:
             }
 
 
-# Global instance
-klines_worker = KlinesBackgroundWorker()
+# Global instance (will be initialized with app when started)
+klines_worker = None
 
 
-def start_klines_background_worker():
+def start_klines_background_worker(app=None):
     """Start the global klines background worker"""
+    global klines_worker
+    if klines_worker is None:
+        klines_worker = KlinesBackgroundWorker(app)
     klines_worker.start()
 
 
@@ -524,4 +548,6 @@ def stop_klines_background_worker():
 
 def get_klines_worker_status() -> Dict:
     """Get status of the global klines background worker"""
+    if klines_worker is None:
+        return {"is_running": False, "error": "Worker not initialized"}
     return klines_worker.get_status()
