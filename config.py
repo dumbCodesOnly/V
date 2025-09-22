@@ -348,9 +348,9 @@ class RollingWindowConfig:
     MAX_CANDLES_4H = 100   # Keep latest 100 4-hour candles (~16 days)
     MAX_CANDLES_1D = 50    # Keep latest 50 daily candles (~7 weeks)
     
-    # Batch cleanup settings to avoid database locks
-    CLEANUP_BATCH_SIZE = 50  # Delete this many old candles at a time
-    CLEANUP_INTERVAL_SECONDS = 120  # Run rolling window cleanup every 2 minutes
+    # Batch cleanup settings to avoid database locks - OPTIMIZED FOR FREQUENT UPDATES
+    CLEANUP_BATCH_SIZE = 25  # Smaller batches for more frequent cleanup
+    CLEANUP_INTERVAL_SECONDS = 90  # Run rolling window cleanup every 1.5 minutes
     
     # Safety margin - keep extra candles to prevent gaps during cleanup
     SAFETY_MARGIN = 5  # Keep 5 extra candles beyond the limit
@@ -409,20 +409,20 @@ class CacheConfig:
         0.1  # Minimum volatility threshold to prevent division by zero
     )
 
-    # Cleanup Settings - COST OPTIMIZED
-    CLEANUP_INTERVAL = 120  # Reduced cleanup frequency (was 60s)
+    # Cleanup Settings - OPTIMIZED FOR FREQUENT OPEN CANDLE UPDATES
+    CLEANUP_INTERVAL = 60  # More frequent cleanup for shorter TTL values
 
     # Hit Rate Calculation
     HIT_RATE_PERCENTAGE_MULTIPLIER = (
         100  # Multiplier for hit rate percentage calculation
     )
 
-    # Klines Cache Settings (minutes)
-    KLINES_1H_CACHE_TTL = 15  # 15 minutes cache for 1h timeframe
-    KLINES_4H_CACHE_TTL = 60  # 1 hour cache for 4h timeframe
-    KLINES_1D_CACHE_TTL = 240  # 4 hours cache for 1d timeframe
+    # Klines Cache Settings (minutes) - UPDATED FOR OPEN CANDLE TRACKING
+    KLINES_1H_CACHE_TTL = 3  # 3 minutes cache for 1h timeframe (short for open candles)
+    KLINES_4H_CACHE_TTL = 8  # 8 minutes cache for 4h timeframe (medium for open candles)
+    KLINES_1D_CACHE_TTL = 20  # 20 minutes cache for 1d timeframe (longer for daily candles)
     KLINES_DATA_RETENTION_DAYS = 21  # Keep klines data for 21 days (increased from 7 for better SMC analysis)
-    KLINES_CLEANUP_INTERVAL = 3600  # Clean up klines cache every hour (seconds)
+    KLINES_CLEANUP_INTERVAL = 180  # Clean up klines cache every 3 minutes (faster for short TTL)
 
 
 # =============================================================================
