@@ -3929,6 +3929,103 @@ def get_multiple_smc_signals():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/smc-chart-data/<symbol>", methods=["GET"])
+def get_smc_chart_data(symbol: str):
+    """Get candlestick data with SMC analysis overlays for chart visualization"""
+    try:
+        from .smc_analyzer import SMCAnalyzer
+        
+        symbol = symbol.upper()
+        analyzer = SMCAnalyzer()
+        
+        # Get multi-timeframe candlestick data
+        timeframe_data = analyzer.get_multi_timeframe_data(symbol)
+        
+        h1_data = timeframe_data.get("1h", [])
+        h4_data = timeframe_data.get("4h", [])
+        
+        if not h1_data:
+            return jsonify({"error": "No candlestick data available"}), 404
+            
+        # Analyze market structure and key SMC elements
+        h1_structure = analyzer.detect_market_structure(h1_data)
+        h4_structure = analyzer.detect_market_structure(h4_data) if h4_data else None
+        
+        # Find SMC elements for visualization
+        order_blocks = analyzer.find_order_blocks(h1_data)
+        fvgs = analyzer.find_fair_value_gaps(h1_data)
+        liquidity_pools = analyzer.find_liquidity_pools(h4_data) if h4_data else []
+        
+        # Format candlestick data for chart.js
+        candlesticks = []
+        for candle in h1_data[-100:]:  # Last 100 candles for chart
+            candlesticks.append({
+                "time": int(candle["timestamp"].timestamp() * 1000),  # Convert to milliseconds
+                "open": float(candle["open"]),
+                "high": float(candle["high"]),
+                "low": float(candle["low"]),
+                "close": float(candle["close"]),
+                "volume": float(candle["volume"])
+            })
+        
+        # Format order blocks for visualization
+        order_blocks_data = []
+        for ob in order_blocks[-10:]:  # Last 10 order blocks
+            order_blocks_data.append({
+                "high": float(ob.price_high),
+                "low": float(ob.price_low),
+                "time": int(ob.timestamp.timestamp() * 1000),
+                "direction": ob.direction,
+                "strength": float(ob.strength),
+                "tested": ob.tested,
+                "mitigated": ob.mitigated
+            })
+        
+        # Format FVGs for visualization  
+        fvgs_data = []
+        for fvg in fvgs[-15:]:  # Last 15 FVGs
+            fvgs_data.append({
+                "high": float(fvg.gap_high),
+                "low": float(fvg.gap_low),
+                "time": int(fvg.timestamp.timestamp() * 1000),
+                "direction": fvg.direction,
+                "filled": fvg.filled,
+                "age_candles": fvg.age_candles
+            })
+        
+        # Format liquidity pools
+        liquidity_data = []
+        for lp in liquidity_pools[-8:]:  # Last 8 liquidity pools
+            liquidity_data.append({
+                "price": float(lp.price),
+                "type": lp.type,  # 'buy_side' or 'sell_side'
+                "strength": float(lp.strength),
+                "swept": lp.swept
+            })
+        
+        # Market structure information
+        structure_info = {
+            "h1_structure": h1_structure.value if h1_structure else None,
+            "h4_structure": h4_structure.value if h4_structure else None,
+            "current_price": float(h1_data[-1]["close"]) if h1_data else 0
+        }
+        
+        return jsonify({
+            "symbol": symbol,
+            "candlesticks": candlesticks,
+            "order_blocks": order_blocks_data,
+            "fair_value_gaps": fvgs_data,
+            "liquidity_pools": liquidity_data,
+            "market_structure": structure_info,
+            "timestamp": get_iran_time().isoformat(),
+            "total_candles": len(candlesticks)
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting SMC chart data for {symbol}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/smc-auto-trade", methods=["POST"])
 def create_auto_trade_from_smc():
     """Create a trade configuration automatically based on SMC analysis
