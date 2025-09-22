@@ -10655,10 +10655,10 @@ def admin_database_stats():
         total_cache_items = sum(cache_stats['cache_sizes'].values())
         
         cache_status = {
-            'enabled': worker_status['enabled'],
-            'last_cleanup': worker_status['last_cleanup'],
+            'enabled': worker_status.get('service_running', False),
+            'last_cleanup': worker_status.get('last_cache_cleanup', 'Never'),
             'cache_size': total_cache_items,
-            'thread_alive': worker_status['thread_alive'],
+            'thread_alive': worker_status.get('service_running', False),
             'details': cache_stats['cache_sizes']
         }
         

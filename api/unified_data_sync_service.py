@@ -628,7 +628,10 @@ class UnifiedDataSyncService:
                     # Check if newest data is very old (more than 1 day old)
                     newest_time = timestamps[-1] if timestamps else None
                     if newest_time:
-                        age_hours = (current_time - newest_time).total_seconds() / 3600
+                        # Ensure newest_time is timezone-aware for comparison
+                        from api.models import normalize_to_utc
+                        newest_time_utc = normalize_to_utc(newest_time)
+                        age_hours = (current_time - newest_time_utc).total_seconds() / 3600
                         needs_initial = age_hours > 24  # If data older than 24h, do initial population
                         if needs_initial:
                             logging.debug(f"{symbol} {timeframe} needs initial population: newest data is {age_hours:.1f}h old (insufficient coverage: {coverage_ratio:.1%})")
