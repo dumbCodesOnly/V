@@ -150,19 +150,15 @@ class TradingConfig:
     MAX_SYMBOLS_BATCH = 20  # Maximum symbols in batch price requests
     DEFAULT_TRADE_HISTORY_LIMIT = 100  # Default limit for trade history queries
 
-    # Trading Symbols
+    # Trading Symbols - REDUCED to essential symbols for analysis
     DEFAULT_SYMBOL = "BTCUSDT"
     SUPPORTED_SYMBOLS = [
         "BTCUSDT",
         "ETHUSDT",
         "BNBUSDT",
-        "ADAUSDT",
-        "XRPUSDT",
+        "XRPUSDT", 
         "SOLUSDT",
-        "DOTUSDT",
-        "DOGEUSDT",
-        "AVAXUSDT",
-        "LINKUSDT",
+        "ADAUSDT",
     ]
 
     # Toobit Futures Symbol Mapping (Standard format -> Toobit format)
