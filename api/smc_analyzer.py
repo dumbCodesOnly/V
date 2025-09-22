@@ -107,7 +107,7 @@ class SMCAnalyzer:
         self.timeframes = ["1h", "4h", "1d"]  # Multiple timeframe analysis
 
     @with_circuit_breaker(
-        "binance_klines_api", failure_threshold=2, recovery_timeout=60
+        "binance_klines_api", failure_threshold=8, recovery_timeout=120
     )
     def get_candlestick_data(
         self, symbol: str, timeframe: str = "1h", limit: int = 100
@@ -133,7 +133,7 @@ class SMCAnalyzer:
             logging.warning(f"Cache retrieval failed for {symbol} {timeframe}: {e}")
             cached_data = []
 
-        # Step 2: Check for data gaps and determine what to fetch
+        # Step 2: Determine what to fetch - OPTIMIZED for user-triggered requests
         try:
             gap_info = KlinesCache.get_data_gaps(symbol, timeframe, limit)
             if not gap_info["needs_fetch"]:
@@ -142,14 +142,24 @@ class SMCAnalyzer:
                 )
                 return KlinesCache.get_cached_data(symbol, timeframe, limit)
 
-            fetch_limit = gap_info["fetch_count"]
-            logging.info(
-                f"CACHE MISS/PARTIAL: Fetching {fetch_limit} candles for {symbol} {timeframe}"
-            )
+            # OPTIMIZATION: If we have existing cache data, only fetch latest candles to stay current
+            if len(cached_data) > 0:
+                # Fetch only latest 3 candles to update cache and stay current
+                fetch_limit = min(3, gap_info["fetch_count"])
+                logging.info(
+                    f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
+                )
+            else:
+                # No cache data - fetch full amount 
+                fetch_limit = gap_info["fetch_count"]
+                logging.info(
+                    f"CACHE MISS: Fetching {fetch_limit} candles for {symbol} {timeframe}"
+                )
 
         except Exception as e:
             logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
-            fetch_limit = limit
+            # Conservative fallback: only fetch latest 3 candles if we have cached data
+            fetch_limit = 3 if len(cached_data) > 0 else limit
 
         # Step 3: Fetch from Binance API with circuit breaker protection
         tf_map = {"1h": "1h", "4h": "4h", "1d": "1d"}
