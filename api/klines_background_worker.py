@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 from config import (
     CacheConfig,
+    RollingWindowConfig,
     SMCConfig,
     TimeConfig,
     TradingConfig,
@@ -375,7 +376,7 @@ class KlinesBackgroundWorker:
             return False
 
     def _cleanup_old_data(self):
-        """Gradual cleanup of old klines data - batch processing to avoid database locks"""
+        """Enhanced cleanup of old klines data with rolling window management"""
         try:
             # Skip cleanup if no app context available
             if not self.app:
@@ -389,11 +390,23 @@ class KlinesBackgroundWorker:
                 if expired_count > 0:
                     logging.info(f"Cleaned up {expired_count} expired klines cache entries")
                     
-                # Gradual cleanup of very old data - only clean a bit each cycle
-                # This prevents large database operations that could impact performance
+                # ROLLING WINDOW CLEANUP - NEW FEATURE
+                # This maintains the configured window size for each timeframe
+                rolling_window_results = KlinesCache.cleanup_all_rolling_windows(
+                    batch_size=RollingWindowConfig.CLEANUP_BATCH_SIZE
+                )
+                if rolling_window_results["total_deleted"] > 0:
+                    logging.info(f"Rolling window cleanup: deleted {rolling_window_results['total_deleted']} old candles across {rolling_window_results['symbols_processed']} symbol/timeframe combinations")
+                    
+                    # Log details for each symbol/timeframe that had cleanup
+                    for key, count in rolling_window_results["details"].items():
+                        logging.debug(f"Rolling window: {key} deleted {count} candles")
+                    
+                # Traditional cleanup of very old data as fallback
+                # This handles any data that might fall through the rolling window
                 old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
                 if old_count > 0:
-                    logging.info(f"Cleaned up {old_count} old klines entries beyond {CacheConfig.KLINES_DATA_RETENTION_DAYS} day retention")
+                    logging.info(f"Fallback cleanup: {old_count} old klines entries beyond {CacheConfig.KLINES_DATA_RETENTION_DAYS} day retention")
                 
         except Exception as e:
             logging.error(f"Error during klines data cleanup: {e}")
