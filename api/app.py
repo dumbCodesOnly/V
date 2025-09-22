@@ -3637,16 +3637,22 @@ def circuit_breaker_health():
 
 @app.route("/api/klines-worker/status")
 def klines_worker_status():
-    """Get klines background worker status and statistics"""
+    """Get klines background worker status and statistics (unified service)"""
     try:
-        if 'klines_worker' in globals():
-            status = klines_worker.get_status()
-            return jsonify(status)
-        else:
-            return jsonify({
-                "error": "Klines worker not initialized",
-                "status": "unavailable"
-            }), 503
+        from .unified_data_sync_service import get_unified_service_status
+        status = get_unified_service_status()
+        
+        # Transform to match expected klines worker format
+        klines_status = {
+            "service_running": status.get("service_running", False),
+            "klines_tracking": status.get("klines_tracking", {}),
+            "cache_statistics": status.get("cache_statistics", {}),
+            "circuit_breaker_status": status.get("circuit_breaker_status", {}),
+            "last_cache_cleanup": status.get("last_cache_cleanup", "never"),
+            "status": "running" if status.get("service_running", False) else "stopped"
+        }
+        
+        return jsonify(klines_status)
     except Exception as e:
         return jsonify({
             "error": str(e),
@@ -10834,44 +10840,44 @@ def admin_clear_cache():
 @app.route("/api/admin/database/cleanup-worker/status")
 @admin_login_required
 def admin_cleanup_worker_status():
-    """Get cache cleanup worker status"""
+    """Get cache cleanup worker status (unified service)"""
     try:
-        # Check if cleanup worker is running
-        status = {
-            'enabled': False,
-            'running': False,
-            'last_run': 'unknown',
-            'cache_size': 0,
-            'worker_thread': None
-        }
+        from .unified_data_sync_service import get_unified_service_status
         
-        # Check enhanced cache status
-        if hasattr(enhanced_cache, '_cache'):
-            status['cache_size'] = len(enhanced_cache._cache)
+        # Get unified service status
+        unified_status = get_unified_service_status()
         
-        if hasattr(enhanced_cache, 'cleanup_worker_running'):
-            status['enabled'] = True
-            status['running'] = enhanced_cache.cleanup_worker_running
-            
-        if hasattr(enhanced_cache, '_last_cleanup'):
-            status['last_run'] = enhanced_cache._last_cleanup.isoformat() if enhanced_cache._last_cleanup else 'never'
+        # Get cache statistics from enhanced cache
+        cache_stats = enhanced_cache.get_cache_stats()
+        total_cache_items = sum(cache_stats['cache_sizes'].values())
         
-        # Check for active threads
+        # Check for active threads related to unified service
         import threading
-        active_threads = [t.name for t in threading.enumerate() if 'cache' in t.name.lower() or 'cleanup' in t.name.lower()]
-        status['worker_thread'] = active_threads[0] if active_threads else None
-        status['running'] = len(active_threads) > 0
+        active_threads = [t.name for t in threading.enumerate() if 'unified' in t.name.lower() or 'sync' in t.name.lower()]
         
         # Get database cache counts for better monitoring
         try:
             from .models import SMCSignalCache, KlinesCache
-            status['smc_signals_count'] = db.session.query(SMCSignalCache).count()
-            status['klines_cache_count'] = db.session.query(KlinesCache).count()
-            status['enabled'] = True  # If we can count DB items, worker is functional
+            smc_signals_count = db.session.query(SMCSignalCache).count()
+            klines_cache_count = db.session.query(KlinesCache).count()
         except Exception as e:
             logging.debug(f"Could not get cache counts: {e}")
-            status['smc_signals_count'] = 0
-            status['klines_cache_count'] = 0
+            smc_signals_count = 0
+            klines_cache_count = 0
+        
+        # Transform unified service status to match expected admin format
+        status = {
+            'enabled': unified_status.get('service_running', False),
+            'running': unified_status.get('service_running', False),
+            'last_run': unified_status.get('last_cache_cleanup', 'never'),
+            'cache_size': total_cache_items,
+            'worker_thread': active_threads[0] if active_threads else 'UnifiedDataSyncService',
+            'smc_signals_count': smc_signals_count,
+            'klines_cache_count': klines_cache_count,
+            'service_type': 'unified',
+            'klines_tracking': unified_status.get('klines_tracking', {}),
+            'cache_statistics': unified_status.get('cache_statistics', {})
+        }
         
         return jsonify({
             'success': True,
