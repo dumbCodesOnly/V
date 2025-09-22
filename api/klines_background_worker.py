@@ -141,7 +141,7 @@ class KlinesBackgroundWorker:
         Get information about existing cached data for a symbol/timeframe
         
         Returns:
-            Dict with keys: count, oldest_timestamp, newest_timestamp, gaps
+            Dict with keys: count, oldest_timestamp, newest_timestamp, needs_initial_population, has_recent_data
         """
         try:
             # Skip database operations if no app context available
@@ -151,34 +151,63 @@ class KlinesBackgroundWorker:
                     "count": 0,
                     "oldest_timestamp": None,
                     "newest_timestamp": None,
-                    "needs_initial_population": True
+                    "needs_initial_population": True,
+                    "has_recent_data": False
                 }
                 
             # Get existing cached data with proper app context
             with self.app.app_context():
-                cached_data = KlinesCache.get_cached_data(
+                # Check for recent data (last 48 hours worth)
+                recent_limit = 48 if timeframe == "1h" else 12 if timeframe == "4h" else 2  # Last 48h worth
+                recent_data = KlinesCache.get_cached_data(
                     symbol=symbol,
-                    timeframe=timeframe, 
-                    limit=self._get_required_initial_candles(timeframe),
+                    timeframe=timeframe,
+                    limit=recent_limit,
                     include_incomplete=True
                 )
                 
-                if not cached_data:
+                # Check total data count with a reasonable sample
+                total_data = KlinesCache.get_cached_data(
+                    symbol=symbol,
+                    timeframe=timeframe, 
+                    limit=200,  # Sample to check if we have substantial data
+                    include_incomplete=True
+                )
+                
+                if not total_data:
                     return {
                         "count": 0,
                         "oldest_timestamp": None,
                         "newest_timestamp": None,
-                        "needs_initial_population": True
+                        "needs_initial_population": True,
+                        "has_recent_data": False
                     }
                     
-                timestamps = [candle["timestamp"] for candle in cached_data]
+                timestamps = [candle["timestamp"] for candle in total_data]
                 timestamps.sort()
                 
+                # Determine if we need initial population based on data age and completeness
+                required_candles = self._get_required_initial_candles(timeframe)
+                current_time = get_utc_now()
+                
+                # Check if we have reasonable historical coverage
+                if len(total_data) >= required_candles * 0.7:  # 70% coverage is sufficient
+                    needs_initial = False
+                else:
+                    # Check if newest data is very old (more than 1 day old)
+                    newest_time = timestamps[-1] if timestamps else None
+                    if newest_time:
+                        age_hours = (current_time - newest_time).total_seconds() / 3600
+                        needs_initial = age_hours > 24  # If data older than 24h, do initial population
+                    else:
+                        needs_initial = True
+                
                 return {
-                    "count": len(cached_data),
+                    "count": len(total_data),
                     "oldest_timestamp": timestamps[0] if timestamps else None,
                     "newest_timestamp": timestamps[-1] if timestamps else None, 
-                    "needs_initial_population": len(cached_data) < self._get_required_initial_candles(timeframe) * 0.8
+                    "needs_initial_population": needs_initial,
+                    "has_recent_data": len(recent_data) > 0
                 }
             
         except Exception as e:
@@ -187,7 +216,8 @@ class KlinesBackgroundWorker:
                 "count": 0,
                 "oldest_timestamp": None,
                 "newest_timestamp": None,
-                "needs_initial_population": True
+                "needs_initial_population": True,
+                "has_recent_data": False
             }
 
     def _populate_initial_data(self, symbol: str, timeframe: str) -> bool:
@@ -239,8 +269,8 @@ class KlinesBackgroundWorker:
                 saved_count = KlinesCache.save_klines_batch(
                     symbol=symbol,
                     timeframe=timeframe,
-                    klines_data=klines_data,
-                    ttl_minutes=ttl_minutes
+                    candlesticks=klines_data,
+                    cache_ttl_minutes=ttl_minutes
                 )
             
             logging.info(f"Successfully populated {saved_count} candles for {symbol} {timeframe}")
@@ -259,7 +289,9 @@ class KlinesBackgroundWorker:
 
     def _update_recent_data(self, symbol: str, timeframe: str) -> bool:
         """
-        Update only recent and open candles for a symbol/timeframe
+        Update only recent and open candles for a symbol/timeframe - OPTIMIZED VERSION
+        
+        Fetches minimal data: just the last few candles to update current/recent periods
         
         Args:
             symbol: Trading symbol
@@ -269,10 +301,13 @@ class KlinesBackgroundWorker:
             True if successful, False otherwise
         """
         try:
-            # Fetch only recent candles (last 10-20 periods)
-            recent_limit = 20
+            # Fetch minimal recent data - just enough to update current period + few previous
+            # 1h: last 3 candles (covers current + 2 previous hours)
+            # 4h: last 2 candles (covers current + 1 previous 4h period) 
+            # 1d: last 2 candles (covers current + 1 previous day)
+            recent_limit = 3 if timeframe == "1h" else 2
             
-            logging.debug(f"Updating recent data: {symbol} {timeframe} ({recent_limit} candles)")
+            logging.debug(f"Updating recent data: {symbol} {timeframe} ({recent_limit} candles - minimal fetch)")
             
             # Fetch recent data  
             try:
@@ -285,6 +320,22 @@ class KlinesBackgroundWorker:
                 
             if not recent_klines:
                 return False
+            
+            # Filter to only update the most recent periods (avoid unnecessary overwrites)
+            current_time = get_utc_now()
+            
+            # Only update candles from the last few periods to minimize database writes
+            cutoff_hours = {"1h": 6, "4h": 12, "1d": 48}  # 6h, 12h, 48h cutoff
+            cutoff_time = current_time - timedelta(hours=cutoff_hours.get(timeframe, 12))
+            
+            filtered_klines = [
+                kline for kline in recent_klines 
+                if kline["timestamp"] >= cutoff_time
+            ]
+            
+            if not filtered_klines:
+                logging.debug(f"No recent candles to update for {symbol} {timeframe}")
+                return True  # Success but nothing to do
                 
             # Calculate TTL
             if timeframe == "1h":
@@ -305,11 +356,11 @@ class KlinesBackgroundWorker:
                 saved_count = KlinesCache.save_klines_batch(
                     symbol=symbol,
                     timeframe=timeframe,
-                    klines_data=recent_klines,
-                    ttl_minutes=ttl_minutes
+                    candlesticks=filtered_klines,
+                    cache_ttl_minutes=ttl_minutes
                 )
             
-            logging.debug(f"Updated {saved_count} recent candles for {symbol} {timeframe}")
+            logging.debug(f"Updated {saved_count}/{len(recent_klines)} recent candles for {symbol} {timeframe}")
             
             # Update tracking
             with self.lock:
@@ -324,7 +375,7 @@ class KlinesBackgroundWorker:
             return False
 
     def _cleanup_old_data(self):
-        """Clean up old klines data beyond retention period"""
+        """Gradual cleanup of old klines data - batch processing to avoid database locks"""
         try:
             # Skip cleanup if no app context available
             if not self.app:
@@ -333,15 +384,16 @@ class KlinesBackgroundWorker:
                 
             # Need Flask app context for database operations
             with self.app.app_context():
-                # Clean up expired cache entries
+                # Clean up expired cache entries (small batches to avoid locks)
                 expired_count = KlinesCache.cleanup_expired()
                 if expired_count > 0:
                     logging.info(f"Cleaned up {expired_count} expired klines cache entries")
                     
-                # Clean up very old data beyond retention period  
+                # Gradual cleanup of very old data - only clean a bit each cycle
+                # This prevents large database operations that could impact performance
                 old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
                 if old_count > 0:
-                    logging.info(f"Cleaned up {old_count} old klines entries beyond retention period")
+                    logging.info(f"Cleaned up {old_count} old klines entries beyond {CacheConfig.KLINES_DATA_RETENTION_DAYS} day retention")
                 
         except Exception as e:
             logging.error(f"Error during klines data cleanup: {e}")
@@ -376,10 +428,14 @@ class KlinesBackgroundWorker:
                         # Get existing data information
                         data_info = self._get_existing_data_info(symbol, timeframe)
                         
-                        # Decide between initial population or recent update
+                        # OPTIMIZED: Decide between initial population or incremental update
                         if data_info["needs_initial_population"]:
+                            # Initial population: Get full historical data (happens once per symbol/timeframe)
+                            logging.info(f"Initial population needed for {symbol} {timeframe}")
                             success = self._populate_initial_data(symbol, timeframe)
                         else:
+                            # Incremental update: Only get recent candles (much more efficient)
+                            logging.debug(f"Incremental update for {symbol} {timeframe}")
                             success = self._update_recent_data(symbol, timeframe)
                             
                         if success:
@@ -492,7 +548,8 @@ def start_klines_background_worker(app=None):
 
 def stop_klines_background_worker():
     """Stop the global klines background worker"""
-    klines_worker.stop()
+    if klines_worker is not None:
+        klines_worker.stop()
 
 
 def get_klines_worker_status() -> Dict:
