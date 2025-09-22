@@ -95,59 +95,9 @@ class KlinesBackgroundWorker:
         logging.debug(f"Fetched {len(klines)} klines for {symbol} {interval} from Binance")
         return klines
 
-    @with_circuit_breaker("coingecko_klines_api", failure_threshold=3, recovery_timeout=90, success_threshold=2)
-    def _fetch_coingecko_klines(self, symbol: str, timeframe: str, days: int = 30) -> List[Dict]:
-        """
-        Fetch klines data from CoinGecko API with circuit breaker protection
-        
-        Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
-            timeframe: Timeframe ('1h', '4h', '1d')
-            days: Number of days of historical data
-            
-        Returns:
-            List of klines data in OHLCV format
-        """
-        # Convert symbol format for CoinGecko (BTCUSDT -> bitcoin)
-        symbol_map = {
-            "BTCUSDT": "bitcoin",
-            "ETHUSDT": "ethereum", 
-            "BNBUSDT": "binancecoin",
-            "ADAUSDT": "cardano",
-            "XRPUSDT": "ripple",
-            "SOLUSDT": "solana",
-            "DOTUSDT": "polkadot",
-            "DOGEUSDT": "dogecoin",
-            "AVAXUSDT": "avalanche-2",
-            "LINKUSDT": "chainlink"
-        }
-        
-        coin_id = symbol_map.get(symbol)
-        if not coin_id:
-            raise ValueError(f"Symbol {symbol} not supported by CoinGecko fallback")
-            
-        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
-        params = {"vs_currency": "usd", "days": days}
-        
-        response = requests.get(url, params=params, timeout=TimeConfig.PRICE_API_TIMEOUT)
-        response.raise_for_status()
-        
-        ohlc_data = response.json()
-        
-        # Convert CoinGecko format to standardized format
-        klines = []
-        for ohlc in ohlc_data:
-            klines.append({
-                "timestamp": datetime.fromtimestamp(ohlc[0] / 1000, tz=timezone.utc),
-                "open": float(ohlc[1]),
-                "high": float(ohlc[2]),
-                "low": float(ohlc[3]), 
-                "close": float(ohlc[4]),
-                "volume": 0.0  # CoinGecko OHLC doesn't include volume
-            })
-            
-        logging.debug(f"Fetched {len(klines)} klines for {symbol} from CoinGecko fallback")
-        return klines
+    # Removed CoinGecko klines fallback - inappropriate for candlestick data
+    # CoinGecko OHLC is price data, not proper klines data, and lacks volume information
+    # Better to wait for Binance to recover than use poor quality data
 
     def _get_required_initial_candles(self, timeframe: str) -> int:
         """Calculate how many initial candles we need for each timeframe"""
@@ -260,14 +210,11 @@ class KlinesBackgroundWorker:
             try:
                 klines_data = self._fetch_binance_klines(symbol, timeframe, required_candles)
             except Exception as e:
-                logging.warning(f"Binance API failed for {symbol} {timeframe}: {e}, trying fallback")
-                # Fallback to CoinGecko for critical symbols
-                try:
-                    days_needed = required_candles // (24 if timeframe == "1h" else 6 if timeframe == "4h" else 1)
-                    klines_data = self._fetch_coingecko_klines(symbol, timeframe, days_needed)
-                except Exception as fallback_error:
-                    logging.error(f"All data sources failed for {symbol} {timeframe}: {fallback_error}")
-                    return False
+                logging.warning(f"Binance API failed for {symbol} {timeframe}: {e}")
+                # Wait before marking as failed to avoid rapid retries
+                time.sleep(TimeConfig.API_RETRY_DELAY)
+                logging.info(f"Skipping {symbol} {timeframe} - will retry in next cycle when Binance recovers")
+                return False
             
             if not klines_data:
                 logging.warning(f"No data received for {symbol} {timeframe}")
@@ -327,11 +274,13 @@ class KlinesBackgroundWorker:
             
             logging.debug(f"Updating recent data: {symbol} {timeframe} ({recent_limit} candles)")
             
-            # Fetch recent data
+            # Fetch recent data  
             try:
                 recent_klines = self._fetch_binance_klines(symbol, timeframe, recent_limit)
             except Exception as e:
                 logging.warning(f"Recent update failed for {symbol} {timeframe}: {e}")
+                # Brief delay before giving up
+                time.sleep(TimeConfig.API_RETRY_DELAY * 0.5)
                 return False
                 
             if not recent_klines:
@@ -443,8 +392,8 @@ class KlinesBackgroundWorker:
                         
                     completed_tasks += 1
                     
-                    # Small delay between requests to be API-friendly
-                    time.sleep(0.1)
+                    # Proper delay between requests to respect API rate limits
+                    time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
                     
             # Cleanup old data at the end of each cycle
             self._cleanup_old_data()

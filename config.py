@@ -64,6 +64,12 @@ class TimeConfig:
     # Cache TTL
     PRICE_CACHE_TTL = 10  # seconds - how long to cache price data
     USER_DATA_CACHE_TTL = 30  # seconds - how long to cache user data
+    
+    # API Rate Limiting - Delays between requests to respect rate limits
+    BINANCE_API_DELAY = 0.12  # seconds - Conservative: ~500 requests/minute (Binance allows 1200/min)
+    BINANCE_KLINES_DELAY = 0.2  # seconds - More conservative for klines endpoints
+    API_RETRY_DELAY = 1.0  # seconds - Base delay for retries
+    API_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
 
     # Sync Intervals - COST OPTIMIZED FOR RENDER
     EXCHANGE_SYNC_INTERVAL = (
