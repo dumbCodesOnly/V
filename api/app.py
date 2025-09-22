@@ -3634,10 +3634,29 @@ def circuit_breaker_health():
             "healthy_services": healthy,
             "unhealthy_services": unhealthy,
             "total_services": len(healthy) + len(unhealthy),
-            "health_percentage": (len(healthy) / max(1, len(healthy) + len(unhealthy)))
+            "health_percentage": (len(healthy) / max(1, len(unhealthy) + len(unhealthy)))
             * 100,
         }
     )
+
+
+@app.route("/api/klines-worker/status")
+def klines_worker_status():
+    """Get klines background worker status and statistics"""
+    try:
+        if 'klines_worker' in globals():
+            status = klines_worker.get_status()
+            return jsonify(status)
+        else:
+            return jsonify({
+                "error": "Klines worker not initialized",
+                "status": "unavailable"
+            }), 503
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
 
 
 @app.route("/api/price/<symbol>")
