@@ -200,7 +200,24 @@
             }
 
             .smc-chart-wrapper {
-                height: 420px !important;
+                height: 85vh !important;
+                min-height: 500px !important;
+            }
+            
+            .smc-chart-wrapper.fullscreen {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                z-index: 9999 !important;
+                background: var(--tg-theme-bg-color) !important;
+                border-radius: 0 !important;
+                padding: 10px !important;
+            }
+            
+            .smc-chart-wrapper.fullscreen canvas {
+                height: calc(100vh - 60px) !important;
             }
         }
 
@@ -6426,13 +6443,16 @@
                                                     <button class="btn btn-outline-secondary btn-sm" onclick="resetChartZoom()" id="reset-zoom-btn" style="display: none;">
                                                         <i data-feather="zoom-out"></i> Reset Zoom
                                                     </button>
+                                                    <button class="btn btn-outline-info btn-sm" onclick="toggleChartFullscreen()" id="fullscreen-btn">
+                                                        <i data-feather="maximize"></i> <span id="fullscreen-text">Fullscreen</span>
+                                                    </button>
                                                     <button class="btn btn-outline-primary btn-sm" onclick="loadSmcChart('${symbol}')" id="load-chart-btn">
                                                         <i data-feather="bar-chart-2"></i> Load Chart
                                                     </button>
                                                 </div>
                                             </div>
                                             <div id="chart-container" style="display: none;">
-                                                <div class="smc-chart-wrapper" style="height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 25px; border: 1px solid var(--tg-theme-border-color); position: relative; z-index: 1;">
+                                                <div class="smc-chart-wrapper" style="height: 85vh; min-height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 15px; border: 1px solid var(--tg-theme-border-color); position: relative; z-index: 1;">
                                                     <canvas id="smc-chart" style="width: 100%;"></canvas>
                                                 </div>
                                                 <div class="mt-3 p-2" style="background: rgba(107, 139, 179, 0.05); border-radius: 6px;">
@@ -6455,7 +6475,7 @@
                                                         </small>
                                                     </div>
                                                     <div class="text-center mt-2">
-                                                        <small class="text-muted">💡 Tip: Use mouse wheel to zoom, drag to pan, double-click to reset</small>
+                                                        <small class="text-muted">💡 Mobile: Pinch to zoom, two-finger drag to pan • Desktop: Mouse wheel to zoom, drag to pan</small>
                                                     </div>
                                                 </div>
                                             </div>
@@ -6651,9 +6671,7 @@
                     borderColor: borderColor,
                     borderWidth: 1,
                     label: {
-                        display: true,
-                        content: `OB (${ob.direction})`,
-                        position: 'start'
+                        display: false
                     }
                 };
             });
@@ -6675,9 +6693,7 @@
                         borderWidth: 1,
                         borderDash: [5, 5],
                         label: {
-                            display: true,
-                            content: `FVG (${fvg.direction})`,
-                            position: 'start'
+                            display: false
                         }
                     };
                 }
@@ -6696,9 +6712,7 @@
                     borderWidth: 2,
                     borderDash: lp.swept ? [2, 4] : [8, 4],
                     label: {
-                        display: true,
-                        content: `${lp.type.replace('_', ' ')} liquidity`,
-                        position: 'end'
+                        display: false
                     }
                 };
             });
@@ -6731,11 +6745,15 @@
                     maintainAspectRatio: false,
                     layout: {
                         padding: {
-                            top: 20,
-                            right: 20,
-                            bottom: 20,
-                            left: 20
+                            top: 10,
+                            right: 30,
+                            bottom: 10,
+                            left: 10
                         }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
                     },
                     scales: {
                         x: {
@@ -6776,18 +6794,26 @@
                             zoom: {
                                 wheel: {
                                     enabled: true,
-                                    speed: 0.05,
+                                    speed: 0.1,
                                     modifierKey: null
                                 },
                                 pinch: {
-                                    enabled: true
+                                    enabled: true,
+                                    threshold: 2
                                 },
                                 drag: {
                                     enabled: false
                                 },
                                 mode: 'x',
+                                onZoomStart: function() {
+                                    // Disable tooltip during zoom for performance
+                                    smcChart.options.plugins.tooltip.enabled = false;
+                                    smcChart.update('none');
+                                },
                                 onZoomComplete: function() {
-                                    // Show reset zoom button when zoomed
+                                    // Re-enable tooltip and show reset button
+                                    smcChart.options.plugins.tooltip.enabled = true;
+                                    smcChart.update('none');
                                     const resetBtn = document.getElementById('reset-zoom-btn');
                                     if (resetBtn) resetBtn.style.display = 'inline-block';
                                 }
@@ -6796,9 +6822,16 @@
                                 enabled: true,
                                 mode: 'x',
                                 modifierKey: null,
-                                threshold: 10,
+                                threshold: 5,
+                                onPanStart: function() {
+                                    // Disable tooltip during pan for performance
+                                    smcChart.options.plugins.tooltip.enabled = false;
+                                    smcChart.update('none');
+                                },
                                 onPanComplete: function() {
-                                    // Show reset zoom button when panned
+                                    // Re-enable tooltip and show reset button
+                                    smcChart.options.plugins.tooltip.enabled = true;
+                                    smcChart.update('none');
                                     const resetBtn = document.getElementById('reset-zoom-btn');
                                     if (resetBtn) resetBtn.style.display = 'inline-block';
                                 }
@@ -6907,6 +6940,67 @@
                         }, 1000);
                     }
                 }, 5000);
+            }
+        }
+
+        // Fullscreen functionality for chart
+        function toggleChartFullscreen() {
+            const chartWrapper = document.querySelector('.smc-chart-wrapper');
+            const fullscreenBtn = document.getElementById('fullscreen-btn');
+            const fullscreenText = document.getElementById('fullscreen-text');
+            const icon = fullscreenBtn.querySelector('i');
+            
+            if (!chartWrapper) return;
+            
+            if (chartWrapper.classList.contains('fullscreen')) {
+                // Exit fullscreen
+                chartWrapper.classList.remove('fullscreen');
+                document.body.style.overflow = '';
+                fullscreenText.textContent = 'Fullscreen';
+                icon.setAttribute('data-feather', 'maximize');
+                
+                // Re-enable modal scrolling
+                const modal = document.querySelector('.modal');
+                if (modal) modal.style.overflow = 'auto';
+                
+                // Update chart size after animation
+                setTimeout(() => {
+                    if (smcChart) {
+                        smcChart.resize();
+                    }
+                }, 300);
+                
+            } else {
+                // Enter fullscreen
+                chartWrapper.classList.add('fullscreen');
+                document.body.style.overflow = 'hidden';
+                fullscreenText.textContent = 'Exit';
+                icon.setAttribute('data-feather', 'minimize');
+                
+                // Disable modal scrolling
+                const modal = document.querySelector('.modal');
+                if (modal) modal.style.overflow = 'hidden';
+                
+                // Add ESC key listener for exit
+                const escapeListener = (e) => {
+                    if (e.key === 'Escape') {
+                        toggleChartFullscreen();
+                        document.removeEventListener('keydown', escapeListener);
+                    }
+                };
+                document.addEventListener('keydown', escapeListener);
+                
+                // Update chart size after animation
+                setTimeout(() => {
+                    if (smcChart) {
+                        smcChart.resize();
+                    }
+                }, 300);
+            }
+            
+            // Re-initialize feather icons
+            if (typeof feather !== 'undefined') {
+                feather.replace();
             }
         }
 
