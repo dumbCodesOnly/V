@@ -825,46 +825,135 @@ class UnifiedDataSyncService:
 
     def _cleanup_klines_data(self):
         """Enhanced cleanup of old klines data with rolling window management"""
+        cleanup_start_time = time.time()
+        logging.info("CLEANUP_DEBUG: Starting klines data cleanup process")
+        
         try:
             # Skip cleanup if no app context available
             if not self.app:
-                logging.debug("Skipping klines cleanup - no app context available")
+                logging.warning("CLEANUP_DEBUG: Skipping klines cleanup - no app context available")
                 return
                 
+            logging.debug("CLEANUP_DEBUG: App context available, proceeding with cleanup")
+            
             # Need Flask app context for database operations
             with self.app.app_context():
                 from .models import KlinesCache, SMCSignalCache
+                logging.debug("CLEANUP_DEBUG: Successfully imported models and entered app context")
+                
+                # First, check current database state
+                try:
+                    total_candles_before = 0
+                    candles_by_timeframe = {}
+                    
+                    # Get total count before cleanup
+                    from sqlalchemy import text
+                    from api.models import db
+                    
+                    result = db.session.execute(text("SELECT COUNT(*) FROM klines_cache"))
+                    total_candles_before = result.scalar()
+                    
+                    # Get breakdown by timeframe
+                    result = db.session.execute(text("SELECT timeframe, COUNT(*) FROM klines_cache GROUP BY timeframe"))
+                    candles_by_timeframe = dict(result.fetchall())
+                    
+                    logging.info(f"CLEANUP_DEBUG: Database state before cleanup - Total candles: {total_candles_before}")
+                    for timeframe, count in candles_by_timeframe.items():
+                        logging.info(f"CLEANUP_DEBUG: {timeframe}: {count} candles")
+                        
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error checking database state: {e}")
+                    total_candles_before = -1
                 
                 # Clean up expired cache entries (small batches to avoid locks)
-                expired_count = KlinesCache.cleanup_expired()
-                if expired_count > 0:
-                    logging.info(f"Cleaned up {expired_count} expired klines cache entries")
+                logging.debug("CLEANUP_DEBUG: Starting expired cache cleanup")
+                try:
+                    expired_count = KlinesCache.cleanup_expired()
+                    if expired_count > 0:
+                        logging.info(f"CLEANUP_DEBUG: Cleaned up {expired_count} expired klines cache entries")
+                    else:
+                        logging.debug("CLEANUP_DEBUG: No expired cache entries found")
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error in expired cache cleanup: {e}")
                     
                 # ROLLING WINDOW CLEANUP - NEW FEATURE
                 # This maintains the configured window size for each timeframe
-                rolling_window_results = KlinesCache.cleanup_all_rolling_windows(
-                    batch_size=RollingWindowConfig.CLEANUP_BATCH_SIZE
-                )
-                if rolling_window_results["total_deleted"] > 0:
-                    logging.info(f"Rolling window cleanup: deleted {rolling_window_results['total_deleted']} old candles across {rolling_window_results['symbols_processed']} symbol/timeframe combinations")
-                    
-                    # Log details for each symbol/timeframe that had cleanup
-                    for key, count in rolling_window_results["details"].items():
-                        logging.debug(f"Rolling window: {key} deleted {count} candles")
+                logging.debug("CLEANUP_DEBUG: Starting rolling window cleanup")
+                try:
+                    # Check if the cleanup method exists
+                    if not hasattr(KlinesCache, 'cleanup_all_rolling_windows'):
+                        logging.error("CLEANUP_DEBUG: KlinesCache.cleanup_all_rolling_windows method not found!")
+                        rolling_window_results = {"total_deleted": 0, "symbols_processed": 0, "details": {}}
+                    else:
+                        logging.debug(f"CLEANUP_DEBUG: Calling rolling window cleanup with batch_size={RollingWindowConfig.CLEANUP_BATCH_SIZE}")
+                        rolling_window_results = KlinesCache.cleanup_all_rolling_windows(
+                            batch_size=RollingWindowConfig.CLEANUP_BATCH_SIZE
+                        )
+                        logging.debug(f"CLEANUP_DEBUG: Rolling window cleanup completed, results: {rolling_window_results}")
+                        
+                    if rolling_window_results["total_deleted"] > 0:
+                        logging.info(f"CLEANUP_DEBUG: Rolling window cleanup: deleted {rolling_window_results['total_deleted']} old candles across {rolling_window_results['symbols_processed']} symbol/timeframe combinations")
+                        
+                        # Log details for each symbol/timeframe that had cleanup
+                        for key, count in rolling_window_results["details"].items():
+                            logging.info(f"CLEANUP_DEBUG: Rolling window: {key} deleted {count} candles")
+                    else:
+                        logging.debug("CLEANUP_DEBUG: Rolling window cleanup: no candles deleted")
+                        
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error in rolling window cleanup: {e}")
+                    import traceback
+                    logging.error(f"CLEANUP_DEBUG: Rolling window cleanup traceback: {traceback.format_exc()}")
                     
                 # Traditional cleanup of very old data as fallback
-                # This handles any data that might fall through the rolling window
-                old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
-                if old_count > 0:
-                    logging.info(f"Fallback cleanup: {old_count} old klines entries beyond {CacheConfig.KLINES_DATA_RETENTION_DAYS} day retention")
+                logging.debug("CLEANUP_DEBUG: Starting fallback old data cleanup")
+                try:
+                    old_count = KlinesCache.cleanup_old_data(days_to_keep=CacheConfig.KLINES_DATA_RETENTION_DAYS)
+                    if old_count > 0:
+                        logging.info(f"CLEANUP_DEBUG: Fallback cleanup: {old_count} old klines entries beyond {CacheConfig.KLINES_DATA_RETENTION_DAYS} day retention")
+                    else:
+                        logging.debug(f"CLEANUP_DEBUG: Fallback cleanup: no entries older than {CacheConfig.KLINES_DATA_RETENTION_DAYS} days found")
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error in fallback cleanup: {e}")
 
                 # Clean up expired SMC signals
-                smc_cleaned = SMCSignalCache.cleanup_expired()
-                if smc_cleaned > 0:
-                    logging.info(f"Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                logging.debug("CLEANUP_DEBUG: Starting SMC signal cleanup")
+                try:
+                    smc_cleaned = SMCSignalCache.cleanup_expired()
+                    if smc_cleaned > 0:
+                        logging.info(f"CLEANUP_DEBUG: Cleaned up {smc_cleaned} expired SMC signal cache entries")
+                    else:
+                        logging.debug("CLEANUP_DEBUG: No expired SMC signals found")
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error in SMC cleanup: {e}")
+                
+                # Check database state after cleanup
+                try:
+                    result = db.session.execute(text("SELECT COUNT(*) FROM klines_cache"))
+                    total_candles_after = result.scalar()
+                    
+                    result = db.session.execute(text("SELECT timeframe, COUNT(*) FROM klines_cache GROUP BY timeframe"))
+                    candles_after = dict(result.fetchall())
+                    
+                    cleanup_duration = time.time() - cleanup_start_time
+                    candles_removed = total_candles_before - total_candles_after if total_candles_before >= 0 else -1
+                    
+                    logging.info(f"CLEANUP_DEBUG: Database state after cleanup - Total candles: {total_candles_after} (removed: {candles_removed})")
+                    for timeframe, count in candles_after.items():
+                        before_count = candles_by_timeframe.get(timeframe, 0)
+                        removed = before_count - count
+                        logging.info(f"CLEANUP_DEBUG: {timeframe}: {count} candles (removed: {removed})")
+                    
+                    logging.info(f"CLEANUP_DEBUG: Cleanup completed in {cleanup_duration:.2f} seconds")
+                    
+                except Exception as e:
+                    logging.error(f"CLEANUP_DEBUG: Error checking database state after cleanup: {e}")
                 
         except Exception as e:
-            logging.error(f"Error during klines data cleanup: {e}")
+            cleanup_duration = time.time() - cleanup_start_time
+            logging.error(f"CLEANUP_DEBUG: Error during klines data cleanup after {cleanup_duration:.2f}s: {e}")
+            import traceback
+            logging.error(f"CLEANUP_DEBUG: Cleanup error traceback: {traceback.format_exc()}")
 
     def _cleanup_cache_data(self) -> int:
         """Clean up expired cache entries and return count"""
@@ -963,8 +1052,15 @@ class UnifiedDataSyncService:
 
             # Phase 2: COORDINATED cleanup after data updates
             # This ensures fresh data isn't accidentally purged
+            logging.info(f"SYNC_DEBUG: Starting cleanup phase after processing {completed_klines_tasks}/{total_klines_tasks} klines tasks")
+            
+            logging.debug("SYNC_DEBUG: Calling klines data cleanup")
             self._cleanup_klines_data()  # Database cleanup
+            
+            logging.debug("SYNC_DEBUG: Calling cache data cleanup")
             cache_removed = self._cleanup_cache_data()  # Memory cache cleanup
+            
+            logging.debug(f"SYNC_DEBUG: Cleanup phase completed - cache entries removed: {cache_removed}")
             
             cycle_time = time.time() - start_time
             # Log cycle performance and efficiency metrics
@@ -998,23 +1094,31 @@ class UnifiedDataSyncService:
 
     def start(self):
         """Start the unified background service"""
-        with self.lock:
-            if self.is_running:
-                logging.warning("Unified data sync service already running")
-                return
+        logging.info("INIT_DEBUG: UnifiedDataSyncService.start() called")
+        try:
+            with self.lock:
+                if self.is_running:
+                    logging.warning("INIT_DEBUG: Unified data sync service already running")
+                    return
+                    
+                logging.info("INIT_DEBUG: Setting service as running and starting worker thread")
+                self.is_running = True
+                self.stop_event.clear()
                 
-            self.is_running = True
-            self.stop_event.clear()
-            
-            self.worker_thread = threading.Thread(
-                target=self._service_loop,
-                name="UnifiedDataSyncService",
-                daemon=True
-            )
-            self.worker_thread.start()
-            
-            logging.info(f"Unified data sync service started - monitoring {len(TradingConfig.SUPPORTED_SYMBOLS)} symbols across {len(self.timeframes)} timeframes")
-            logging.debug(f"Service configuration: symbols={TradingConfig.SUPPORTED_SYMBOLS}, timeframes={list(self.timeframes.keys())}, intervals={self.timeframes}")
+                self.worker_thread = threading.Thread(
+                    target=self._service_loop,
+                    name="UnifiedDataSyncService",
+                    daemon=True
+                )
+                self.worker_thread.start()
+                
+                logging.info(f"INIT_DEBUG: Unified data sync service started - monitoring {len(TradingConfig.SUPPORTED_SYMBOLS)} symbols across {len(self.timeframes)} timeframes")
+                logging.debug(f"INIT_DEBUG: Service configuration: symbols={TradingConfig.SUPPORTED_SYMBOLS}, timeframes={list(self.timeframes.keys())}, intervals={self.timeframes}")
+                
+        except Exception as e:
+            logging.error(f"INIT_DEBUG: Error in UnifiedDataSyncService.start(): {e}")
+            import traceback
+            logging.error(f"INIT_DEBUG: Start error traceback: {traceback.format_exc()}")
 
     def stop(self):
         """Stop the unified background service"""
@@ -1156,10 +1260,24 @@ def get_klines_worker_status() -> Dict:
 # New unified interface
 def start_unified_data_sync_service(app=None):
     """Start the unified data sync service"""
+    logging.info("INIT_DEBUG: start_unified_data_sync_service called")
     global unified_service
-    if unified_service is None:
-        unified_service = UnifiedDataSyncService(app)
-    unified_service.start()
+    try:
+        if unified_service is None:
+            logging.info("INIT_DEBUG: Creating new UnifiedDataSyncService instance")
+            unified_service = UnifiedDataSyncService(app)
+            logging.info("INIT_DEBUG: UnifiedDataSyncService instance created successfully")
+        else:
+            logging.info("INIT_DEBUG: UnifiedDataSyncService instance already exists")
+            
+        logging.info("INIT_DEBUG: Calling unified_service.start()")
+        unified_service.start()
+        logging.info("INIT_DEBUG: unified_service.start() completed")
+        
+    except Exception as e:
+        logging.error(f"INIT_DEBUG: Error starting unified data sync service: {e}")
+        import traceback
+        logging.error(f"INIT_DEBUG: Traceback: {traceback.format_exc()}")
 
 def stop_unified_data_sync_service():
     """Stop the unified data sync service"""
