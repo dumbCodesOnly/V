@@ -3634,7 +3634,7 @@ def circuit_breaker_health():
             "healthy_services": healthy,
             "unhealthy_services": unhealthy,
             "total_services": len(healthy) + len(unhealthy),
-            "health_percentage": (len(healthy) / max(1, len(unhealthy) + len(unhealthy)))
+            "health_percentage": (len(healthy) / max(1, len(healthy) + len(unhealthy)))
             * 100,
         }
     )
