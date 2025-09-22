@@ -449,28 +449,43 @@ def start_cache_cleanup_worker(app=None):
                     try:
                         with app.app_context():
                             from .models import KlinesCache, SMCSignalCache
+                            from config import RollingWindowConfig
 
                             # Clean up expired klines cache entries
                             klines_cleaned = KlinesCache.cleanup_expired()
                             if klines_cleaned > 0:
                                 logging.info(
-                                    f"Cleaned up {klines_cleaned} expired klines cache entries"
+                                    f"Enhanced cache: cleaned up {klines_cleaned} expired klines cache entries"
                                 )
 
-                            # Clean up old klines data beyond retention period
+                            # ROLLING WINDOW CLEANUP - Priority cleanup to maintain window sizes
+                            rolling_window_results = KlinesCache.cleanup_all_rolling_windows(
+                                batch_size=RollingWindowConfig.CLEANUP_BATCH_SIZE
+                            )
+                            if rolling_window_results["total_deleted"] > 0:
+                                logging.info(
+                                    f"Enhanced cache rolling window: deleted {rolling_window_results['total_deleted']} old candles "
+                                    f"across {rolling_window_results['symbols_processed']} symbol/timeframe combinations"
+                                )
+                                
+                                # Log details for transparency
+                                for key, count in rolling_window_results["details"].items():
+                                    logging.debug(f"Enhanced cache rolling window: {key} deleted {count} candles")
+
+                            # Clean up old klines data beyond retention period (fallback)
                             old_klines_cleaned = KlinesCache.cleanup_old_data(
                                 CacheConfig.KLINES_DATA_RETENTION_DAYS
                             )
                             if old_klines_cleaned > 0:
                                 logging.info(
-                                    f"Cleaned up {old_klines_cleaned} old klines data entries"
+                                    f"Enhanced cache: cleaned up {old_klines_cleaned} old klines data entries (fallback cleanup)"
                                 )
 
                             # Clean up expired SMC signals
                             smc_cleaned = SMCSignalCache.cleanup_expired()
                             if smc_cleaned > 0:
                                 logging.info(
-                                    f"Cleaned up {smc_cleaned} expired SMC signal cache entries"
+                                    f"Enhanced cache: cleaned up {smc_cleaned} expired SMC signal cache entries"
                                 )
                             else:
                                 logging.debug("No expired SMC signals to clean up")
