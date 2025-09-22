@@ -43,9 +43,9 @@ class KlinesBackgroundWorker:
         
         # Supported timeframes with update intervals (in seconds)
         self.timeframes = {
-            "1h": 300,   # Update every 5 minutes  
-            "4h": 300,   # Update every 5 minutes (increased from 15 minutes for volatile markets)
-            "1d": 300    # Update every 5 minutes (increased from 1 hour for volatile markets)
+            "1h": 120,   # Update every 2 minutes for live tracking
+            "4h": 300,   # Update every 5 minutes  
+            "1d": 900    # Update every 15 minutes for daily candles
         }
         
         # Track last update times per symbol/timeframe
@@ -252,14 +252,15 @@ class KlinesBackgroundWorker:
                 return False
                 
             # Calculate appropriate TTL based on timeframe
+            # Use shorter TTL for initial population to ensure open candles update frequently
             if timeframe == "1h":
-                ttl_minutes = CacheConfig.KLINES_1H_CACHE_TTL
+                ttl_minutes = 3  # Short TTL for frequent updates of open candles
             elif timeframe == "4h":
-                ttl_minutes = CacheConfig.KLINES_4H_CACHE_TTL
+                ttl_minutes = 8  # Medium TTL for 4h open candles
             elif timeframe == "1d":
-                ttl_minutes = CacheConfig.KLINES_1D_CACHE_TTL
+                ttl_minutes = 20  # Longer TTL for daily open candles
             else:
-                ttl_minutes = 60  # Default 1 hour
+                ttl_minutes = 5  # Default short TTL
                 
             # Save to database in batches for efficiency
             if not self.app:
@@ -338,15 +339,15 @@ class KlinesBackgroundWorker:
                 logging.debug(f"No recent candles to update for {symbol} {timeframe}")
                 return True  # Success but nothing to do
                 
-            # Calculate TTL
+            # Calculate TTL for recent updates (shorter for open candles)
             if timeframe == "1h":
-                ttl_minutes = CacheConfig.KLINES_1H_CACHE_TTL  
+                ttl_minutes = 2  # Very short TTL for hourly open candles
             elif timeframe == "4h":
-                ttl_minutes = CacheConfig.KLINES_4H_CACHE_TTL
+                ttl_minutes = 5  # Short TTL for 4h open candles
             elif timeframe == "1d":
-                ttl_minutes = CacheConfig.KLINES_1D_CACHE_TTL
+                ttl_minutes = 15  # Medium TTL for daily open candles
             else:
-                ttl_minutes = 60
+                ttl_minutes = 3  # Default short TTL
                 
             # Save recent data (will update existing entries due to unique constraint)
             if not self.app:
@@ -519,8 +520,8 @@ class KlinesBackgroundWorker:
                 # Run one complete cycle
                 self._run_worker_cycle()
                 
-                # Wait before next cycle (cost optimization) - Much longer intervals to reduce API pressure
-                cycle_interval = TimeConfig.RENDER_SYNC_INTERVAL * 20  # ~500 seconds between cycles (8+ minutes)
+                # Wait before next cycle - Balanced for open candle updates and API limits
+                cycle_interval = 150  # ~2.5 minutes between cycles for frequent open candle updates
                 
                 for _ in range(cycle_interval):
                     if self.stop_event.is_set():
