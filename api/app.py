@@ -35,7 +35,7 @@ from config import (
 try:
     # Try relative import first (for module import - Vercel/main.py)
     from ..scripts.exchange_sync import get_sync_service, initialize_sync_service
-    from .enhanced_cache import enhanced_cache, start_cache_cleanup_worker
+    from .unified_data_sync_service import enhanced_cache, start_unified_data_sync_service
     from .models import (
         TradeConfiguration,
         UserCredentials,
@@ -80,7 +80,7 @@ except ImportError:
         create_exchange_client,
         create_wrapped_exchange_client,
     )
-    from api.enhanced_cache import enhanced_cache, start_cache_cleanup_worker
+    from api.unified_data_sync_service import enhanced_cache, start_unified_data_sync_service
 
 from api.circuit_breaker import (
     CircuitBreakerError,
@@ -1060,14 +1060,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Initialize database
 db.init_app(app)
 
-# Initialize enhanced caching system
-start_cache_cleanup_worker(app)
-logging.info("Enhanced caching system initialized with smart volatility-based TTL")
-
-# Initialize klines background worker for efficient data management
-from .klines_background_worker import start_klines_background_worker
-start_klines_background_worker(app)
-logging.info("Klines background worker started for efficient candlestick data management")
+# Initialize unified data sync service (combines cache cleanup and klines workers)
+start_unified_data_sync_service(app)
+logging.info("Unified data sync service initialized with coordinated cache cleanup and klines management")
 
 
 # Database migration helpers
@@ -10652,8 +10647,8 @@ def admin_database_stats():
                 }
         
         # Cache cleanup worker status
-        from .enhanced_cache import get_cache_cleanup_worker_status
-        worker_status = get_cache_cleanup_worker_status()
+        from .unified_data_sync_service import get_unified_service_status
+        worker_status = get_unified_service_status()
         
         # Get actual cache sizes from enhanced cache
         cache_stats = enhanced_cache.get_cache_stats()
@@ -11098,12 +11093,12 @@ def admin_database_backup():
 def admin_restart_cache_worker():
     """Restart the cache cleanup worker"""
     try:
-        from .enhanced_cache import restart_cache_cleanup_worker
+        from .unified_data_sync_service import restart_unified_data_sync_service
         
         admin_username = session.get("admin_username", "admin")
         
-        # Restart the cache cleanup worker
-        success = restart_cache_cleanup_worker(app)
+        # Restart the unified data sync service
+        success = restart_unified_data_sync_service(app)
         
         if success:
             logging.info(f"Cache cleanup worker restarted by admin {admin_username}")
