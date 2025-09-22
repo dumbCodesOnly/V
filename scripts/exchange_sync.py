@@ -51,6 +51,8 @@ class ExchangeSyncService:
             self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
             self.sync_thread.start()
             logging.info("Exchange synchronization service started")
+            logging.info(f"Health ping boost enabled - boost duration: {TimeConfig.HEALTH_PING_BOOST_DURATION}s, boost interval: {TimeConfig.HEALTH_PING_BOOST_INTERVAL}s")
+            logging.info(f"Environment detection: Render={self.is_render}, Vercel={self.is_vercel}, Replit={not self.is_render and not self.is_vercel}")
 
     def stop(self):
         """Stop the background synchronization service"""
@@ -76,8 +78,9 @@ class ExchangeSyncService:
                 should_sync = is_boost_active or self._has_active_users()
 
                 if is_boost_active:
+                    print(f"[HEALTH_PING_BOOST] Health ping boost: executing enhanced monitoring sync - {datetime.utcnow().strftime('%H:%M:%S')}")
                     logging.info(
-                        "Health ping boost: executing enhanced monitoring sync"
+                        "[HEALTH_PING_BOOST] Health ping boost: executing enhanced monitoring sync"
                     )
                 elif should_sync:
                     logging.debug("Regular sync: active users detected")
@@ -112,14 +115,16 @@ class ExchangeSyncService:
             # Use faster interval during boost period
             boost_interval = TimeConfig.HEALTH_PING_BOOST_INTERVAL
             if time_since_health_ping < 30:  # First 30 seconds after ping
+                print(f"[HEALTH_PING_BOOST] Health ping boost active: using {boost_interval}s interval (time since ping: {time_since_health_ping:.1f}s)")
                 logging.info(
-                    f"Health ping boost active: using {boost_interval}s interval (time since ping: {time_since_health_ping:.1f}s)"
+                    f"[HEALTH_PING_BOOST] Health ping boost active: using {boost_interval}s interval (time since ping: {time_since_health_ping:.1f}s)"
                 )
             elif (
                 int(time_since_health_ping) % 30 == 0
             ):  # Log every 30 seconds during boost
+                print(f"[HEALTH_PING_BOOST] Health ping boost continues: {time_since_health_ping:.0f}s elapsed, using {boost_interval}s interval")
                 logging.info(
-                    f"Health ping boost continues: {time_since_health_ping:.0f}s elapsed, using {boost_interval}s interval"
+                    f"[HEALTH_PING_BOOST] Health ping boost continues: {time_since_health_ping:.0f}s elapsed, using {boost_interval}s interval"
                 )
             return boost_interval
         else:
@@ -135,9 +140,11 @@ class ExchangeSyncService:
         elif self.is_vercel:
             env_name = "Vercel"
         else:
-            env_name = "Development"
+            env_name = "Development/Replit"
+        # Force the log to appear with a distinctive prefix for visibility
+        print(f"[HEALTH_PING_BOOST] Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment) - {self.last_health_ping.strftime('%H:%M:%S')}")
         logging.info(
-            f"Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment)"
+            f"[HEALTH_PING_BOOST] Health ping boost activated for {TimeConfig.HEALTH_PING_BOOST_DURATION} seconds ({env_name} environment)"
         )
 
     def _sync_all_users(self):
