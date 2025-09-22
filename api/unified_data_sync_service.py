@@ -204,17 +204,21 @@ class SmartCache:
 
         # Calculate dynamic TTL
         dynamic_ttl = self._calculate_dynamic_ttl(symbol, self.config["base_price_ttl"])
+        volatility = self.volatility_tracker.get_volatility(symbol)
 
         with self.lock:
             cache_entry = self._create_cache_entry(
                 data={"price": price, "source": source},
                 ttl_seconds=dynamic_ttl,
                 metadata={
-                    "volatility": self.volatility_tracker.get_volatility(symbol),
+                    "volatility": volatility,
                     "dynamic_ttl": dynamic_ttl,
                 },
             )
             self.price_cache[symbol] = cache_entry
+            
+            # Debug log for cache operations with volatility info
+            logging.debug(f"Cached price {symbol}: ${price:.4f} (source: {source}, TTL: {dynamic_ttl}s, volatility: {volatility:.2f}%)")
 
     def invalidate_price(self, symbol: Optional[str] = None) -> None:
         """Invalidate price cache for symbol or all symbols"""
@@ -344,6 +348,7 @@ class SmartCache:
         """Remove all expired cache entries and return count of removed items"""
         removed_count = 0
         current_time = datetime.utcnow()
+        cleanup_details = {"prices": 0, "trade_configs": 0, "credentials": 0, "preferences": 0}
 
         with self.lock:
             # Clean price cache
@@ -355,13 +360,17 @@ class SmartCache:
             for symbol in expired_prices:
                 del self.price_cache[symbol]
                 removed_count += 1
+                cleanup_details["prices"] += 1
 
             # Clean user data caches
-            for cache_dict in [
+            cache_names = ["trade_configs", "credentials", "preferences"]
+            cache_dicts = [
                 self.user_trade_configs_cache,
                 self.user_credentials_cache,
                 self.user_preferences_cache,
-            ]:
+            ]
+            
+            for cache_name, cache_dict in zip(cache_names, cache_dicts):
                 expired_keys = [
                     key
                     for key, entry in cache_dict.items()
@@ -371,6 +380,10 @@ class SmartCache:
                 for key in expired_keys:
                     del cache_dict[key]
                     removed_count += 1
+                    cleanup_details[cache_name] += 1
+
+        if removed_count > 0:
+            logging.debug(f"Cache cleanup: removed {removed_count} expired entries - prices: {cleanup_details['prices']}, configs: {cleanup_details['trade_configs']}, creds: {cleanup_details['credentials']}, prefs: {cleanup_details['preferences']}")
 
         return removed_count
 
@@ -495,6 +508,8 @@ class UnifiedDataSyncService:
         if klines:
             latest_price = klines[-1]["close"]
             self.cache.volatility_tracker.add_price(symbol, latest_price)
+            current_volatility = self.cache.volatility_tracker.get_volatility(symbol)
+            logging.debug(f"Updated volatility for {symbol}: {current_volatility:.2f}% (price: ${latest_price:.2f})")
             
         return klines
 
@@ -528,6 +543,7 @@ class UnifiedDataSyncService:
             self.last_klines_updates[symbol] = {}
             
         if timeframe not in self.last_klines_updates[symbol]:
+            logging.debug(f"Update needed for {symbol} {timeframe}: never updated before")
             return True  # Never updated before
             
         last_update = self.last_klines_updates[symbol][timeframe]
@@ -537,7 +553,14 @@ class UnifiedDataSyncService:
         except ImportError:
             time_since_update = (datetime.utcnow() - last_update).total_seconds()
         
-        return time_since_update >= update_interval
+        needs_update = time_since_update >= update_interval
+        
+        if needs_update:
+            logging.debug(f"Update needed for {symbol} {timeframe}: {time_since_update:.1f}s since last update (interval: {update_interval}s)")
+        else:
+            logging.debug(f"Update not needed for {symbol} {timeframe}: {time_since_update:.1f}s < {update_interval}s interval")
+            
+        return needs_update
 
     def _get_existing_data_info(self, symbol: str, timeframe: str) -> Dict:
         """
@@ -596,24 +619,35 @@ class UnifiedDataSyncService:
                 current_time = get_utc_now()
                 
                 # Check if we have reasonable historical coverage
+                coverage_ratio = len(total_data) / required_candles if required_candles > 0 else 0
+                
                 if len(total_data) >= required_candles * 0.7:  # 70% coverage is sufficient
                     needs_initial = False
+                    logging.debug(f"{symbol} {timeframe} has sufficient data: {len(total_data)}/{required_candles} candles ({coverage_ratio:.1%} coverage)")
                 else:
                     # Check if newest data is very old (more than 1 day old)
                     newest_time = timestamps[-1] if timestamps else None
                     if newest_time:
                         age_hours = (current_time - newest_time).total_seconds() / 3600
                         needs_initial = age_hours > 24  # If data older than 24h, do initial population
+                        if needs_initial:
+                            logging.debug(f"{symbol} {timeframe} needs initial population: newest data is {age_hours:.1f}h old (insufficient coverage: {coverage_ratio:.1%})")
+                        else:
+                            logging.debug(f"{symbol} {timeframe} recent data is {age_hours:.1f}h old, coverage {coverage_ratio:.1%} - no initial population needed")
                     else:
                         needs_initial = True
+                        logging.debug(f"{symbol} {timeframe} needs initial population: no existing data found")
                 
-                return {
+                result = {
                     "count": len(total_data),
                     "oldest_timestamp": timestamps[0] if timestamps else None,
                     "newest_timestamp": timestamps[-1] if timestamps else None, 
                     "needs_initial_population": needs_initial,
                     "has_recent_data": len(recent_data) > 0
                 }
+                
+                logging.debug(f"{symbol} {timeframe} data analysis: {len(total_data)} total candles, {len(recent_data)} recent, needs_initial={needs_initial}")
+                return result
             
         except Exception as e:
             logging.warning(f"Error checking existing data for {symbol} {timeframe}: {e}")
@@ -696,6 +730,7 @@ class UnifiedDataSyncService:
             
         except Exception as e:
             logging.error(f"Error populating initial data for {symbol} {timeframe}: {e}")
+            logging.debug(f"Initial population error context: required_candles={required_candles}, app_context={self.app is not None}")
             return False
 
     def _update_recent_data(self, symbol: str, timeframe: str) -> bool:
@@ -780,6 +815,7 @@ class UnifiedDataSyncService:
             
         except Exception as e:
             logging.error(f"Error updating open candle for {symbol} {timeframe}: {e}")
+            logging.debug(f"Open candle update error context: app_context={self.app is not None}, existing_candle={existing_open_candle is not None}")
             return False
 
     def _cleanup_klines_data(self):
@@ -879,15 +915,15 @@ class UnifiedDataSyncService:
                         # SMART DECISION: Choose most efficient update method
                         if data_info["needs_initial_population"]:
                             # Initial population: Get full historical data (happens once per symbol/timeframe)
-                            logging.info(f"Initial population needed for {symbol} {timeframe}")
+                            logging.info(f"STRATEGY: Initial population chosen for {symbol} {timeframe} (missing historical data)")
                             success = self._populate_initial_data(symbol, timeframe)
                         elif existing_open_candle:
                             # MOST EFFICIENT: Just update the existing open candle in place
-                            logging.debug(f"Efficient open candle update for {symbol} {timeframe}")
+                            logging.debug(f"STRATEGY: Efficient open candle update for {symbol} {timeframe} (existing open candle found)")
                             success = self._update_recent_data(symbol, timeframe)
                         else:
                             # No open candle exists, might need to create it or fetch recent data
-                            logging.debug(f"Incremental update for {symbol} {timeframe}")
+                            logging.debug(f"STRATEGY: Incremental update for {symbol} {timeframe} (no open candle, creating new)")
                             success = self._update_recent_data(symbol, timeframe)
                             
                         if success:
@@ -915,10 +951,23 @@ class UnifiedDataSyncService:
             cache_removed = self._cleanup_cache_data()  # Memory cache cleanup
             
             cycle_time = time.time() - start_time
-            logging.info(f"Unified sync cycle completed: {completed_klines_tasks}/{total_klines_tasks} klines tasks, {cache_removed} cache entries cleaned in {cycle_time:.1f}s")
+            # Log cycle performance and efficiency metrics
+            efficiency = (completed_klines_tasks / total_klines_tasks * 100) if total_klines_tasks > 0 else 0
+            tasks_per_second = completed_klines_tasks / cycle_time if cycle_time > 0 else 0
+            
+            logging.info(f"Unified sync cycle completed: {completed_klines_tasks}/{total_klines_tasks} klines tasks ({efficiency:.1f}%), {cache_removed} cache entries cleaned in {cycle_time:.1f}s ({tasks_per_second:.1f} tasks/s)")
+            
+            # Log circuit breaker status if any are tripped
+            tripped_breakers = [
+                name for name, breaker in circuit_manager._breakers.items()
+                if hasattr(breaker, '_state') and breaker._state != 'CLOSED'
+            ]
+            if tripped_breakers:
+                logging.warning(f"Circuit breakers not in CLOSED state: {', '.join(tripped_breakers)}")
             
         except Exception as e:
             logging.error(f"Error in unified sync cycle: {e}")
+            logging.debug(f"Sync cycle error context: completed_tasks={completed_klines_tasks}/{total_klines_tasks}, cycle_time={time.time() - start_time:.1f}s, symbols={len(symbols)}")
 
     def start(self):
         """Start the unified background service"""
@@ -937,7 +986,8 @@ class UnifiedDataSyncService:
             )
             self.worker_thread.start()
             
-            logging.info("Unified data sync service started")
+            logging.info(f"Unified data sync service started - monitoring {len(TradingConfig.SUPPORTED_SYMBOLS)} symbols across {len(self.timeframes)} timeframes")
+            logging.debug(f"Service configuration: symbols={TradingConfig.SUPPORTED_SYMBOLS}, timeframes={list(self.timeframes.keys())}, intervals={self.timeframes}")
 
     def stop(self):
         """Stop the unified background service"""
@@ -964,26 +1014,34 @@ class UnifiedDataSyncService:
     def _service_loop(self):
         """Main service loop"""
         logging.info("Unified data sync service loop started")
+        cycle_count = 0
         
         while not self.stop_event.is_set():
             try:
+                cycle_count += 1
+                logging.debug(f"Starting sync cycle #{cycle_count}")
+                
                 # Run one complete coordinated cycle
                 self._run_coordinated_sync_cycle()
                 
                 # Wait before next cycle - Balanced for open candle updates and API limits
                 cycle_interval = 120  # 2 minutes between cycles for coordinated updates
                 
+                logging.debug(f"Sync cycle #{cycle_count} completed, waiting {cycle_interval}s before next cycle")
+                
                 for _ in range(cycle_interval):
                     if self.stop_event.is_set():
+                        logging.debug(f"Stop event received during wait period after cycle #{cycle_count}")
                         break
                     time.sleep(1)
                     
             except Exception as e:
-                logging.error(f"Unexpected error in unified service loop: {e}")
+                logging.error(f"Unexpected error in unified service loop (cycle #{cycle_count}): {e}")
+                logging.debug(f"Error context: cycle_count={cycle_count}, is_running={self.is_running}, stop_event={self.stop_event.is_set()}")
                 # Wait before retrying to avoid rapid error loops
                 time.sleep(30)
                 
-        logging.info("Unified data sync service loop ended")
+        logging.info(f"Unified data sync service loop ended after {cycle_count} cycles")
 
     def get_status(self) -> Dict:
         """Get comprehensive service status and statistics"""
