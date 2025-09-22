@@ -105,6 +105,8 @@ class SMCAnalyzer:
 
     def __init__(self):
         self.timeframes = ["1h", "4h", "1d"]  # Multiple timeframe analysis
+        self.active_signals = {}  # Cache for active signals {symbol: {signal, expiry_time}}
+        self.signal_timeout = 3600  # Signal valid for 1 hour (3600 seconds)
 
     @with_circuit_breaker(
         "binance_klines_api", failure_threshold=8, recovery_timeout=120
@@ -825,7 +827,7 @@ class SMCAnalyzer:
         return bearish_signals
 
     def _calculate_long_trade_levels(self, current_price, order_blocks, candlesticks):
-        """Calculate entry, stop loss, and take profits for long trades using dynamic SMC analysis."""
+        """Calculate entry, stop loss, and take profits for long trades using stable SMC analysis."""
         # Calculate ATR with robust fallback for insufficient data
         atr = self.calculate_atr(candlesticks)
         
@@ -854,36 +856,62 @@ class SMCAnalyzer:
         swing_highs = self._find_swing_highs(candlesticks)
         swing_lows = self._find_swing_lows(candlesticks)
         
-        # Entry price calculation with robust fallbacks
+        # FIXED: Entry price calculation using ABSOLUTE structural levels (not relative to current price)
         entry_price = None
         
-        # Find valid bullish order block below current price for entry (SMC discount zone)
-        atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
-        valid_obs = [
-            ob for ob in order_blocks 
-            if (ob.direction == "bullish" 
-                and ob.price_high < current_price
-                and ob.price_high >= current_price - atr_range)
-        ]
-        
-        if valid_obs:
-            # Use the closest order block to current price (highest among valid below-price OBs)
-            entry_price = max(ob.price_high for ob in valid_obs)
-        else:
-            # Check if current price is inside any bullish order block (edge case)
-            inside_ob_entry = None
+        # Find the most relevant bullish order block for entry (SMC discount zone)
+        # Use structural significance rather than proximity to current price
+        if order_blocks:
+            # Score order blocks by strength, recency, and structural validity
+            scored_obs = []
             for ob in order_blocks:
-                if (ob.direction == "bullish" 
-                    and ob.price_low <= current_price <= ob.price_high):
-                    inside_ob_entry = ob.price_high  # Use proximal edge (top of bullish OB)
+                if ob.direction == "bullish":
+                    # Calculate structural score (higher is better)
+                    strength_score = ob.strength * 10  # Base strength
+                    volume_score = 5 if ob.volume_confirmed else 0
+                    impulsive_score = 5 if ob.impulsive_exit else 0
+                    
+                    # Recency score - more recent order blocks get higher priority
+                    if hasattr(ob, 'timestamp') and candlesticks:
+                        ob_index = next((i for i, c in enumerate(candlesticks) 
+                                       if c["timestamp"] >= ob.timestamp), len(candlesticks)-1)
+                        recency_score = max(0, 10 - (len(candlesticks) - ob_index) / 10)
+                    else:
+                        recency_score = 5  # Default middle score
+                    
+                    total_score = strength_score + volume_score + impulsive_score + recency_score
+                    scored_obs.append((ob, total_score))
+            
+            # Sort by score and get the best valid order block
+            scored_obs.sort(key=lambda x: x[1], reverse=True)
+            
+            # Use the highest scoring order block that's below current price (discount zone)
+            best_ob = None
+            for ob, score in scored_obs:
+                if ob.price_high < current_price:  # Must be below current price for long entry
+                    best_ob = ob
                     break
             
-            if inside_ob_entry:
-                entry_price = inside_ob_entry
+            if best_ob:
+                # Use the top of the order block as entry point
+                entry_price = best_ob.price_high
             else:
-                # Robust fallback: small percentage buffer below current price
-                entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-                entry_price = current_price - entry_buffer
+                # Check if current price is inside any high-scoring bullish order block
+                for ob, score in scored_obs[:3]:  # Check top 3 scoring OBs
+                    if ob.price_low <= current_price <= ob.price_high:
+                        entry_price = ob.price_high  # Use top of OB as entry
+                        break
+        
+        # Fallback if no suitable order block found
+        if entry_price is None:
+            # Use most recent swing low + small buffer as entry (structural approach)
+            if swing_lows:
+                recent_swing_low = swing_lows[-1]["low"]
+                entry_buffer = max(atr * 0.2, recent_swing_low * 0.003)  # 0.3% minimum
+                entry_price = recent_swing_low + entry_buffer
+            else:
+                # Final fallback: use structural discount from current price
+                entry_price = current_price - max(atr * 0.5, current_price * 0.005)  # 0.5% minimum
 
         # Stop loss using swing lows and order block structure with safety checks
         stop_loss_candidates = []
@@ -978,7 +1006,7 @@ class SMCAnalyzer:
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
     def _calculate_short_trade_levels(self, current_price, order_blocks, candlesticks):
-        """Calculate entry, stop loss, and take profits for short trades using dynamic SMC analysis."""
+        """Calculate entry, stop loss, and take profits for short trades using stable SMC analysis."""
         # Calculate ATR with robust fallback for insufficient data
         atr = self.calculate_atr(candlesticks)
         
@@ -1007,36 +1035,62 @@ class SMCAnalyzer:
         swing_highs = self._find_swing_highs(candlesticks)
         swing_lows = self._find_swing_lows(candlesticks)
         
-        # Entry price calculation with robust fallbacks
+        # FIXED: Entry price calculation using ABSOLUTE structural levels (not relative to current price)
         entry_price = None
         
-        # Find valid bearish order block above current price for entry (SMC premium zone)
-        atr_range = max(atr * 2, current_price * 0.01)  # Use larger of 2 ATR or 1% of price
-        valid_obs = [
-            ob for ob in order_blocks 
-            if (ob.direction == "bearish" 
-                and ob.price_low > current_price
-                and ob.price_low <= current_price + atr_range)
-        ]
-        
-        if valid_obs:
-            # Use the closest order block to current price (lowest among valid above-price OBs)
-            entry_price = min(ob.price_low for ob in valid_obs)
-        else:
-            # Check if current price is inside any bearish order block (edge case)
-            inside_ob_entry = None
+        # Find the most relevant bearish order block for entry (SMC premium zone)
+        # Use structural significance rather than proximity to current price
+        if order_blocks:
+            # Score order blocks by strength, recency, and structural validity
+            scored_obs = []
             for ob in order_blocks:
-                if (ob.direction == "bearish" 
-                    and ob.price_low <= current_price <= ob.price_high):
-                    inside_ob_entry = ob.price_low  # Use proximal edge (bottom of bearish OB)
+                if ob.direction == "bearish":
+                    # Calculate structural score (higher is better)
+                    strength_score = ob.strength * 10  # Base strength
+                    volume_score = 5 if ob.volume_confirmed else 0
+                    impulsive_score = 5 if ob.impulsive_exit else 0
+                    
+                    # Recency score - more recent order blocks get higher priority
+                    if hasattr(ob, 'timestamp') and candlesticks:
+                        ob_index = next((i for i, c in enumerate(candlesticks) 
+                                       if c["timestamp"] >= ob.timestamp), len(candlesticks)-1)
+                        recency_score = max(0, 10 - (len(candlesticks) - ob_index) / 10)
+                    else:
+                        recency_score = 5  # Default middle score
+                    
+                    total_score = strength_score + volume_score + impulsive_score + recency_score
+                    scored_obs.append((ob, total_score))
+            
+            # Sort by score and get the best valid order block
+            scored_obs.sort(key=lambda x: x[1], reverse=True)
+            
+            # Use the highest scoring order block that's above current price (premium zone)
+            best_ob = None
+            for ob, score in scored_obs:
+                if ob.price_low > current_price:  # Must be above current price for short entry
+                    best_ob = ob
                     break
             
-            if inside_ob_entry:
-                entry_price = inside_ob_entry
+            if best_ob:
+                # Use the bottom of the order block as entry point
+                entry_price = best_ob.price_low
             else:
-                # Robust fallback: small percentage buffer above current price
-                entry_buffer = max(atr * 0.1, current_price * 0.002)  # 0.2% minimum
-                entry_price = current_price + entry_buffer
+                # Check if current price is inside any high-scoring bearish order block
+                for ob, score in scored_obs[:3]:  # Check top 3 scoring OBs
+                    if ob.price_low <= current_price <= ob.price_high:
+                        entry_price = ob.price_low  # Use bottom of OB as entry
+                        break
+        
+        # Fallback if no suitable order block found
+        if entry_price is None:
+            # Use most recent swing high - small buffer as entry (structural approach)
+            if swing_highs:
+                recent_swing_high = swing_highs[-1]["high"]
+                entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)  # 0.3% minimum
+                entry_price = recent_swing_high - entry_buffer
+            else:
+                # Final fallback: use structural premium from current price
+                entry_price = current_price + max(atr * 0.5, current_price * 0.005)  # 0.5% minimum
 
         # Stop loss using swing highs and order block structure with safety checks
         stop_loss_candidates = []
@@ -1195,9 +1249,72 @@ class SMCAnalyzer:
 
         return rr_ratio, signal_strength
 
+    def _is_signal_still_valid(self, symbol: str, current_price: float) -> bool:
+        """Check if existing cached signal is still valid and hasn't been invalidated."""
+        if symbol not in self.active_signals:
+            return False
+            
+        signal_data = self.active_signals[symbol]
+        signal = signal_data.get('signal')
+        expiry_time = signal_data.get('expiry_time', 0)
+        
+        # Check if signal has expired
+        current_time = datetime.utcnow().timestamp()
+        if current_time > expiry_time:
+            logging.info(f"Signal expired for {symbol}, removing from cache")
+            del self.active_signals[symbol]
+            return False
+        
+        # Check if signal has been invalidated by price action
+        if signal.direction == "long":
+            # Long signal invalidated if price hits stop loss or final take profit
+            if current_price <= signal.stop_loss:
+                logging.info(f"Long signal invalidated for {symbol}: price hit stop loss ({current_price} <= {signal.stop_loss})")
+                del self.active_signals[symbol]
+                return False
+            elif signal.take_profit_levels and current_price >= signal.take_profit_levels[-1]:
+                logging.info(f"Long signal completed for {symbol}: price hit final TP ({current_price} >= {signal.take_profit_levels[-1]})")
+                del self.active_signals[symbol]
+                return False
+        
+        elif signal.direction == "short":
+            # Short signal invalidated if price hits stop loss or final take profit
+            if current_price >= signal.stop_loss:
+                logging.info(f"Short signal invalidated for {symbol}: price hit stop loss ({current_price} >= {signal.stop_loss})")
+                del self.active_signals[symbol]
+                return False
+            elif signal.take_profit_levels and current_price <= signal.take_profit_levels[-1]:
+                logging.info(f"Short signal completed for {symbol}: price hit final TP ({current_price} <= {signal.take_profit_levels[-1]})")
+                del self.active_signals[symbol]
+                return False
+        
+        # Signal is still valid
+        return True
+    
+    def _cache_signal(self, signal: SMCSignal) -> None:
+        """Cache a new signal with expiry time."""
+        expiry_time = datetime.utcnow().timestamp() + self.signal_timeout
+        self.active_signals[signal.symbol] = {
+            'signal': signal,
+            'expiry_time': expiry_time
+        }
+        logging.info(f"Cached new {signal.direction} signal for {signal.symbol} with entry at {signal.entry_price}")
+
     def generate_trade_signal(self, symbol: str) -> Optional[SMCSignal]:
-        """Generate comprehensive trade signal based on SMC analysis"""
+        """Generate comprehensive trade signal based on SMC analysis with caching to prevent duplicate signals"""
         try:
+            # First, get current price to check existing signal validity
+            quick_data = self.get_candlestick_data(symbol, "1h", 1)
+            if not quick_data:
+                return None
+            current_price = quick_data[-1]["close"]
+            
+            # Check if we have a valid cached signal for this symbol
+            if self._is_signal_still_valid(symbol, current_price):
+                cached_signal = self.active_signals[symbol]['signal']
+                logging.debug(f"Using cached {cached_signal.direction} signal for {symbol} (entry: {cached_signal.entry_price})")
+                return cached_signal
+            
             # Get multi-timeframe data in batch to reduce API calls
             timeframe_data = self.get_multi_timeframe_data(symbol)
 
@@ -1275,7 +1392,7 @@ class SMCAnalyzer:
                     # Fallback: use the reasoning from the stronger signal side
                     final_reasoning = bullish_reasoning if bullish_signals > bearish_signals else bearish_reasoning
 
-                return SMCSignal(
+                new_signal = SMCSignal(
                     symbol=symbol,
                     direction=direction,
                     entry_price=entry_price,
@@ -1287,6 +1404,11 @@ class SMCAnalyzer:
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.utcnow(),
                 )
+                
+                # Cache the new signal to prevent duplicates
+                self._cache_signal(new_signal)
+                
+                return new_signal
 
             return None
 
