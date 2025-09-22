@@ -24,6 +24,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 
     
     <style>
@@ -176,15 +177,30 @@
         .modal-lg {
             max-width: 800px;
         }
+
+        .modal-xl {
+            max-width: 1140px;
+        }
         
-        @media (max-width: 768px) {
-            .modal-lg {
+        @media (max-width: 1200px) {
+            .modal-xl {
                 max-width: 95%;
                 margin: 1rem auto;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .modal-lg, .modal-xl {
+                max-width: 98%;
+                margin: 0.5rem auto;
             }
             
             .single-page-form {
                 max-height: 80vh;
+            }
+
+            .smc-chart-wrapper {
+                height: 450px !important;
             }
         }
 
@@ -6289,7 +6305,7 @@
                     // Create detailed analysis modal
                     const modalHtml = `
                         <div class="modal fade" id="smcDetailsModal" tabindex="-1">
-                            <div class="modal-dialog modal-lg">
+                            <div class="modal-dialog modal-xl">
                                 <div class="modal-content">
                                     <div class="modal-header">
                                         <h6 class="modal-title">SMC Analysis - ${symbol}</h6>
@@ -6348,20 +6364,43 @@
                                         
                                         <!-- Chart Visualization Section -->
                                         <div class="mb-4">
-                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
                                                 <h6 class="mb-0">Market Analysis Chart</h6>
-                                                <button class="btn btn-outline-primary btn-sm" onclick="loadSmcChart('${symbol}')" id="load-chart-btn">
-                                                    <i data-feather="bar-chart-2"></i> Load Chart
-                                                </button>
+                                                <div class="d-flex gap-2">
+                                                    <button class="btn btn-outline-secondary btn-sm" onclick="resetChartZoom()" id="reset-zoom-btn" style="display: none;">
+                                                        <i data-feather="zoom-out"></i> Reset Zoom
+                                                    </button>
+                                                    <button class="btn btn-outline-primary btn-sm" onclick="loadSmcChart('${symbol}')" id="load-chart-btn">
+                                                        <i data-feather="bar-chart-2"></i> Load Chart
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div id="chart-container" style="display: none;">
-                                                <div style="height: 400px; background: var(--tg-theme-card-bg); border-radius: 8px; padding: 10px;">
+                                                <div class="smc-chart-wrapper" style="height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 8px; border: 1px solid var(--tg-theme-border-color);">
                                                     <canvas id="smc-chart"></canvas>
                                                 </div>
-                                                <div class="mt-2">
-                                                    <small class="text-muted">
-                                                        🟦 Order Blocks | 🟨 Fair Value Gaps | 🔴 Sell Liquidity | 🟢 Buy Liquidity
-                                                    </small>
+                                                <div class="mt-3 p-2" style="background: rgba(107, 139, 179, 0.05); border-radius: 6px;">
+                                                    <div class="d-flex flex-wrap justify-content-center gap-3">
+                                                        <small class="text-muted d-flex align-items-center">
+                                                            <span style="width: 12px; height: 12px; background: rgba(34, 139, 34, 0.6); border-radius: 2px; margin-right: 4px;"></span>
+                                                            Order Blocks
+                                                        </small>
+                                                        <small class="text-muted d-flex align-items-center">
+                                                            <span style="width: 12px; height: 12px; background: rgba(255, 193, 7, 0.6); border-radius: 2px; margin-right: 4px;"></span>
+                                                            Fair Value Gaps
+                                                        </small>
+                                                        <small class="text-muted d-flex align-items-center">
+                                                            <span style="width: 12px; height: 12px; background: rgba(255, 77, 79, 0.6); border-radius: 2px; margin-right: 4px;"></span>
+                                                            Sell Liquidity
+                                                        </small>
+                                                        <small class="text-muted d-flex align-items-center">
+                                                            <span style="width: 12px; height: 12px; background: rgba(52, 196, 26, 0.6); border-radius: 2px; margin-right: 4px;"></span>
+                                                            Buy Liquidity
+                                                        </small>
+                                                    </div>
+                                                    <div class="text-center mt-2">
+                                                        <small class="text-muted">💡 Tip: Use mouse wheel to zoom, drag to pan, double-click to reset</small>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div id="chart-loading" style="display: none; text-align: center; padding: 2rem;">
@@ -6458,6 +6497,15 @@
 
         // SMC Chart Visualization Functions
         let smcChart = null;
+
+        function resetChartZoom() {
+            if (smcChart) {
+                smcChart.resetZoom();
+                // Hide reset zoom button
+                const resetBtn = document.getElementById('reset-zoom-btn');
+                if (resetBtn) resetBtn.style.display = 'none';
+            }
+        }
 
         async function loadSmcChart(symbol) {
             try {
@@ -6620,7 +6668,12 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     layout: {
-                        padding: 10
+                        padding: {
+                            top: 15,
+                            right: 15,
+                            bottom: 15,
+                            left: 15
+                        }
                     },
                     scales: {
                         x: {
@@ -6653,6 +6706,34 @@
                         }
                     },
                     plugins: {
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy',
+                                scaleMode: 'x',
+                                onZoomComplete: function() {
+                                    // Show reset zoom button when zoomed
+                                    const resetBtn = document.getElementById('reset-zoom-btn');
+                                    if (resetBtn) resetBtn.style.display = 'inline-block';
+                                }
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'xy',
+                                modifierKey: null,
+                                onPanComplete: function() {
+                                    // Show reset zoom button when panned
+                                    const resetBtn = document.getElementById('reset-zoom-btn');
+                                    if (resetBtn) resetBtn.style.display = 'inline-block';
+                                }
+                            }
+                        },
                         legend: {
                             display: false
                         },
@@ -6688,6 +6769,10 @@
                         mode: 'nearest',
                         axis: 'x',
                         intersect: false
+                    },
+                    onResize: function(chart, size) {
+                        // Ensure chart remains responsive
+                        chart.update('none');
                     }
                 }
             };
