@@ -112,10 +112,19 @@ class SMCAnalyzer:
     def get_candlestick_data(
         self, symbol: str, timeframe: str = "1h", limit: int = 100
     ) -> List[Dict]:
-        """Get candlestick data with cache-first approach and circuit breaker protection"""
-        from config import CacheConfig
+        """Get candlestick data with cache-first approach, rolling window aware, and circuit breaker protection"""
+        from config import CacheConfig, RollingWindowConfig
 
         from .models import KlinesCache
+        
+        # ROLLING WINDOW VALIDATION: Ensure requested limit doesn't exceed rolling window size
+        max_available = RollingWindowConfig.get_max_candles(timeframe)
+        if limit > max_available:
+            logging.warning(
+                f"SMC Analysis: Requested {limit} candles for {symbol}:{timeframe}, "
+                f"but rolling window only keeps {max_available}. Adjusting limit to {max_available}."
+            )
+            limit = max_available
 
         # Step 1: Try to get data from cache first
         try:
