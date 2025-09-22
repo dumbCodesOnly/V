@@ -335,10 +335,10 @@ class SMCConfig:
     ATR_PERIOD = 14  # Period for Average True Range calculation
     ATR_SMOOTHING_FACTOR = 2.0  # EMA smoothing factor for ATR calculation
 
-    # Timeframe Data Limits for Enhanced SMC Analysis - REDUCED for rate limiting
-    TIMEFRAME_1H_LIMIT = 100  # 100 candles = ~4 days of hourly data (reduced from 300 to avoid rate limits)
-    TIMEFRAME_4H_LIMIT = 50   # 50 candles = ~8 days of 4h data (reduced from 100 to avoid rate limits)
-    TIMEFRAME_1D_LIMIT = 30   # 30 candles = ~4 weeks of daily data (reduced from 50 to avoid rate limits)
+    # Timeframe Data Limits for Enhanced SMC Analysis - RESTORED for proper analysis
+    TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
+    TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
+    TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
 
 
 # =============================================================================
