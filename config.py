@@ -338,6 +338,50 @@ class SMCConfig:
 
 
 # =============================================================================
+# ROLLING WINDOW KLINES CONFIGURATION
+# =============================================================================
+class RollingWindowConfig:
+    """Rolling window configuration for klines data management"""
+    
+    # Maximum number of candles to keep per timeframe (rolling window)
+    MAX_CANDLES_1H = 300   # Keep latest 300 hourly candles (~12.5 days)
+    MAX_CANDLES_4H = 100   # Keep latest 100 4-hour candles (~16 days)
+    MAX_CANDLES_1D = 50    # Keep latest 50 daily candles (~7 weeks)
+    
+    # Batch cleanup settings to avoid database locks
+    CLEANUP_BATCH_SIZE = 50  # Delete this many old candles at a time
+    CLEANUP_INTERVAL_SECONDS = 120  # Run rolling window cleanup every 2 minutes
+    
+    # Safety margin - keep extra candles to prevent gaps during cleanup
+    SAFETY_MARGIN = 5  # Keep 5 extra candles beyond the limit
+    
+    # Enable/disable rolling window per timeframe
+    ENABLED_1H = True
+    ENABLED_4H = True 
+    ENABLED_1D = True
+    
+    @classmethod
+    def get_max_candles(cls, timeframe: str) -> int:
+        """Get maximum candles for a timeframe"""
+        timeframe_limits = {
+            "1h": cls.MAX_CANDLES_1H,
+            "4h": cls.MAX_CANDLES_4H,
+            "1d": cls.MAX_CANDLES_1D
+        }
+        return timeframe_limits.get(timeframe, 100)  # Default to 100
+    
+    @classmethod
+    def is_enabled(cls, timeframe: str) -> bool:
+        """Check if rolling window is enabled for a timeframe"""
+        timeframe_enabled = {
+            "1h": cls.ENABLED_1H,
+            "4h": cls.ENABLED_4H,
+            "1d": cls.ENABLED_1D
+        }
+        return timeframe_enabled.get(timeframe, True)  # Default to enabled
+
+
+# =============================================================================
 # CACHE CONFIGURATION
 # =============================================================================
 class CacheConfig:
