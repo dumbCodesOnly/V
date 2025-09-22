@@ -733,6 +733,7 @@ class UnifiedDataSyncService:
             
         except Exception as e:
             logging.error(f"Error populating initial data for {symbol} {timeframe}: {e}")
+            required_candles = "unknown"  # Initialize for debug logging
             logging.debug(f"Initial population error context: required_candles={required_candles}, app_context={self.app is not None}")
             return False
 
@@ -818,6 +819,7 @@ class UnifiedDataSyncService:
             
         except Exception as e:
             logging.error(f"Error updating open candle for {symbol} {timeframe}: {e}")
+            existing_open_candle = None  # Initialize for debug logging
             logging.debug(f"Open candle update error context: app_context={self.app is not None}, existing_candle={existing_open_candle is not None}")
             return False
 
@@ -880,6 +882,10 @@ class UnifiedDataSyncService:
         try:
             start_time = time.time()
             
+            # Initialize variables at function level to avoid unbound variable issues
+            data_info = {"needs_initial_population": False}
+            existing_open_candle = None
+            
             # Get list of supported symbols
             symbols = TradingConfig.SUPPORTED_SYMBOLS
             total_klines_tasks = len(symbols) * len(self.timeframes)
@@ -897,6 +903,9 @@ class UnifiedDataSyncService:
                         break
                         
                     try:
+                        # Initialize variables for safe error handling
+                        data_info = {"needs_initial_population": False}
+                        
                         # Check if this timeframe needs updating
                         if not self._should_update_timeframe(symbol, timeframe):
                             completed_klines_tasks += 1
@@ -906,12 +915,13 @@ class UnifiedDataSyncService:
                         data_info = self._get_existing_data_info(symbol, timeframe)
                         
                         # Check if we just need to update current open candle (most efficient)
-                        existing_open_candle = None
+                        existing_open_candle = None  # Initialize variable
                         if not data_info["needs_initial_population"]:
                             try:
-                                with self.app.app_context():
-                                    from .models import KlinesCache
-                                    existing_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+                                if self.app:  # Check app exists before using context
+                                    with self.app.app_context():
+                                        from .models import KlinesCache
+                                        existing_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
                             except Exception:
                                 pass
                         
@@ -942,11 +952,14 @@ class UnifiedDataSyncService:
                     # Proper delay between requests to respect API rate limits
                     time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
                     
-                    # Variable delay based on operation type
-                    if data_info.get("needs_initial_population", False):
-                        time.sleep(3.0)  # Extra 3 seconds for initial population (heavy operation)
-                    elif existing_open_candle:
-                        time.sleep(0.5)  # Minimal delay for efficient open candle updates
+                    # Variable delay based on operation type  
+                    try:
+                        if data_info.get("needs_initial_population", False):
+                            time.sleep(3.0)  # Extra 3 seconds for initial population (heavy operation)
+                        elif existing_open_candle:
+                            time.sleep(0.5)  # Minimal delay for efficient open candle updates
+                    except (NameError, UnboundLocalError):
+                        pass  # Variables may not be defined in error scenarios
 
             # Phase 2: COORDINATED cleanup after data updates
             # This ensures fresh data isn't accidentally purged
@@ -960,16 +973,27 @@ class UnifiedDataSyncService:
             
             logging.info(f"Unified sync cycle completed: {completed_klines_tasks}/{total_klines_tasks} klines tasks ({efficiency:.1f}%), {cache_removed} cache entries cleaned in {cycle_time:.1f}s ({tasks_per_second:.1f} tasks/s)")
             
-            # Log circuit breaker status if any are tripped
-            tripped_breakers = [
-                name for name, breaker in circuit_manager._breakers.items()
-                if hasattr(breaker, '_state') and breaker._state != 'CLOSED'
-            ]
+            # Log circuit breaker status if any are tripped (using safe attribute access)
+            tripped_breakers = []
+            try:
+                for name, breaker in circuit_manager._breakers.items():
+                    # Use getattr for safe access to state attribute
+                    state = getattr(breaker, 'state', 'UNKNOWN')
+                    if state != 'CLOSED':
+                        tripped_breakers.append(name)
+            except Exception:
+                pass  # Safely handle any circuit breaker access issues
+            
             if tripped_breakers:
                 logging.warning(f"Circuit breakers not in CLOSED state: {', '.join(tripped_breakers)}")
             
         except Exception as e:
             logging.error(f"Error in unified sync cycle: {e}")
+            # Safe initialization for debug logging
+            completed_klines_tasks = locals().get('completed_klines_tasks', 0)
+            total_klines_tasks = locals().get('total_klines_tasks', 0)
+            start_time = locals().get('start_time', time.time())
+            symbols = locals().get('symbols', [])
             logging.debug(f"Sync cycle error context: completed_tasks={completed_klines_tasks}/{total_klines_tasks}, cycle_time={time.time() - start_time:.1f}s, symbols={len(symbols)}")
 
     def start(self):
