@@ -43,8 +43,8 @@ class KlinesBackgroundWorker:
         # Supported timeframes with update intervals (in seconds)
         self.timeframes = {
             "1h": 300,   # Update every 5 minutes  
-            "4h": 900,   # Update every 15 minutes
-            "1d": 3600   # Update every hour
+            "4h": 300,   # Update every 5 minutes (increased from 15 minutes for volatile markets)
+            "1d": 300    # Update every 5 minutes (increased from 1 hour for volatile markets)
         }
         
         # Track last update times per symbol/timeframe
