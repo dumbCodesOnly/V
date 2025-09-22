@@ -65,18 +65,18 @@ class TimeConfig:
     PRICE_CACHE_TTL = 10  # seconds - how long to cache price data
     USER_DATA_CACHE_TTL = 30  # seconds - how long to cache user data
     
-    # API Rate Limiting - Delays between requests to respect rate limits
-    BINANCE_API_DELAY = 0.12  # seconds - Conservative: ~500 requests/minute (Binance allows 1200/min)
-    BINANCE_KLINES_DELAY = 0.2  # seconds - More conservative for klines endpoints
-    API_RETRY_DELAY = 1.0  # seconds - Base delay for retries
-    API_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
+    # API Rate Limiting - Delays between requests to respect rate limits  
+    BINANCE_API_DELAY = 0.5   # seconds - Much more conservative: ~120 requests/minute
+    BINANCE_KLINES_DELAY = 2.0  # seconds - Much more conservative for klines endpoints (30 requests/minute)
+    API_RETRY_DELAY = 3.0  # seconds - Longer base delay for retries
+    API_BACKOFF_MULTIPLIER = 2.5  # Higher exponential backoff multiplier
 
     # Sync Intervals - COST OPTIMIZED FOR RENDER
     EXCHANGE_SYNC_INTERVAL = (
-        15  # seconds - background sync for Replit (faster for paper trading TP/SL)
+        30  # seconds - much slower background sync to reduce API pressure
     )
-    VERCEL_SYNC_COOLDOWN = 30  # seconds - cooldown between syncs for Vercel
-    RENDER_SYNC_INTERVAL = 12  # seconds - optimized sync for Render (reduced from 5s)
+    VERCEL_SYNC_COOLDOWN = 60  # seconds - increased cooldown between syncs for Vercel
+    RENDER_SYNC_INTERVAL = 25  # seconds - much slower sync for Render to reduce API calls
 
     # Health Ping Boost - Extended monitoring after health checks (COST OPTIMIZED)
     HEALTH_PING_BOOST_DURATION = 120  # seconds (2 minutes) - reduced from 3 minutes
@@ -268,8 +268,8 @@ class CircuitBreakerConfig:
     LAST_STATE_CHANGES_DISPLAY = 5  # Number of recent state changes to show in stats
 
     # API-Specific Circuit Breaker Settings
-    BINANCE_FAILURE_THRESHOLD = 3  # More sensitive for critical price data
-    BINANCE_RECOVERY_TIMEOUT = 30  # Faster recovery for price APIs
+    BINANCE_FAILURE_THRESHOLD = 8  # Much less sensitive - allow more failures before opening
+    BINANCE_RECOVERY_TIMEOUT = 120  # Longer recovery time to avoid hitting limits again
 
     TOOBIT_FAILURE_THRESHOLD = 3  # More sensitive for exchange operations
     TOOBIT_RECOVERY_TIMEOUT = 60  # Longer recovery for exchange APIs
@@ -335,10 +335,10 @@ class SMCConfig:
     ATR_PERIOD = 14  # Period for Average True Range calculation
     ATR_SMOOTHING_FACTOR = 2.0  # EMA smoothing factor for ATR calculation
 
-    # Timeframe Data Limits for Enhanced SMC Analysis
-    TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
-    TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
-    TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
+    # Timeframe Data Limits for Enhanced SMC Analysis - REDUCED for rate limiting
+    TIMEFRAME_1H_LIMIT = 100  # 100 candles = ~4 days of hourly data (reduced from 300 to avoid rate limits)
+    TIMEFRAME_4H_LIMIT = 50   # 50 candles = ~8 days of 4h data (reduced from 100 to avoid rate limits)
+    TIMEFRAME_1D_LIMIT = 30   # 30 candles = ~4 weeks of daily data (reduced from 50 to avoid rate limits)
 
 
 # =============================================================================

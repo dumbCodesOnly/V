@@ -55,7 +55,7 @@ class KlinesBackgroundWorker:
         logging.info("Klines background worker initialized")
 
 
-    @with_circuit_breaker("binance_klines_api", failure_threshold=2, recovery_timeout=60, success_threshold=2)
+    @with_circuit_breaker("binance_klines_api", failure_threshold=8, recovery_timeout=120, success_threshold=3)
     def _fetch_binance_klines(self, symbol: str, interval: str, limit: int = 1000) -> List[Dict]:
         """
         Fetch klines data from Binance API with circuit breaker protection
@@ -451,6 +451,10 @@ class KlinesBackgroundWorker:
                     # Proper delay between requests to respect API rate limits
                     time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
                     
+                    # Additional longer delay during initial population to be extra conservative
+                    if data_info.get("needs_initial_population", False):
+                        time.sleep(3.0)  # Extra 3 seconds for initial population
+                    
             # Cleanup old data at the end of each cycle
             self._cleanup_old_data()
             
@@ -502,8 +506,8 @@ class KlinesBackgroundWorker:
                 # Run one complete cycle
                 self._run_worker_cycle()
                 
-                # Wait before next cycle (cost optimization)
-                cycle_interval = TimeConfig.RENDER_SYNC_INTERVAL * 10  # ~120 seconds between cycles
+                # Wait before next cycle (cost optimization) - Much longer intervals to reduce API pressure
+                cycle_interval = TimeConfig.RENDER_SYNC_INTERVAL * 20  # ~500 seconds between cycles (8+ minutes)
                 
                 for _ in range(cycle_interval):
                     if self.stop_event.is_set():
