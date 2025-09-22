@@ -6506,8 +6506,8 @@
                                                             Buy Liquidity
                                                         </small>
                                                     </div>
-                                                    <div class="text-center mt-2">
-                                                        <small class="text-muted">💡 Mobile: Pinch to zoom, two-finger drag to pan • Desktop: Mouse wheel to zoom, drag to pan</small>
+                                                            <div class="text-center mt-2">
+                                                        <small class="text-muted">📱 Pinch to zoom, drag to pan, double-tap to reset • Touch controls optimized for mobile</small>
                                                     </div>
                                                 </div>
                                             </div>
@@ -6793,12 +6793,19 @@
                             time: {
                                 unit: 'hour',
                                 displayFormats: {
-                                    hour: 'MMM dd HH:mm'
+                                    hour: 'dd/MM HH:mm'
                                 }
                             },
                             ticks: {
                                 color: '#8b9dc3',
-                                maxRotation: 45
+                                maxRotation: 0,
+                                minRotation: 0,
+                                font: {
+                                    size: 10
+                                },
+                                maxTicksLimit: 8,
+                                autoSkip: true,
+                                autoSkipPadding: 10
                             },
                             grid: {
                                 color: 'rgba(139, 157, 195, 0.2)'
@@ -6936,6 +6943,15 @@
             
             // Add mobile-specific touch event handling
             addMobileChartInteractions(ctx.canvas);
+        }
+
+        // Reset chart zoom function
+        function resetChartZoom() {
+            if (smcChart) {
+                smcChart.resetZoom();
+                const resetBtn = document.getElementById('reset-zoom-btn');
+                if (resetBtn) resetBtn.style.display = 'none';
+            }
         }
 
         // Mobile-friendly chart interaction handling
