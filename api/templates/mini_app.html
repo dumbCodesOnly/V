@@ -6595,17 +6595,25 @@
             
             // Chart configuration
             const config = {
-                type: 'line',
+                type: 'candlestick',
                 data: {
                     datasets: [{
                         label: chartData.symbol,
-                        data: priceData,
+                        data: candlestickData,
                         borderColor: '#6bb6ff',
                         backgroundColor: 'rgba(107, 182, 255, 0.1)',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        pointHoverRadius: 4,
-                        fill: false
+                        borderWidth: 1,
+                        // Candlestick specific styling
+                        color: {
+                            up: '#52c41a',   // Green for bullish candles
+                            down: '#ff4d4f', // Red for bearish candles
+                            unchanged: '#6bb6ff'
+                        },
+                        borderColor: {
+                            up: '#389e0d',   // Darker green border
+                            down: '#cf1322', // Darker red border
+                            unchanged: '#4096ff'
+                        }
                     }]
                 },
                 options: {
