@@ -1012,5 +1012,160 @@ class KlinesCache(db.Model):
         db.session.commit()
         return old_count
 
+    @classmethod
+    def cleanup_rolling_window(cls, symbol: str, timeframe: str, max_candles: int, batch_size: int = 50):
+        """
+        Implement rolling window cleanup for a specific symbol and timeframe.
+        Keep only the latest max_candles, removing older ones in batches.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            timeframe: Timeframe ('1h', '4h', '1d')
+            max_candles: Maximum number of candles to keep
+            batch_size: Number of records to delete in each batch
+            
+        Returns:
+            int: Number of candles deleted
+        """
+        try:
+            # Count total candles for this symbol/timeframe
+            total_count = cls.query.filter(
+                cls.symbol == symbol,
+                cls.timeframe == timeframe,
+                cls.is_complete == True  # Only count complete candles
+            ).count()
+            
+            if total_count <= max_candles:
+                return 0  # No cleanup needed
+            
+            # Calculate how many to delete
+            to_delete = total_count - max_candles
+            deleted_count = 0
+            
+            # Delete in batches to avoid database locks
+            while to_delete > 0:
+                current_batch = min(batch_size, to_delete)
+                
+                # Get the oldest candles for this symbol/timeframe
+                oldest_candles = cls.query.filter(
+                    cls.symbol == symbol,
+                    cls.timeframe == timeframe,
+                    cls.is_complete == True
+                ).order_by(cls.timestamp.asc()).limit(current_batch).all()
+                
+                if not oldest_candles:
+                    break  # No more candles to delete
+                
+                # Delete this batch
+                for candle in oldest_candles:
+                    db.session.delete(candle)
+                
+                db.session.commit()
+                
+                batch_deleted = len(oldest_candles)
+                deleted_count += batch_deleted
+                to_delete -= batch_deleted
+                
+                # Safety check - if we're not making progress, break
+                if batch_deleted == 0:
+                    break
+            
+            return deleted_count
+            
+        except Exception as e:
+            logging.error(f"Error in rolling window cleanup for {symbol}:{timeframe}: {e}")
+            db.session.rollback()
+            return 0
+
+    @classmethod 
+    def cleanup_all_rolling_windows(cls, batch_size: int = 50):
+        """
+        Cleanup rolling windows for all symbols and timeframes.
+        This ensures we maintain the configured window size for all data.
+        
+        Args:
+            batch_size: Number of records to delete in each batch
+            
+        Returns:
+            dict: Summary of cleanup results per symbol/timeframe
+        """
+        from config import RollingWindowConfig
+        
+        cleanup_results = {}
+        total_deleted = 0
+        
+        try:
+            # Get all unique symbol/timeframe combinations
+            distinct_combinations = db.session.query(
+                cls.symbol, cls.timeframe
+            ).distinct().all()
+            
+            for symbol, timeframe in distinct_combinations:
+                # Check if rolling window is enabled for this timeframe
+                if not RollingWindowConfig.is_enabled(timeframe):
+                    continue
+                
+                # Get the maximum candles for this timeframe
+                max_candles = RollingWindowConfig.get_max_candles(timeframe)
+                
+                # Perform cleanup for this combination
+                deleted = cls.cleanup_rolling_window(symbol, timeframe, max_candles, batch_size)
+                
+                if deleted > 0:
+                    cleanup_results[f"{symbol}:{timeframe}"] = deleted
+                    total_deleted += deleted
+                    logging.info(f"Rolling window cleanup: {symbol}:{timeframe} - deleted {deleted} old candles")
+            
+            return {
+                "total_deleted": total_deleted,
+                "details": cleanup_results,
+                "symbols_processed": len(distinct_combinations)
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in cleanup_all_rolling_windows: {e}")
+            return {"total_deleted": 0, "details": {}, "error": str(e)}
+
+    @classmethod
+    def get_rolling_window_stats(cls):
+        """
+        Get statistics about current rolling window status.
+        
+        Returns:
+            dict: Statistics for each symbol/timeframe combination
+        """
+        from config import RollingWindowConfig
+        
+        stats = {}
+        
+        try:
+            # Get all unique symbol/timeframe combinations with counts
+            combinations = db.session.query(
+                cls.symbol, 
+                cls.timeframe,
+                db.func.count().label('candle_count')
+            ).filter(
+                cls.is_complete == True
+            ).group_by(cls.symbol, cls.timeframe).all()
+            
+            for symbol, timeframe, count in combinations:
+                max_candles = RollingWindowConfig.get_max_candles(timeframe)
+                is_enabled = RollingWindowConfig.is_enabled(timeframe)
+                
+                key = f"{symbol}:{timeframe}"
+                stats[key] = {
+                    "current_count": count,
+                    "max_allowed": max_candles,
+                    "over_limit": max(0, count - max_candles),
+                    "rolling_window_enabled": is_enabled,
+                    "needs_cleanup": is_enabled and count > max_candles
+                }
+            
+            return stats
+            
+        except Exception as e:
+            logging.error(f"Error getting rolling window stats: {e}")
+            return {"error": str(e)}
+
     def __repr__(self):
         return f"<KlinesCache {self.symbol}:{self.timeframe} @ {self.timestamp}>"
