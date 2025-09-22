@@ -23,6 +23,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 
     
     <style>
@@ -6510,57 +6511,15 @@
                 smcChart.destroy();
             }
             
-            // Register the candlestick chart type for Chart.js
-            if (!Chart.registry.getController('candlestick')) {
-                Chart.register({
-                    id: 'candlestick',
-                    afterRegister: function(chart) {
-                        chart.controllers.candlestick = chart.controllers.line.extend({
-                            draw: function() {
-                                const ctx = this.chart.chart.ctx;
-                                const data = this.getMeta().data;
-                                
-                                data.forEach(point => {
-                                    const {o, h, l, c, x} = point._model || point;
-                                    const color = c >= o ? '#26a69a' : '#ef5350';
-                                    
-                                    ctx.strokeStyle = color;
-                                    ctx.fillStyle = color;
-                                    ctx.lineWidth = 1;
-                                    
-                                    // Draw the high-low line
-                                    ctx.beginPath();
-                                    ctx.moveTo(x, h);
-                                    ctx.lineTo(x, l);
-                                    ctx.stroke();
-                                    
-                                    // Draw the body
-                                    const bodyHeight = Math.abs(o - c);
-                                    const bodyY = Math.min(o, c);
-                                    const bodyWidth = 6;
-                                    
-                                    if (c >= o) {
-                                        ctx.fillRect(x - bodyWidth/2, bodyY, bodyWidth, bodyHeight);
-                                    } else {
-                                        ctx.strokeRect(x - bodyWidth/2, bodyY, bodyWidth, bodyHeight);
-                                    }
-                                });
-                            }
-                        });
-                    }
-                });
-            }
-            
-            // Prepare data as simple line chart with custom rendering
-            const priceData = chartData.candlesticks.map(candle => ({
+            // Chart.js Financial plugin provides candlestick support
+            // Register required components
+            // Prepare candlestick data for Chart.js Financial
+            const candlestickData = chartData.candlesticks.map(candle => ({
                 x: candle.time,
-                y: candle.close,
-                ohlc: {
-                    open: candle.open,
-                    high: candle.high,
-                    low: candle.low,
-                    close: candle.close
-                }
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close
             }));
             
             // Create annotations for SMC elements
