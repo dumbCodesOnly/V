@@ -151,13 +151,22 @@ class SMCAnalyzer:
                 )
                 return KlinesCache.get_cached_data(symbol, timeframe, limit)
 
-            # OPTIMIZATION: If we have existing cache data, only fetch latest candles to stay current
+            # EFFICIENT OPTIMIZATION: If we have existing cache data, check if we just need to update open candle
             if len(cached_data) > 0:
-                # Fetch only latest 3 candles to update cache and stay current
-                fetch_limit = min(3, gap_info["fetch_count"])
-                logging.info(
-                    f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
-                )
+                # Check if we have current open candle already
+                current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+                if current_open_candle:
+                    # Just update the existing open candle (most efficient approach)
+                    fetch_limit = 1
+                    logging.info(
+                        f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
+                    )
+                else:
+                    # Fetch only latest 2 candles (current + previous for gap filling)
+                    fetch_limit = min(2, gap_info["fetch_count"])
+                    logging.info(
+                        f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
+                    )
             else:
                 # No cache data - fetch full amount 
                 fetch_limit = gap_info["fetch_count"]
@@ -167,8 +176,8 @@ class SMCAnalyzer:
 
         except Exception as e:
             logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
-            # Conservative fallback: only fetch latest 3 candles if we have cached data
-            fetch_limit = 3 if len(cached_data) > 0 else limit
+            # Conservative fallback: only fetch latest 1 candle if we have cached data (efficient open candle update)
+            fetch_limit = 1 if len(cached_data) > 0 else limit
 
         # Step 3: Fetch from Binance API with circuit breaker protection
         tf_map = {"1h": "1h", "4h": "4h", "1d": "1d"}
@@ -195,8 +204,44 @@ class SMCAnalyzer:
             }
             candlesticks.append(candlestick)
 
-        # Step 4: Cache the fetched data with appropriate TTL
+        # Step 4: Cache the fetched data efficiently
         try:
+            # If we only fetched 1 candle and have existing cache, use efficient open candle update
+            if fetch_limit == 1 and len(cached_data) > 0 and len(candlesticks) == 1:
+                current_candle = candlesticks[0]
+                
+                # Calculate appropriate TTL for open candle
+                if timeframe == "1h":
+                    ttl_minutes = 2  # Very short TTL for hourly open candles
+                elif timeframe == "4h":
+                    ttl_minutes = 5  # Short TTL for 4h open candles
+                elif timeframe == "1d":
+                    ttl_minutes = 15  # Medium TTL for daily open candles
+                else:
+                    ttl_minutes = 3  # Default short TTL
+                
+                # Use efficient in-place update method
+                success = KlinesCache.update_open_candle(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    open_price=current_candle["open"],
+                    high=current_candle["high"],
+                    low=current_candle["low"],
+                    close=current_candle["close"],
+                    volume=current_candle["volume"],
+                    timestamp=current_candle["timestamp"],
+                    cache_ttl_minutes=ttl_minutes
+                )
+                
+                if success:
+                    logging.debug(f"SMC: Efficiently updated open candle for {symbol} {timeframe}")
+                    # Return updated cached data including the new open candle
+                    return KlinesCache.get_cached_data(symbol, timeframe, limit)
+                else:
+                    logging.warning(f"SMC: Failed to update open candle for {symbol} {timeframe}, falling back to batch save")
+                    # Fall through to batch save as fallback
+            
+            # Fallback: Use traditional batch save for multiple candles or when update fails
             ttl_config = {
                 "1h": CacheConfig.KLINES_1H_CACHE_TTL,
                 "4h": CacheConfig.KLINES_4H_CACHE_TTL,

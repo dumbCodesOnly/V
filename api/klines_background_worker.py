@@ -439,13 +439,26 @@ class KlinesBackgroundWorker:
                         # Get existing data information
                         data_info = self._get_existing_data_info(symbol, timeframe)
                         
-                        # OPTIMIZED: Decide between initial population or incremental update
+                        # Check if we just need to update current open candle (most efficient)
+                        existing_open_candle = None
+                        if not data_info["needs_initial_population"]:
+                            try:
+                                with self.app.app_context():
+                                    existing_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+                            except Exception:
+                                pass
+                        
+                        # SMART DECISION: Choose most efficient update method
                         if data_info["needs_initial_population"]:
                             # Initial population: Get full historical data (happens once per symbol/timeframe)
                             logging.info(f"Initial population needed for {symbol} {timeframe}")
                             success = self._populate_initial_data(symbol, timeframe)
+                        elif existing_open_candle:
+                            # MOST EFFICIENT: Just update the existing open candle in place
+                            logging.debug(f"Efficient open candle update for {symbol} {timeframe}")
+                            success = self._update_recent_data(symbol, timeframe)
                         else:
-                            # Incremental update: Only get recent candles (much more efficient)
+                            # No open candle exists, might need to create it or fetch recent data
                             logging.debug(f"Incremental update for {symbol} {timeframe}")
                             success = self._update_recent_data(symbol, timeframe)
                             
@@ -462,9 +475,11 @@ class KlinesBackgroundWorker:
                     # Proper delay between requests to respect API rate limits
                     time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
                     
-                    # Additional longer delay during initial population to be extra conservative
+                    # Variable delay based on operation type
                     if data_info.get("needs_initial_population", False):
-                        time.sleep(3.0)  # Extra 3 seconds for initial population
+                        time.sleep(3.0)  # Extra 3 seconds for initial population (heavy operation)
+                    elif existing_open_candle:
+                        time.sleep(0.5)  # Minimal delay for efficient open candle updates
                     
             # Cleanup old data at the end of each cycle
             self._cleanup_old_data()
