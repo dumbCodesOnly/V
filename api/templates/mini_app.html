@@ -18,6 +18,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js for candlestick visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
 
     
     <style>
@@ -6340,6 +6345,30 @@
                                             </div>
                                         ` : ''}
                                         
+                                        <!-- Chart Visualization Section -->
+                                        <div class="mb-4">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h6 class="mb-0">Market Analysis Chart</h6>
+                                                <button class="btn btn-outline-primary btn-sm" onclick="loadSmcChart('${symbol}')" id="load-chart-btn">
+                                                    <i data-feather="bar-chart-2"></i> Load Chart
+                                                </button>
+                                            </div>
+                                            <div id="chart-container" style="display: none;">
+                                                <div style="height: 400px; background: var(--tg-theme-card-bg); border-radius: 8px; padding: 10px;">
+                                                    <canvas id="smc-chart"></canvas>
+                                                </div>
+                                                <div class="mt-2">
+                                                    <small class="text-muted">
+                                                        🟦 Order Blocks | 🟨 Fair Value Gaps | 🔴 Sell Liquidity | 🟢 Buy Liquidity
+                                                    </small>
+                                                </div>
+                                            </div>
+                                            <div id="chart-loading" style="display: none; text-align: center; padding: 2rem;">
+                                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                <div class="mt-2"><small class="text-muted">Loading chart data...</small></div>
+                                            </div>
+                                        </div>
+                                        
                                         <h6 class="mb-2">Analysis Reasoning</h6>
                                         <ul class="smc-reasoning-list">
                                             ${data.reasoning.map(reason => `<li>${reason}</li>`).join('')}
@@ -6424,6 +6453,280 @@
                 console.error('Error creating auto-trade:', error);
                 alert('❌ Error creating auto-trade');
             }
+        }
+
+        // SMC Chart Visualization Functions
+        let smcChart = null;
+
+        async function loadSmcChart(symbol) {
+            try {
+                const loadBtn = document.getElementById('load-chart-btn');
+                const chartContainer = document.getElementById('chart-container');
+                const loadingDiv = document.getElementById('chart-loading');
+                
+                // Show loading state
+                loadBtn.disabled = true;
+                loadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
+                loadingDiv.style.display = 'block';
+                
+                // Fetch chart data
+                const response = await fetch(`/api/smc-chart-data/${symbol}`);
+                const chartData = await response.json();
+                
+                if (chartData.error) {
+                    throw new Error(chartData.error);
+                }
+                
+                // Hide loading and show chart
+                loadingDiv.style.display = 'none';
+                chartContainer.style.display = 'block';
+                
+                // Create the chart
+                renderSmcChart(chartData);
+                
+                // Update button
+                loadBtn.innerHTML = '<i data-feather="refresh-cw"></i> Refresh Chart';
+                loadBtn.disabled = false;
+                
+                // Re-initialize feather icons
+                if (typeof feather !== 'undefined') {
+                    feather.replace();
+                }
+                
+            } catch (error) {
+                console.error('Error loading SMC chart:', error);
+                document.getElementById('chart-loading').style.display = 'none';
+                document.getElementById('load-chart-btn').innerHTML = '<i data-feather="bar-chart-2"></i> Load Chart';
+                document.getElementById('load-chart-btn').disabled = false;
+                alert('Failed to load chart data: ' + error.message);
+            }
+        }
+
+        function renderSmcChart(chartData) {
+            const ctx = document.getElementById('smc-chart').getContext('2d');
+            
+            // Destroy existing chart if any
+            if (smcChart) {
+                smcChart.destroy();
+            }
+            
+            // Register the candlestick chart type for Chart.js
+            if (!Chart.registry.getController('candlestick')) {
+                Chart.register({
+                    id: 'candlestick',
+                    afterRegister: function(chart) {
+                        chart.controllers.candlestick = chart.controllers.line.extend({
+                            draw: function() {
+                                const ctx = this.chart.chart.ctx;
+                                const data = this.getMeta().data;
+                                
+                                data.forEach(point => {
+                                    const {o, h, l, c, x} = point._model || point;
+                                    const color = c >= o ? '#26a69a' : '#ef5350';
+                                    
+                                    ctx.strokeStyle = color;
+                                    ctx.fillStyle = color;
+                                    ctx.lineWidth = 1;
+                                    
+                                    // Draw the high-low line
+                                    ctx.beginPath();
+                                    ctx.moveTo(x, h);
+                                    ctx.lineTo(x, l);
+                                    ctx.stroke();
+                                    
+                                    // Draw the body
+                                    const bodyHeight = Math.abs(o - c);
+                                    const bodyY = Math.min(o, c);
+                                    const bodyWidth = 6;
+                                    
+                                    if (c >= o) {
+                                        ctx.fillRect(x - bodyWidth/2, bodyY, bodyWidth, bodyHeight);
+                                    } else {
+                                        ctx.strokeRect(x - bodyWidth/2, bodyY, bodyWidth, bodyHeight);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // Prepare data as simple line chart with custom rendering
+            const priceData = chartData.candlesticks.map(candle => ({
+                x: candle.time,
+                y: candle.close,
+                ohlc: {
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close
+                }
+            }));
+            
+            // Create annotations for SMC elements
+            const annotations = {};
+            let annotationId = 0;
+            
+            // Add Order Blocks as rectangles
+            chartData.order_blocks.forEach(ob => {
+                const color = ob.direction === 'bullish' ? 'rgba(34, 139, 34, 0.3)' : 'rgba(220, 53, 69, 0.3)';
+                const borderColor = ob.direction === 'bullish' ? 'rgba(34, 139, 34, 0.8)' : 'rgba(220, 53, 69, 0.8)';
+                
+                annotations[`ob_${annotationId++}`] = {
+                    type: 'box',
+                    xMin: ob.time,
+                    xMax: ob.time + (1000 * 60 * 60 * 4), // 4 hours width
+                    yMin: Math.min(ob.high, ob.low),
+                    yMax: Math.max(ob.high, ob.low),
+                    backgroundColor: color,
+                    borderColor: borderColor,
+                    borderWidth: 1,
+                    label: {
+                        display: true,
+                        content: `OB (${ob.direction})`,
+                        position: 'start'
+                    }
+                };
+            });
+            
+            // Add Fair Value Gaps as rectangles
+            chartData.fair_value_gaps.forEach(fvg => {
+                if (!fvg.filled) {
+                    const color = fvg.direction === 'bullish' ? 'rgba(255, 193, 7, 0.4)' : 'rgba(255, 87, 34, 0.4)';
+                    const borderColor = fvg.direction === 'bullish' ? 'rgba(255, 193, 7, 0.8)' : 'rgba(255, 87, 34, 0.8)';
+                    
+                    annotations[`fvg_${annotationId++}`] = {
+                        type: 'box',
+                        xMin: fvg.time,
+                        xMax: fvg.time + (1000 * 60 * 60 * 8), // 8 hours width
+                        yMin: Math.min(fvg.high, fvg.low),
+                        yMax: Math.max(fvg.high, fvg.low),
+                        backgroundColor: color,
+                        borderColor: borderColor,
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        label: {
+                            display: true,
+                            content: `FVG (${fvg.direction})`,
+                            position: 'start'
+                        }
+                    };
+                }
+            });
+            
+            // Add Liquidity Levels as horizontal lines
+            chartData.liquidity_pools.forEach(lp => {
+                const color = lp.type === 'buy_side' ? 'rgba(52, 196, 26, 0.8)' : 'rgba(255, 77, 79, 0.8)';
+                
+                annotations[`lp_${annotationId++}`] = {
+                    type: 'line',
+                    mode: 'horizontal',
+                    scaleID: 'y',
+                    value: lp.price,
+                    borderColor: color,
+                    borderWidth: 2,
+                    borderDash: lp.swept ? [2, 4] : [8, 4],
+                    label: {
+                        display: true,
+                        content: `${lp.type.replace('_', ' ')} liquidity`,
+                        position: 'end'
+                    }
+                };
+            });
+            
+            // Chart configuration
+            const config = {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: chartData.symbol,
+                        data: priceData,
+                        borderColor: '#6bb6ff',
+                        backgroundColor: 'rgba(107, 182, 255, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: 10
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM dd HH:mm'
+                                }
+                            },
+                            ticks: {
+                                color: '#8b9dc3',
+                                maxRotation: 45
+                            },
+                            grid: {
+                                color: 'rgba(139, 157, 195, 0.2)'
+                            }
+                        },
+                        y: {
+                            position: 'right',
+                            ticks: {
+                                color: '#8b9dc3',
+                                callback: function(value) {
+                                    return '$' + value.toFixed(4);
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(139, 157, 195, 0.2)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            titleColor: '#e8eef7',
+                            bodyColor: '#e8eef7',
+                            backgroundColor: 'rgba(15, 20, 25, 0.9)',
+                            borderColor: '#3a4658',
+                            borderWidth: 1,
+                            callbacks: {
+                                afterBody: function(context) {
+                                    const point = context[0];
+                                    if (point && point.raw && point.raw.ohlc) {
+                                        const ohlc = point.raw.ohlc;
+                                        return [
+                                            `Open: $${ohlc.open.toFixed(4)}`,
+                                            `High: $${ohlc.high.toFixed(4)}`,
+                                            `Low: $${ohlc.low.toFixed(4)}`,
+                                            `Close: $${ohlc.close.toFixed(4)}`
+                                        ];
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
+                        annotation: {
+                            annotations: annotations
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            };
+            
+            // Create the chart
+            smcChart = new Chart(ctx, config);
         }
 
         function openSymbolAnalysis() {
