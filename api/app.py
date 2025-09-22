@@ -1064,6 +1064,11 @@ db.init_app(app)
 start_cache_cleanup_worker(app)
 logging.info("Enhanced caching system initialized with smart volatility-based TTL")
 
+# Initialize klines background worker for efficient data management
+from .klines_background_worker import start_klines_background_worker
+start_klines_background_worker()
+logging.info("Klines background worker started for efficient candlestick data management")
+
 
 # Database migration helpers
 def _create_cache_tables():
