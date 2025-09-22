@@ -204,6 +204,62 @@
             }
         }
 
+        /* SMC Analysis Compact Info Boxes */
+        .smc-detail-item {
+            background: var(--tg-theme-card-bg);
+            border: 1px solid var(--tg-theme-border-color);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .smc-detail-item.compact {
+            padding: 8px 10px;
+            border-radius: 6px;
+        }
+
+        .smc-detail-item:hover {
+            border-color: var(--tg-theme-button-color);
+            background: rgba(74, 144, 226, 0.05);
+        }
+
+        .smc-detail-label {
+            font-size: 0.75rem;
+            color: var(--tg-theme-hint-color);
+            font-weight: 500;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .smc-detail-item.compact .smc-detail-label {
+            font-size: 0.7rem;
+            margin-bottom: 2px;
+        }
+
+        .smc-detail-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--tg-theme-text-color);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .smc-detail-item.compact .smc-detail-value {
+            font-size: 0.85rem;
+        }
+
+        .smc-reasoning-list {
+            margin: 0;
+            padding-left: 1rem;
+        }
+
+        .smc-reasoning-list li {
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+            color: var(--tg-theme-text-color);
+        }
+
         /* Enhanced Loading Indicators */
         .loading-overlay {
             position: fixed;
@@ -6312,36 +6368,36 @@
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                     </div>
                                     <div class="modal-body">
-                                        <div class="row mb-3">
+                                        <div class="row mb-2 g-2">
                                             <div class="col-6">
-                                                <div class="smc-detail-item">
+                                                <div class="smc-detail-item compact">
                                                     <div class="smc-detail-label">Direction</div>
                                                     <div class="smc-detail-value">${data.direction}</div>
                                                 </div>
                                             </div>
                                             <div class="col-6">
-                                                <div class="smc-detail-item">
+                                                <div class="smc-detail-item compact">
                                                     <div class="smc-detail-label">Confidence</div>
                                                     <div class="smc-detail-value">${(data.confidence * 100).toFixed(1)}%</div>
                                                 </div>
                                             </div>
                                         </div>
                                         
-                                        <div class="row mb-3">
+                                        <div class="row mb-2 g-2">
                                             <div class="col-4">
-                                                <div class="smc-detail-item">
+                                                <div class="smc-detail-item compact">
                                                     <div class="smc-detail-label">Entry Price</div>
                                                     <div class="smc-detail-value">$${data.entry_price?.toFixed(4)}</div>
                                                 </div>
                                             </div>
                                             <div class="col-4">
-                                                <div class="smc-detail-item">
+                                                <div class="smc-detail-item compact">
                                                     <div class="smc-detail-label">Stop Loss</div>
                                                     <div class="smc-detail-value">$${data.stop_loss?.toFixed(4)}</div>
                                                 </div>
                                             </div>
                                             <div class="col-4">
-                                                <div class="smc-detail-item">
+                                                <div class="smc-detail-item compact">
                                                     <div class="smc-detail-label">Risk:Reward</div>
                                                     <div class="smc-detail-value">1:${data.risk_reward_ratio?.toFixed(1)}</div>
                                                 </div>
@@ -6349,11 +6405,11 @@
                                         </div>
                                         
                                         ${data.take_profit_levels && data.take_profit_levels.length > 0 ? `
-                                            <h6 class="mb-2">Take Profit Levels</h6>
-                                            <div class="row mb-3">
+                                            <h6 class="mb-1 fs-7">Take Profit Levels</h6>
+                                            <div class="row mb-2 g-2">
                                                 ${data.take_profit_levels.map((tp, index) => `
                                                     <div class="col-4">
-                                                        <div class="smc-detail-item">
+                                                        <div class="smc-detail-item compact">
                                                             <div class="smc-detail-label">TP ${index + 1}</div>
                                                             <div class="smc-detail-value">$${tp?.toFixed(4)}</div>
                                                         </div>
@@ -6409,7 +6465,7 @@
                                             </div>
                                         </div>
                                         
-                                        <h6 class="mb-2">Analysis Reasoning</h6>
+                                        <h6 class="mb-1 fs-7">Analysis Reasoning</h6>
                                         <ul class="smc-reasoning-list">
                                             ${data.reasoning.map(reason => `<li>${reason}</li>`).join('')}
                                         </ul>
