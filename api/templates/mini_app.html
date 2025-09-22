@@ -200,7 +200,7 @@
             }
 
             .smc-chart-wrapper {
-                height: 450px !important;
+                height: 420px !important;
             }
         }
 
@@ -6432,8 +6432,8 @@
                                                 </div>
                                             </div>
                                             <div id="chart-container" style="display: none;">
-                                                <div class="smc-chart-wrapper" style="height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 8px; border: 1px solid var(--tg-theme-border-color);">
-                                                    <canvas id="smc-chart"></canvas>
+                                                <div class="smc-chart-wrapper" style="height: 600px; background: var(--tg-theme-card-bg); border-radius: 12px; padding: 25px; border: 1px solid var(--tg-theme-border-color); position: relative; z-index: 1;">
+                                                    <canvas id="smc-chart" style="width: 100%;"></canvas>
                                                 </div>
                                                 <div class="mt-3 p-2" style="background: rgba(107, 139, 179, 0.05); border-radius: 6px;">
                                                     <div class="d-flex flex-wrap justify-content-center gap-3">
@@ -6615,8 +6615,14 @@
                 smcChart.destroy();
             }
             
-            // Chart.js Financial plugin provides candlestick support
-            // Register required components
+            // Register Chart.js plugins if not already registered
+            if (typeof Chart.register === 'function') {
+                try {
+                    Chart.register(ChartJSZoom, window.chartjs?.Annotation, window.ChartFinancial);
+                } catch (e) {
+                    console.log('Chart.js plugins already registered or unavailable');
+                }
+            }
             // Prepare candlestick data for Chart.js Financial
             const candlestickData = chartData.candlesticks.map(candle => ({
                 x: candle.time,
@@ -6725,10 +6731,10 @@
                     maintainAspectRatio: false,
                     layout: {
                         padding: {
-                            top: 15,
-                            right: 15,
-                            bottom: 15,
-                            left: 15
+                            top: 20,
+                            right: 20,
+                            bottom: 20,
+                            left: 20
                         }
                     },
                     scales: {
@@ -6763,16 +6769,23 @@
                     },
                     plugins: {
                         zoom: {
+                            limits: {
+                                y: {min: 'original', max: 'original'},
+                                x: {min: 'original', max: 'original'}
+                            },
                             zoom: {
                                 wheel: {
                                     enabled: true,
-                                    speed: 0.1
+                                    speed: 0.05,
+                                    modifierKey: null
                                 },
                                 pinch: {
                                     enabled: true
                                 },
-                                mode: 'xy',
-                                scaleMode: 'x',
+                                drag: {
+                                    enabled: false
+                                },
+                                mode: 'x',
                                 onZoomComplete: function() {
                                     // Show reset zoom button when zoomed
                                     const resetBtn = document.getElementById('reset-zoom-btn');
@@ -6781,8 +6794,9 @@
                             },
                             pan: {
                                 enabled: true,
-                                mode: 'xy',
+                                mode: 'x',
                                 modifierKey: null,
+                                threshold: 10,
                                 onPanComplete: function() {
                                     // Show reset zoom button when panned
                                     const resetBtn = document.getElementById('reset-zoom-btn');
@@ -6835,6 +6849,65 @@
             
             // Create the chart
             smcChart = new Chart(ctx, config);
+            
+            // Add mobile-specific touch event handling
+            addMobileChartInteractions(ctx.canvas);
+        }
+
+        // Mobile-friendly chart interaction handling
+        function addMobileChartInteractions(canvas) {
+            if (!canvas) return;
+            
+            // Prevent default touch behaviors on the chart canvas
+            canvas.style.touchAction = 'none';
+            
+            // Add double-tap to reset zoom
+            let lastTap = 0;
+            canvas.addEventListener('touchend', function(e) {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTap;
+                
+                if (tapLength < 500 && tapLength > 0) {
+                    // Double tap detected - reset zoom
+                    e.preventDefault();
+                    resetChartZoom();
+                }
+                lastTap = currentTime;
+            });
+            
+            // Add instructions tooltip for mobile users
+            const chartWrapper = canvas.closest('.smc-chart-wrapper');
+            if (chartWrapper) {
+                const instructions = document.createElement('div');
+                instructions.className = 'chart-mobile-instructions';
+                instructions.style.cssText = `
+                    position: absolute;
+                    top: 5px;
+                    right: 10px;
+                    background: rgba(0,0,0,0.7);
+                    color: white;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    z-index: 1000;
+                    pointer-events: none;
+                `;
+                instructions.textContent = '📱 Pinch to zoom, drag to pan, double-tap to reset';
+                chartWrapper.appendChild(instructions);
+                
+                // Auto-hide instructions after 5 seconds
+                setTimeout(() => {
+                    if (instructions.parentNode) {
+                        instructions.style.opacity = '0';
+                        instructions.style.transition = 'opacity 1s';
+                        setTimeout(() => {
+                            if (instructions.parentNode) {
+                                instructions.parentNode.removeChild(instructions);
+                            }
+                        }, 1000);
+                    }
+                }, 5000);
+            }
         }
 
         function openSymbolAnalysis() {
