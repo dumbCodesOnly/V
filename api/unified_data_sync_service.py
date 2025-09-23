@@ -979,6 +979,7 @@ class UnifiedDataSyncService:
             symbols = TradingConfig.SUPPORTED_SYMBOLS
             total_klines_tasks = len(symbols) * len(self.timeframes)
             completed_klines_tasks = 0
+            successful_fetches = 0  # Track successful data fetches
             
             logging.debug(f"Starting unified sync cycle for {len(symbols)} symbols, {len(self.timeframes)} timeframes")
             
@@ -994,6 +995,7 @@ class UnifiedDataSyncService:
                     try:
                         # Initialize variables for safe error handling
                         data_info = {"needs_initial_population": False}
+                        success = False  # Initialize success flag
                         
                         # Check if this timeframe needs updating
                         if not self._should_update_timeframe(symbol, timeframe):
@@ -1029,12 +1031,14 @@ class UnifiedDataSyncService:
                             success = self._update_recent_data(symbol, timeframe)
                             
                         if success:
+                            successful_fetches += 1
                             logging.debug(f"Successfully processed {symbol} {timeframe}")
                         else:
                             logging.warning(f"Failed to process {symbol} {timeframe}")
                             
                     except Exception as e:
                         logging.error(f"Error processing {symbol} {timeframe}: {e}")
+                        success = False
                         
                     completed_klines_tasks += 1
                     
@@ -1051,23 +1055,28 @@ class UnifiedDataSyncService:
                         pass  # Variables may not be defined in error scenarios
 
             # Phase 2: COORDINATED cleanup after data updates
-            # This ensures fresh data isn't accidentally purged
-            logging.info(f"SYNC_DEBUG: Starting cleanup phase after processing {completed_klines_tasks}/{total_klines_tasks} klines tasks")
-            
-            logging.debug("SYNC_DEBUG: Calling klines data cleanup")
-            self._cleanup_klines_data()  # Database cleanup
-            
-            logging.debug("SYNC_DEBUG: Calling cache data cleanup")
-            cache_removed = self._cleanup_cache_data()  # Memory cache cleanup
-            
-            logging.debug(f"SYNC_DEBUG: Cleanup phase completed - cache entries removed: {cache_removed}")
+            # FIXED: Only run cleanup if we had successful data fetches to prevent data loss
+            if successful_fetches > 0:
+                logging.info(f"SYNC_DEBUG: Starting cleanup phase after {successful_fetches} successful data updates out of {completed_klines_tasks} attempts")
+                
+                logging.debug("SYNC_DEBUG: Calling klines data cleanup")
+                self._cleanup_klines_data()  # Database cleanup
+                
+                logging.debug("SYNC_DEBUG: Calling cache data cleanup")
+                cache_removed = self._cleanup_cache_data()  # Memory cache cleanup
+                
+                logging.debug(f"SYNC_DEBUG: Cleanup phase completed - cache entries removed: {cache_removed}")
+            else:
+                logging.warning(f"SYNC_DEBUG: Skipping cleanup phase - no successful data updates (all {completed_klines_tasks} attempts failed). This prevents data loss when API is unavailable.")
+                cache_removed = 0
             
             cycle_time = time.time() - start_time
             # Log cycle performance and efficiency metrics
-            efficiency = (completed_klines_tasks / total_klines_tasks * 100) if total_klines_tasks > 0 else 0
+            task_efficiency = (completed_klines_tasks / total_klines_tasks * 100) if total_klines_tasks > 0 else 0
+            fetch_efficiency = (successful_fetches / completed_klines_tasks * 100) if completed_klines_tasks > 0 else 0
             tasks_per_second = completed_klines_tasks / cycle_time if cycle_time > 0 else 0
             
-            logging.info(f"Unified sync cycle completed: {completed_klines_tasks}/{total_klines_tasks} klines tasks ({efficiency:.1f}%), {cache_removed} cache entries cleaned in {cycle_time:.1f}s ({tasks_per_second:.1f} tasks/s)")
+            logging.info(f"Unified sync cycle completed: {successful_fetches} successful fetches out of {completed_klines_tasks}/{total_klines_tasks} klines tasks (task: {task_efficiency:.1f}%, fetch: {fetch_efficiency:.1f}%), {cache_removed} cache entries cleaned in {cycle_time:.1f}s ({tasks_per_second:.1f} tasks/s)")
             
             # Log circuit breaker status if any are tripped (using safe attribute access)
             tripped_breakers = []
