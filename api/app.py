@@ -4013,36 +4013,33 @@ def get_smc_chart_data(symbol: str):
             "current_price": float(h1_data[-1]["close"]) if h1_data else 0
         }
         
-        # Get user positions/trades for this symbol (transparent overlays)
-        user_positions = []
-        if user_id:
-            try:
-                # Get active and executed trades for this symbol
-                trades = TradeConfiguration.query.filter_by(
-                    telegram_user_id=str(user_id),
-                    symbol=symbol
-                ).filter(
-                    TradeConfiguration.status.in_(['active', 'executed', 'pending'])
-                ).all()
+        # Get generated SMC signal for transparent chart overlay
+        signal_overlay = None
+        try:
+            # Generate or get cached SMC signal for this symbol
+            signal = analyzer.generate_trade_signal(symbol)
+            if signal and signal.get("direction") and signal.get("direction") != "hold":
+                current_price = float(h1_data[-1]["close"]) if h1_data else 0
                 
-                for trade in trades:
-                    # Only show recent trades (last 30 days) to avoid clutter
-                    if trade.created_at and (get_iran_time() - trade.created_at).days <= 30:
-                        position_data = {
-                            "entry_price": float(trade.entry_price) if trade.entry_price else None,
-                            "side": trade.side,  # 'long' or 'short'
-                            "status": trade.status,
-                            "amount": float(trade.amount) if trade.amount else 0,
-                            "leverage": float(trade.leverage) if trade.leverage else 1,
-                            "created_at": trade.created_at.isoformat() if trade.created_at else None,
-                            "trade_id": trade.trade_id,
-                            "stop_loss_percent": float(trade.stop_loss_percent) if trade.stop_loss_percent else None,
-                            "take_profits": trade.take_profits if hasattr(trade, 'take_profits') else []
-                        }
-                        user_positions.append(position_data)
-            except Exception as e:
-                logging.error(f"Error fetching user positions for chart: {e}")
-                # Continue without positions if there's an error
+                # Calculate entry, TP, SL levels from signal
+                entry_price = signal.get("entry_price", current_price)
+                stop_loss_price = signal.get("stop_loss_price")
+                take_profit_price = signal.get("take_profit_price")
+                
+                signal_overlay = {
+                    "direction": signal.get("direction"),  # 'long' or 'short'
+                    "entry_price": float(entry_price) if entry_price else None,
+                    "stop_loss_price": float(stop_loss_price) if stop_loss_price else None,
+                    "take_profit_price": float(take_profit_price) if take_profit_price else None,
+                    "confidence": signal.get("confidence", 0),
+                    "signal_strength": signal.get("signal_strength", "medium"),
+                    "entry_zone_high": signal.get("entry_zone_high"),
+                    "entry_zone_low": signal.get("entry_zone_low"),
+                    "timestamp": signal.get("timestamp", get_iran_time().isoformat())
+                }
+        except Exception as e:
+            logging.error(f"Error fetching SMC signal for chart overlay: {e}")
+            # Continue without signal overlay if there's an error
         
         return jsonify({
             "symbol": symbol,
@@ -4051,7 +4048,7 @@ def get_smc_chart_data(symbol: str):
             "fair_value_gaps": fvgs_data,
             "liquidity_pools": liquidity_data,
             "market_structure": structure_info,
-            "user_positions": user_positions,  # New: User trading positions for overlay
+            "signal_overlay": signal_overlay,  # New: SMC signal with entry/TP/SL for overlay
             "timestamp": get_iran_time().isoformat(),
             "total_candles": len(candlesticks)
         })
