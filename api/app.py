@@ -3938,9 +3938,6 @@ def get_smc_chart_data(symbol: str):
         symbol = symbol.upper()
         analyzer = SMCAnalyzer()
         
-        # Get authenticated user for position data
-        user_id = get_authenticated_user()
-        
         # Get multi-timeframe candlestick data
         timeframe_data = analyzer.get_multi_timeframe_data(symbol)
         
