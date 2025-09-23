@@ -3938,6 +3938,9 @@ def get_smc_chart_data(symbol: str):
         symbol = symbol.upper()
         analyzer = SMCAnalyzer()
         
+        # Get authenticated user for position data
+        user_id = get_authenticated_user()
+        
         # Get multi-timeframe candlestick data
         timeframe_data = analyzer.get_multi_timeframe_data(symbol)
         
@@ -4010,6 +4013,37 @@ def get_smc_chart_data(symbol: str):
             "current_price": float(h1_data[-1]["close"]) if h1_data else 0
         }
         
+        # Get user positions/trades for this symbol (transparent overlays)
+        user_positions = []
+        if user_id:
+            try:
+                # Get active and executed trades for this symbol
+                trades = TradeConfiguration.query.filter_by(
+                    telegram_user_id=str(user_id),
+                    symbol=symbol
+                ).filter(
+                    TradeConfiguration.status.in_(['active', 'executed', 'pending'])
+                ).all()
+                
+                for trade in trades:
+                    # Only show recent trades (last 30 days) to avoid clutter
+                    if trade.created_at and (get_iran_time() - trade.created_at).days <= 30:
+                        position_data = {
+                            "entry_price": float(trade.entry_price) if trade.entry_price else None,
+                            "side": trade.side,  # 'long' or 'short'
+                            "status": trade.status,
+                            "amount": float(trade.amount) if trade.amount else 0,
+                            "leverage": float(trade.leverage) if trade.leverage else 1,
+                            "created_at": trade.created_at.isoformat() if trade.created_at else None,
+                            "trade_id": trade.trade_id,
+                            "stop_loss_percent": float(trade.stop_loss_percent) if trade.stop_loss_percent else None,
+                            "take_profits": trade.take_profits if hasattr(trade, 'take_profits') else []
+                        }
+                        user_positions.append(position_data)
+            except Exception as e:
+                logging.error(f"Error fetching user positions for chart: {e}")
+                # Continue without positions if there's an error
+        
         return jsonify({
             "symbol": symbol,
             "candlesticks": candlesticks,
@@ -4017,6 +4051,7 @@ def get_smc_chart_data(symbol: str):
             "fair_value_gaps": fvgs_data,
             "liquidity_pools": liquidity_data,
             "market_structure": structure_info,
+            "user_positions": user_positions,  # New: User trading positions for overlay
             "timestamp": get_iran_time().isoformat(),
             "total_candles": len(candlesticks)
         })

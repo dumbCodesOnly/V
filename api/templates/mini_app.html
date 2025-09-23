@@ -6903,28 +6903,7 @@
                             display: false
                         },
                         tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            titleColor: '#e8eef7',
-                            bodyColor: '#e8eef7',
-                            backgroundColor: 'rgba(15, 20, 25, 0.9)',
-                            borderColor: '#3a4658',
-                            borderWidth: 1,
-                            callbacks: {
-                                afterBody: function(context) {
-                                    const point = context[0];
-                                    if (point && point.raw && point.raw.ohlc) {
-                                        const ohlc = point.raw.ohlc;
-                                        return [
-                                            `Open: $${ohlc.open.toFixed(4)}`,
-                                            `High: $${ohlc.high.toFixed(4)}`,
-                                            `Low: $${ohlc.low.toFixed(4)}`,
-                                            `Close: $${ohlc.close.toFixed(4)}`
-                                        ];
-                                    }
-                                    return [];
-                                }
-                            }
+                            enabled: false  // Disable candle info on touch as requested
                         },
                         annotation: {
                             annotations: annotations
