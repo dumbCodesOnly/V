@@ -6787,6 +6787,10 @@
                         intersect: false,
                         mode: 'index'
                     },
+                    // Improve performance during touch interactions
+                    animation: {
+                        duration: 0  // Disable animations for better touch responsiveness
+                    },
                     scales: {
                         x: {
                             type: 'time',
@@ -6838,11 +6842,11 @@
                                 },
                                 pinch: {
                                     enabled: true,
-                                    threshold: 10,
-                                    rejectionThreshold: 2
+                                    threshold: 5,
+                                    rejectionThreshold: 1
                                 },
                                 drag: {
-                                    enabled: true,
+                                    enabled: false,  // Disable drag zoom to avoid conflicts with pan
                                     threshold: 10,
                                     modifierKey: 'ctrl'
                                 },
@@ -6868,7 +6872,7 @@
                                 enabled: true,
                                 mode: 'xy',
                                 modifierKey: null,
-                                threshold: 2,
+                                threshold: 10,  // Higher threshold to avoid conflicts with tooltip
                                 rangeMin: {
                                     x: null,
                                     y: null
@@ -6958,21 +6962,31 @@
         function addMobileChartInteractions(canvas) {
             if (!canvas) return;
             
-            // Prevent default touch behaviors on the chart canvas
-            canvas.style.touchAction = 'none';
+            // Allow pan and zoom gestures, but prevent text selection and scrolling
+            canvas.style.touchAction = 'pan-x pan-y pinch-zoom';
+            canvas.style.userSelect = 'none';
+            canvas.style.webkitUserSelect = 'none';
             
-            // Add double-tap to reset zoom
+            // Add double-tap to reset zoom with better touch detection
             let lastTap = 0;
+            let touchCount = 0;
+            
+            canvas.addEventListener('touchstart', function(e) {
+                touchCount = e.touches.length;
+            });
+            
             canvas.addEventListener('touchend', function(e) {
                 const currentTime = new Date().getTime();
                 const tapLength = currentTime - lastTap;
                 
-                if (tapLength < 500 && tapLength > 0) {
+                // Only handle double-tap if it's a single finger tap (not during zoom/pan)
+                if (tapLength < 500 && tapLength > 0 && touchCount === 1) {
                     // Double tap detected - reset zoom
                     e.preventDefault();
                     resetChartZoom();
                 }
                 lastTap = currentTime;
+                touchCount = 0;
             });
             
             // Add instructions tooltip for mobile users
