@@ -3,7 +3,7 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from cryptography.fernet import Fernet
 from flask_sqlalchemy import SQLAlchemy
@@ -1275,6 +1275,193 @@ class KlinesCache(db.Model):
         except Exception as e:
             logging.error(f"Error getting rolling window stats: {e}")
             return {"error": str(e)}
+
+    @classmethod
+    def detect_gaps(cls, symbol: str, timeframe: str, days_back: int = 7) -> Dict:
+        """
+        Detect gaps in klines data for a specific symbol and timeframe.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            timeframe: Timeframe ('1h', '4h', '1d')
+            days_back: Number of days to check back from now
+            
+        Returns:
+            dict: Gap analysis results including detected gaps and statistics
+        """
+        try:
+            # Calculate the expected interval in seconds
+            interval_seconds = {
+                "1h": 3600,      # 1 hour
+                "4h": 14400,     # 4 hours  
+                "1d": 86400,     # 1 day
+            }.get(timeframe, 3600)
+            
+            # Get cutoff time for analysis
+            cutoff_time = get_utc_now() - timedelta(days=days_back)
+            
+            # Get all completed candles for this symbol/timeframe, ordered by timestamp
+            candles = db.session.query(cls).filter(
+                cls.symbol == symbol,
+                cls.timeframe == timeframe,
+                cls.is_complete == True,
+                cls.timestamp >= cutoff_time
+            ).order_by(cls.timestamp.asc()).all()
+            
+            if len(candles) < 2:
+                return {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "candle_count": len(candles),
+                    "gaps": [],
+                    "total_gaps": 0,
+                    "largest_gap_hours": 0,
+                    "data_coverage_percent": 0,
+                    "analysis_period_days": days_back,
+                    "warning": "Insufficient data for gap analysis"
+                }
+            
+            # Detect gaps between consecutive candles
+            gaps = []
+            total_gap_duration = 0
+            
+            for i in range(1, len(candles)):
+                prev_candle = candles[i-1]
+                curr_candle = candles[i]
+                
+                # Calculate expected next timestamp
+                expected_next = prev_candle.timestamp + timedelta(seconds=interval_seconds)
+                
+                # Check if there's a gap (allow 1 minute tolerance for timing)
+                gap_duration = (curr_candle.timestamp - expected_next).total_seconds()
+                
+                if gap_duration > 60:  # More than 1 minute gap
+                    gap_info = {
+                        "start_time": expected_next.isoformat(),
+                        "end_time": curr_candle.timestamp.isoformat(),
+                        "duration_hours": gap_duration / 3600,
+                        "missing_candles": int(gap_duration / interval_seconds),
+                        "before_candle": prev_candle.timestamp.isoformat(),
+                        "after_candle": curr_candle.timestamp.isoformat()
+                    }
+                    gaps.append(gap_info)
+                    total_gap_duration += gap_duration
+            
+            # Calculate statistics
+            analysis_duration = (candles[-1].timestamp - candles[0].timestamp).total_seconds()
+            data_coverage_percent = ((analysis_duration - total_gap_duration) / analysis_duration * 100) if analysis_duration > 0 else 0
+            largest_gap_hours = max([gap["duration_hours"] for gap in gaps]) if gaps else 0
+            
+            return {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "candle_count": len(candles),
+                "gaps": gaps,
+                "total_gaps": len(gaps),
+                "largest_gap_hours": largest_gap_hours,
+                "total_gap_duration_hours": total_gap_duration / 3600,
+                "data_coverage_percent": round(data_coverage_percent, 2),
+                "analysis_period_days": days_back,
+                "first_candle": candles[0].timestamp.isoformat() if candles else None,
+                "last_candle": candles[-1].timestamp.isoformat() if candles else None,
+                "status": "gaps_detected" if gaps else "no_gaps"
+            }
+            
+        except Exception as e:
+            logging.error(f"Error detecting gaps for {symbol}:{timeframe}: {e}")
+            return {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "error": str(e),
+                "status": "error"
+            }
+
+    @classmethod
+    def detect_all_gaps(cls, days_back: int = 7, symbols: "Optional[List[str]]" = None, timeframes: "Optional[List[str]]" = None) -> Dict:
+        """
+        Detect gaps across all symbols and timeframes.
+        
+        Args:
+            days_back: Number of days to check back from now
+            symbols: List of symbols to check (defaults to all symbols with data)
+            timeframes: List of timeframes to check (defaults to all timeframes with data)
+            
+        Returns:
+            dict: Comprehensive gap analysis for all symbol/timeframe combinations
+        """
+        try:
+            from config import TradingConfig
+            
+            # Use provided symbols or get all symbols with data
+            if symbols is None:
+                symbols = TradingConfig.SUPPORTED_SYMBOLS
+                
+            # Use provided timeframes or get all timeframes with data
+            if timeframes is None:
+                timeframes = ["1h", "4h", "1d"]
+            
+            results = {}
+            summary = {
+                "total_combinations": 0,
+                "combinations_with_gaps": 0,
+                "total_gaps": 0,
+                "worst_gap_hours": 0,
+                "worst_gap_location": None,
+                "analysis_timestamp": get_utc_now().isoformat()
+            }
+            
+            for symbol in symbols:
+                for timeframe in timeframes:
+                    combo_key = f"{symbol}:{timeframe}"
+                    gap_analysis = cls.detect_gaps(symbol, timeframe, days_back)
+                    results[combo_key] = gap_analysis
+                    
+                    summary["total_combinations"] += 1
+                    
+                    if gap_analysis.get("total_gaps", 0) > 0:
+                        summary["combinations_with_gaps"] += 1
+                        summary["total_gaps"] += gap_analysis["total_gaps"]
+                        
+                        largest_gap = gap_analysis.get("largest_gap_hours", 0)
+                        if largest_gap > summary["worst_gap_hours"]:
+                            summary["worst_gap_hours"] = largest_gap
+                            summary["worst_gap_location"] = combo_key
+            
+            return {
+                "summary": summary,
+                "detailed_results": results,
+                "recommendations": cls._generate_gap_recommendations(summary, results)
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in detect_all_gaps: {e}")
+            return {"error": str(e), "status": "error"}
+
+    @classmethod
+    def _generate_gap_recommendations(cls, summary: Dict, results: Dict) -> "List[str]":
+        """Generate recommendations based on gap analysis."""
+        recommendations = []
+        
+        if summary["total_gaps"] == 0:
+            recommendations.append("✅ No data gaps detected - klines data integrity is good")
+        else:
+            recommendations.append(f"⚠️ Found {summary['total_gaps']} gaps across {summary['combinations_with_gaps']} symbol/timeframe combinations")
+            
+            if summary["worst_gap_hours"] > 24:
+                recommendations.append(f"🚨 Large gap detected: {summary['worst_gap_hours']:.1f} hours in {summary['worst_gap_location']}")
+                recommendations.append("Consider running a full data refresh for affected symbols")
+            
+            # Find patterns in gaps
+            gap_counts_1h = sum(1 for key, result in results.items() if ":1h" in key and result.get("total_gaps", 0) > 0)
+            gap_counts_4h = sum(1 for key, result in results.items() if ":4h" in key and result.get("total_gaps", 0) > 0) 
+            gap_counts_1d = sum(1 for key, result in results.items() if ":1d" in key and result.get("total_gaps", 0) > 0)
+            
+            if gap_counts_1h > gap_counts_4h and gap_counts_1h > gap_counts_1d:
+                recommendations.append("📊 Most gaps are in 1h timeframe - check high-frequency data updates")
+            elif gap_counts_4h > gap_counts_1d:
+                recommendations.append("📊 Gaps detected in 4h timeframe - check medium-term data consistency")
+                
+        return recommendations
 
     def __repr__(self):
         return f"<KlinesCache {self.symbol}:{self.timeframe} @ {self.timestamp}>"

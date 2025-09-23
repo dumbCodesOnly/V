@@ -966,6 +966,66 @@ class UnifiedDataSyncService:
             logging.error(f"Error during cache cleanup: {e}")
             return 0
 
+    def _check_for_gaps_before_cleanup(self, symbols: "List[str]") -> None:
+        """Check for gaps before cleanup to establish baseline"""
+        try:
+            if not self.app:
+                return
+                
+            with self.app.app_context():
+                from .models import KlinesCache
+                
+                # Quick gap check for 1h timeframe (most sensitive to issues)
+                for symbol in symbols[:2]:  # Check first 2 symbols to avoid too much overhead
+                    try:
+                        gap_analysis = KlinesCache.detect_gaps(symbol, "1h", days_back=2)
+                        
+                        if gap_analysis.get("total_gaps", 0) > 0:
+                            logging.warning(f"GAP_MONITOR: {symbol}:1h has {gap_analysis['total_gaps']} gaps BEFORE cleanup - largest: {gap_analysis.get('largest_gap_hours', 0):.1f}h")
+                        else:
+                            logging.debug(f"GAP_MONITOR: {symbol}:1h no gaps detected before cleanup")
+                            
+                    except Exception as e:
+                        logging.debug(f"Gap check error for {symbol}: {e}")
+                        
+        except Exception as e:
+            logging.error(f"Error in gap check before cleanup: {e}")
+
+    def _check_for_gaps_after_cleanup(self, symbols: "List[str]") -> None:
+        """Check for gaps after cleanup to detect if cleanup caused issues"""
+        try:
+            if not self.app:
+                return
+                
+            with self.app.app_context():
+                from .models import KlinesCache
+                
+                # Quick gap check for 1h timeframe (most sensitive to issues)
+                gaps_detected = []
+                
+                for symbol in symbols[:2]:  # Check first 2 symbols to avoid too much overhead
+                    try:
+                        gap_analysis = KlinesCache.detect_gaps(symbol, "1h", days_back=2)
+                        
+                        if gap_analysis.get("total_gaps", 0) > 0:
+                            gaps_detected.append(f"{symbol}:{gap_analysis['total_gaps']} gaps")
+                            logging.warning(f"GAP_MONITOR: {symbol}:1h has {gap_analysis['total_gaps']} gaps AFTER cleanup - largest: {gap_analysis.get('largest_gap_hours', 0):.1f}h")
+                            
+                            # Log recent gaps for investigation
+                            for gap in gap_analysis.get("gaps", [])[-2:]:  # Show last 2 gaps
+                                logging.warning(f"GAP_DETAIL: Recent gap in {symbol}:1h from {gap.get('start_time', 'unknown')} to {gap.get('end_time', 'unknown')} ({gap.get('duration_hours', 0):.1f}h, {gap.get('missing_candles', 0)} candles)")
+                        else:
+                            logging.debug(f"GAP_MONITOR: {symbol}:1h no gaps detected after cleanup")
+                            
+                    except Exception as e:
+                        logging.debug(f"Gap check error for {symbol}: {e}")
+                
+                if gaps_detected:
+                    logging.error(f"GAP_ALERT: Data gaps detected after cleanup! {', '.join(gaps_detected)} - This may indicate cleanup is deleting valid data")
+                        
+        except Exception as e:
+            logging.error(f"Error in gap check after cleanup: {e}")
+
     def _run_coordinated_sync_cycle(self):
         """Execute one complete coordinated sync cycle"""
         try:
@@ -1059,11 +1119,17 @@ class UnifiedDataSyncService:
             if successful_fetches > 0:
                 logging.info(f"SYNC_DEBUG: Starting cleanup phase after {successful_fetches} successful data updates out of {completed_klines_tasks} attempts")
                 
+                # NEW: Check for gaps before cleanup to detect issues
+                self._check_for_gaps_before_cleanup(symbols)
+                
                 logging.debug("SYNC_DEBUG: Calling klines data cleanup")
                 self._cleanup_klines_data()  # Database cleanup
                 
                 logging.debug("SYNC_DEBUG: Calling cache data cleanup")
                 cache_removed = self._cleanup_cache_data()  # Memory cache cleanup
+                
+                # NEW: Check for gaps after cleanup to detect if cleanup caused issues
+                self._check_for_gaps_after_cleanup(symbols)
                 
                 logging.debug(f"SYNC_DEBUG: Cleanup phase completed - cache entries removed: {cache_removed}")
             else:
