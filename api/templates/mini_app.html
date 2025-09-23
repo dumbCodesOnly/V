@@ -6749,6 +6749,115 @@
                 };
             });
             
+            // Add SMC Signal Overlay (transparent like TradingView but less visible)
+            if (chartData.signal_overlay && chartData.signal_overlay.direction !== 'hold') {
+                const signal = chartData.signal_overlay;
+                const isLong = signal.direction === 'long';
+                
+                // Color scheme for signal overlay (very transparent)
+                const signalColors = {
+                    entry: isLong ? 'rgba(0, 150, 255, 0.15)' : 'rgba(255, 100, 100, 0.15)',
+                    entryBorder: isLong ? 'rgba(0, 150, 255, 0.4)' : 'rgba(255, 100, 100, 0.4)',
+                    tp: 'rgba(34, 197, 94, 0.2)',  // Green for TP
+                    sl: 'rgba(239, 68, 68, 0.2)',  // Red for SL
+                    zone: isLong ? 'rgba(0, 150, 255, 0.08)' : 'rgba(255, 100, 100, 0.08)'
+                };
+                
+                // Entry Price Line
+                if (signal.entry_price) {
+                    annotations[`signal_entry_${annotationId++}`] = {
+                        type: 'line',
+                        mode: 'horizontal',
+                        scaleID: 'y',
+                        value: signal.entry_price,
+                        borderColor: signalColors.entryBorder,
+                        borderWidth: 1,
+                        borderDash: [4, 2],
+                        label: {
+                            display: true,
+                            content: `Entry: $${signal.entry_price.toFixed(4)}`,
+                            position: 'end',
+                            backgroundColor: signalColors.entry,
+                            color: '#ffffff',
+                            padding: 2,
+                            font: {
+                                size: 9
+                            }
+                        }
+                    };
+                }
+                
+                // Take Profit Line
+                if (signal.take_profit_price) {
+                    annotations[`signal_tp_${annotationId++}`] = {
+                        type: 'line',
+                        mode: 'horizontal',
+                        scaleID: 'y',
+                        value: signal.take_profit_price,
+                        borderColor: signalColors.tp,
+                        borderWidth: 1,
+                        borderDash: [6, 3],
+                        label: {
+                            display: true,
+                            content: `TP: $${signal.take_profit_price.toFixed(4)}`,
+                            position: 'end',
+                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                            color: '#ffffff',
+                            padding: 2,
+                            font: {
+                                size: 9
+                            }
+                        }
+                    };
+                }
+                
+                // Stop Loss Line
+                if (signal.stop_loss_price) {
+                    annotations[`signal_sl_${annotationId++}`] = {
+                        type: 'line',
+                        mode: 'horizontal',
+                        scaleID: 'y',
+                        value: signal.stop_loss_price,
+                        borderColor: signalColors.sl,
+                        borderWidth: 1,
+                        borderDash: [6, 3],
+                        label: {
+                            display: true,
+                            content: `SL: $${signal.stop_loss_price.toFixed(4)}`,
+                            position: 'end',
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            color: '#ffffff',
+                            padding: 2,
+                            font: {
+                                size: 9
+                            }
+                        }
+                    };
+                }
+                
+                // Entry Zone (if available)
+                if (signal.entry_zone_high && signal.entry_zone_low) {
+                    // Calculate time range for entry zone (recent candles)
+                    const recentTime = chartData.candlesticks[chartData.candlesticks.length - 1].time;
+                    const zoneWidth = 1000 * 60 * 60 * 2; // 2 hours width
+                    
+                    annotations[`signal_zone_${annotationId++}`] = {
+                        type: 'box',
+                        xMin: recentTime - zoneWidth,
+                        xMax: recentTime + zoneWidth,
+                        yMin: Math.min(signal.entry_zone_low, signal.entry_zone_high),
+                        yMax: Math.max(signal.entry_zone_low, signal.entry_zone_high),
+                        backgroundColor: signalColors.zone,
+                        borderColor: signalColors.entryBorder,
+                        borderWidth: 0.5,
+                        borderDash: [8, 4],
+                        label: {
+                            display: false
+                        }
+                    };
+                }
+            }
+            
             // Chart configuration
             const config = {
                 type: 'candlestick',
