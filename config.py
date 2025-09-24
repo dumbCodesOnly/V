@@ -421,6 +421,44 @@ class CacheConfig:
     CREDENTIALS_TTL = 1800  # Increased to 30 minutes (was 15 minutes)
     PREFERENCES_TTL = 3600  # Increased to 1 hour (was 30 minutes)
 
+    @classmethod
+    def ttl_seconds(cls, kind: str, timeframe: str = None, confidence: str = None, volatility: float = None) -> int:
+        """Centralized TTL calculation for all cache types"""
+        if kind == "price":
+            if volatility and volatility > cls.HIGH_VOLATILITY_THRESHOLD:
+                return cls.MIN_PRICE_TTL
+            return cls.BASE_PRICE_TTL
+        elif kind == "user_data":
+            return cls.USER_DATA_TTL
+        elif kind == "credentials":
+            return cls.CREDENTIALS_TTL
+        elif kind == "preferences":
+            return cls.PREFERENCES_TTL
+        elif kind == "signal":
+            # Dynamic TTL based on signal confidence
+            if confidence == "VERY_STRONG":
+                return 1200  # 20 minutes
+            elif confidence == "STRONG":
+                return 900   # 15 minutes
+            elif confidence == "MODERATE":
+                return 600   # 10 minutes
+            else:  # WEAK
+                return 480   # 8 minutes
+        elif kind == "klines_complete":
+            return 21 * 24 * 3600  # 21 days for complete candles
+        elif kind == "klines_open":
+            # Dynamic TTL based on timeframe
+            if timeframe == "1h":
+                return 180    # 3 minutes
+            elif timeframe == "4h":
+                return 480    # 8 minutes
+            elif timeframe == "1d":
+                return 1200   # 20 minutes
+            else:
+                return 300    # 5 minutes default
+        else:
+            return cls.BASE_PRICE_TTL  # Default fallback
+
     # TTL Multiplier Calculations
     MIN_TTL_MULTIPLIER = 0.2  # Minimum multiplier for high volatility
     MAX_TTL_MULTIPLIER = 3.0  # Maximum multiplier for low volatility

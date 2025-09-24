@@ -43,6 +43,20 @@ def get_utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def db_now() -> datetime:
+    """Get current UTC time as naive datetime for database storage - RECOMMENDED"""
+    return datetime.utcnow()
+
+
+def to_db_utc(dt: datetime) -> datetime:
+    """Convert any datetime to naive UTC for database storage"""
+    if dt.tzinfo is None:
+        # Assume naive datetime is already UTC
+        return dt
+    # Convert timezone-aware to UTC, then make naive
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def normalize_to_utc(dt: datetime) -> datetime:
     """Normalize datetime to timezone-aware UTC"""
     if dt.tzinfo is None:
@@ -996,7 +1010,7 @@ class KlinesCache(db.Model):
                 cls.timeframe == timeframe,
                 cls.timestamp == current_period_start,
                 cls.is_complete == False,
-                cls.expires_at > current_time.replace(tzinfo=None)
+                cls.expires_at > to_db_utc(current_time)
             ).first()
             
             return open_candle
@@ -1014,7 +1028,7 @@ class KlinesCache(db.Model):
                 cls.symbol == symbol,
                 cls.timeframe == timeframe,
                 cls.is_complete.is_(True),
-                cls.expires_at > get_utc_now().replace(tzinfo=None),
+                cls.expires_at > db_now(),
             )
             .order_by(cls.timestamp.desc())
             .first()
@@ -1034,7 +1048,7 @@ class KlinesCache(db.Model):
             cls.symbol == symbol,
             cls.timeframe == timeframe,
             cls.is_complete.is_(True),
-            cls.expires_at > datetime.utcnow(),
+            cls.expires_at > db_now(),
         )
         
         available_count = complete_query.with_entities(func.count(func.distinct(cls.timestamp))).scalar()
@@ -1060,7 +1074,7 @@ class KlinesCache(db.Model):
                 cls.timeframe == timeframe,
                 cls.timestamp == current_period_start.replace(tzinfo=None),  # Store as naive UTC
                 cls.is_complete.is_(False),
-                cls.expires_at > current_time.replace(tzinfo=None),
+                cls.expires_at > to_db_utc(current_time),
             ).first()
             
             # If no new periods elapsed and current incomplete exists, no fetch needed
