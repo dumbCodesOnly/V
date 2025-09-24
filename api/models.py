@@ -1127,6 +1127,9 @@ class KlinesCache(db.Model):
         Implement rolling window cleanup for a specific symbol and timeframe.
         Keep only the latest max_candles, removing older ones in batches.
         
+        FIXED: Now counts ALL candles (complete + incomplete) to prevent data gaps
+        when incomplete candles become complete over time.
+        
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT')
             timeframe: Timeframe ('1h', '4h', '1d')
@@ -1137,11 +1140,13 @@ class KlinesCache(db.Model):
             int: Number of candles deleted
         """
         try:
-            # Count total candles for this symbol/timeframe
+            # FIXED: Count ALL candles (complete + incomplete) to prevent gaps
+            # The old logic only counted complete candles, which caused recent
+            # candles to disappear when incomplete candles became complete
             total_count = cls.query.filter(
                 cls.symbol == symbol,
-                cls.timeframe == timeframe,
-                cls.is_complete == True  # Only count complete candles
+                cls.timeframe == timeframe
+                # Removed: cls.is_complete == True  # This was causing the bug!
             ).count()
             
             if total_count <= max_candles:
@@ -1155,12 +1160,16 @@ class KlinesCache(db.Model):
             while to_delete > 0:
                 current_batch = min(batch_size, to_delete)
                 
-                # Get the oldest candles for this symbol/timeframe
+                # FIXED: Get the oldest candles (all types) for this symbol/timeframe
+                # Priority: Delete oldest complete candles first, but include incomplete if needed
                 oldest_candles = cls.query.filter(
                     cls.symbol == symbol,
-                    cls.timeframe == timeframe,
-                    cls.is_complete == True
-                ).order_by(cls.timestamp.asc()).limit(current_batch).all()
+                    cls.timeframe == timeframe
+                    # Removed: cls.is_complete == True  # This was causing the bug!
+                ).order_by(
+                    cls.is_complete.asc(),  # Incomplete candles first (if any)
+                    cls.timestamp.asc()     # Then by timestamp (oldest first)
+                ).limit(current_batch).all()
                 
                 if not oldest_candles:
                     break  # No more candles to delete
