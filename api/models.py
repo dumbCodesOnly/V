@@ -1226,7 +1226,7 @@ class KlinesCache(db.Model):
             return 0
 
     @classmethod 
-    def cleanup_all_rolling_windows(cls, batch_size: int = 50):
+    def cleanup_all_rolling_windows(cls, batch_size: int = 10):
         """
         Cleanup rolling windows for all symbols and timeframes.
         This ensures we maintain the configured window size for all data.
