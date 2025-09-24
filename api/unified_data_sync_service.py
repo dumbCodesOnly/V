@@ -463,9 +463,12 @@ class UnifiedDataSyncService:
         self.last_klines_updates: Dict[str, Dict[str, datetime]] = {}
         self.last_cache_cleanup: Optional[datetime] = None
         
+        # Track gap fill failures for exponential backoff
+        self._gap_fill_failures = {}
+        
         logging.info("Unified data sync service initialized")
 
-    @with_circuit_breaker("binance_klines_api", failure_threshold=8, recovery_timeout=120, success_threshold=3)
+    @with_circuit_breaker("binance_klines_bulk_api", failure_threshold=5, recovery_timeout=60, success_threshold=2)
     def _fetch_binance_klines(self, symbol: str, interval: str, limit: int = 1000) -> List[Dict]:
         """
         Fetch klines data from Binance API with circuit breaker protection
@@ -511,6 +514,60 @@ class UnifiedDataSyncService:
             current_volatility = self.cache.volatility_tracker.get_volatility(symbol)
             logging.debug(f"Updated volatility for {symbol}: {current_volatility:.2f}% (price: ${latest_price:.2f})")
             
+        return klines
+
+    @with_circuit_breaker("binance_klines_gap_fill_api", failure_threshold=12, recovery_timeout=180, success_threshold=3)
+    def _fetch_binance_klines_gap_fill(self, symbol: str, interval: str, limit: int = 10) -> List[Dict]:
+        """
+        Fetch klines data from Binance API specifically for gap filling with more conservative circuit breaker
+        
+        This method uses separate circuit breaker settings optimized for incremental updates:
+        - Higher failure threshold (12 vs 5) to be less sensitive to individual failures
+        - Longer recovery timeout (180s vs 60s) to avoid rapid retry cycles
+        - Smaller limit (max 10) for targeted gap fills
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            interval: Timeframe ('1h', '4h', '1d')
+            limit: Number of candles to fetch (max 10 for gap fills)
+            
+        Returns:
+            List of klines data in OHLCV format
+        """
+        # Add delay before gap fill requests to respect rate limits
+        time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
+        
+        url = "https://api.binance.com/api/v3/klines"
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(limit, 10)  # Conservative limit for gap fills
+        }
+        
+        response = requests.get(url, params=params, timeout=TimeConfig.PRICE_API_TIMEOUT)
+        response.raise_for_status()
+        
+        klines_raw = response.json()
+        
+        # Convert to standardized format
+        klines = []
+        for kline in klines_raw:
+            klines.append({
+                "timestamp": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                "open": float(kline[1]),
+                "high": float(kline[2]), 
+                "low": float(kline[3]),
+                "close": float(kline[4]),
+                "volume": float(kline[5])
+            })
+            
+        logging.debug(f"Gap fill: Fetched {len(klines)} klines for {symbol} {interval} from Binance")
+        
+        # Update volatility tracker with latest price for cache optimization
+        if klines:
+            latest_price = klines[-1]["close"]
+            self.cache.volatility_tracker.add_price(symbol, latest_price)
+        
         return klines
 
     def _get_required_initial_candles(self, timeframe: str) -> int:
@@ -762,10 +819,12 @@ class UnifiedDataSyncService:
                 
                 # Fetch ONLY the current open candle (1 API call instead of multiple)
                 try:
-                    current_klines = self._fetch_binance_klines(symbol, timeframe, 1)  # Only fetch 1 candle
+                    # Use dedicated circuit breaker for gap fills (more conservative)
+                    current_klines = self._fetch_binance_klines_gap_fill(symbol, timeframe, 1)  # Only fetch 1 candle
                 except Exception as e:
                     logging.warning(f"Open candle update failed for {symbol} {timeframe}: {e}")
-                    time.sleep(TimeConfig.API_RETRY_DELAY * 0.5)
+                    # Use proper klines delay for gap fills (more conservative than generic retry delay)
+                    time.sleep(TimeConfig.BINANCE_KLINES_DELAY)
                     return False
                     
                 if not current_klines:
@@ -802,8 +861,12 @@ class UnifiedDataSyncService:
                         logging.debug(f"Updated existing open candle for {symbol} {timeframe}: C:{current_candle['close']}")
                     else:
                         logging.debug(f"Created new open candle for {symbol} {timeframe}: C:{current_candle['close']}")
+                    
+                    # Reset failure tracking on success
+                    self._record_gap_fill_success(symbol, timeframe)
                 else:
                     logging.warning(f"Failed to update open candle for {symbol} {timeframe}")
+                    self._record_gap_fill_failure(symbol, timeframe)
                     return False
             
             # Update tracking
@@ -820,9 +883,44 @@ class UnifiedDataSyncService:
             
         except Exception as e:
             logging.error(f"Error updating open candle for {symbol} {timeframe}: {e}")
+            self._record_gap_fill_failure(symbol, timeframe)
+            
+            # Apply exponential backoff delay for this specific symbol/timeframe
+            delay = self._get_gap_fill_delay(symbol, timeframe)
+            logging.warning(f"Gap fill failure #{self._gap_fill_failures.get(f'{symbol}_{timeframe}', 0)} for {symbol} {timeframe}, waiting {delay:.1f}s before retry")
+            time.sleep(delay)
+            
             existing_open_candle = None  # Initialize for debug logging
             logging.debug(f"Open candle update error context: app_context={self.app is not None}, existing_candle={existing_open_candle is not None}")
             return False
+    
+    def _get_gap_fill_delay(self, symbol: str, timeframe: str) -> float:
+        """Calculate exponential backoff delay for gap fill failures"""
+        key = f"{symbol}_{timeframe}"
+        failure_count = self._gap_fill_failures.get(key, 0)
+        
+        if failure_count == 0:
+            return TimeConfig.BINANCE_KLINES_DELAY
+        
+        # Exponential backoff: 2s, 5s, 12s, 30s, 60s (max)
+        delay = min(TimeConfig.BINANCE_KLINES_DELAY * (TimeConfig.API_BACKOFF_MULTIPLIER ** failure_count), 60)
+        return delay
+    
+    def _record_gap_fill_success(self, symbol: str, timeframe: str):
+        """Reset failure count on successful gap fill"""
+        key = f"{symbol}_{timeframe}"
+        if key in self._gap_fill_failures:
+            logging.debug(f"Gap fill recovered for {symbol} {timeframe} after {self._gap_fill_failures[key]} failures")
+            self._gap_fill_failures.pop(key, None)
+    
+    def _record_gap_fill_failure(self, symbol: str, timeframe: str):
+        """Track gap fill failure for exponential backoff"""
+        key = f"{symbol}_{timeframe}"
+        self._gap_fill_failures[key] = self._gap_fill_failures.get(key, 0) + 1
+        max_failures = 8  # Reset after 8 failures to prevent permanent blocking
+        if self._gap_fill_failures[key] > max_failures:
+            logging.warning(f"Resetting gap fill failure count for {symbol} {timeframe} (was {self._gap_fill_failures[key]})")
+            self._gap_fill_failures[key] = max_failures // 2
 
     def _cleanup_klines_data(self):
         """Enhanced cleanup of old klines data with rolling window management"""
