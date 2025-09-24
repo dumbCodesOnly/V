@@ -3696,6 +3696,159 @@ def klines_worker_status():
         }), 500
 
 
+@app.route("/api/admin/klines-debug")
+def admin_klines_debug():
+    """Get comprehensive klines debugging information for Admin panel"""
+    try:
+        from .models import KlinesCache, db
+        from datetime import datetime, timedelta
+        from config import RollingWindowConfig, TradingConfig
+        from sqlalchemy import func, and_, desc
+        
+        current_time = datetime.utcnow()
+        
+        # Get all unique symbol/timeframe combinations with statistics
+        symbol_stats = []
+        combinations = db.session.query(
+            KlinesCache.symbol,
+            KlinesCache.timeframe,
+            func.count(KlinesCache.id).label('total_candles'),
+            func.min(KlinesCache.timestamp).label('oldest_candle'),
+            func.max(KlinesCache.timestamp).label('newest_candle'),
+            func.count(KlinesCache.id).filter(KlinesCache.is_complete == True).label('complete_candles'),
+            func.count(KlinesCache.id).filter(KlinesCache.is_complete == False).label('incomplete_candles'),
+            func.count(KlinesCache.id).filter(KlinesCache.expires_at <= current_time + timedelta(hours=24)).label('expiring_soon')
+        ).group_by(KlinesCache.symbol, KlinesCache.timeframe).all()
+        
+        for combo in combinations:
+            symbol = combo.symbol
+            timeframe = combo.timeframe
+            
+            # Get cleanup thresholds from config
+            target_candles = RollingWindowConfig.get_target_candles(timeframe)
+            cleanup_threshold = RollingWindowConfig.get_cleanup_threshold(timeframe)
+            max_candles = RollingWindowConfig.get_max_candles(timeframe)
+            
+            # Gap detection - check for missing timestamps in sequence
+            gaps = []
+            if combo.total_candles > 0:
+                # Get all timestamps for this symbol/timeframe
+                timestamps_query = db.session.query(
+                    KlinesCache.timestamp
+                ).filter(
+                    KlinesCache.symbol == symbol,
+                    KlinesCache.timeframe == timeframe
+                ).order_by(KlinesCache.timestamp).all()
+                
+                timestamps = [t.timestamp for t in timestamps_query]
+                
+                # Check for gaps based on timeframe
+                if timeframe == "1h":
+                    expected_delta = timedelta(hours=1)
+                elif timeframe == "4h":
+                    expected_delta = timedelta(hours=4)
+                elif timeframe == "1d":
+                    expected_delta = timedelta(days=1)
+                else:
+                    expected_delta = timedelta(hours=1)  # default
+                
+                # Find gaps (only check recent data to avoid too many historical gaps)
+                recent_timestamps = timestamps[-50:] if len(timestamps) > 50 else timestamps
+                for i in range(1, len(recent_timestamps)):
+                    actual_delta = recent_timestamps[i] - recent_timestamps[i-1]
+                    if actual_delta > expected_delta * 1.5:  # Allow some tolerance
+                        gaps.append({
+                            "start": recent_timestamps[i-1].isoformat(),
+                            "end": recent_timestamps[i].isoformat(),
+                            "missing_periods": int(actual_delta.total_seconds() / expected_delta.total_seconds()) - 1
+                        })
+            
+            # Calculate cleanup status
+            cleanup_status = "no_cleanup_needed"
+            if combo.total_candles > cleanup_threshold:
+                cleanup_status = "cleanup_eligible"
+            elif combo.total_candles > max_candles:
+                cleanup_status = "cleanup_recommended"
+            
+            symbol_stats.append({
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "total_candles": combo.total_candles,
+                "complete_candles": combo.complete_candles,
+                "incomplete_candles": combo.incomplete_candles,
+                "oldest_candle": combo.oldest_candle.isoformat() if combo.oldest_candle else None,
+                "newest_candle": combo.newest_candle.isoformat() if combo.newest_candle else None,
+                "expiring_soon": combo.expiring_soon,
+                "gaps": gaps[:5],  # Limit to 5 most recent gaps
+                "gap_count": len(gaps),
+                "config": {
+                    "target_candles": target_candles,
+                    "cleanup_threshold": cleanup_threshold,
+                    "max_candles": max_candles
+                },
+                "cleanup_status": cleanup_status
+            })
+        
+        # Get recent candles expiring soon across all symbols
+        expiring_soon = db.session.query(
+            KlinesCache.symbol,
+            KlinesCache.timeframe,
+            KlinesCache.timestamp,
+            KlinesCache.expires_at,
+            KlinesCache.is_complete
+        ).filter(
+            KlinesCache.expires_at <= current_time + timedelta(hours=24)
+        ).order_by(KlinesCache.expires_at).limit(20).all()
+        
+        expiring_candles = []
+        for candle in expiring_soon:
+            time_to_expire = (candle.expires_at - current_time).total_seconds() / 3600  # hours
+            expiring_candles.append({
+                "symbol": candle.symbol,
+                "timeframe": candle.timeframe,
+                "timestamp": candle.timestamp.isoformat(),
+                "expires_at": candle.expires_at.isoformat(),
+                "hours_until_expiry": round(time_to_expire, 2),
+                "is_complete": candle.is_complete
+            })
+        
+        # Get overall statistics
+        total_candles = db.session.query(func.count(KlinesCache.id)).scalar()
+        total_complete = db.session.query(func.count(KlinesCache.id)).filter(KlinesCache.is_complete == True).scalar()
+        total_incomplete = db.session.query(func.count(KlinesCache.id)).filter(KlinesCache.is_complete == False).scalar()
+        total_expired = db.session.query(func.count(KlinesCache.id)).filter(KlinesCache.expires_at <= current_time).scalar()
+        
+        # Get oldest and newest candles globally
+        oldest_global = db.session.query(func.min(KlinesCache.timestamp)).scalar()
+        newest_global = db.session.query(func.max(KlinesCache.timestamp)).scalar()
+        
+        return jsonify({
+            "status": "success",
+            "timestamp": current_time.isoformat(),
+            "summary": {
+                "total_candles": total_candles,
+                "total_complete": total_complete,
+                "total_incomplete": total_incomplete,
+                "total_expired": total_expired,
+                "unique_combinations": len(symbol_stats),
+                "oldest_candle": oldest_global.isoformat() if oldest_global else None,
+                "newest_candle": newest_global.isoformat() if newest_global else None
+            },
+            "symbol_statistics": symbol_stats,
+            "expiring_candles": expiring_candles,
+            "supported_symbols": TradingConfig.SUPPORTED_SYMBOLS,
+            "timeframes": ["1h", "4h", "1d"]
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in admin klines debug: {e}")
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": current_time.isoformat()
+        }), 500
+
+
 @app.route("/api/price/<symbol>")
 def get_symbol_price(symbol):
     """Get live price for a specific symbol with caching info"""

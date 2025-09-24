@@ -411,6 +411,117 @@
             </div>
         </div>
 
+        <!-- Klines Debugging -->
+        <div class="card section-spacing">
+            <div class="card-header mobile-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart me-2"></i>
+                    Klines Debugging
+                </h5>
+                <div class="mobile-btn-group">
+                    <button class="btn btn-sm btn-info" onclick="loadKlinesDebugData()" title="Refresh Klines Data">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        <span class="d-none d-sm-inline">Refresh</span>
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="showKlinesGaps()" title="Show Data Gaps">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <span class="d-none d-sm-inline">View Gaps</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Summary Stats -->
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-3 col-md-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-database text-primary me-2"></i>Total Candles
+                                </h6>
+                                <h4 id="total-candles" class="text-primary">-</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-check-circle text-success me-2"></i>Complete
+                                </h6>
+                                <h4 id="complete-candles" class="text-success">-</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-clock text-warning me-2"></i>Incomplete
+                                </h6>
+                                <h4 id="incomplete-candles" class="text-warning">-</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <div class="card h-100 border-0 bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-hourglass text-danger me-2"></i>Expiring Soon
+                                </h6>
+                                <h4 id="expiring-candles" class="text-danger">-</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Symbol/Timeframe Analysis -->
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-8">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-graph-up text-info me-2"></i>Symbol & Timeframe Analysis
+                                </h6>
+                                <div id="klines-symbol-stats">
+                                    <div class="text-center p-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                        <span class="ms-2">Loading klines data...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-clock-history text-warning me-2"></i>Expiring Candles
+                                </h6>
+                                <div id="expiring-candles-list">
+                                    <div class="text-center p-3">
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                        <span class="ms-2">Loading expiring data...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Gaps Section -->
+                <div class="card border-0 bg-light" id="klines-gaps-section" style="display: none;">
+                    <div class="card-body">
+                        <h6 class="card-title mb-3">
+                            <i class="bi bi-exclamation-triangle text-danger me-2"></i>Data Gaps Analysis
+                        </h6>
+                        <div id="klines-gaps-data">
+                            <!-- Gaps will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- User Management -->
         <div class="card section-spacing">
             <div class="card-header mobile-header d-flex justify-content-between align-items-center">
@@ -491,6 +602,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadWhitelistData();
             loadDatabaseStats();
+            loadKlinesDebugData();
             
             // Filter events
             document.getElementById('status-filter').addEventListener('change', filterUsers);
@@ -1037,6 +1149,210 @@
                 console.error('Error creating backup:', error);
                 showError('Failed to create backup: ' + error.message);
             }
+        }
+
+        // KLINES DEBUGGING FUNCTIONS
+        let klinesDebugData = null;
+
+        async function loadKlinesDebugData() {
+            try {
+                const response = await fetch('/api/admin/klines-debug');
+                if (response.ok) {
+                    klinesDebugData = await response.json();
+                    updateKlinesSummary(klinesDebugData.summary);
+                    updateSymbolStats(klinesDebugData.symbol_statistics);
+                    updateExpiringCandles(klinesDebugData.expiring_candles);
+                } else {
+                    const error = await response.json();
+                    showError('Failed to load klines debug data: ' + error.error);
+                }
+            } catch (error) {
+                console.error('Error loading klines debug data:', error);
+                showError('Failed to load klines debug data: ' + error.message);
+            }
+        }
+
+        function updateKlinesSummary(summary) {
+            document.getElementById('total-candles').textContent = summary.total_candles.toLocaleString();
+            document.getElementById('complete-candles').textContent = summary.total_complete.toLocaleString();
+            document.getElementById('incomplete-candles').textContent = summary.total_incomplete.toLocaleString();
+            
+            // Calculate expiring candles from the summary (this will be updated by the expiring candles list)
+            const expiringCount = klinesDebugData ? klinesDebugData.expiring_candles.length : 0;
+            document.getElementById('expiring-candles').textContent = expiringCount;
+        }
+
+        function updateSymbolStats(symbolStats) {
+            const symbolStatsDiv = document.getElementById('klines-symbol-stats');
+            
+            if (!symbolStats || symbolStats.length === 0) {
+                symbolStatsDiv.innerHTML = '<div class="text-center text-muted p-3">No klines data found</div>';
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-sm table-striped">';
+            html += `
+                <thead class="table-light">
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Timeframe</th>
+                        <th>Total</th>
+                        <th>Complete</th>
+                        <th>Incomplete</th>
+                        <th>Gaps</th>
+                        <th>Status</th>
+                        <th>Config</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            symbolStats.forEach(stat => {
+                const statusClass = getCleanupStatusClass(stat.cleanup_status);
+                const gapsText = stat.gap_count > 0 ? `${stat.gap_count} gaps` : 'No gaps';
+                const gapsClass = stat.gap_count > 0 ? 'text-danger' : 'text-success';
+                
+                html += `
+                    <tr>
+                        <td><strong>${stat.symbol}</strong></td>
+                        <td><span class="badge bg-secondary">${stat.timeframe}</span></td>
+                        <td>${stat.total_candles.toLocaleString()}</td>
+                        <td class="text-success">${stat.complete_candles.toLocaleString()}</td>
+                        <td class="text-warning">${stat.incomplete_candles.toLocaleString()}</td>
+                        <td class="${gapsClass}"><small>${gapsText}</small></td>
+                        <td><span class="badge ${statusClass}">${stat.cleanup_status.replace('_', ' ')}</span></td>
+                        <td><small>Target: ${stat.config.target_candles}</small></td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            symbolStatsDiv.innerHTML = html;
+        }
+
+        function updateExpiringCandles(expiringCandles) {
+            const expiringDiv = document.getElementById('expiring-candles-list');
+            
+            if (!expiringCandles || expiringCandles.length === 0) {
+                expiringDiv.innerHTML = '<div class="text-center text-muted p-3">No candles expiring soon</div>';
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush">';
+            
+            expiringCandles.slice(0, 10).forEach(candle => { // Show only first 10
+                const urgencyClass = candle.hours_until_expiry < 1 ? 'text-danger' : 
+                                   candle.hours_until_expiry < 6 ? 'text-warning' : 'text-muted';
+                const typeText = candle.is_complete ? 'Complete' : 'Incomplete';
+                const typeClass = candle.is_complete ? 'bg-success' : 'bg-warning';
+                
+                html += `
+                    <div class="list-group-item list-group-item-action py-2">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <strong>${candle.symbol}</strong>
+                                <span class="badge bg-secondary ms-1">${candle.timeframe}</span>
+                                <span class="badge ${typeClass} ms-1">${typeText}</span>
+                            </div>
+                            <small class="${urgencyClass}">
+                                ${Math.abs(candle.hours_until_expiry).toFixed(1)}h
+                            </small>
+                        </div>
+                        <small class="text-muted">
+                            ${new Date(candle.timestamp).toLocaleString()}
+                        </small>
+                    </div>
+                `;
+            });
+            
+            if (expiringCandles.length > 10) {
+                html += `
+                    <div class="list-group-item text-center text-muted">
+                        <small>... and ${expiringCandles.length - 10} more</small>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            expiringDiv.innerHTML = html;
+        }
+
+        function getCleanupStatusClass(status) {
+            switch(status) {
+                case 'no_cleanup_needed': return 'bg-success';
+                case 'cleanup_eligible': return 'bg-warning';
+                case 'cleanup_recommended': return 'bg-danger';
+                default: return 'bg-secondary';
+            }
+        }
+
+        function showKlinesGaps() {
+            const gapsSection = document.getElementById('klines-gaps-section');
+            const gapsData = document.getElementById('klines-gaps-data');
+            
+            if (!klinesDebugData || !klinesDebugData.symbol_statistics) {
+                showError('No klines data loaded. Please refresh first.');
+                return;
+            }
+
+            // Filter symbols with gaps
+            const symbolsWithGaps = klinesDebugData.symbol_statistics.filter(stat => stat.gap_count > 0);
+            
+            if (symbolsWithGaps.length === 0) {
+                gapsData.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>No data gaps detected in recent klines data!</div>';
+            } else {
+                let html = '<div class="alert alert-warning mb-3"><i class="bi bi-exclamation-triangle me-2"></i>Found data gaps in klines data:</div>';
+                
+                symbolsWithGaps.forEach(stat => {
+                    html += `
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-graph-down text-warning me-2"></i>
+                                    ${stat.symbol} - ${stat.timeframe} 
+                                    <span class="badge bg-danger ms-2">${stat.gap_count} gaps</span>
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Gap Start</th>
+                                                <th>Gap End</th>
+                                                <th>Missing Periods</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                    `;
+                    
+                    stat.gaps.forEach(gap => {
+                        html += `
+                            <tr>
+                                <td><small>${new Date(gap.start).toLocaleString()}</small></td>
+                                <td><small>${new Date(gap.end).toLocaleString()}</small></td>
+                                <td><span class="badge bg-danger">${gap.missing_periods}</span></td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                gapsData.innerHTML = html;
+            }
+            
+            // Show the gaps section
+            gapsSection.style.display = 'block';
+            
+            // Scroll to gaps section
+            gapsSection.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>
