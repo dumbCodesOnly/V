@@ -4,6 +4,14 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **September 24, 2025**: CRITICAL BUG FIX - Resolved klines database gap issue on Render
+  - Fixed incomplete candles being deleted instead of promoted to complete status
+  - Modified `KlinesCache.cleanup_expired()` to properly handle candle lifecycle transitions
+  - When incomplete candles' TTL expires, they are now promoted to complete status (with 21-day TTL) if their time period has ended
+  - This prevents data gaps that were occurring when incomplete candles expired before next update cycle
+  - Added comprehensive logging to track candle promotion events: "KLINES-FIX: Promoted expired incomplete candle to complete"
+  - Ensures continuous historical data integrity across all timeframes (1h, 4h, 1d)
+
 - **September 22, 2025**: Successfully integrated cache cleanup and klines background workers into UnifiedDataSyncService
   - Merged two separate worker threads into a single coordinated service for better efficiency and synchronization
   - Implemented unified data sync service with coordinated 2-minute intervals for optimal performance

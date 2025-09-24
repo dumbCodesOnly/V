@@ -1108,9 +1108,40 @@ class KlinesCache(db.Model):
 
     @classmethod
     def cleanup_expired(cls):
-        """Remove expired klines cache entries"""
-        expired_count = cls.query.filter(cls.expires_at <= datetime.utcnow()).delete()
+        """Remove expired klines cache entries and promote completed incomplete candles"""
+        current_time = get_utc_now()
+        current_time_naive = current_time.replace(tzinfo=None)
+        
+        # Find expired incomplete candles that should be promoted to complete
+        expired_incomplete = cls.query.filter(
+            cls.expires_at <= current_time_naive,
+            cls.is_complete == False
+        ).all()
+        
+        promoted_count = 0
+        for candle in expired_incomplete:
+            # Check if this candle's period has actually completed
+            candle_period_start = floor_to_period(normalize_to_utc(candle.timestamp), candle.timeframe)
+            current_period_start = floor_to_period(current_time, candle.timeframe)
+            
+            # If the candle period has completed, promote it to complete instead of deleting
+            if candle_period_start < current_period_start:
+                candle.is_complete = True
+                candle.expires_at = current_time_naive + timedelta(days=21)  # Long TTL for complete candles
+                promoted_count += 1
+                logging.info(f"KLINES-FIX: Promoted expired incomplete candle to complete: {candle.symbol} {candle.timeframe} {candle.timestamp}")
+        
+        # Now delete only candles that are truly expired (complete candles past retention or incomplete candles still in current period)
+        expired_count = cls.query.filter(
+            cls.expires_at <= current_time_naive,
+            cls.is_complete == True  # Only delete complete candles that are truly expired
+        ).delete()
+        
         db.session.commit()
+        
+        if promoted_count > 0:
+            logging.info(f"KLINES-FIX: Promoted {promoted_count} incomplete candles to complete instead of deleting")
+        
         return expired_count
 
     @classmethod
