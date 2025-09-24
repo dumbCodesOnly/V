@@ -2615,6 +2615,22 @@ def api_health_check():
             logging.warning(f"Health ping boost activation failed: {e}")
             boost_status = f"failed: {str(e)}"
 
+        # KLINES RESTART: Prevent gaps by also restarting unified data sync service
+        klines_restart_status = "not_attempted"
+        try:
+            from .unified_data_sync_service import restart_unified_data_sync_service
+            logging.info("HEALTH CHECK: Restarting unified data sync service to prevent klines gaps")
+            restart_success = restart_unified_data_sync_service(app)
+            if restart_success:
+                klines_restart_status = "restarted"
+                logging.info("HEALTH CHECK: Klines service successfully restarted - gaps should be prevented")
+            else:
+                klines_restart_status = "restart_failed"
+                logging.warning("HEALTH CHECK: Klines service restart returned False")
+        except Exception as e:
+            logging.warning(f"Health ping klines restart failed: {e}")
+            klines_restart_status = f"failed: {str(e)}"
+
         # Monitor system load (basic check)
         active_configs = sum(len(configs) for configs in user_trade_configs.values())
 
@@ -2644,6 +2660,10 @@ def api_health_check():
                 "status": boost_status,
                 "duration_seconds": 180,
                 "enhanced_interval_seconds": 10,
+            },
+            "klines_restart": {
+                "status": klines_restart_status,
+                "purpose": "prevent_gaps_when_offline",
             },
         }
 
