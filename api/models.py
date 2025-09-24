@@ -1122,54 +1122,84 @@ class KlinesCache(db.Model):
         return old_count
 
     @classmethod
-    def cleanup_rolling_window(cls, symbol: str, timeframe: str, max_candles: int, batch_size: int = 50):
+    def cleanup_rolling_window(cls, symbol: str, timeframe: str, max_candles: int, batch_size: int = 10):
         """
-        Implement rolling window cleanup for a specific symbol and timeframe.
-        Keep only the latest max_candles, removing older ones in batches.
-        
-        FIXED: Now counts ALL candles (complete + incomplete) to prevent data gaps
-        when incomplete candles become complete over time.
+        CONSERVATIVE rolling window cleanup - only delete oldest candles when we have significant buffer.
+        This implements the user's requirement: keep recent candles, only delete very old ones.
         
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT')
             timeframe: Timeframe ('1h', '4h', '1d')
-            max_candles: Maximum number of candles to keep
-            batch_size: Number of records to delete in each batch
+            max_candles: Maximum number of candles to keep after cleanup
+            batch_size: Number of records to delete in each batch (small for gentle cleanup)
             
         Returns:
             int: Number of candles deleted
         """
+        from config import RollingWindowConfig
+        
         try:
-            # FIXED: Count ALL candles (complete + incomplete) to prevent gaps
-            # The old logic only counted complete candles, which caused recent
-            # candles to disappear when incomplete candles became complete
+            # Count ALL candles for this symbol/timeframe
             total_count = cls.query.filter(
                 cls.symbol == symbol,
                 cls.timeframe == timeframe
-                # Removed: cls.is_complete == True  # This was causing the bug!
             ).count()
             
-            if total_count <= max_candles:
-                return 0  # No cleanup needed
+            # Get the cleanup threshold - we only start cleanup when we have MUCH more data
+            cleanup_threshold = RollingWindowConfig.get_cleanup_threshold(timeframe)
             
-            # Calculate how many to delete
-            to_delete = total_count - max_candles
+            # CONSERVATIVE LOGIC: Only cleanup if we have significantly more candles than threshold
+            if total_count <= cleanup_threshold:
+                logging.debug(f"CONSERVATIVE_CLEANUP: {symbol}:{timeframe} has {total_count} candles, threshold is {cleanup_threshold} - no cleanup needed")
+                return 0  # Don't cleanup until we have a significant buffer
+            
+            # Calculate how many to delete (keep max_candles + safety margin)
+            target_after_cleanup = max_candles  # This includes safety margin already
+            to_delete = total_count - target_after_cleanup
+            
+            # Additional safety check - never delete more than 25% in one cleanup cycle
+            max_safe_deletion = max(1, int(total_count * 0.25))
+            to_delete = min(to_delete, max_safe_deletion)
+            
+            if to_delete <= 0:
+                return 0
+            
+            logging.info(f"CONSERVATIVE_CLEANUP: {symbol}:{timeframe} has {total_count} candles (threshold: {cleanup_threshold}), will delete {to_delete} oldest candles to reach target {target_after_cleanup}")
+            
             deleted_count = 0
             
             # Delete in batches to avoid database locks
             while to_delete > 0:
                 current_batch = min(batch_size, to_delete)
                 
-                # FIXED: Get the oldest candles (all types) for this symbol/timeframe
-                # Priority: Delete oldest complete candles first, but include incomplete if needed
+                # CONSERVATIVE DELETION: Only delete the OLDEST complete candles
+                # NEVER delete incomplete (recent) candles - only update them
+                # Priority: Only delete very old complete candles first
                 oldest_candles = cls.query.filter(
                     cls.symbol == symbol,
-                    cls.timeframe == timeframe
-                    # Removed: cls.is_complete == True  # This was causing the bug!
+                    cls.timeframe == timeframe,
+                    cls.is_complete == True  # ONLY delete complete (old) candles
                 ).order_by(
-                    cls.is_complete.asc(),  # Incomplete candles first (if any)
-                    cls.timestamp.asc()     # Then by timestamp (oldest first)
+                    cls.timestamp.asc()  # Oldest first - keep newest candles safe
                 ).limit(current_batch).all()
+                
+                # Safety check: Don't delete candles that are too recent
+                current_time = get_utc_now()
+                safe_candles = []
+                for candle in oldest_candles:
+                    # Additional safety: Don't delete candles from last 24 hours for 1h, 4 days for 4h, 7 days for 1d
+                    if timeframe == "1h":
+                        min_age_hours = 24  # Don't delete hourly candles less than 24h old
+                    elif timeframe == "4h":
+                        min_age_hours = 96  # Don't delete 4h candles less than 4 days old
+                    else:  # 1d
+                        min_age_hours = 168  # Don't delete daily candles less than 7 days old
+                        
+                    age_hours = (current_time - candle.timestamp).total_seconds() / 3600
+                    if age_hours >= min_age_hours:
+                        safe_candles.append(candle)
+                        
+                oldest_candles = safe_candles
                 
                 if not oldest_candles:
                     break  # No more candles to delete
@@ -1223,10 +1253,8 @@ class KlinesCache(db.Model):
                 if not RollingWindowConfig.is_enabled(timeframe):
                     continue
                 
-                # Get the maximum candles for this timeframe
+                # Get the maximum candles for this timeframe and perform conservative cleanup
                 max_candles = RollingWindowConfig.get_max_candles(timeframe)
-                
-                # Perform cleanup for this combination
                 deleted = cls.cleanup_rolling_window(symbol, timeframe, max_candles, batch_size)
                 
                 if deleted > 0:

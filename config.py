@@ -343,17 +343,23 @@ class SMCConfig:
 class RollingWindowConfig:
     """Rolling window configuration for klines data management"""
     
-    # Maximum number of candles to keep per timeframe (rolling window)
-    MAX_CANDLES_1H = 300   # Keep latest 300 hourly candles (~12.5 days)
-    MAX_CANDLES_4H = 100   # Keep latest 100 4-hour candles (~16 days)
-    MAX_CANDLES_1D = 50    # Keep latest 50 daily candles (~7 weeks)
+    # Target number of candles to keep per timeframe (not hard limits)
+    TARGET_CANDLES_1H = 300   # Target: 300 hourly candles (~12.5 days)
+    TARGET_CANDLES_4H = 100   # Target: 100 4-hour candles (~16 days)
+    TARGET_CANDLES_1D = 50    # Target: 50 daily candles (~7 weeks)
     
-    # Batch cleanup settings to avoid database locks - OPTIMIZED FOR FREQUENT UPDATES
-    CLEANUP_BATCH_SIZE = 25  # Smaller batches for more frequent cleanup
-    CLEANUP_INTERVAL_SECONDS = 90  # Run rolling window cleanup every 1.5 minutes
+    # Conservative cleanup buffers - only start cleanup when we have MUCH more data
+    # This ensures recent candles are never deleted prematurely
+    CLEANUP_BUFFER_1H = 150   # Only cleanup when we have 450+ hourly candles (150 buffer)
+    CLEANUP_BUFFER_4H = 50    # Only cleanup when we have 150+ 4h candles (50 buffer)  
+    CLEANUP_BUFFER_1D = 25    # Only cleanup when we have 75+ daily candles (25 buffer)
     
-    # Safety margin - keep extra candles to prevent gaps during cleanup
-    SAFETY_MARGIN = 5  # Keep 5 extra candles beyond the limit
+    # Batch cleanup settings - smaller batches to be gentler
+    CLEANUP_BATCH_SIZE = 10   # Very small batches to avoid aggressive deletion
+    CLEANUP_INTERVAL_SECONDS = 300  # Less frequent cleanup (5 minutes) to be conservative
+    
+    # Additional safety margin beyond target
+    SAFETY_MARGIN = 20  # Keep 20 extra candles beyond target when cleaning up
     
     # Enable/disable rolling window per timeframe
     ENABLED_1H = True
@@ -361,14 +367,29 @@ class RollingWindowConfig:
     ENABLED_1D = True
     
     @classmethod
-    def get_max_candles(cls, timeframe: str) -> int:
-        """Get maximum candles for a timeframe"""
-        timeframe_limits = {
-            "1h": cls.MAX_CANDLES_1H,
-            "4h": cls.MAX_CANDLES_4H,
-            "1d": cls.MAX_CANDLES_1D
+    def get_target_candles(cls, timeframe: str) -> int:
+        """Get target number of candles for a timeframe"""
+        timeframe_targets = {
+            "1h": cls.TARGET_CANDLES_1H,
+            "4h": cls.TARGET_CANDLES_4H,
+            "1d": cls.TARGET_CANDLES_1D
         }
-        return timeframe_limits.get(timeframe, 100)  # Default to 100
+        return timeframe_targets.get(timeframe, 100)  # Default to 100
+    
+    @classmethod
+    def get_cleanup_threshold(cls, timeframe: str) -> int:
+        """Get the threshold above which cleanup should start"""
+        timeframe_thresholds = {
+            "1h": cls.TARGET_CANDLES_1H + cls.CLEANUP_BUFFER_1H,  # 450 candles
+            "4h": cls.TARGET_CANDLES_4H + cls.CLEANUP_BUFFER_4H,  # 150 candles
+            "1d": cls.TARGET_CANDLES_1D + cls.CLEANUP_BUFFER_1D   # 75 candles
+        }
+        return timeframe_thresholds.get(timeframe, 200)  # Conservative default
+    
+    @classmethod 
+    def get_max_candles(cls, timeframe: str) -> int:
+        """Get maximum candles to keep after cleanup (target + safety margin)"""
+        return cls.get_target_candles(timeframe) + cls.SAFETY_MARGIN
     
     @classmethod
     def is_enabled(cls, timeframe: str) -> bool:
