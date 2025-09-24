@@ -717,7 +717,8 @@ class UnifiedDataSyncService:
                     cache_ttl_minutes=ttl_minutes
                 )
             
-            logging.info(f"Successfully populated {saved_count} candles for {symbol} {timeframe}")
+            print(f"[RENDER-KLINES] Successfully populated {saved_count} candles for {symbol} {timeframe}")
+            logging.info(f"[RENDER-KLINES] Successfully populated {saved_count} candles for {symbol} {timeframe}")
             
             # Update tracking
             with self.lock:
@@ -1362,10 +1363,25 @@ def stop_unified_data_sync_service():
 
 def restart_unified_data_sync_service(app=None):
     """Restart the unified data sync service"""
+    print(f"[RENDER-KLINES] Restarting unified data sync service")
+    logging.info("[RENDER-KLINES] Restarting unified data sync service")
+    
     global unified_service
     if unified_service is None:
+        print(f"[RENDER-KLINES] Creating new unified service instance")
+        logging.info("[RENDER-KLINES] Creating new unified service instance")
         unified_service = UnifiedDataSyncService(app)
-    return unified_service.restart()
+    
+    restart_result = unified_service.restart()
+    
+    if restart_result:
+        print(f"[RENDER-KLINES] Unified service restart successful")
+        logging.info("[RENDER-KLINES] Unified service restart successful")
+    else:
+        print(f"[RENDER-KLINES] Unified service restart failed")
+        logging.warning("[RENDER-KLINES] Unified service restart failed")
+    
+    return restart_result
 
 def get_unified_service_status() -> Dict:
     """Get unified service status"""

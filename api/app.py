@@ -2566,7 +2566,11 @@ def trigger_core_monitoring():
 @app.route("/api/health")
 def api_health_check():
     """Comprehensive health check endpoint for UptimeRobot and monitoring"""
+    start_time = time.time()
     try:
+        # RENDER LOG: Health check started
+        print(f"[RENDER-HEALTH] Health check started at {get_iran_time().strftime('%Y-%m-%d %H:%M:%S')}")
+        logging.info(f"[RENDER-HEALTH] Health check started at {get_iran_time().strftime('%Y-%m-%d %H:%M:%S')}")
         # Test database connection
         db_status = "healthy"
         try:
@@ -2598,14 +2602,12 @@ def api_health_check():
         try:
             sync_service = get_sync_service()
             if sync_service and hasattr(sync_service, "trigger_health_ping_boost"):
-                logging.info(
-                    "HEALTH CHECK: Activating Health Ping Boost for enhanced monitoring"
-                )
+                print(f"[RENDER-HEALTH] Activating Health Ping Boost for enhanced monitoring")
+                logging.info("[RENDER-HEALTH] Activating Health Ping Boost for enhanced monitoring")
                 sync_service.trigger_health_ping_boost()
                 boost_status = "activated"
-                logging.info(
-                    "HEALTH CHECK: Health Ping Boost successfully activated - monitoring will run every 10s for next 3 minutes"
-                )
+                print(f"[RENDER-HEALTH] Health Ping Boost activated - monitoring every 10s for 3 minutes")
+                logging.info("[RENDER-HEALTH] Health Ping Boost activated - monitoring every 10s for 3 minutes")
             else:
                 logging.warning(
                     "HEALTH CHECK: Sync service not available for Health Ping Boost"
@@ -2618,17 +2620,26 @@ def api_health_check():
         # KLINES RESTART: Prevent gaps by also restarting unified data sync service
         klines_restart_status = "not_attempted"
         try:
-            from .unified_data_sync_service import restart_unified_data_sync_service
-            logging.info("HEALTH CHECK: Restarting unified data sync service to prevent klines gaps")
+            from .unified_data_sync_service import restart_unified_data_sync_service, get_unified_service_status
+            print(f"[RENDER-KLINES] Starting klines service restart to prevent gaps")
+            logging.info("[RENDER-KLINES] Starting klines service restart to prevent gaps")
+            
+            # Get status before restart
+            pre_restart_status = get_unified_service_status()
             restart_success = restart_unified_data_sync_service(app)
+            
             if restart_success:
                 klines_restart_status = "restarted"
-                logging.info("HEALTH CHECK: Klines service successfully restarted - gaps should be prevented")
+                post_restart_status = get_unified_service_status()
+                print(f"[RENDER-KLINES] SUCCESS: Klines service restarted - service_running: {post_restart_status.get('service_running', 'unknown')}")
+                logging.info(f"[RENDER-KLINES] SUCCESS: Klines service restarted - service_running: {post_restart_status.get('service_running', 'unknown')}")
             else:
                 klines_restart_status = "restart_failed"
-                logging.warning("HEALTH CHECK: Klines service restart returned False")
+                print(f"[RENDER-KLINES] WARNING: Klines service restart returned False")
+                logging.warning("[RENDER-KLINES] WARNING: Klines service restart returned False")
         except Exception as e:
-            logging.warning(f"Health ping klines restart failed: {e}")
+            print(f"[RENDER-KLINES] ERROR: Klines restart failed - {str(e)}")
+            logging.warning(f"[RENDER-KLINES] ERROR: Klines restart failed - {str(e)}")
             klines_restart_status = f"failed: {str(e)}"
 
         # Monitor system load (basic check)
@@ -2666,6 +2677,11 @@ def api_health_check():
                 "purpose": "prevent_gaps_when_offline",
             },
         }
+
+        # RENDER LOG: Health check completed
+        execution_time = time.time() - start_time
+        print(f"[RENDER-HEALTH] Health check completed in {execution_time:.2f}s - Status: {health_data['status']}, Boost: {boost_status}, Klines: {klines_restart_status}")
+        logging.info(f"[RENDER-HEALTH] Health check completed in {execution_time:.2f}s - Status: {health_data['status']}, Boost: {boost_status}, Klines: {klines_restart_status}")
 
         # Return appropriate HTTP status
         status_code = 200 if health_data["status"] == "healthy" else 503
