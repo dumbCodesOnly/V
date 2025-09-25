@@ -8345,7 +8345,7 @@ def _handle_portfolio_callbacks(callback_data, chat_id, user):
     elif callback_data == "performance":
         return _handle_performance_callback(chat_id, user)
     elif callback_data == "quick_price":
-        return _handle_quick_price_check()
+        return "Quick price check moved to web interface"  # Function removed - handled by web UI
     return None
 
 
@@ -8719,14 +8719,11 @@ def _handle_performance_callback(chat_id, user):
     elif callback_data.startswith("sl_"):
         sl_data = callback_data.replace("sl_", "")
         if sl_data == "custom":
-            return (
-                "🛑 Enter custom stop loss percentage (e.g., 7.5):",
-                get_trading_menu(chat_id),
-            )
+            return "🛑 Enter custom stop loss percentage (e.g., 7.5):"
         else:
             return handle_set_stoploss(chat_id, float(sl_data))
     elif callback_data == "set_entry":
-        return "🎯 Entry Price Options:", get_entry_price_menu()
+        return "🎯 Entry Price Options:"
     elif callback_data == "entry_market":
         return handle_set_entry_price(chat_id, "market")
     elif callback_data == "entry_limit":
@@ -8734,9 +8731,7 @@ def _handle_performance_callback(chat_id, user):
     elif callback_data.startswith("amount_"):
         amount_data = callback_data.replace("amount_", "")
         if amount_data == "custom":
-            return "💰 Enter custom amount in USDT (e.g., 150):", get_trading_menu(
-                chat_id
-            )
+            return "💰 Enter custom amount in USDT (e.g., 150):"
         else:
             return handle_set_amount_wizard(chat_id, float(amount_data))
     return None
@@ -8784,12 +8779,10 @@ def handle_set_side(chat_id, side):
             config = user_trade_configs[chat_id][trade_id]
             config.side = side
             header = config.get_trade_header("Side Set")
-            return f"{header}✅ Set position to {side.upper()}", get_trading_menu(
-                chat_id
-            )
+            return f"{header}✅ Set position to {side.upper()}"
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -8801,10 +8794,10 @@ def handle_set_leverage(chat_id, leverage):
             config = user_trade_configs[chat_id][trade_id]
             config.leverage = leverage
             header = config.get_trade_header("Leverage Set")
-            return f"{header}✅ Set leverage to {leverage}x", get_trading_menu(chat_id)
+            return f"{header}✅ Set leverage to {leverage}x", None  # Menu system removed
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -8819,7 +8812,7 @@ def handle_execute_trade(chat_id, user):
     if not config.is_complete():
         return (
             "❌ Trade configuration incomplete. Please set symbol, side, and amount.",
-            get_trading_menu(chat_id),
+            None  # Menu system removed,
         )
 
     # Determine execution price based on order type
@@ -8853,11 +8846,9 @@ def handle_execute_trade(chat_id, user):
         quantity = config.amount / price
         response += f"Quantity: {quantity:.6f}"
 
-        return response, get_trading_menu(chat_id)
+        return response, None  # Menu system removed
     else:
-        return f"❌ Could not execute trade for {config.symbol}", get_trading_menu(
-            chat_id
-        )
+        return f"❌ Could not execute trade for {config.symbol}"
 
 
 def handle_start_trade(chat_id, trade_id):
@@ -8868,12 +8859,10 @@ def handle_start_trade(chat_id, trade_id):
             config.status = "active"
             return (
                 f"🚀 Started position: {config.get_display_name()}",
-                get_trade_actions_menu(trade_id),
+                None  # Menu system removed,
             )
         else:
-            return "❌ Position configuration incomplete.", get_trade_actions_menu(
-                trade_id
-            )
+            return "❌ Position configuration incomplete."
     return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
@@ -8884,7 +8873,7 @@ def handle_stop_trade(chat_id, trade_id):
         config.status = "stopped"
         return (
             f"⏹️ Stopped position: {config.get_display_name()}",
-            get_trade_actions_menu(trade_id),
+            None  # Menu system removed,
         )
     return "❌ Position not found."  # Position menu removed - now handled by web interface
 
@@ -8898,7 +8887,7 @@ def handle_delete_trade(chat_id, trade_id):
             del user_trade_configs[chat_id][trade_id]
             if user_selected_trade.get(chat_id) == trade_id:
                 del user_selected_trade[chat_id]
-        return f"🗑️ Deleted position: {trade_name}", get_positions_menu(chat_id)
+        return f"🗑️ Deleted position: {trade_name}", None  # Menu system removed
     return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
@@ -8911,7 +8900,7 @@ def handle_edit_trade(chat_id, trade_id):
         response = (
             f"✏️ Editing: {config.get_display_name()}\n\n{config.get_config_summary()}"
         )
-        return response, get_trading_menu(chat_id)
+        return response, None  # Menu system removed
     return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
@@ -8930,12 +8919,10 @@ def handle_set_stoploss(chat_id, sl_percent):
 
             config.stop_loss_percent = sl_percent
             header = config.get_trade_header("Stop Loss Set")
-            return f"{header}✅ Set stop loss to {sl_percent}%", get_trading_menu(
-                chat_id
-            )
+            return f"{header}✅ Set stop loss to {sl_percent}%"
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -8962,11 +8949,11 @@ def get_tp_percentage_input_menu():
 # get_tp_allocation_menu() function removed - part of bot menu system
     """Get take profit allocation menu"""
     if chat_id not in user_selected_trade:
-        return get_trading_menu(chat_id)
+        return None  # Menu system removed
 
     trade_id = user_selected_trade[chat_id]
     if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-        return get_trading_menu(chat_id)
+        return None  # Menu system removed
 
     keyboard = [
         [{"text": "📊 25%", "callback_data": "tp_alloc_25"}],
@@ -9015,7 +9002,7 @@ def get_tp_allocation_reset_menu():
     }
 
 
-# get_entry_price_menu() function removed - part of bot menu system
+# None  # Menu system removed function removed - part of bot menu system
     """Get entry price configuration menu"""
     return {
         "inline_keyboard": [
@@ -9047,7 +9034,7 @@ def handle_set_entry_price(chat_id, entry_type):
                 return f"🎯 Enter your limit price (e.g., 45000.50):", None
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -9061,11 +9048,11 @@ def handle_set_leverage_wizard(chat_id, leverage):
             # Continue wizard to amount
             return (
                 f"✅ Set leverage to {leverage}x\n\n💰 Now set your trade amount:",
-                get_amount_wizard_menu(),
+                None  # Menu system removed,
             )
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -9077,7 +9064,7 @@ def handle_tp_wizard(chat_id, tp_level):
             config = user_trade_configs[chat_id][trade_id]
             return (
                 f"🎯 Set Take Profit {tp_level}\n\nEnter percentage (e.g., 10 for 10% profit):",
-                get_tp_percentage_menu(tp_level),
+                None  # Menu system removed,
             )
     return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
@@ -9108,12 +9095,12 @@ def handle_set_breakeven(chat_id, mode):
             header = config.get_trade_header("Break-even Set")
             return (
                 f"{header}✅ Break-even set to: {mode_map.get(mode, 'After TP1')}",
-                get_trading_menu(chat_id),
+                None  # Menu system removed,
             )
 
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -9132,7 +9119,7 @@ def handle_trailing_stop_disable(chat_id):
             header = config.get_trade_header("Trailing Stop Disabled")
             return (
                 f"{header}✅ Trailing stop disabled for current trade",
-                get_trading_menu(chat_id),
+                None  # Menu system removed,
             )
     return "❌ No trade selected", None
 
@@ -9169,7 +9156,7 @@ def handle_trail_activation_request(chat_id):
     return "❌ No trade selected", None
 
 
-# get_amount_wizard_menu() function removed - part of bot menu system
+# None  # Menu system removed function removed - part of bot menu system
     """Get amount setting wizard menu"""
     return {
         "inline_keyboard": [
@@ -9209,11 +9196,11 @@ def handle_set_amount_wizard(chat_id, amount):
             # Continue wizard to entry price
             return (
                 f"✅ Set amount to ${amount} USDT\n\n🎯 Now set your entry price:",
-                get_entry_price_menu(),
+                None  # Menu system removed,
             )
     return (
         "❌ No trade selected. Please create or select a trade first.",
-        get_trading_menu(chat_id),
+        None  # Menu system removed,
     )
 
 
@@ -9234,13 +9221,13 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
                 config.tp1_percent = tp_percent
                 return (
                     f"✅ Set TP1 to {tp_percent}%\n\n🎯 Set TP2 (optional):",
-                    get_tp_percentage_menu("2"),
+                    None  # Menu system removed,
                 )
             elif tp_level == "2":
                 config.tp2_percent = tp_percent
                 return (
                     f"✅ Set TP2 to {tp_percent}%\n\n🎯 Set TP3 (optional):",
-                    get_tp_percentage_menu("3"),
+                    None  # Menu system removed,
                 )
             elif tp_level == "3":
                 config.tp3_percent = tp_percent
