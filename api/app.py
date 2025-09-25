@@ -330,7 +330,7 @@ def get_authenticated_user_id() -> Optional[str]:
 
 
 # SECURE: Session Management Functions for Telegram WebApp Authentication
-def establish_user_session(user_id: str, user_data: dict = None) -> bool:
+def establish_user_session(user_id: str, user_data: Optional[Dict[str, Any]] = None) -> bool:
     """
     Establish a secure Flask session after successful authentication.
     
@@ -1413,8 +1413,8 @@ api_setup_lock = threading.RLock()
 user_preferences_lock = threading.RLock()
 
 # Multi-trade management storage
-user_trade_configs: dict[int, dict[str, any]] = {}  # {user_id: {trade_id: TradeConfig}}
-user_selected_trade: dict[int, str | None] = {}  # {user_id: trade_id}
+user_trade_configs: Dict[int, Dict[str, Any]] = {}  # {user_id: {trade_id: TradeConfig}}
+user_selected_trade: Dict[int, Optional[str]] = {}  # {user_id: trade_id}
 
 # Whitelist configuration
 BOT_OWNER_ID = os.environ.get("BOT_OWNER_ID", Environment.DEFAULT_TEST_USER_ID)  # Bot owner's telegram user ID
@@ -1432,7 +1432,7 @@ def is_user_whitelisted(user_id: str) -> bool:
     
     try:
         user_whitelist = UserWhitelist.query.filter_by(telegram_user_id=str(user_id)).first()
-        return user_whitelist and user_whitelist.is_approved()
+        return bool(user_whitelist and user_whitelist.is_approved())
     except Exception as e:
         logging.error(f"Error checking whitelist status for user {user_id}: {e}")
         return False
@@ -1441,7 +1441,7 @@ def is_bot_owner(user_id: str) -> bool:
     """Check if user is the bot owner"""
     return str(user_id) == str(BOT_OWNER_ID)
 
-def register_user_for_whitelist(user_id: str, username: str = None, first_name: str = None, last_name: str = None):
+def register_user_for_whitelist(user_id: str, username: Optional[str] = None, first_name: Optional[str] = None, last_name: Optional[str] = None):
     """Register a new user for whitelist approval"""
     try:
         # Check if user already exists
@@ -1457,13 +1457,12 @@ def register_user_for_whitelist(user_id: str, username: str = None, first_name: 
                 return {"status": "banned", "message": "You are banned from accessing the system."}
         
         # Create new whitelist entry
-        new_user = UserWhitelist(
-            telegram_user_id=str(user_id),
-            telegram_username=username,
-            first_name=first_name,
-            last_name=last_name,
-            status="pending"
-        )
+        new_user = UserWhitelist()
+        new_user.telegram_user_id = str(user_id)
+        new_user.telegram_username = username or ""
+        new_user.first_name = first_name or ""
+        new_user.last_name = last_name or ""
+        new_user.status = "pending"
         
         db.session.add(new_user)
         db.session.commit()
@@ -1624,19 +1623,19 @@ def _refresh_credential_cache(chat_id):
 
 
 # Paper trading balance tracking
-user_paper_balances: dict[int, float] = {}  # {user_id: balance_amount}
+user_paper_balances: Dict[int, float] = {}  # {user_id: balance_amount}
 
 # Manual paper trading mode preferences
-user_paper_trading_preferences: dict[int, bool] = {}  # {user_id: True/False}
+user_paper_trading_preferences: Dict[int, bool] = {}  # {user_id: True/False}
 
 # RENDER PERFORMANCE OPTIMIZATION: Credential caching to prevent repeated DB queries
-user_credentials_cache: dict[int, dict[str, any]] = (
+user_credentials_cache: Dict[int, Dict[str, Any]] = (
     {}
 )  # {user_id: {'has_creds': bool, 'timestamp': time, 'exchange': str}}
 credentials_cache_ttl = 300  # 5 minutes cache for credentials
 
 # Cache for database loads to prevent frequent database hits
-user_data_cache: dict[int, dict[str, any]] = (
+user_data_cache: Dict[int, Dict[str, Any]] = (
     {}
 )  # {user_id: {'data': trades_data, 'timestamp': last_load_time, 'version': data_version}}
 cache_ttl = get_cache_ttl("user")  # Cache TTL in seconds for Vercel optimization
@@ -2119,7 +2118,7 @@ def authenticate():
             logging.error(f"Error extracting user data for session: {e}")
         
         # Establish session
-        if establish_user_session(user_id, user_data):
+        if establish_user_session(user_id, user_data or {}):
             logging.info(f"Authentication successful, session established for user {user_id}")
             # For AJAX requests, return JSON success
             if request.method == 'POST':
@@ -3853,10 +3852,11 @@ def admin_klines_debug():
         
     except Exception as e:
         logging.error(f"Error in admin klines debug: {e}")
+        error_time = get_iran_time()
         return jsonify({
             "status": "error",
             "error": str(e),
-            "timestamp": current_time.isoformat()
+            "timestamp": error_time.isoformat()
         }), 500
 
 
@@ -4381,8 +4381,8 @@ def create_auto_trade_from_smc():
         )  # Cap at 25% margin loss for safety
         
         # Store SMC references for debugging/analysis (internal use)
-        trade_config._smc_stop_loss_price = signal.stop_loss
-        trade_config._smc_price_movement = sl_price_movement_percent
+        setattr(trade_config, '_smc_stop_loss_price', signal.stop_loss)
+        setattr(trade_config, '_smc_price_movement', sl_price_movement_percent)
 
         # Set up take profit levels with proper allocation logic
         tp_levels = []
@@ -8810,27 +8810,28 @@ def place_exchange_native_orders(config, user_id):
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    amount=float(position_size),
-                    entry_price=float(config.entry_price),
-                    tp_levels=tp_orders,
-                    stop_loss_price=sl_price,
+                    total_quantity=float(position_size),
+                    take_profits=tp_orders,
+                    stop_loss_price=sl_price if sl_price else None,
                 )
             elif "lbank" in client_type:
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    total_quantity=str(position_size),
-                    take_profits=tp_orders,
-                    stop_loss_price=sl_price,
+                    amount=float(position_size),
+                    entry_price=float(config.entry_price),
+                    tp_levels=tp_orders,
+                    stop_loss_price=str(sl_price) if sl_price else None,
                 )
             else:
                 # ToobitClient
                 orders_placed = client.place_multiple_tp_sl_orders(
                     symbol=config.symbol,
                     side=config.side,
-                    total_quantity=str(position_size),
-                    take_profits=tp_orders,
-                    stop_loss_price=sl_price,
+                    amount=float(position_size),
+                    entry_price=float(config.entry_price),
+                    tp_levels=tp_orders,
+                    stop_loss_price=str(sl_price) if sl_price else None,
                 )
 
         logging.info(
@@ -9146,7 +9147,7 @@ def admin_login():
         username = request.form.get("username")
         password = request.form.get("password")
         
-        if verify_admin_credentials(username, password):
+        if username and password and verify_admin_credentials(username, password):
             establish_admin_session()
             logging.info(f"Admin login successful for user: {username}")
             return redirect(url_for("admin_dashboard"))
@@ -9666,7 +9667,7 @@ def admin_database_health():
             """))
             orphaned_sessions = result.scalar()
             
-            if orphaned_sessions > 0:
+            if orphaned_sessions and orphaned_sessions > 0:
                 table_issues.append(f"{orphaned_sessions} orphaned trading sessions")
                 
         except Exception:
@@ -9737,7 +9738,10 @@ def admin_database_migrate():
             
         except Exception as e:
             db.session.rollback()
-            migration_results.append(f"Migration failed: {str(e)}")
+            if 'migration_results' in locals():
+                migration_results.append(f"Migration failed: {str(e)}")
+            else:
+                migration_results = [f"Migration failed: {str(e)}"]
             raise e
             
     except Exception as e:
@@ -9745,7 +9749,7 @@ def admin_database_migrate():
         db.session.rollback()
         return jsonify({
             "error": str(e),
-            "results": migration_results,
+            "results": migration_results if 'migration_results' in locals() else [],
             "suggestion": "Check logs for detailed error information"
         }), 500
 
