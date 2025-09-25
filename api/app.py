@@ -8107,178 +8107,32 @@ def get_current_trade_config(chat_id):
 # API management is now handled through the web interface
 
 
-def get_positions_menu(user_id):
-    """Get positions management menu"""
-    user_trades = user_trade_configs.get(user_id, {})
-
-    keyboard = [
-        [{"text": "📋 View All Positions", "callback_data": "positions_list"}],
-        [{"text": "➕ Create New Position", "callback_data": "positions_new"}],
-    ]
-
-    if user_trades:
-        keyboard.extend(
-            [
-                [{"text": "🎯 Select Position", "callback_data": "positions_select"}],
-                [
-                    {
-                        "text": "🚀 Start Selected Position",
-                        "callback_data": "positions_start",
-                    }
-                ],
-                [
-                    {
-                        "text": "⏹️ Stop All Positions",
-                        "callback_data": "positions_stop_all",
-                    }
-                ],
-            ]
-        )
-
-    keyboard.extend(
-        [
-            [{"text": "📊 Positions Status", "callback_data": "positions_status"}],
-            [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}],
-        ]
-    )
-
-    return {"inline_keyboard": keyboard}
+# get_positions_menu() function removed - part of bot menu system
+# Position management is now handled through the web interface
 
 
-def get_trading_menu(user_id=None):
-    """Get trading menu keyboard"""
-    config = None
-    if user_id and user_id in user_selected_trade:
-        trade_id = user_selected_trade[user_id]
-        config = user_trade_configs.get(user_id, {}).get(trade_id)
-
-    keyboard = [
-        [{"text": "💱 Select Trading Pair", "callback_data": "select_pair"}],
-        [
-            {"text": "📈 Long Position", "callback_data": "set_side_long"},
-            {"text": "📉 Short Position", "callback_data": "set_side_short"},
-        ],
-        [
-            {"text": "📊 Set Leverage", "callback_data": "set_leverage"},
-            {"text": "💰 Set Amount", "callback_data": "set_amount"},
-        ],
-        [
-            {"text": "🎯 Set Entry Price", "callback_data": "set_entry"},
-            {"text": "🎯 Set Take Profits", "callback_data": "set_takeprofit"},
-        ],
-        [
-            {"text": "🛑 Set Stop Loss", "callback_data": "set_stoploss"},
-            {"text": "⚖️ Break-even Settings", "callback_data": "set_breakeven"},
-        ],
-        [{"text": "📈 Trailing Stop", "callback_data": "set_trailstop"}],
-    ]
-
-    # Add trade execution button if config is complete
-    if config and config.is_complete():
-        keyboard.append(
-            [{"text": "🚀 Execute Trade", "callback_data": "execute_trade"}]
-        )
-
-    keyboard.append([{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}])
-    return {"inline_keyboard": keyboard}
+# get_trading_menu() function removed - part of bot menu system
+# Trading configuration is now handled through the web interface
 
 
-def get_portfolio_menu():
-    """Get portfolio menu keyboard"""
-    return {
-        "inline_keyboard": [
-            [
-                {
-                    "text": "📊 Portfolio & Margin Overview",
-                    "callback_data": "portfolio_overview",
-                }
-            ],
-            [{"text": "📈 Recent Trades", "callback_data": "recent_trades"}],
-            [{"text": "💹 Performance Analytics", "callback_data": "performance"}],
-            [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}],
-        ]
-    }
+# get_portfolio_menu() function removed - part of bot menu system
+# Portfolio management is now handled through the web interface
 
 
-def get_pairs_menu():
-    """Get trading pairs selection menu"""
-    pairs = [
-        "BTC/USDT",
-        "ETH/USDT",
-        "BNB/USDT",
-        "ADA/USDT",
-        "SOL/USDT",
-        "XRP/USDT",
-        "DOT/USDT",
-        "DOGE/USDT",
-    ]
-
-    keyboard = []
-    for i in range(0, len(pairs), 2):
-        row = []
-        for j in range(2):
-            if i + j < len(pairs):
-                pair = pairs[i + j]
-                row.append(
-                    {"text": pair, "callback_data": f"pair_{pair.replace('/', '_')}"}
-                )
-        keyboard.append(row)
-
-    keyboard.append([{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}])
-    return {"inline_keyboard": keyboard}
+# get_pairs_menu() function removed - part of bot menu system
+# Pair selection is now handled through the web interface
 
 
-def get_trade_selection_menu(user_id):
-    """Get trade selection menu for a specific user"""
-    user_trades = user_trade_configs.get(user_id, {})
-    keyboard = []
-
-    for trade_id, config in user_trades.items():
-        status_emoji = {
-            "active": "🟢",
-            "pending": "🔵",
-            "configured": "🟡",
-            "stopped": "🔴",
-        }.get(config.status, "⚪")
-        button_text = f"{status_emoji} {config.get_display_name()}"
-        keyboard.append(
-            [{"text": button_text, "callback_data": f"select_position_{trade_id}"}]
-        )
-
-    keyboard.append(
-        [{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}]
-    )
-    return {"inline_keyboard": keyboard}
+# get_trade_selection_menu() function removed - part of bot menu system
+# Trade selection is now handled through the web interface
 
 
-def get_trade_actions_menu(trade_id):
-    """Get actions menu for a specific trade"""
-    return {
-        "inline_keyboard": [
-            [{"text": "✏️ Edit Trade", "callback_data": f"edit_trade_{trade_id}"}],
-            [{"text": "🚀 Start Trade", "callback_data": f"start_trade_{trade_id}"}],
-            [{"text": "⏹️ Stop Trade", "callback_data": f"stop_trade_{trade_id}"}],
-            [{"text": "🗑️ Delete Trade", "callback_data": f"delete_trade_{trade_id}"}],
-            [{"text": "🏠 Back to List", "callback_data": "positions_list"}],
-        ]
-    }
+# get_trade_actions_menu() function removed - part of bot menu system
+# Trade actions are now handled through the web interface
 
 
-def get_leverage_menu():
-    """Get leverage selection menu"""
-    leverages = ["1x", "2x", "5x", "10x", "20x", "50x", "100x"]
-    keyboard = []
-
-    for i in range(0, len(leverages), 3):
-        row = []
-        for j in range(3):
-            if i + j < len(leverages):
-                lev = leverages[i + j]
-                row.append({"text": lev, "callback_data": f"leverage_{lev[:-1]}"})
-        keyboard.append(row)
-
-    keyboard.append([{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}])
-    return {"inline_keyboard": keyboard}
+# get_leverage_menu() function removed - part of bot menu system
+# Leverage selection is now handled through the web interface
 
 
 # _handle_main_menu_callbacks() function removed - part of bot callback system
@@ -8289,56 +8143,8 @@ def get_leverage_menu():
 # API management is now handled through the web interface
 
 
-def _handle_pair_selection_callbacks(callback_data, chat_id):
-    """Handle trading pair selection callbacks"""
-    if callback_data.startswith("pair_"):
-        pair = callback_data.replace("pair_", "").replace("_", "/")
-        symbol = pair.replace("/", "")
-        try:
-            price = get_live_market_price(symbol)
-        except Exception as e:
-            logging.error(f"Error fetching live price for {symbol}: {e}")
-            return (
-                f"❌ Could not fetch live price for {pair}. Please try again.",
-                get_pairs_menu(),
-            )
-
-        if price:
-            # Set the symbol in the current trade if one is selected
-            if chat_id in user_selected_trade:
-                trade_id = user_selected_trade[chat_id]
-                if (
-                    chat_id in user_trade_configs
-                    and trade_id in user_trade_configs[chat_id]
-                ):
-                    config = user_trade_configs[chat_id][trade_id]
-                    config.symbol = symbol
-
-                    # Directly go to trading menu after selecting pair
-                    response = f"✅ Selected trading pair: {pair}\n💰 Current Price: ${price:.4f}\n\n📊 Configure your trade below:"
-                    return response, get_trading_menu(chat_id)
-            else:
-                # If no trade is selected, show the basic pair info and trading menu
-                response = f"💰 {pair} Current Price: ${price:.4f}\n\n📊 Use the trading menu to configure your trade:"
-                return response, get_trading_menu(chat_id)
-        else:
-            return f"❌ Could not fetch price for {pair}", get_pairs_menu()
-    elif callback_data.startswith("set_symbol_"):
-        symbol = callback_data.replace("set_symbol_", "")
-        if chat_id in user_selected_trade:
-            trade_id = user_selected_trade[chat_id]
-            if (
-                chat_id in user_trade_configs
-                and trade_id in user_trade_configs[chat_id]
-            ):
-                config = user_trade_configs[chat_id][trade_id]
-                config.symbol = symbol
-                return f"✅ Set symbol to {symbol}", get_trading_menu(chat_id)
-        return (
-            "❌ No trade selected. Please create or select a trade first.",
-            get_trading_menu(chat_id),
-        )
-    return None
+# _handle_pair_selection_callbacks() function removed - part of bot callback system
+# Pair selection is now handled through the web interface
 
 
 def _format_account_summary(margin_data):
@@ -8527,7 +8333,7 @@ def _handle_portfolio_overview(chat_id):
         user_trades, active_positions, configured_positions
     )
 
-    return response, get_portfolio_menu()
+    return response  # Portfolio menu removed - now handled by web interface
 
 
 def _handle_portfolio_callbacks(callback_data, chat_id, user):
@@ -8639,7 +8445,7 @@ def _handle_recent_trades_callback(chat_id, user):
     total_positions = len(user_trades)
     response += _format_trading_summary(total_executed, total_positions)
 
-    return response, get_portfolio_menu()
+    return response  # Portfolio menu removed - now handled by web interface
 
 
 def _format_trading_activity_section(user_trades, executed_trades):
@@ -8744,7 +8550,7 @@ def _handle_performance_callback(chat_id, user):
     response += _format_pnl_analysis_section(margin_data)
     response += _format_position_analysis_section(user_trades, margin_data)
 
-    return response, get_portfolio_menu()
+    return response  # Portfolio menu removed - now handled by web interface
 
 
 def _handle_quick_price_check():
@@ -8811,7 +8617,7 @@ def _handle_menu_positions(chat_id):
             )
             if selected_trade:
                 summary += f"Selected: {selected_trade.get_display_name()}\n"
-    return summary, get_positions_menu(chat_id)
+    return summary  # Position menu removed - now handled by web interface
 
 
 def _handle_positions_new(chat_id):
@@ -8828,17 +8634,14 @@ def _handle_positions_new(chat_id):
         user_trade_configs[chat_id][trade_id] = new_trade
         user_selected_trade[chat_id] = trade_id
 
-    return (
-        f"✅ Created new position: {new_trade.get_display_name()}",
-        get_positions_menu(chat_id),
-    )
+    return f"✅ Created new position: {new_trade.get_display_name()}"  # Position menu removed - now handled by web interface
 
 
 def _handle_positions_list(chat_id):
     """Handle positions list display."""
     user_trades = user_trade_configs.get(chat_id, {})
     if not user_trades:
-        return "📋 No positions configured yet.", get_positions_menu(chat_id)
+        return "📋 No positions configured yet."  # Position menu removed - now handled by web interface
 
     response = "📋 Your Position Configurations:\n\n"
     status_emoji_map = {
@@ -8877,31 +8680,23 @@ def _handle_select_position(callback_data, chat_id):
             user_selected_trade[chat_id] = trade_id
         config = user_trade_configs[chat_id][trade_id]
         response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
-        return response, get_trade_actions_menu(trade_id)
-    return "❌ Position not found.", get_positions_menu(chat_id)
+        return response  # Trade actions menu removed - now handled by web interface
+    return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
 def _handle_positions_start(chat_id):
     """Handle starting position."""
     if chat_id not in user_selected_trade:
-        return (
-            "❌ No position selected. Please select a position first.",
-            get_positions_menu(chat_id),
-        )
+        return "❌ No position selected. Please select a position first."  # Position menu removed - now handled by web interface
 
     trade_id = user_selected_trade[chat_id]
     config = user_trade_configs[chat_id][trade_id]
 
     if not config.is_complete():
-        return (
-            "❌ Position configuration incomplete. Please set symbol, side, and amount.",
-            get_positions_menu(chat_id),
-        )
+        return "❌ Position configuration incomplete. Please set symbol, side, and amount."  # Position menu removed - now handled by web interface
 
     config.status = "active"
-    return f"🚀 Started position: {config.get_display_name()}", get_positions_menu(
-        chat_id
-    )
+    return f"🚀 Started position: {config.get_display_name()}"  # Position menu removed - now handled by web interface
 
 
 def _handle_positions_stop_all(chat_id):
@@ -8912,14 +8707,14 @@ def _handle_positions_stop_all(chat_id):
         if config.status == "active":
             config.status = "stopped"
             stopped_count += 1
-    return f"⏹️ Stopped {stopped_count} active positions.", get_positions_menu(chat_id)
+    return f"⏹️ Stopped {stopped_count} active positions."  # Position menu removed - now handled by web interface
 
 
 def _handle_positions_status(chat_id):
     """Handle positions status display."""
     user_trades = user_trade_configs.get(chat_id, {})
     if not user_trades:
-        return "📊 No positions to show status for.", get_positions_menu(chat_id)
+        return "📊 No positions to show status for."  # Position menu removed - now handled by web interface
 
     response = "📊 Positions Status:\n\n"
     for config in user_trades.values():
@@ -8934,135 +8729,30 @@ def _handle_positions_status(chat_id):
             response += f"   {config.symbol} {config.side or 'N/A'}\n"
         response += "\n"
 
-    return response, get_positions_menu(chat_id)
+    return response  # Position menu removed - now handled by web interface
 
 
-def _handle_configuration_callbacks(callback_data, chat_id):
-    """Handle configuration-related callbacks."""
-    if callback_data == "set_breakeven":
-        config = get_current_trade_config(chat_id)
-        header = config.get_trade_header("Break-even Settings") if config else ""
-        return (
-            f"{header}⚖️ Break-even Settings\n\nChoose when to move stop loss to break-even:",
-            get_breakeven_menu(),
-        )
-    elif callback_data.startswith("breakeven_"):
-        breakeven_mode = callback_data.replace("breakeven_", "")
-        return handle_set_breakeven(chat_id, breakeven_mode)
-    elif callback_data == "set_trailstop":
-        config = get_current_trade_config(chat_id)
-        header = config.get_trade_header("Trailing Stop") if config else ""
-        return (
-            f"{header}📈 Trailing Stop Settings\n\nConfigure your trailing stop:",
-            get_trailing_stop_menu(),
-        )
-    elif callback_data == "trail_set_percent":
-        return handle_trail_percent_request(chat_id)
-    elif callback_data == "trail_set_activation":
-        return handle_trail_activation_request(chat_id)
-    elif callback_data == "trail_disable":
-        return handle_trailing_stop_disable(chat_id)
-    return None
+# _handle_configuration_callbacks() function removed - part of bot callback system
+# Configuration settings are now handled through the web interface
 
 
-def _handle_trading_config_callbacks(callback_data, chat_id, user):
-    """Handle trading configuration callbacks."""
-    if callback_data == "set_side_long":
-        return handle_set_side(chat_id, "long")
-    elif callback_data == "set_side_short":
-        return handle_set_side(chat_id, "short")
-    elif callback_data == "set_leverage":
-        config = get_current_trade_config(chat_id)
-        header = config.get_trade_header("Set Leverage") if config else ""
-        return f"{header}📊 Select leverage for this trade:", get_leverage_menu()
-    elif callback_data.startswith("leverage_"):
-        leverage = int(callback_data.replace("leverage_", ""))
-        return handle_set_leverage_wizard(chat_id, leverage)
-    elif callback_data == "set_amount":
-        config = get_current_trade_config(chat_id)
-        header = config.get_trade_header("Set Amount") if config else ""
-        return (
-            f"{header}💰 Set the trade amount (e.g., 100 USDT)\n\nPlease type the amount you want to trade.",
-            get_trading_menu(chat_id),
-        )
-    elif callback_data == "execute_trade":
-        return handle_execute_trade(chat_id, user)
-    return None
+# _handle_trading_config_callbacks() function removed - part of bot callback system
+# Trading configuration is now handled through the web interface
 
 
-def _handle_trade_action_callbacks(callback_data, chat_id):
-    """Handle trade action callbacks."""
-    if callback_data.startswith("start_trade_"):
-        trade_id = callback_data.replace("start_trade_", "")
-        return handle_start_trade(chat_id, trade_id)
-    elif callback_data.startswith("stop_trade_"):
-        trade_id = callback_data.replace("stop_trade_", "")
-        return handle_stop_trade(chat_id, trade_id)
-    elif callback_data.startswith("delete_trade_"):
-        trade_id = callback_data.replace("delete_trade_", "")
-        return handle_delete_trade(chat_id, trade_id)
-    elif callback_data.startswith("edit_trade_"):
-        trade_id = callback_data.replace("edit_trade_", "")
-        return handle_edit_trade(chat_id, trade_id)
-    return None
+# _handle_trade_action_callbacks() function removed - part of bot callback system
+# Trade actions are now handled through the web interface
 
 
-def _handle_take_profit_callbacks(callback_data, chat_id):
-    """Handle take profit configuration callbacks."""
-    if callback_data == "set_takeprofit":
-        if chat_id in user_selected_trade:
-            trade_id = user_selected_trade[chat_id]
-            if (
-                chat_id in user_trade_configs
-                and trade_id in user_trade_configs[chat_id]
-            ):
-                config = user_trade_configs[chat_id][trade_id]
-                config.take_profits = []  # Reset take profits
-                config.tp_config_step = "percentages"  # Start with percentages
-                header = config.get_trade_header("Set Take Profits")
-                return (
-                    f"{header}🎯 Take Profit Setup\n\nFirst, set your take profit percentages.\nEnter percentage for TP1 (e.g., 10 for 10% profit):",
-                    get_tp_percentage_input_menu(),
-                )
-        return "❌ No trade selected.", get_trading_menu(chat_id)
-    elif callback_data.startswith("tp_add_percent_"):
-        return _handle_tp_add_percent(callback_data, chat_id)
-    elif callback_data == "tp_continue_allocations":
-        return _handle_tp_continue_allocations(chat_id)
-    elif callback_data.startswith("tp_alloc_"):
-        return _handle_tp_allocation(callback_data, chat_id)
-    elif callback_data == "tp_reset_all":
-        return _handle_tp_reset_all(chat_id)
-    elif callback_data == "tp_reset_last_alloc":
-        return _handle_tp_reset_last_alloc(chat_id)
-    return None
+# _handle_take_profit_callbacks() function removed - part of bot callback system
+# Take profit configuration is now handled through the web interface
 
 
-def _handle_tp_add_percent(callback_data, chat_id):
-    """Handle adding take profit percentage."""
-    percent = float(callback_data.replace("tp_add_percent_", ""))
-    if chat_id in user_selected_trade:
-        trade_id = user_selected_trade[chat_id]
-        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-            config = user_trade_configs[chat_id][trade_id]
-            config.take_profits.append({"percentage": percent, "allocation": None})
-            tp_num = len(config.take_profits)
-
-            if tp_num < 3:
-                return (
-                    f"✅ Added TP{tp_num}: {percent}%\n\n🎯 Add another TP or continue to allocations:",
-                    get_tp_percentage_input_menu(),
-                )
-            else:
-                config.tp_config_step = "allocations"
-                return (
-                    f"✅ Added TP{tp_num}: {percent}%\n\n📊 Now set allocation for TP1:",
-                    get_tp_allocation_menu(chat_id),
-                )
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+# _handle_tp_add_percent() function removed - part of bot callback system
+# Take profit percentage handling is now done through the web interface
 
 
-def _handle_tp_continue_allocations(chat_id):
+# _handle_tp_continue_allocations() function removed - part of bot callback system
     """Handle continuing to TP allocations."""
     if chat_id in user_selected_trade:
         trade_id = user_selected_trade[chat_id]
@@ -9072,17 +8762,17 @@ def _handle_tp_continue_allocations(chat_id):
                 config.tp_config_step = "allocations"
                 return (
                     f"📊 Set allocation for TP1 ({config.take_profits[0]['percentage']}%):",
-                    get_tp_allocation_menu(chat_id),
+                    None,  # TP allocation menu removed
                 )
             else:
                 return (
                     "❌ No take profits set. Add TP percentages first.",
-                    get_tp_percentage_input_menu(),
+                    None,  # TP percentage menu removed
                 )
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-def _handle_tp_allocation(callback_data, chat_id):
+# _handle_tp_allocation() function removed - part of bot callback system
     """Handle take profit allocation setting."""
     alloc = float(callback_data.replace("tp_alloc_", ""))
     if chat_id in user_selected_trade:
@@ -9105,7 +8795,7 @@ def _handle_tp_allocation(callback_data, chat_id):
                         next_num = config.take_profits.index(next_tp) + 1
                         return (
                             f"✅ Set TP{tp_num} allocation: {alloc}%\n\n📊 Set allocation for TP{next_num} ({next_tp['percentage']}%):",
-                            get_tp_allocation_menu(chat_id),
+                            None,  # TP allocation menu removed
                         )
                     else:
                         # All allocations set
@@ -9115,18 +8805,18 @@ def _handle_tp_allocation(callback_data, chat_id):
                         if total_allocation > 100:
                             return (
                                 f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset and try again:",
-                                get_tp_allocation_reset_menu(),
+                                None,  # TP allocation reset menu removed
                             )
                         else:
                             return (
                                 f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:",
-                                get_stoploss_menu(),
+                                None,  # Stoploss menu removed
                             )
                     break
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-def _handle_tp_reset_all(chat_id):
+# _handle_tp_reset_all() function removed - part of bot callback system
     """Handle resetting all take profits."""
     if chat_id in user_selected_trade:
         trade_id = user_selected_trade[chat_id]
@@ -9138,10 +8828,10 @@ def _handle_tp_reset_all(chat_id):
                 "🔄 Reset all take profits\n\n🎯 Set take profit percentage for TP1:",
                 get_tp_percentage_input_menu(),
             )
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-def _handle_tp_reset_last_alloc(chat_id):
+# _handle_tp_reset_last_alloc() function removed - part of bot callback system
     """Handle resetting last TP allocation."""
     if chat_id in user_selected_trade:
         trade_id = user_selected_trade[chat_id]
@@ -9154,13 +8844,13 @@ def _handle_tp_reset_last_alloc(chat_id):
                     tp_num = config.take_profits.index(tp) + 1
                     return (
                         f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:",
-                        get_tp_allocation_menu(chat_id),
+                        None,  # TP allocation menu removed
                     )
             return "❌ No allocations to reset.", get_tp_allocation_menu(chat_id)
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-def _handle_misc_callbacks(callback_data, chat_id):
+# _handle_misc_callbacks() function removed - part of bot callback system
     """Handle miscellaneous callbacks."""
     if callback_data == "set_stoploss":
         config = get_current_trade_config(chat_id)
@@ -9199,7 +8889,7 @@ def _handle_misc_callbacks(callback_data, chat_id):
 # All callback handling is now done through the web interface
 
 
-def get_breakeven_menu():
+# get_breakeven_menu() function removed - part of bot menu system
     """Get break-even configuration menu"""
     return {
         "inline_keyboard": [
@@ -9212,7 +8902,7 @@ def get_breakeven_menu():
     }
 
 
-def get_trailing_stop_menu():
+# get_trailing_stop_menu() function removed - part of bot menu system
     """Get trailing stop configuration menu - Clean implementation"""
     return {
         "inline_keyboard": [
@@ -9264,7 +8954,7 @@ def handle_set_leverage(chat_id, leverage):
 def handle_execute_trade(chat_id, user):
     """Handle trade execution"""
     if chat_id not in user_selected_trade:
-        return "❌ No trade selected.", get_trading_menu(chat_id)
+        return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
     trade_id = user_selected_trade[chat_id]
     config = user_trade_configs[chat_id][trade_id]
@@ -9327,7 +9017,7 @@ def handle_start_trade(chat_id, trade_id):
             return "❌ Position configuration incomplete.", get_trade_actions_menu(
                 trade_id
             )
-    return "❌ Position not found.", get_positions_menu(chat_id)
+    return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
 def handle_stop_trade(chat_id, trade_id):
@@ -9339,7 +9029,7 @@ def handle_stop_trade(chat_id, trade_id):
             f"⏹️ Stopped position: {config.get_display_name()}",
             get_trade_actions_menu(trade_id),
         )
-    return "❌ Position not found.", get_positions_menu(chat_id)
+    return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
 def handle_delete_trade(chat_id, trade_id):
@@ -9352,7 +9042,7 @@ def handle_delete_trade(chat_id, trade_id):
             if user_selected_trade.get(chat_id) == trade_id:
                 del user_selected_trade[chat_id]
         return f"🗑️ Deleted position: {trade_name}", get_positions_menu(chat_id)
-    return "❌ Position not found.", get_positions_menu(chat_id)
+    return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
 def handle_edit_trade(chat_id, trade_id):
@@ -9365,7 +9055,7 @@ def handle_edit_trade(chat_id, trade_id):
             f"✏️ Editing: {config.get_display_name()}\n\n{config.get_config_summary()}"
         )
         return response, get_trading_menu(chat_id)
-    return "❌ Position not found.", get_positions_menu(chat_id)
+    return "❌ Position not found."  # Position menu removed - now handled by web interface
 
 
 def handle_set_stoploss(chat_id, sl_percent):
@@ -9412,7 +9102,7 @@ def get_tp_percentage_input_menu():
     }
 
 
-def get_tp_allocation_menu(chat_id):
+# get_tp_allocation_menu() function removed - part of bot menu system
     """Get take profit allocation menu"""
     if chat_id not in user_selected_trade:
         return get_trading_menu(chat_id)
@@ -9454,7 +9144,7 @@ def get_tp_allocation_reset_menu():
     }
 
 
-def get_stoploss_menu():
+# get_stoploss_menu() function removed - part of bot menu system
     """Get stop loss configuration menu"""
     return {
         "inline_keyboard": [
@@ -9468,7 +9158,7 @@ def get_stoploss_menu():
     }
 
 
-def get_entry_price_menu():
+# get_entry_price_menu() function removed - part of bot menu system
     """Get entry price configuration menu"""
     return {
         "inline_keyboard": [
@@ -9492,7 +9182,7 @@ def handle_set_entry_price(chat_id, entry_type):
                 # Continue wizard to take profits
                 return (
                     f"✅ Set entry to Market Price\n\n🎯 Now let's set your take profits:",
-                    get_tp_percentage_input_menu(),
+                    None,  # TP percentage menu removed
                 )
             elif entry_type == "limit":
                 config.entry_type = "limit"
@@ -9532,7 +9222,7 @@ def handle_tp_wizard(chat_id, tp_level):
                 f"🎯 Set Take Profit {tp_level}\n\nEnter percentage (e.g., 10 for 10% profit):",
                 get_tp_percentage_menu(tp_level),
             )
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
 def handle_set_breakeven(chat_id, mode):
@@ -9622,7 +9312,7 @@ def handle_trail_activation_request(chat_id):
     return "❌ No trade selected", None
 
 
-def get_amount_wizard_menu():
+# get_amount_wizard_menu() function removed - part of bot menu system
     """Get amount setting wizard menu"""
     return {
         "inline_keyboard": [
@@ -9637,7 +9327,7 @@ def get_amount_wizard_menu():
     }
 
 
-def get_tp_percentage_menu(tp_level):
+# get_tp_percentage_menu() function removed - part of bot menu system
     """Get take profit percentage menu"""
     return {
         "inline_keyboard": [
@@ -9699,10 +9389,10 @@ def handle_set_tp_percent(chat_id, tp_level, tp_percent):
                 config.tp3_percent = tp_percent
                 return (
                     f"✅ Set TP3 to {tp_percent}%\n\n🛑 Now set your stop loss:",
-                    get_stoploss_menu(),
+                    None,  # Stoploss menu removed
                 )
 
-    return "❌ No trade selected.", get_trading_menu(chat_id)
+    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
 # Utility functions for mini-app
