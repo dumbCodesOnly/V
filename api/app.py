@@ -433,7 +433,7 @@ def get_authenticated_user() -> Optional[str]:
             if not init_data:
                 init_data = request.headers.get('X-Telegram-Init-Data')
             
-            if init_data:
+            if init_data and BOT_TOKEN:
                 if request.args.get('tg_init_data'):
                     init_data = urllib.parse.unquote(init_data)
                 
@@ -2111,7 +2111,7 @@ def authenticate():
             elif request.method == 'POST':
                 init_data = request.form.get('tg_init_data')
             
-            if init_data:
+            if init_data and BOT_TOKEN:
                 
                 verified_data = verify_telegram_webapp_data(init_data, BOT_TOKEN)
                 user_data = verified_data.get('user', {}) if verified_data else {}
@@ -2195,7 +2195,12 @@ def mini_app():
         user_id = get_authenticated_user_id()
         if user_id:
             # Authentication successful but no session - redirect to auth route
-            return redirect(url_for('authenticate', **request.args))
+            auth_params = {}
+            if request.args.get('tg_init_data'):
+                auth_params['tg_init_data'] = request.args.get('tg_init_data')
+            if request.args.get('initData'):
+                auth_params['initData'] = request.args.get('initData')
+            return redirect(url_for('authenticate', **auth_params))
     
     # If still no authentication, show access wall
     if not user_id:
@@ -2248,7 +2253,13 @@ def mini_app():
 def mini_app_alias():
     """Telegram Mini App interface - Alias route that redirects to main route"""
     # Simply redirect to the main route to avoid code duplication
-    return redirect(url_for('mini_app', **request.args))
+    # Only pass specific authentication parameters
+    auth_params = {}
+    if request.args.get('tg_init_data'):
+        auth_params['tg_init_data'] = request.args.get('tg_init_data')
+    if request.args.get('initData'):
+        auth_params['initData'] = request.args.get('initData')
+    return redirect(url_for('mini_app', **auth_params))
 
 
 @app.route("/health")
