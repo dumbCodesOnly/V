@@ -7182,12 +7182,6 @@ def whitelist_status():
 # through the web interface.
 
 
-# toggle_api_mode() function removed - part of bot command system
-# API mode is now managed through the web interface
-
-
-# delete_user_credentials() function removed - part of bot command system
-# Credential deletion is now handled through the web interface
 
 
 # Enhanced caching system replaces basic price cache
@@ -8077,17 +8071,6 @@ def get_margin_summary(chat_id):
     }
 
 
-# send_telegram_message() function removed - part of bot messaging system
-# The app now uses only the Telegram WebApp interface
-
-
-# edit_telegram_message() function removed - part of bot messaging system
-
-
-# answer_callback_query() function removed - part of bot messaging system
-
-
-# The app now uses only Telegram WebApp interface
 
 
 def get_current_trade_config(chat_id):
@@ -8099,52 +8082,6 @@ def get_current_trade_config(chat_id):
     return None
 
 
-# get_main_menu() function removed - part of bot menu system
-# Navigation is now handled through the web interface
-
-
-# get_api_management_menu() function removed - part of bot menu system
-# API management is now handled through the web interface
-
-
-# get_positions_menu() function removed - part of bot menu system
-# Position management is now handled through the web interface
-
-
-# get_trading_menu() function removed - part of bot menu system
-# Trading configuration is now handled through the web interface
-
-
-# get_portfolio_menu() function removed - part of bot menu system
-# Portfolio management is now handled through the web interface
-
-
-# get_pairs_menu() function removed - part of bot menu system
-# Pair selection is now handled through the web interface
-
-
-# get_trade_selection_menu() function removed - part of bot menu system
-# Trade selection is now handled through the web interface
-
-
-# get_trade_actions_menu() function removed - part of bot menu system
-# Trade actions are now handled through the web interface
-
-
-# get_leverage_menu() function removed - part of bot menu system
-# Leverage selection is now handled through the web interface
-
-
-# _handle_main_menu_callbacks() function removed - part of bot callback system
-# Navigation is now handled through the web interface
-
-
-# _handle_api_callbacks() function removed - part of bot callback system
-# API management is now handled through the web interface
-
-
-# _handle_pair_selection_callbacks() function removed - part of bot callback system
-# Pair selection is now handled through the web interface
 
 
 def _format_account_summary(margin_data):
@@ -8543,83 +8480,8 @@ def _handle_performance_callback(chat_id, user):
     return response  # Portfolio menu removed - now handled by web interface
 
 
-# _handle_quick_price_check() function removed - part of bot callback system
-# Quick price check is now handled through the web interface
 
 
-# _handle_position_management_callbacks() function removed - part of bot callback system
-# Position management callbacks are now handled through the web interface
-
-
-# _handle_menu_positions() function removed - part of bot menu system
-# Position menu display is now handled through the web interface
-
-
-# _handle_positions_new() function removed - part of bot handler system
-# Position creation is now handled through the web interface
-
-
-# _handle_positions_list() function removed - part of bot handler system
-# Position list display is now handled through the web interface
-
-
-# _handle_select_position() function removed - part of bot callback system
-# Position selection is now handled through the web interface
-
-
-# _handle_positions_start() function removed - part of bot handler system
-# Position starting is now handled through the web interface
-
-
-# _handle_positions_stop_all() function removed - part of bot handler system
-# Stopping positions is now handled through the web interface
-
-
-# _handle_positions_status() function removed - part of bot handler system (line 8716)
-# Position status display is now handled through the web interface
-
-
-# _handle_configuration_callbacks() function removed - part of bot callback system
-# Configuration settings are now handled through the web interface
-
-
-# _handle_trading_config_callbacks() function removed - part of bot callback system
-# Trading configuration is now handled through the web interface
-
-
-# _handle_trade_action_callbacks() function removed - part of bot callback system
-# Trade actions are now handled through the web interface
-
-
-# _handle_take_profit_callbacks() function removed - part of bot callback system
-# Take profit configuration is now handled through the web interface
-
-
-# _handle_tp_add_percent() function removed - part of bot callback system
-# Take profit percentage handling is now done through the web interface
-
-
-# _handle_tp_continue_allocations() function removed - part of bot callback system
-    """Handle continuing to TP allocations."""
-    if chat_id in user_selected_trade:
-        trade_id = user_selected_trade[chat_id]
-        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-            config = user_trade_configs[chat_id][trade_id]
-            if config.take_profits:
-                config.tp_config_step = "allocations"
-                return (
-                    f"📊 Set allocation for TP1 ({config.take_profits[0]['percentage']}%):",
-                    None,  # TP allocation menu removed
-                )
-            else:
-                return (
-                    "❌ No take profits set. Add TP percentages first.",
-                    None,  # TP percentage menu removed
-                )
-    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
-
-
-# _handle_tp_allocation() function removed - part of bot callback system
     """Handle take profit allocation setting."""
     alloc = float(callback_data.replace("tp_alloc_", ""))
     if chat_id in user_selected_trade:
@@ -8663,75 +8525,8 @@ def _handle_performance_callback(chat_id, user):
     return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-# _handle_tp_reset_all() function removed - part of bot callback system
-    """Handle resetting all take profits."""
-    if chat_id in user_selected_trade:
-        trade_id = user_selected_trade[chat_id]
-        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-            config = user_trade_configs[chat_id][trade_id]
-            config.take_profits = []
-            config.tp_config_step = "percentages"
-            return "🔄 Reset all take profits - now handled by web interface"
-    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
-# _handle_tp_reset_last_alloc() function removed - part of bot callback system
-    """Handle resetting last TP allocation."""
-    if chat_id in user_selected_trade:
-        trade_id = user_selected_trade[chat_id]
-        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-            config = user_trade_configs[chat_id][trade_id]
-            # Find the last TP with an allocation and reset it
-            for tp in reversed(config.take_profits):
-                if tp["allocation"] is not None:
-                    tp["allocation"] = None
-                    tp_num = config.take_profits.index(tp) + 1
-                    return (
-                        f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:",
-                        None,  # TP allocation menu removed
-                    )
-            return "❌ No allocations to reset."
-    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
-
-
-# _handle_misc_callbacks() function removed - part of bot callback system
-    """Handle miscellaneous callbacks."""
-    if callback_data == "set_stoploss":
-        config = get_current_trade_config(chat_id)
-        header = config.get_trade_header("Set Stop Loss") if config else ""
-        return (
-            f"{header}🛑 Stop Loss Settings\n\nSet your stop loss percentage (e.g., 5 for 5%):",
-            get_stoploss_menu(),
-        )
-    elif callback_data.startswith("sl_"):
-        sl_data = callback_data.replace("sl_", "")
-        if sl_data == "custom":
-            return "🛑 Enter custom stop loss percentage (e.g., 7.5):"
-        else:
-            return handle_set_stoploss(chat_id, float(sl_data))
-    elif callback_data == "set_entry":
-        return "🎯 Entry Price Options:"
-    elif callback_data == "entry_market":
-        return handle_set_entry_price(chat_id, "market")
-    elif callback_data == "entry_limit":
-        return handle_set_entry_price(chat_id, "limit")
-    elif callback_data.startswith("amount_"):
-        amount_data = callback_data.replace("amount_", "")
-        if amount_data == "custom":
-            return "💰 Enter custom amount in USDT (e.g., 150):"
-        else:
-            return handle_set_amount_wizard(chat_id, float(amount_data))
-    return None
-
-
-# handle_callback_query() function removed - part of bot callback system
-# All callback handling is now done through the web interface
-
-
-# get_breakeven_menu() function removed - part of bot menu system
-
-
-# get_trailing_stop_menu() function removed - part of bot menu system
 
 
 def handle_set_side(chat_id, side):
@@ -9047,34 +8842,6 @@ def handle_trail_activation_request(chat_id):
     return "❌ No trade selected", None
 
 
-# None  # Menu system removed function removed - part of bot menu system
-    """Get amount setting wizard menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "💰 $10", "callback_data": "amount_10"}],
-            [{"text": "💰 $25", "callback_data": "amount_25"}],
-            [{"text": "💰 $50", "callback_data": "amount_50"}],
-            [{"text": "💰 $100", "callback_data": "amount_100"}],
-            [{"text": "💰 $250", "callback_data": "amount_250"}],
-            [{"text": "💰 Custom Amount", "callback_data": "amount_custom"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
-
-
-# get_tp_percentage_menu() function removed - part of bot menu system
-    """Get take profit percentage menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "🎯 2%", "callback_data": f"tp_set_{tp_level}_2"}],
-            [{"text": "🎯 5%", "callback_data": f"tp_set_{tp_level}_5"}],
-            [{"text": "🎯 10%", "callback_data": f"tp_set_{tp_level}_10"}],
-            [{"text": "🎯 15%", "callback_data": f"tp_set_{tp_level}_15"}],
-            [{"text": "🎯 25%", "callback_data": f"tp_set_{tp_level}_25"}],
-            [{"text": "🎯 Custom", "callback_data": f"tp_custom_{tp_level}"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
 
 
 def handle_set_amount_wizard(chat_id, amount):
