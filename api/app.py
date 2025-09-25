@@ -8482,46 +8482,6 @@ def _handle_performance_callback(chat_id, user):
 
 
 
-    """Handle take profit allocation setting."""
-    alloc = float(callback_data.replace("tp_alloc_", ""))
-    if chat_id in user_selected_trade:
-        trade_id = user_selected_trade[chat_id]
-        if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-            config = user_trade_configs[chat_id][trade_id]
-
-            # Find next TP that needs allocation
-            for tp in config.take_profits:
-                if tp["allocation"] is None:
-                    tp["allocation"] = alloc
-                    tp_num = config.take_profits.index(tp) + 1
-
-                    # Check if more allocations needed
-                    remaining = [
-                        tp for tp in config.take_profits if tp["allocation"] is None
-                    ]
-                    if remaining:
-                        next_tp = remaining[0]
-                        next_num = config.take_profits.index(next_tp) + 1
-                        return (
-                            f"✅ Set TP{tp_num} allocation: {alloc}%\n\n📊 Set allocation for TP{next_num} ({next_tp['percentage']}%):",
-                            None,  # TP allocation menu removed
-                        )
-                    else:
-                        # All allocations set
-                        total_allocation = sum(
-                            tp["allocation"] for tp in config.take_profits
-                        )
-                        if total_allocation > 100:
-                            return (
-                                f"❌ Total allocation ({total_allocation}%) exceeds 100%\n\nPlease reset and try again:",
-                                None,  # TP allocation reset menu removed
-                            )
-                        else:
-                            return (
-                                f"✅ Take profits configured! Total allocation: {total_allocation}%\n\n🛑 Now set your stop loss:",
-                                None,  # Stoploss menu removed
-                            )
-                    break
     return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
@@ -8684,19 +8644,6 @@ def handle_set_stoploss(chat_id, sl_percent):
     )
 
 
-# get_tp_percentage_input_menu() function removed - part of dead bot menu system
-
-
-# get_tp_allocation_menu() function removed - part of bot menu system
-
-
-# get_tp_allocation_reset_menu() function removed - part of dead bot menu system
-
-
-# get_stoploss_menu() function removed - part of bot menu system
-
-
-# get_entry_price_menu() function removed - part of bot menu system
 
 
 def handle_set_entry_price(chat_id, entry_type):
