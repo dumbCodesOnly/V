@@ -40,3 +40,12 @@ flask
 flask-sqlalchemy
 gunicorn
 psycopg2-binary
+aiohttp
+cryptography
+flask
+flask-sqlalchemy
+gunicorn
+psycopg2-binary
+requests
+sqlalchemy
+werkzeug
