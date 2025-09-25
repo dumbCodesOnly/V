@@ -422,7 +422,7 @@ class CacheConfig:
     PREFERENCES_TTL = 3600  # Increased to 1 hour (was 30 minutes)
 
     @classmethod
-    def ttl_seconds(cls, kind: str, timeframe: str = None, confidence: str = None, volatility: float = None) -> int:
+    def ttl_seconds(cls, kind: str, timeframe: Optional[str] = None, confidence: Optional[str] = None, volatility: Optional[float] = None) -> int:
         """Centralized TTL calculation for all cache types"""
         if kind == "price":
             if volatility and volatility > cls.HIGH_VOLATILITY_THRESHOLD:
