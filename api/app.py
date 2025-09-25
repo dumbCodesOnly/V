@@ -8336,17 +8336,7 @@ def _handle_portfolio_overview(chat_id):
     return response  # Portfolio menu removed - now handled by web interface
 
 
-def _handle_portfolio_callbacks(callback_data, chat_id, user):
-    """Handle portfolio-related callbacks."""
-    if callback_data == "portfolio_overview":
-        return _handle_portfolio_overview(chat_id)
-    elif callback_data == "recent_trades":
-        return _handle_recent_trades_callback(chat_id, user)
-    elif callback_data == "performance":
-        return _handle_performance_callback(chat_id, user)
-    elif callback_data == "quick_price":
-        return "Quick price check moved to web interface"  # Function removed - handled by web UI
-    return None
+# _handle_portfolio_callbacks() function removed - part of dead bot callback system
 
 
 def _format_executed_trades_section(executed_trades):
@@ -8681,10 +8671,7 @@ def _handle_performance_callback(chat_id, user):
             config = user_trade_configs[chat_id][trade_id]
             config.take_profits = []
             config.tp_config_step = "percentages"
-            return (
-                "🔄 Reset all take profits\n\n🎯 Set take profit percentage for TP1:",
-                get_tp_percentage_input_menu(),
-            )
+            return "🔄 Reset all take profits - now handled by web interface"
     return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
@@ -8703,7 +8690,7 @@ def _handle_performance_callback(chat_id, user):
                         f"🔄 Reset TP{tp_num} allocation\n\n📊 Set allocation for TP{tp_num}:",
                         None,  # TP allocation menu removed
                     )
-            return "❌ No allocations to reset.", get_tp_allocation_menu(chat_id)
+            return "❌ No allocations to reset."
     return "❌ No trade selected."  # Trading menu removed - now handled by web interface
 
 
@@ -8742,33 +8729,9 @@ def _handle_performance_callback(chat_id, user):
 
 
 # get_breakeven_menu() function removed - part of bot menu system
-    """Get break-even configuration menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "After TP1", "callback_data": "breakeven_tp1"}],
-            [{"text": "After TP2", "callback_data": "breakeven_tp2"}],
-            [{"text": "After TP3", "callback_data": "breakeven_tp3"}],
-            [{"text": "Disable", "callback_data": "breakeven_off"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
 
 
 # get_trailing_stop_menu() function removed - part of bot menu system
-    """Get trailing stop configuration menu - Clean implementation"""
-    return {
-        "inline_keyboard": [
-            [{"text": "📉 Set Trail Percentage", "callback_data": "trail_set_percent"}],
-            [
-                {
-                    "text": "🎯 Set Activation Price",
-                    "callback_data": "trail_set_activation",
-                }
-            ],
-            [{"text": "❌ Disable Trailing Stop", "callback_data": "trail_disable"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
 
 
 def handle_set_side(chat_id, side):
@@ -8926,91 +8889,19 @@ def handle_set_stoploss(chat_id, sl_percent):
     )
 
 
-def get_tp_percentage_input_menu():
-    """Get take profit percentage input menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "🎯 2%", "callback_data": "tp_add_percent_2"}],
-            [{"text": "🎯 5%", "callback_data": "tp_add_percent_5"}],
-            [{"text": "🎯 10%", "callback_data": "tp_add_percent_10"}],
-            [{"text": "🎯 15%", "callback_data": "tp_add_percent_15"}],
-            [{"text": "🎯 25%", "callback_data": "tp_add_percent_25"}],
-            [
-                {
-                    "text": "📊 Continue to Allocations",
-                    "callback_data": "tp_continue_allocations",
-                }
-            ],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
+# get_tp_percentage_input_menu() function removed - part of dead bot menu system
 
 
 # get_tp_allocation_menu() function removed - part of bot menu system
-    """Get take profit allocation menu"""
-    if chat_id not in user_selected_trade:
-        return None  # Menu system removed
-
-    trade_id = user_selected_trade[chat_id]
-    if chat_id not in user_trade_configs or trade_id not in user_trade_configs[chat_id]:
-        return None  # Menu system removed
-
-    keyboard = [
-        [{"text": "📊 25%", "callback_data": "tp_alloc_25"}],
-        [{"text": "📊 30%", "callback_data": "tp_alloc_30"}],
-        [{"text": "📊 40%", "callback_data": "tp_alloc_40"}],
-        [{"text": "📊 50%", "callback_data": "tp_alloc_50"}],
-        [{"text": "🔄 Reset Allocations", "callback_data": "tp_reset_alloc"}],
-        [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-    ]
-
-    return {"inline_keyboard": keyboard}
 
 
-def get_tp_allocation_reset_menu():
-    """Get take profit allocation reset menu"""
-    return {
-        "inline_keyboard": [
-            [
-                {
-                    "text": "🔄 Reset All Allocations",
-                    "callback_data": "tp_reset_all_alloc",
-                }
-            ],
-            [
-                {
-                    "text": "🔄 Reset Last Allocation",
-                    "callback_data": "tp_reset_last_alloc",
-                }
-            ],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
+# get_tp_allocation_reset_menu() function removed - part of dead bot menu system
 
 
 # get_stoploss_menu() function removed - part of bot menu system
-    """Get stop loss configuration menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "🛑 2%", "callback_data": "sl_2"}],
-            [{"text": "🛑 3%", "callback_data": "sl_3"}],
-            [{"text": "🛑 5%", "callback_data": "sl_5"}],
-            [{"text": "🛑 10%", "callback_data": "sl_10"}],
-            [{"text": "🛑 Custom", "callback_data": "sl_custom"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
 
 
-# None  # Menu system removed function removed - part of bot menu system
-    """Get entry price configuration menu"""
-    return {
-        "inline_keyboard": [
-            [{"text": "📊 Market Price", "callback_data": "entry_market"}],
-            [{"text": "🎯 Limit Price", "callback_data": "entry_limit"}],
-            [{"text": "🏠 Back to Trading", "callback_data": "menu_trading"}],
-        ]
-    }
+# get_entry_price_menu() function removed - part of bot menu system
 
 
 def handle_set_entry_price(chat_id, entry_type):
