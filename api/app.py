@@ -8553,183 +8553,40 @@ def _handle_performance_callback(chat_id, user):
     return response  # Portfolio menu removed - now handled by web interface
 
 
-def _handle_quick_price_check():
-    """Handle quick price check callback."""
-    response = "💰 Live Price Check:\n\n"
-    symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT"]
-    for symbol in symbols:
-        try:
-            price = get_live_market_price(symbol)
-            response += f"{symbol}: ${price:.4f}\n"
-        except Exception as e:
-            logging.error(f"Error fetching live price for {symbol}: {e}")
-            response += f"{symbol}: ❌ Price unavailable\n"
-
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🔄 Refresh Prices", "callback_data": "quick_price"}],
-            [{"text": "💱 Select Pair for Trading", "callback_data": "select_pair"}],
-            [{"text": "🏠 Back to Main Menu", "callback_data": "main_menu"}],
-        ]
-    }
-    return response, keyboard
+# _handle_quick_price_check() function removed - part of bot callback system
+# Quick price check is now handled through the web interface
 
 
-def _handle_position_management_callbacks(callback_data, chat_id):
-    """Handle position management callbacks."""
-    if callback_data == "menu_positions":
-        return _handle_menu_positions(chat_id)
-    elif callback_data == "positions_new":
-        return _handle_positions_new(chat_id)
-    elif callback_data == "positions_list":
-        return _handle_positions_list(chat_id)
-    elif callback_data == "positions_select":
-        return "🎯 Select a position to configure:", get_trade_selection_menu(chat_id)
-    elif callback_data.startswith("select_position_"):
-        return _handle_select_position(callback_data, chat_id)
-    elif callback_data == "positions_start":
-        return _handle_positions_start(chat_id)
-    elif callback_data == "positions_stop_all":
-        return _handle_positions_stop_all(chat_id)
-    elif callback_data == "positions_status":
-        return _handle_positions_status(chat_id)
-    return None
+# _handle_position_management_callbacks() function removed - part of bot callback system
+# Position management callbacks are now handled through the web interface
 
 
-def _handle_menu_positions(chat_id):
-    """Handle menu positions display."""
-    user_trades = user_trade_configs.get(chat_id, {})
-    summary = f"🔄 Positions Manager\n\n"
-    summary += f"Total Positions: {len(user_trades)}\n"
-    if user_trades:
-        active_count = sum(
-            1 for config in user_trades.values() if config.status == "active"
-        )
-        pending_count = sum(
-            1 for config in user_trades.values() if config.status == "pending"
-        )
-        summary += f"Active: {active_count}\n"
-        if pending_count > 0:
-            summary += f"Pending: {pending_count}\n"
-        if chat_id in user_selected_trade:
-            selected_trade = user_trade_configs[chat_id].get(
-                user_selected_trade[chat_id]
-            )
-            if selected_trade:
-                summary += f"Selected: {selected_trade.get_display_name()}\n"
-    return summary  # Position menu removed - now handled by web interface
+# _handle_menu_positions() function removed - part of bot menu system
+# Position menu display is now handled through the web interface
 
 
-def _handle_positions_new(chat_id):
-    """Handle creating new position."""
-    global trade_counter
-    trade_counter += 1
-    trade_id = f"trade_{trade_counter}"
-
-    if chat_id not in user_trade_configs:
-        user_trade_configs[chat_id] = {}
-
-    new_trade = TradeConfig(trade_id, f"Position #{trade_counter}")
-    with trade_configs_lock:
-        user_trade_configs[chat_id][trade_id] = new_trade
-        user_selected_trade[chat_id] = trade_id
-
-    return f"✅ Created new position: {new_trade.get_display_name()}"  # Position menu removed - now handled by web interface
+# _handle_positions_new() function removed - part of bot handler system
+# Position creation is now handled through the web interface
 
 
-def _handle_positions_list(chat_id):
-    """Handle positions list display."""
-    user_trades = user_trade_configs.get(chat_id, {})
-    if not user_trades:
-        return "📋 No positions configured yet."  # Position menu removed - now handled by web interface
-
-    response = "📋 Your Position Configurations:\n\n"
-    status_emoji_map = {
-        "active": "🟢",
-        "pending": "🔵",
-        "configured": "🟡",
-        "stopped": "🔴",
-    }
-
-    for trade_id, config in user_trades.items():
-        status_emoji = status_emoji_map.get(config.status, "⚪")
-        response += f"{status_emoji} {config.get_display_name()}\n"
-        response += (
-            f"   {config.symbol or 'No symbol'} | {config.side or 'No side'}\n\n"
-        )
-
-    keyboard = {"inline_keyboard": []}
-    for trade_id, config in list(user_trades.items())[:5]:  # Show first 5 positions
-        status_emoji = status_emoji_map.get(config.status, "⚪")
-        button_text = f"{status_emoji} {config.name}"
-        keyboard["inline_keyboard"].append(
-            [{"text": button_text, "callback_data": f"select_position_{trade_id}"}]
-        )
-
-    keyboard["inline_keyboard"].append(
-        [{"text": "🏠 Back to Positions", "callback_data": "menu_positions"}]
-    )
-    return response, keyboard
+# _handle_positions_list() function removed - part of bot handler system
+# Position list display is now handled through the web interface
 
 
-def _handle_select_position(callback_data, chat_id):
-    """Handle position selection."""
-    trade_id = callback_data.replace("select_position_", "")
-    if chat_id in user_trade_configs and trade_id in user_trade_configs[chat_id]:
-        with trade_configs_lock:
-            user_selected_trade[chat_id] = trade_id
-        config = user_trade_configs[chat_id][trade_id]
-        response = f"✅ Selected Position: {config.get_display_name()}\n\n{config.get_config_summary()}"
-        return response  # Trade actions menu removed - now handled by web interface
-    return "❌ Position not found."  # Position menu removed - now handled by web interface
+# _handle_select_position() function removed - part of bot callback system
+# Position selection is now handled through the web interface
 
 
-def _handle_positions_start(chat_id):
-    """Handle starting position."""
-    if chat_id not in user_selected_trade:
-        return "❌ No position selected. Please select a position first."  # Position menu removed - now handled by web interface
-
-    trade_id = user_selected_trade[chat_id]
-    config = user_trade_configs[chat_id][trade_id]
-
-    if not config.is_complete():
-        return "❌ Position configuration incomplete. Please set symbol, side, and amount."  # Position menu removed - now handled by web interface
-
-    config.status = "active"
-    return f"🚀 Started position: {config.get_display_name()}"  # Position menu removed - now handled by web interface
+# _handle_positions_start() function removed - part of bot handler system
+# Position starting is now handled through the web interface
 
 
-def _handle_positions_stop_all(chat_id):
-    """Handle stopping all positions."""
-    user_trades = user_trade_configs.get(chat_id, {})
-    stopped_count = 0
-    for config in user_trades.values():
-        if config.status == "active":
-            config.status = "stopped"
-            stopped_count += 1
-    return f"⏹️ Stopped {stopped_count} active positions."  # Position menu removed - now handled by web interface
+# _handle_positions_stop_all() function removed - part of bot handler system
+# Stopping positions is now handled through the web interface
 
 
-def _handle_positions_status(chat_id):
-    """Handle positions status display."""
-    user_trades = user_trade_configs.get(chat_id, {})
-    if not user_trades:
-        return "📊 No positions to show status for."  # Position menu removed - now handled by web interface
-
-    response = "📊 Positions Status:\n\n"
-    for config in user_trades.values():
-        status_emoji = (
-            "🟢"
-            if config.status == "active"
-            else "🟡" if config.status == "configured" else "🔴"
-        )
-        response += f"{status_emoji} {config.get_display_name()}\n"
-        response += f"   Status: {config.status.title()}\n"
-        if config.symbol:
-            response += f"   {config.symbol} {config.side or 'N/A'}\n"
-        response += "\n"
-
-    return response  # Position menu removed - now handled by web interface
+# _handle_positions_status() function removed - part of bot handler system (line 8716)
+# Position status display is now handled through the web interface
 
 
 # _handle_configuration_callbacks() function removed - part of bot callback system
