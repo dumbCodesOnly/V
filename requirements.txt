@@ -45,3 +45,16 @@ flask
 flask-sqlalchemy
 gunicorn
 psycopg2-binary
+aiohttp
+cryptography
+email-validator
+flask
+flask-sqlalchemy
+gunicorn
+hyperliquid-python-sdk
+psutil
+psycopg2-binary
+pycryptodome
+requests
+sqlalchemy
+werkzeug
