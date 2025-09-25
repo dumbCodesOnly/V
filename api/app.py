@@ -8482,11 +8482,6 @@ def _handle_performance_callback(chat_id, user):
 
 
 
-    return "❌ No trade selected."  # Trading menu removed - now handled by web interface
-
-
-
-
 
 
 def handle_set_side(chat_id, side):
