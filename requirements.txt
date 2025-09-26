@@ -22,16 +22,3 @@ hyperliquid-python-sdk>=0.18.0
 
 # System utilities
 psutil>=5.9.0
-aiohttp
-cryptography
-email-validator
-flask
-flask-sqlalchemy
-gunicorn
-hyperliquid-python-sdk
-psutil
-psycopg2-binary
-pycryptodome
-requests
-sqlalchemy
-werkzeug
