@@ -508,6 +508,7 @@ class SMCSignalCache(db.Model):
             signal_strength=signal_strength,
             risk_reward_ratio=self.risk_reward_ratio,
             timestamp=self.created_at,
+            current_market_price=self.market_price_at_signal,  # Restore the actual market price
         )
 
     @classmethod
@@ -543,7 +544,7 @@ class SMCSignalCache(db.Model):
             signal_strength=signal.signal_strength.name,  # Store enum name for consistency
             risk_reward_ratio=signal.risk_reward_ratio,
             expires_at=expires_at,
-            market_price_at_signal=signal.entry_price,
+            market_price_at_signal=signal.current_market_price,  # Use actual market price, not entry price
         )
 
     @classmethod

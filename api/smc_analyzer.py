@@ -98,6 +98,7 @@ class SMCSignal:
     signal_strength: SignalStrength
     risk_reward_ratio: float
     timestamp: datetime
+    current_market_price: float  # Actual market price when signal was generated
 
 
 class SMCAnalyzer:
@@ -1403,6 +1404,7 @@ class SMCAnalyzer:
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.utcnow(),
+                    current_market_price=current_price,  # Store actual market price
                 )
                 
                 # Cache the new signal to prevent duplicates
