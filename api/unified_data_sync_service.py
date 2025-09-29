@@ -1398,9 +1398,22 @@ class UnifiedDataSyncService:
         with self.lock:
             cache_stats = self.cache.get_cache_stats()
             
+            # Safe circuit breaker status retrieval to prevent timestamp type errors
+            circuit_breaker_status = {}
+            try:
+                circuit_breaker_status = {
+                    name: breaker.get_stats() 
+                    for name, breaker in circuit_manager._breakers.items()
+                    if "klines" in name or "binance" in name
+                }
+            except Exception as e:
+                logging.warning(f"Error getting circuit breaker status: {e}")
+                circuit_breaker_status = {"error": "Failed to retrieve circuit breaker status"}
+            
             return {
                 "service_running": self.is_running,
                 "last_cache_cleanup": self.last_cache_cleanup.isoformat() if self.last_cache_cleanup else 'never',
+                "last_cache_cleanup_raw": self.last_cache_cleanup,  # Keep raw datetime for internal use
                 "klines_tracking": {
                     "tracked_symbols": len(self.last_klines_updates),
                     "total_timeframes": sum(len(tf_data) for tf_data in self.last_klines_updates.values()),
@@ -1408,11 +1421,7 @@ class UnifiedDataSyncService:
                     "supported_timeframes": list(self.timeframes.keys()),
                 },
                 "cache_statistics": cache_stats,
-                "circuit_breaker_status": {
-                    name: breaker.get_stats() 
-                    for name, breaker in circuit_manager._breakers.items()
-                    if "klines" in name or "binance" in name
-                }
+                "circuit_breaker_status": circuit_breaker_status
             }
 
 
