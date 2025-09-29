@@ -403,22 +403,32 @@ class SmartCache:
                 else 0
             )
 
+            # Safely get cache sizes with error handling
+            def safe_cache_len(cache_obj, cache_name="unknown"):
+                try:
+                    if cache_obj is None:
+                        return 0
+                    return len(cache_obj) if hasattr(cache_obj, '__len__') else 0
+                except (TypeError, AttributeError):
+                    logging.warning(f"Error getting length of {cache_name} cache, returning 0")
+                    return 0
+
             return {
                 "hit_rate": round(hit_rate, 2),
                 "total_requests": self.cache_stats["total_requests"],
                 "cache_sizes": {
-                    "prices": len(self.price_cache),
-                    "user_trade_configs": len(self.user_trade_configs_cache),
-                    "user_credentials": len(self.user_credentials_cache),
-                    "user_preferences": len(self.user_preferences_cache),
+                    "prices": safe_cache_len(self.price_cache, "prices"),
+                    "user_trade_configs": safe_cache_len(self.user_trade_configs_cache, "user_trade_configs"),
+                    "user_credentials": safe_cache_len(self.user_credentials_cache, "user_credentials"),
+                    "user_preferences": safe_cache_len(self.user_preferences_cache, "user_preferences"),
                 },
                 "detailed_stats": self.cache_stats.copy(),
                 "volatility_tracking": {
-                    "symbols_tracked": len(self.volatility_tracker.volatility_cache),
+                    "symbols_tracked": safe_cache_len(getattr(self.volatility_tracker, 'volatility_cache', None), "volatility_tracker"),
                     "high_volatility_symbols": [
                         symbol
-                        for symbol, volatility in self.volatility_tracker.volatility_cache.items()
-                        if volatility > self.config["volatility_threshold"]
+                        for symbol, volatility in getattr(self.volatility_tracker, 'volatility_cache', {}).items()
+                        if volatility > self.config.get("volatility_threshold", 2.0)
                     ],
                 },
             }
