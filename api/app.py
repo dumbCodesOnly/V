@@ -10002,3 +10002,339 @@ def admin_data_sync_status():
         logging.error(f"Error getting data sync status: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/admin/smc/diagnostic", methods=["POST"])
+@admin_login_required
+def admin_smc_diagnostic():
+    """Run comprehensive SMC analysis diagnostic with step-by-step progress"""
+    try:
+        data = request.get_json() or {}
+        symbol = data.get('symbol', 'BTCUSDT')
+        
+        # Initialize diagnostic results
+        diagnostic = {
+            'symbol': symbol,
+            'timestamp': get_iran_time().isoformat(),
+            'steps': [],
+            'summary': {},
+            'analysis_complete': False,
+            'signal_generated': False,
+            'signal': None,
+            'errors': []
+        }
+        
+        # Import SMC analyzer
+        from .smc_analyzer import SMCAnalyzer
+        analyzer = SMCAnalyzer()
+        
+        # Step 1: Data Acquisition
+        step1 = {
+            'step': 1,
+            'name': 'Data Acquisition',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            step1['details']['message'] = f"Fetching multi-timeframe data for {symbol}..."
+            timeframe_data = analyzer.get_multi_timeframe_data(symbol)
+            
+            step1['details']['timeframes_fetched'] = {}
+            for tf, data in timeframe_data.items():
+                step1['details']['timeframes_fetched'][tf] = {
+                    'candles_count': len(data),
+                    'date_range': {
+                        'from': data[0]['timestamp'].isoformat() if data else None,
+                        'to': data[-1]['timestamp'].isoformat() if data else None
+                    } if data else None
+                }
+            
+            step1['status'] = 'completed'
+            step1['details']['message'] = f"Successfully fetched data for {len(timeframe_data)} timeframes"
+            
+        except Exception as e:
+            step1['status'] = 'error'
+            step1['error'] = str(e)
+            step1['details']['message'] = f"Failed to fetch data: {str(e)}"
+            diagnostic['errors'].append(f"Data acquisition failed: {str(e)}")
+        
+        diagnostic['steps'].append(step1)
+        
+        if step1['status'] == 'error':
+            return jsonify(diagnostic), 200
+        
+        # Step 2: Market Structure Analysis
+        step2 = {
+            'step': 2,
+            'name': 'Market Structure Analysis',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            h1_data = timeframe_data.get("1h", [])
+            h4_data = timeframe_data.get("4h", [])
+            d1_data = timeframe_data.get("1d", [])
+            
+            if not h1_data or not h4_data:
+                step2['status'] = 'error'
+                step2['error'] = 'Insufficient data for analysis'
+                step2['details']['message'] = f"H1: {len(h1_data)} candles, H4: {len(h4_data)} candles"
+            else:
+                h1_structure = analyzer.detect_market_structure(h1_data)
+                h4_structure = analyzer.detect_market_structure(h4_data)
+                d1_structure = analyzer.detect_market_structure(d1_data) if d1_data else "No data"
+                
+                step2['details'] = {
+                    'h1_structure': h1_structure.value if hasattr(h1_structure, 'value') else str(h1_structure),
+                    'h4_structure': h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure),
+                    'd1_structure': d1_structure.value if hasattr(d1_structure, 'value') else str(d1_structure),
+                    'message': 'Market structure analysis completed'
+                }
+                step2['status'] = 'completed'
+                
+        except Exception as e:
+            step2['status'] = 'error'
+            step2['error'] = str(e)
+            step2['details']['message'] = f"Market structure analysis failed: {str(e)}"
+            diagnostic['errors'].append(f"Market structure analysis failed: {str(e)}")
+        
+        diagnostic['steps'].append(step2)
+        
+        # Step 3: Order Block Detection
+        step3 = {
+            'step': 3,
+            'name': 'Order Block Detection',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            order_blocks = analyzer.find_order_blocks(h1_data)
+            
+            step3['details'] = {
+                'total_order_blocks': len(order_blocks),
+                'bullish_blocks': len([ob for ob in order_blocks if ob.direction == 'bullish']),
+                'bearish_blocks': len([ob for ob in order_blocks if ob.direction == 'bearish']),
+                'validated_blocks': len([ob for ob in order_blocks if ob.volume_confirmed]),
+                'message': f"Found {len(order_blocks)} order blocks"
+            }
+            
+            if order_blocks:
+                step3['details']['sample_blocks'] = []
+                for i, ob in enumerate(order_blocks[:3]):  # Show first 3 blocks
+                    step3['details']['sample_blocks'].append({
+                        'direction': ob.direction,
+                        'price_range': f"{ob.price_low:.4f} - {ob.price_high:.4f}",
+                        'strength': ob.strength,
+                        'tested': ob.tested,
+                        'volume_confirmed': ob.volume_confirmed
+                    })
+            
+            step3['status'] = 'completed'
+            
+        except Exception as e:
+            step3['status'] = 'error'
+            step3['error'] = str(e)
+            step3['details']['message'] = f"Order block detection failed: {str(e)}"
+            diagnostic['errors'].append(f"Order block detection failed: {str(e)}")
+        
+        diagnostic['steps'].append(step3)
+        
+        # Step 4: Fair Value Gap Analysis
+        step4 = {
+            'step': 4,
+            'name': 'Fair Value Gap Analysis',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            fvgs = analyzer.find_fair_value_gaps(h1_data)
+            
+            step4['details'] = {
+                'total_fvgs': len(fvgs),
+                'bullish_fvgs': len([fvg for fvg in fvgs if fvg.direction == 'bullish']),
+                'bearish_fvgs': len([fvg for fvg in fvgs if fvg.direction == 'bearish']),
+                'unfilled_fvgs': len([fvg for fvg in fvgs if not fvg.filled]),
+                'message': f"Found {len(fvgs)} fair value gaps"
+            }
+            
+            if fvgs:
+                step4['details']['sample_fvgs'] = []
+                for i, fvg in enumerate(fvgs[:3]):  # Show first 3 FVGs
+                    step4['details']['sample_fvgs'].append({
+                        'direction': fvg.direction,
+                        'price_range': f"{fvg.gap_low:.4f} - {fvg.gap_high:.4f}",
+                        'filled': fvg.filled,
+                        'atr_size': fvg.atr_size,
+                        'age_candles': fvg.age_candles
+                    })
+            
+            step4['status'] = 'completed'
+            
+        except Exception as e:
+            step4['status'] = 'error'
+            step4['error'] = str(e)
+            step4['details']['message'] = f"Fair value gap analysis failed: {str(e)}"
+            diagnostic['errors'].append(f"Fair value gap analysis failed: {str(e)}")
+        
+        diagnostic['steps'].append(step4)
+        
+        # Step 5: Liquidity Pool Analysis
+        step5 = {
+            'step': 5,
+            'name': 'Liquidity Pool Analysis',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            liquidity_pools = analyzer.find_liquidity_pools(h4_data)
+            
+            step5['details'] = {
+                'total_pools': len(liquidity_pools),
+                'buy_side_pools': len([lp for lp in liquidity_pools if lp.type == 'buy_side']),
+                'sell_side_pools': len([lp for lp in liquidity_pools if lp.type == 'sell_side']),
+                'swept_pools': len([lp for lp in liquidity_pools if lp.swept]),
+                'message': f"Found {len(liquidity_pools)} liquidity pools"
+            }
+            
+            if liquidity_pools:
+                step5['details']['sample_pools'] = []
+                for i, lp in enumerate(liquidity_pools[:3]):  # Show first 3 pools
+                    step5['details']['sample_pools'].append({
+                        'type': lp.type,
+                        'price': lp.price,
+                        'strength': lp.strength,
+                        'swept': lp.swept
+                    })
+            
+            step5['status'] = 'completed'
+            
+        except Exception as e:
+            step5['status'] = 'error'
+            step5['error'] = str(e)
+            step5['details']['message'] = f"Liquidity pool analysis failed: {str(e)}"
+            diagnostic['errors'].append(f"Liquidity pool analysis failed: {str(e)}")
+        
+        diagnostic['steps'].append(step5)
+        
+        # Step 6: Technical Indicators
+        step6 = {
+            'step': 6,
+            'name': 'Technical Indicators',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            rsi = analyzer.calculate_rsi(h1_data)
+            mas = analyzer.calculate_moving_averages(h1_data)
+            
+            current_price = h1_data[-1]["close"] if h1_data else 0
+            
+            step6['details'] = {
+                'current_price': current_price,
+                'rsi_current': rsi[-1] if rsi else None,
+                'rsi_status': 'oversold' if rsi and rsi[-1] < 30 else 'overbought' if rsi and rsi[-1] > 70 else 'neutral',
+                'moving_averages': {
+                    'ma_20': mas['ma_20'][-1] if mas and 'ma_20' in mas and mas['ma_20'] else None,
+                    'ma_50': mas['ma_50'][-1] if mas and 'ma_50' in mas and mas['ma_50'] else None,
+                    'ema_20': mas['ema_20'][-1] if mas and 'ema_20' in mas and mas['ema_20'] else None
+                },
+                'message': 'Technical indicators calculated'
+            }
+            step6['status'] = 'completed'
+            
+        except Exception as e:
+            step6['status'] = 'error'
+            step6['error'] = str(e)
+            step6['details']['message'] = f"Technical indicator calculation failed: {str(e)}"
+            diagnostic['errors'].append(f"Technical indicator calculation failed: {str(e)}")
+        
+        diagnostic['steps'].append(step6)
+        
+        # Step 7: Signal Generation Attempt
+        step7 = {
+            'step': 7,
+            'name': 'Signal Generation',
+            'status': 'in_progress',
+            'details': {},
+            'error': None
+        }
+        
+        try:
+            signal = analyzer.generate_trade_signal(symbol)
+            
+            if signal:
+                step7['details'] = {
+                    'signal_generated': True,
+                    'direction': signal.direction,
+                    'entry_price': signal.entry_price,
+                    'stop_loss': signal.stop_loss,
+                    'take_profits': signal.take_profit_levels,
+                    'confidence': signal.confidence,
+                    'signal_strength': signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
+                    'risk_reward_ratio': signal.risk_reward_ratio,
+                    'reasoning': signal.reasoning,
+                    'message': f"Generated {signal.direction} signal with {signal.confidence:.2f} confidence"
+                }
+                diagnostic['signal_generated'] = True
+                diagnostic['signal'] = {
+                    'direction': signal.direction,
+                    'entry_price': signal.entry_price,
+                    'stop_loss': signal.stop_loss,
+                    'take_profits': signal.take_profit_levels,
+                    'confidence': signal.confidence,
+                    'signal_strength': signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
+                    'risk_reward_ratio': signal.risk_reward_ratio,
+                    'reasoning': signal.reasoning
+                }
+            else:
+                step7['details'] = {
+                    'signal_generated': False,
+                    'reason': 'No valid signal conditions met',
+                    'message': 'Analysis complete - No signal generated due to insufficient confluence or market conditions'
+                }
+            
+            step7['status'] = 'completed'
+            
+        except Exception as e:
+            step7['status'] = 'error'
+            step7['error'] = str(e)
+            step7['details']['message'] = f"Signal generation failed: {str(e)}"
+            diagnostic['errors'].append(f"Signal generation failed: {str(e)}")
+        
+        diagnostic['steps'].append(step7)
+        
+        # Create analysis summary
+        diagnostic['analysis_complete'] = True
+        diagnostic['summary'] = {
+            'total_steps': len(diagnostic['steps']),
+            'successful_steps': len([s for s in diagnostic['steps'] if s['status'] == 'completed']),
+            'failed_steps': len([s for s in diagnostic['steps'] if s['status'] == 'error']),
+            'signal_generated': diagnostic['signal_generated'],
+            'error_count': len(diagnostic['errors']),
+            'analysis_successful': len(diagnostic['errors']) == 0
+        }
+        
+        admin_username = session.get("admin_username", "admin")
+        logging.info(f"SMC diagnostic analysis completed by admin {admin_username} for {symbol}")
+        
+        return jsonify(diagnostic)
+        
+    except Exception as e:
+        logging.error(f"Error in SMC diagnostic analysis: {e}")
+        return jsonify({
+            'error': str(e),
+            'analysis_complete': False,
+            'timestamp': get_iran_time().isoformat()
+        }), 500
+

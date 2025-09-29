@@ -540,6 +540,406 @@
             </div>
         </div>
 
+        <!-- SMC Analysis Diagnostic -->
+        <div class="card section-spacing">
+            <div class="card-header mobile-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up-arrow me-2"></i>
+                    SMC Analysis Diagnostic
+                </h5>
+                <div class="mobile-btn-group">
+                    <button class="btn btn-sm btn-info" onclick="showSMCConfig()" title="SMC Configuration">
+                        <i class="bi bi-gear me-1"></i>
+                        <span class="d-none d-sm-inline">Config</span>
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="clearSMCResults()" title="Clear Results">
+                        <i class="bi bi-trash me-1"></i>
+                        <span class="d-none d-sm-inline">Clear</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Analysis Control -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-8">
+                        <label for="smc-symbol" class="form-label">Symbol to Analyze:</label>
+                        <input type="text" class="form-control" id="smc-symbol" value="BTCUSDT" placeholder="Enter trading symbol (e.g., BTCUSDT)">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-primary w-100" id="start-smc-analysis" onclick="startSMCAnalysis()">
+                            <i class="bi bi-play-circle me-2"></i>Start Analysis
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Overall Progress -->
+                <div class="card border-0 bg-light mb-4" id="smc-progress-card" style="display: none;">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">
+                                <i class="bi bi-activity text-primary me-2"></i>Analysis Progress
+                            </h6>
+                            <span id="smc-progress-text" class="badge bg-primary">0/7 steps</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="smc-progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div id="smc-current-step" class="mt-2 small text-muted">Ready to start analysis...</div>
+                    </div>
+                </div>
+
+                <!-- Analysis Steps -->
+                <div id="smc-steps-container" style="display: none;">
+                    <!-- Step 1: Data Acquisition -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-1">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-1-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 1: Data Acquisition</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-1-status">Waiting</span>
+                            </div>
+                            <div id="step-1-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1H Candles</small>
+                                            <strong id="step-1-h1-count">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">4H Candles</small>
+                                            <strong id="step-1-h4-count">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1D Candles</small>
+                                            <strong id="step-1-d1-count">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-1-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Market Structure -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-2">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-2-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 2: Market Structure Analysis</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-2-status">Waiting</span>
+                            </div>
+                            <div id="step-2-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1H Structure</small>
+                                            <strong id="step-2-h1-structure" class="text-truncate d-block">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">4H Structure</small>
+                                            <strong id="step-2-h4-structure" class="text-truncate d-block">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1D Structure</small>
+                                            <strong id="step-2-d1-structure" class="text-truncate d-block">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-2-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Order Blocks -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-3">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-3-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 3: Order Block Detection</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-3-status">Waiting</span>
+                            </div>
+                            <div id="step-3-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Total</small>
+                                            <strong id="step-3-total-blocks">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Bullish</small>
+                                            <strong id="step-3-bullish-blocks" class="text-success">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Bearish</small>
+                                            <strong id="step-3-bearish-blocks" class="text-danger">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Validated</small>
+                                            <strong id="step-3-validated-blocks" class="text-primary">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-3-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Fair Value Gaps -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-4">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-4-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 4: Fair Value Gap Analysis</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-4-status">Waiting</span>
+                            </div>
+                            <div id="step-4-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Total FVGs</small>
+                                            <strong id="step-4-total-fvgs">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Bullish</small>
+                                            <strong id="step-4-bullish-fvgs" class="text-success">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Bearish</small>
+                                            <strong id="step-4-bearish-fvgs" class="text-danger">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Unfilled</small>
+                                            <strong id="step-4-unfilled-fvgs" class="text-warning">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-4-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 5: Liquidity Pools -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-5">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-5-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 5: Liquidity Pool Analysis</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-5-status">Waiting</span>
+                            </div>
+                            <div id="step-5-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Total Pools</small>
+                                            <strong id="step-5-total-pools">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Buy Side</small>
+                                            <strong id="step-5-buy-pools" class="text-success">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Sell Side</small>
+                                            <strong id="step-5-sell-pools" class="text-danger">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Swept</small>
+                                            <strong id="step-5-swept-pools" class="text-warning">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-5-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 6: Technical Indicators -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-6">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-6-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 6: Technical Indicators</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-6-status">Waiting</span>
+                            </div>
+                            <div id="step-6-details" class="step-details" style="display: none;">
+                                <div class="row g-2 mt-2">
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">Current Price</small>
+                                            <strong id="step-6-current-price">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">RSI</small>
+                                            <strong id="step-6-rsi">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">MA 20</small>
+                                            <strong id="step-6-ma20">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">EMA 20</small>
+                                            <strong id="step-6-ema20">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-6-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 7: Signal Generation -->
+                    <div class="card border-0 bg-light mb-3 smc-step-card" id="smc-step-7">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="step-icon me-3" id="step-7-icon">
+                                    <div class="spinner-border spinner-border-sm d-none text-primary" role="status"></div>
+                                    <i class="bi bi-circle text-muted step-waiting"></i>
+                                    <i class="bi bi-check-circle text-success step-success d-none"></i>
+                                    <i class="bi bi-x-circle text-danger step-error d-none"></i>
+                                </div>
+                                <h6 class="mb-0">Step 7: Signal Generation</h6>
+                                <span class="badge bg-secondary ms-auto step-status" id="step-7-status">Waiting</span>
+                            </div>
+                            <div id="step-7-details" class="step-details" style="display: none;">
+                                <div id="step-7-signal" style="display: none;">
+                                    <div class="alert alert-success" role="alert">
+                                        <h6 class="alert-heading">
+                                            <i class="bi bi-check-circle me-2"></i>Signal Generated!
+                                        </h6>
+                                        <div class="row g-2 mt-2">
+                                            <div class="col-md-6">
+                                                <strong>Direction:</strong> <span id="signal-direction" class="badge">-</span><br>
+                                                <strong>Entry Price:</strong> <span id="signal-entry">-</span><br>
+                                                <strong>Stop Loss:</strong> <span id="signal-sl">-</span><br>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <strong>Confidence:</strong> <span id="signal-confidence">-</span><br>
+                                                <strong>Strength:</strong> <span id="signal-strength" class="badge">-</span><br>
+                                                <strong>Risk/Reward:</strong> <span id="signal-rr">-</span><br>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <strong>Take Profits:</strong> <span id="signal-tps">-</span>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small><strong>Reasoning:</strong></small>
+                                            <ul id="signal-reasoning" class="mb-0 mt-1">
+                                                <!-- Reasoning list will be populated here -->
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="step-7-no-signal" style="display: none;">
+                                    <div class="alert alert-info" role="alert">
+                                        <h6 class="alert-heading">
+                                            <i class="bi bi-info-circle me-2"></i>No Signal Generated
+                                        </h6>
+                                        <p id="step-7-no-signal-reason" class="mb-0">Analysis completed but no valid signal conditions were met.</p>
+                                    </div>
+                                </div>
+                                <div id="step-7-message" class="mt-2 small text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis Summary -->
+                <div class="card border-0 bg-light" id="smc-summary-card" style="display: none;">
+                    <div class="card-body">
+                        <h6 class="card-title mb-3">
+                            <i class="bi bi-clipboard-data text-info me-2"></i>Analysis Summary
+                        </h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="card border-0 bg-white">
+                                    <div class="card-body text-center">
+                                        <h5 id="summary-success-rate" class="text-success mb-2">-</h5>
+                                        <p class="small text-muted mb-0">Success Rate</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card border-0 bg-white">
+                                    <div class="card-body text-center">
+                                        <h5 id="summary-analysis-time" class="text-primary mb-2">-</h5>
+                                        <p class="small text-muted mb-0">Analysis Time</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <strong>Symbol:</strong> <span id="summary-symbol">-</span> | 
+                                <strong>Timestamp:</strong> <span id="summary-timestamp">-</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- User Management -->
         <div class="card section-spacing">
             <div class="card-header mobile-header d-flex justify-content-between align-items-center">
@@ -1464,6 +1864,358 @@
             
             // Scroll to gaps section
             gapsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // SMC Analysis Diagnostic Functions
+        let smcAnalysisInProgress = false;
+        let smcAnalysisStartTime = null;
+
+        function showSMCConfig() {
+            showInfo('SMC Configuration:\n\n• Uses multiple timeframes (1H, 4H, 1D)\n• Analyzes market structure and order blocks\n• Detects fair value gaps and liquidity pools\n• Calculates technical indicators (RSI, Moving Averages)\n• Generates signals based on confluence of factors\n\nThis diagnostic tool shows the step-by-step analysis process even when no signals are generated.');
+        }
+
+        function clearSMCResults() {
+            if (smcAnalysisInProgress) {
+                if (!confirm('Analysis is currently in progress. Are you sure you want to clear the results?')) {
+                    return;
+                }
+            }
+
+            // Reset all UI elements
+            document.getElementById('smc-progress-card').style.display = 'none';
+            document.getElementById('smc-steps-container').style.display = 'none';
+            document.getElementById('smc-summary-card').style.display = 'none';
+            
+            // Reset progress
+            document.getElementById('smc-progress-bar').style.width = '0%';
+            document.getElementById('smc-progress-text').textContent = '0/7 steps';
+            document.getElementById('smc-current-step').textContent = 'Ready to start analysis...';
+            
+            // Reset all step cards
+            for (let i = 1; i <= 7; i++) {
+                resetStepCard(i);
+            }
+            
+            // Reset button
+            document.getElementById('start-smc-analysis').disabled = false;
+            document.getElementById('start-smc-analysis').innerHTML = '<i class="bi bi-play-circle me-2"></i>Start Analysis';
+            
+            smcAnalysisInProgress = false;
+            smcAnalysisStartTime = null;
+            
+            showSuccess('SMC analysis results cleared successfully!');
+        }
+
+        function resetStepCard(stepNumber) {
+            const stepCard = document.getElementById(`smc-step-${stepNumber}`);
+            const stepIcon = document.getElementById(`step-${stepNumber}-icon`);
+            const stepStatus = document.getElementById(`step-${stepNumber}-status`);
+            const stepDetails = document.getElementById(`step-${stepNumber}-details`);
+            
+            // Reset icons
+            stepIcon.querySelector('.spinner-border').classList.add('d-none');
+            stepIcon.querySelector('.step-waiting').classList.remove('d-none');
+            stepIcon.querySelector('.step-success').classList.add('d-none');
+            stepIcon.querySelector('.step-error').classList.add('d-none');
+            
+            // Reset status
+            stepStatus.textContent = 'Waiting';
+            stepStatus.className = 'badge bg-secondary ms-auto step-status';
+            
+            // Hide details
+            stepDetails.style.display = 'none';
+            
+            // Reset card style
+            stepCard.classList.remove('border-success', 'border-danger');
+        }
+
+        async function startSMCAnalysis() {
+            if (smcAnalysisInProgress) {
+                showWarning('Analysis is already in progress. Please wait for it to complete.');
+                return;
+            }
+
+            const symbol = document.getElementById('smc-symbol').value.trim().toUpperCase();
+            if (!symbol) {
+                showError('Please enter a valid trading symbol (e.g., BTCUSDT)');
+                return;
+            }
+
+            // Start analysis
+            smcAnalysisInProgress = true;
+            smcAnalysisStartTime = new Date();
+            
+            // Update button
+            const startButton = document.getElementById('start-smc-analysis');
+            startButton.disabled = true;
+            startButton.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Analyzing...';
+            
+            // Show progress card
+            document.getElementById('smc-progress-card').style.display = 'block';
+            document.getElementById('smc-steps-container').style.display = 'block';
+            
+            // Update current step
+            document.getElementById('smc-current-step').textContent = `Starting analysis for ${symbol}...`;
+            
+            try {
+                const response = await fetch('/api/admin/smc/diagnostic', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ symbol: symbol })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.steps) {
+                    await processSMCAnalysisResult(result);
+                } else {
+                    throw new Error(result.error || 'Failed to run SMC analysis');
+                }
+                
+            } catch (error) {
+                console.error('SMC Analysis Error:', error);
+                showError('Failed to run SMC analysis: ' + error.message);
+                
+                // Reset button
+                startButton.disabled = false;
+                startButton.innerHTML = '<i class="bi bi-play-circle me-2"></i>Start Analysis';
+                smcAnalysisInProgress = false;
+            }
+        }
+
+        async function processSMCAnalysisResult(result) {
+            // Process each step with animation
+            const steps = result.steps || [];
+            const totalSteps = 7;
+            
+            for (let i = 0; i < totalSteps; i++) {
+                const stepNumber = i + 1;
+                const stepData = steps[i];
+                
+                if (stepData) {
+                    await updateStepUI(stepNumber, stepData, i + 1, totalSteps);
+                    // Add small delay for better UX
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                } else {
+                    // Mark as not executed
+                    updateStepAsSkipped(stepNumber);
+                }
+            }
+            
+            // Show final summary
+            showAnalysisSummary(result);
+            
+            // Reset button
+            const startButton = document.getElementById('start-smc-analysis');
+            startButton.disabled = false;
+            startButton.innerHTML = '<i class="bi bi-play-circle me-2"></i>Start Analysis';
+            smcAnalysisInProgress = false;
+        }
+
+        async function updateStepUI(stepNumber, stepData, currentStep, totalSteps) {
+            const stepCard = document.getElementById(`smc-step-${stepNumber}`);
+            const stepIcon = document.getElementById(`step-${stepNumber}-icon`);
+            const stepStatus = document.getElementById(`step-${stepNumber}-status`);
+            const stepDetails = document.getElementById(`step-${stepNumber}-details`);
+            
+            // Update progress
+            const progressPercent = (currentStep / totalSteps) * 100;
+            document.getElementById('smc-progress-bar').style.width = `${progressPercent}%`;
+            document.getElementById('smc-progress-text').textContent = `${currentStep}/${totalSteps} steps`;
+            document.getElementById('smc-current-step').textContent = `${stepData.name}...`;
+            
+            // Show spinner first
+            stepIcon.querySelector('.step-waiting').classList.add('d-none');
+            stepIcon.querySelector('.spinner-border').classList.remove('d-none');
+            stepStatus.textContent = 'Running';
+            stepStatus.className = 'badge bg-primary ms-auto step-status';
+            
+            // Wait a moment for visual effect
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Update final status
+            stepIcon.querySelector('.spinner-border').classList.add('d-none');
+            
+            if (stepData.status === 'completed') {
+                stepIcon.querySelector('.step-success').classList.remove('d-none');
+                stepStatus.textContent = 'Completed';
+                stepStatus.className = 'badge bg-success ms-auto step-status';
+                stepCard.classList.add('border-success');
+                
+                // Show details
+                populateStepDetails(stepNumber, stepData);
+                stepDetails.style.display = 'block';
+                
+            } else if (stepData.status === 'error') {
+                stepIcon.querySelector('.step-error').classList.remove('d-none');
+                stepStatus.textContent = 'Error';
+                stepStatus.className = 'badge bg-danger ms-auto step-status';
+                stepCard.classList.add('border-danger');
+                
+                // Show error details
+                populateStepDetails(stepNumber, stepData);
+                stepDetails.style.display = 'block';
+            } else {
+                stepIcon.querySelector('.step-waiting').classList.remove('d-none');
+                stepStatus.textContent = 'Skipped';
+                stepStatus.className = 'badge bg-warning ms-auto step-status';
+            }
+        }
+
+        function updateStepAsSkipped(stepNumber) {
+            const stepStatus = document.getElementById(`step-${stepNumber}-status`);
+            stepStatus.textContent = 'Skipped';
+            stepStatus.className = 'badge bg-warning ms-auto step-status';
+        }
+
+        function populateStepDetails(stepNumber, stepData) {
+            const details = stepData.details || {};
+            const message = details.message || '';
+            
+            // Update message
+            const messageElement = document.getElementById(`step-${stepNumber}-message`);
+            if (messageElement) {
+                messageElement.textContent = message;
+                messageElement.className = stepData.status === 'error' ? 'mt-2 small text-danger' : 'mt-2 small text-muted';
+            }
+            
+            // Populate step-specific details
+            switch (stepNumber) {
+                case 1: // Data Acquisition
+                    populateStep1Details(details);
+                    break;
+                case 2: // Market Structure
+                    populateStep2Details(details);
+                    break;
+                case 3: // Order Blocks
+                    populateStep3Details(details);
+                    break;
+                case 4: // Fair Value Gaps
+                    populateStep4Details(details);
+                    break;
+                case 5: // Liquidity Pools
+                    populateStep5Details(details);
+                    break;
+                case 6: // Technical Indicators
+                    populateStep6Details(details);
+                    break;
+                case 7: // Signal Generation
+                    populateStep7Details(details, stepData);
+                    break;
+            }
+        }
+
+        function populateStep1Details(details) {
+            const timeframes = details.timeframes_fetched || {};
+            document.getElementById('step-1-h1-count').textContent = timeframes['1h']?.candles_count || 0;
+            document.getElementById('step-1-h4-count').textContent = timeframes['4h']?.candles_count || 0;
+            document.getElementById('step-1-d1-count').textContent = timeframes['1d']?.candles_count || 0;
+        }
+
+        function populateStep2Details(details) {
+            document.getElementById('step-2-h1-structure').textContent = details.h1_structure || '-';
+            document.getElementById('step-2-h4-structure').textContent = details.h4_structure || '-';
+            document.getElementById('step-2-d1-structure').textContent = details.d1_structure || '-';
+        }
+
+        function populateStep3Details(details) {
+            document.getElementById('step-3-total-blocks').textContent = details.total_order_blocks || 0;
+            document.getElementById('step-3-bullish-blocks').textContent = details.bullish_blocks || 0;
+            document.getElementById('step-3-bearish-blocks').textContent = details.bearish_blocks || 0;
+            document.getElementById('step-3-validated-blocks').textContent = details.validated_blocks || 0;
+        }
+
+        function populateStep4Details(details) {
+            document.getElementById('step-4-total-fvgs').textContent = details.total_fvgs || 0;
+            document.getElementById('step-4-bullish-fvgs').textContent = details.bullish_fvgs || 0;
+            document.getElementById('step-4-bearish-fvgs').textContent = details.bearish_fvgs || 0;
+            document.getElementById('step-4-unfilled-fvgs').textContent = details.unfilled_fvgs || 0;
+        }
+
+        function populateStep5Details(details) {
+            document.getElementById('step-5-total-pools').textContent = details.total_pools || 0;
+            document.getElementById('step-5-buy-pools').textContent = details.buy_side_pools || 0;
+            document.getElementById('step-5-sell-pools').textContent = details.sell_side_pools || 0;
+            document.getElementById('step-5-swept-pools').textContent = details.swept_pools || 0;
+        }
+
+        function populateStep6Details(details) {
+            document.getElementById('step-6-current-price').textContent = details.current_price ? `$${Number(details.current_price).toLocaleString()}` : '-';
+            document.getElementById('step-6-rsi').textContent = details.rsi_current ? Number(details.rsi_current).toFixed(1) : '-';
+            
+            const ma20 = details.moving_averages?.ma_20;
+            const ema20 = details.moving_averages?.ema_20;
+            document.getElementById('step-6-ma20').textContent = ma20 ? `$${Number(ma20).toLocaleString()}` : '-';
+            document.getElementById('step-6-ema20').textContent = ema20 ? `$${Number(ema20).toLocaleString()}` : '-';
+        }
+
+        function populateStep7Details(details, stepData) {
+            if (details.signal_generated) {
+                // Show signal details
+                document.getElementById('step-7-signal').style.display = 'block';
+                document.getElementById('step-7-no-signal').style.display = 'none';
+                
+                document.getElementById('signal-direction').textContent = details.direction || '-';
+                document.getElementById('signal-direction').className = `badge ${details.direction === 'long' ? 'bg-success' : 'bg-danger'}`;
+                
+                document.getElementById('signal-entry').textContent = details.entry_price ? `$${Number(details.entry_price).toLocaleString()}` : '-';
+                document.getElementById('signal-sl').textContent = details.stop_loss ? `$${Number(details.stop_loss).toLocaleString()}` : '-';
+                document.getElementById('signal-confidence').textContent = details.confidence ? `${(details.confidence * 100).toFixed(1)}%` : '-';
+                document.getElementById('signal-strength').textContent = details.signal_strength || '-';
+                document.getElementById('signal-strength').className = 'badge bg-info';
+                document.getElementById('signal-rr').textContent = details.risk_reward_ratio ? `1:${details.risk_reward_ratio.toFixed(1)}` : '-';
+                
+                // Take profits
+                const tps = details.take_profits || [];
+                document.getElementById('signal-tps').textContent = tps.map(tp => `$${Number(tp).toLocaleString()}`).join(', ') || '-';
+                
+                // Reasoning
+                const reasoning = details.reasoning || [];
+                const reasoningList = document.getElementById('signal-reasoning');
+                reasoningList.innerHTML = '';
+                reasoning.forEach(reason => {
+                    const li = document.createElement('li');
+                    li.textContent = reason;
+                    reasoningList.appendChild(li);
+                });
+                
+            } else {
+                // Show no signal
+                document.getElementById('step-7-signal').style.display = 'none';
+                document.getElementById('step-7-no-signal').style.display = 'block';
+                document.getElementById('step-7-no-signal-reason').textContent = details.reason || 'Analysis completed but no valid signal conditions were met.';
+            }
+        }
+
+        function showAnalysisSummary(result) {
+            const summary = result.summary || {};
+            const analysisTime = smcAnalysisStartTime ? ((new Date() - smcAnalysisStartTime) / 1000).toFixed(1) + 's' : '-';
+            
+            // Calculate success rate
+            const successRate = summary.total_steps > 0 ? ((summary.successful_steps / summary.total_steps) * 100).toFixed(0) + '%' : '-';
+            
+            // Update summary
+            document.getElementById('summary-success-rate').textContent = successRate;
+            document.getElementById('summary-analysis-time').textContent = analysisTime;
+            document.getElementById('summary-symbol').textContent = result.symbol || '-';
+            document.getElementById('summary-timestamp').textContent = result.timestamp ? new Date(result.timestamp).toLocaleString() : '-';
+            
+            // Show summary card
+            document.getElementById('smc-summary-card').style.display = 'block';
+            
+            // Update final progress
+            document.getElementById('smc-current-step').textContent = result.signal_generated ? 
+                `Analysis complete - Signal generated!` : 
+                `Analysis complete - No signal generated`;
+            
+            // Show completion message
+            if (result.signal_generated) {
+                showSuccess(`🎯 SMC Analysis Complete!\n\nSignal Generated: ${result.signal?.direction?.toUpperCase() || 'Unknown'}\nSuccess Rate: ${successRate}\nAnalysis Time: ${analysisTime}`);
+            } else {
+                showInfo(`📊 SMC Analysis Complete!\n\nNo signals generated (market conditions did not meet criteria)\nSuccess Rate: ${successRate}\nAnalysis Time: ${analysisTime}`);
+            }
         }
     </script>
 </body>
