@@ -10242,12 +10242,12 @@ def admin_smc_diagnostic():
             
             step6['details'] = {
                 'current_price': current_price,
-                'rsi_current': rsi[-1] if rsi else None,
-                'rsi_status': 'oversold' if rsi and rsi[-1] < 30 else 'overbought' if rsi and rsi[-1] > 70 else 'neutral',
+                'rsi_current': rsi if rsi else None,
+                'rsi_status': 'oversold' if rsi and rsi < 30 else 'overbought' if rsi and rsi > 70 else 'neutral',
                 'moving_averages': {
-                    'ma_20': mas['ma_20'][-1] if mas and 'ma_20' in mas and mas['ma_20'] else None,
-                    'ma_50': mas['ma_50'][-1] if mas and 'ma_50' in mas and mas['ma_50'] else None,
-                    'ema_20': mas['ema_20'][-1] if mas and 'ema_20' in mas and mas['ema_20'] else None
+                    'ma_20': mas.get('ma_20') if mas and 'ma_20' in mas else None,
+                    'ma_50': mas.get('ma_50') if mas and 'ma_50' in mas else None,
+                    'ema_20': mas.get('ema_20') if mas and 'ema_20' in mas else None
                 },
                 'message': 'Technical indicators calculated'
             }
