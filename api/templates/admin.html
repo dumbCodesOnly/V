@@ -326,6 +326,24 @@
                         </ul>
                     </div>
                     <div class="dropdown">
+                        <button class="btn btn-sm btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown" id="dataSyncDropdown">
+                            <i class="bi bi-arrow-repeat me-1"></i>
+                            <span class="d-none d-sm-inline">Data Sync</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="checkDataSyncStatus()">
+                                <i class="bi bi-info-circle me-2"></i>Check Status
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="stopDataSync()">
+                                <i class="bi bi-stop-circle me-2"></i>Stop Service
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="startDataSync()">
+                                <i class="bi bi-play-circle me-2"></i>Start Service
+                            </a></li>
+                        </ul>
+                    </div>
+                    <div class="dropdown">
                         <button class="btn btn-sm btn-danger dropdown-toggle" type="button" data-bs-toggle="dropdown">
                             <i class="bi bi-tools me-1"></i>
                             <span class="d-none d-sm-inline">Database Tools</span>
@@ -1086,6 +1104,99 @@
             } catch (error) {
                 console.error('Error restarting cache worker:', error);
                 showError('Failed to restart cache cleanup worker: ' + error.message);
+            }
+        }
+
+        async function checkDataSyncStatus() {
+            try {
+                const response = await fetch('/api/admin/datasync/status');
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    const status = result.status;
+                    const isRunning = status.service_running;
+                    const statusText = isRunning ? 'RUNNING' : 'STOPPED';
+                    const icon = isRunning ? '🟢' : '🔴';
+                    
+                    showSuccess(`${icon} Data Sync Service Status: ${statusText}\n\nLast Cache Cleanup: ${status.last_cache_cleanup || 'Never'}\n\nThis service fetches market data from exchanges to prevent rate limiting.`);
+                    
+                    // Update dropdown button color based on status
+                    const dropdown = document.getElementById('dataSyncDropdown');
+                    if (isRunning) {
+                        dropdown.className = dropdown.className.replace('btn-danger', '').replace('btn-warning', '') + ' btn-success';
+                    } else {
+                        dropdown.className = dropdown.className.replace('btn-success', '').replace('btn-warning', '') + ' btn-danger';
+                    }
+                } else {
+                    showError(result.error || 'Failed to get data sync status');
+                }
+            } catch (error) {
+                console.error('Error checking data sync status:', error);
+                showError('Failed to check data sync status: ' + error.message);
+            }
+        }
+
+        async function stopDataSync() {
+            if (!confirm('⚠️ STOP Data Sync Service?\n\nThis will stop the background service that fetches market data from exchanges (Binance, etc.).\n\nStopping this service will help prevent rate limiting issues but will disable real-time market data updates.\n\nAre you sure you want to proceed?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/datasync/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showSuccess('🔴 Data Sync Service STOPPED!\n\nThe service has been stopped to prevent rate limiting.\n\nMarket data updates are now disabled.');
+                    
+                    // Update dropdown button to red
+                    const dropdown = document.getElementById('dataSyncDropdown');
+                    dropdown.className = dropdown.className.replace('btn-success', '').replace('btn-warning', '') + ' btn-danger';
+                    
+                    loadDatabaseStats(); // Refresh stats
+                } else {
+                    showError(result.error || 'Failed to stop data sync service');
+                }
+            } catch (error) {
+                console.error('Error stopping data sync service:', error);
+                showError('Failed to stop data sync service: ' + error.message);
+            }
+        }
+
+        async function startDataSync() {
+            if (!confirm('▶️ START Data Sync Service?\n\nThis will start the background service that fetches market data from exchanges.\n\n⚠️ WARNING: Starting this service may trigger rate limiting if the exchanges are being called too frequently.\n\nAre you sure you want to proceed?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/datasync/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showSuccess('🟢 Data Sync Service STARTED!\n\nThe service is now running and will fetch market data from exchanges.\n\nReal-time market data updates are now enabled.');
+                    
+                    // Update dropdown button to green
+                    const dropdown = document.getElementById('dataSyncDropdown');
+                    dropdown.className = dropdown.className.replace('btn-danger', '').replace('btn-warning', '') + ' btn-success';
+                    
+                    loadDatabaseStats(); // Refresh stats
+                } else {
+                    showError(result.error || 'Failed to start data sync service');
+                }
+            } catch (error) {
+                console.error('Error starting data sync service:', error);
+                showError('Failed to start data sync service: ' + error.message);
             }
         }
 

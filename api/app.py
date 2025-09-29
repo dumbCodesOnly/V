@@ -9926,3 +9926,79 @@ def admin_clear_klines_cache():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/admin/datasync/stop", methods=["POST"])
+@admin_login_required
+def admin_stop_data_sync():
+    """Stop the unified data sync service to prevent rate limiting"""
+    try:
+        from .unified_data_sync_service import stop_unified_data_sync_service
+        
+        admin_username = session.get("admin_username", "admin")
+        
+        # Stop the unified data sync service
+        stop_unified_data_sync_service()
+        
+        logging.info(f"Data sync service stopped by admin {admin_username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Data sync service stopped successfully',
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error stopping data sync service: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/datasync/start", methods=["POST"])
+@admin_login_required
+def admin_start_data_sync():
+    """Start the unified data sync service"""
+    try:
+        from .unified_data_sync_service import start_unified_data_sync_service
+        
+        admin_username = session.get("admin_username", "admin")
+        
+        # Start the unified data sync service
+        success = start_unified_data_sync_service(app)
+        
+        if success:
+            logging.info(f"Data sync service started by admin {admin_username}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Data sync service started successfully',
+                'timestamp': get_iran_time().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to start data sync service'
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Error starting data sync service: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/datasync/status")
+@admin_login_required
+def admin_data_sync_status():
+    """Get data sync service status"""
+    try:
+        from .unified_data_sync_service import get_unified_service_status
+        
+        status = get_unified_service_status()
+        
+        return jsonify({
+            'success': True,
+            'status': status,
+            'timestamp': get_iran_time().isoformat()
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting data sync status: {e}")
+        return jsonify({"error": str(e)}), 500
+
