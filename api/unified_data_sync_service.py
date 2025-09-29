@@ -358,7 +358,6 @@ class SmartCache:
                     # Ensure timestamp is a datetime object
                     timestamp = entry["timestamp"]
                     if isinstance(timestamp, str):
-                        from datetime import datetime
                         timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                     elif timestamp is None:
                         continue  # Skip entries with no timestamp
@@ -388,7 +387,6 @@ class SmartCache:
                         # Ensure timestamp is a datetime object
                         timestamp = entry["timestamp"]
                         if isinstance(timestamp, str):
-                            from datetime import datetime
                             timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                         elif timestamp is None:
                             continue  # Skip entries with no timestamp
