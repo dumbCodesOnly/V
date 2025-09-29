@@ -1203,10 +1203,87 @@ class SMCAnalyzer:
 
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
+    def _determine_trade_direction_and_levels_hybrid(
+        self, h1_structure, h4_structure, bullish_signals, bearish_signals, 
+        current_price, order_blocks, candlesticks, liquidity_sweeps, rsi
+    ):
+        """Determine trade direction using hybrid logic (trend-following + counter-trend reversal)."""
+        direction = None
+        confidence = 0.0
+        entry_price = current_price
+        stop_loss = 0.0
+        take_profits = []
+
+        # Categorize structures for easier checking
+        bullish_structures = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
+        bearish_structures = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
+        
+        h1_bullish = h1_structure in bullish_structures
+        h1_bearish = h1_structure in bearish_structures
+        h4_bullish = h4_structure in bullish_structures
+        h4_bearish = h4_structure in bearish_structures
+        
+        # 1. TREND-FOLLOWING TRADES (strict confluence)
+        if h1_bullish and h4_bullish:
+            # Both H1 and H4 bullish - trend-following long
+            direction = "long"
+            confidence = min(bullish_signals / 5.0, 1.0)
+            if confidence >= 0.7:  # Minimum confidence for trend trades
+                entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
+                    current_price, order_blocks, candlesticks
+                )
+            else:
+                direction = None  # Filter weak trend signals
+                confidence = 0.0
+                
+        elif h1_bearish and h4_bearish:
+            # Both H1 and H4 bearish - trend-following short
+            direction = "short"
+            confidence = min(bearish_signals / 5.0, 1.0)
+            if confidence >= 0.7:  # Minimum confidence for trend trades
+                entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
+                    current_price, order_blocks, candlesticks
+                )
+            else:
+                direction = None  # Filter weak trend signals
+                confidence = 0.0
+                
+        # 2. COUNTER-TREND REVERSAL TRADES (special case)
+        elif h1_bullish and h4_bearish:
+            # H1 CHoCH bullish, H4 bearish - potential reversal long
+            confirmed_buy_sweeps = [s for s in liquidity_sweeps.get("buy_side", []) if s.get("confirmed", False)]
+            if confirmed_buy_sweeps and rsi < 35:  # RSI exhaustion for longs
+                direction = "long"
+                confidence = min(bullish_signals / 5.0, 1.0)
+                if confidence >= 0.85:  # Higher confidence required for counter-trend
+                    entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
+                        current_price, order_blocks, candlesticks
+                    )
+                else:
+                    direction = None
+                    confidence = 0.0
+                    
+        elif h1_bearish and h4_bullish:
+            # H1 CHoCH bearish, H4 bullish - potential reversal short  
+            confirmed_sell_sweeps = [s for s in liquidity_sweeps.get("sell_side", []) if s.get("confirmed", False)]
+            if confirmed_sell_sweeps and rsi > 65:  # RSI exhaustion for shorts
+                direction = "short"
+                confidence = min(bearish_signals / 5.0, 1.0)
+                if confidence >= 0.85:  # Higher confidence required for counter-trend
+                    entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
+                        current_price, order_blocks, candlesticks
+                    )
+                else:
+                    direction = None
+                    confidence = 0.0
+        
+        # If neither condition is met, do not generate signal
+        return direction, confidence, entry_price, stop_loss, take_profits
+
     def _determine_trade_direction_and_levels(
         self, bullish_signals, bearish_signals, current_price, order_blocks, candlesticks
     ):
-        """Determine trade direction and calculate price levels."""
+        """Legacy method - kept for backward compatibility."""
         direction = None
         confidence = 0.0
         entry_price = current_price
@@ -1229,10 +1306,51 @@ class SMCAnalyzer:
 
         return direction, confidence, entry_price, stop_loss, take_profits
 
+    def _calculate_trade_metrics_enhanced(
+        self, entry_price, stop_loss, take_profits, confidence, liquidity_sweeps, order_blocks, fvgs
+    ):
+        """Calculate risk-reward ratio and signal strength with liquidity sweep and confluence bonuses."""
+        # Calculate risk-reward ratio
+        risk = abs(entry_price - stop_loss)
+        reward = abs(take_profits[0] - entry_price) if take_profits else risk
+        rr_ratio = reward / risk if risk > 0 else 1.0
+
+        # Start with base confidence
+        effective_confidence = confidence
+        
+        # Liquidity sweep bonus: +0.2 if confirmed sweep present
+        confirmed_sweeps = []
+        for sweep_type in ["buy_side", "sell_side"]:
+            confirmed_sweeps.extend([s for s in liquidity_sweeps.get(sweep_type, []) if s.get("confirmed", False)])
+        
+        if confirmed_sweeps:
+            effective_confidence += 0.2
+            
+        # Structural confluence bonus: +0.1 for order block alignment, +0.1 for FVG alignment
+        if order_blocks:
+            effective_confidence += 0.1
+        if fvgs:
+            effective_confidence += 0.1
+            
+        # Cap at 1.0
+        effective_confidence = min(effective_confidence, 1.0)
+
+        # Determine signal strength based on enhanced confidence
+        if effective_confidence >= 0.9:
+            signal_strength = SignalStrength.VERY_STRONG
+        elif effective_confidence >= 0.8:
+            signal_strength = SignalStrength.STRONG
+        elif effective_confidence >= 0.7:
+            signal_strength = SignalStrength.MODERATE
+        else:
+            signal_strength = SignalStrength.WEAK
+
+        return rr_ratio, signal_strength
+
     def _calculate_trade_metrics(
         self, entry_price, stop_loss, take_profits, confidence
     ):
-        """Calculate risk-reward ratio and signal strength."""
+        """Legacy method - calculate risk-reward ratio and signal strength."""
         # Calculate risk-reward ratio
         risk = abs(entry_price - stop_loss)
         reward = abs(take_profits[0] - entry_price) if take_profits else risk
@@ -1344,6 +1462,9 @@ class SMCAnalyzer:
             rsi = self.calculate_rsi(h1_data)
             mas = self.calculate_moving_averages(h1_data)
 
+            # Detect liquidity sweeps for reversal trade validation
+            liquidity_sweeps = self.detect_liquidity_sweeps(h1_data)
+            
             # Generate signal analysis with separate reasoning lists
             bullish_reasoning = []
             bearish_reasoning = []
@@ -1371,17 +1492,18 @@ class SMCAnalyzer:
                 bearish_reasoning,
             )
 
-            # Determine direction and calculate trade levels
+            # Apply hybrid signal generation logic
             direction, confidence, entry_price, stop_loss, take_profits = (
-                self._determine_trade_direction_and_levels(
-                    bullish_signals, bearish_signals, current_price, order_blocks, h1_data
+                self._determine_trade_direction_and_levels_hybrid(
+                    h1_structure, h4_structure, bullish_signals, bearish_signals, 
+                    current_price, order_blocks, h1_data, liquidity_sweeps, rsi
                 )
             )
 
-            # Only generate signal if confidence is above threshold (lowered for better signal generation)
-            if direction and confidence >= 0.4:
-                rr_ratio, signal_strength = self._calculate_trade_metrics(
-                    entry_price, stop_loss, take_profits, confidence
+            # Check if signal meets minimum requirements
+            if direction and confidence > 0:
+                rr_ratio, signal_strength = self._calculate_trade_metrics_enhanced(
+                    entry_price, stop_loss, take_profits, confidence, liquidity_sweeps, order_blocks, fvgs
                 )
 
                 # Use reasoning that matches the final signal direction with defensive check
