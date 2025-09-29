@@ -211,11 +211,20 @@ class CircuitBreaker:
     def get_stats(self) -> Dict[str, Any]:
         """Get circuit breaker statistics"""
         with self._lock:
-            uptime_seconds = time.time() - (
-                self.state_changes[0]["timestamp"]
-                if self.state_changes
-                else time.time()
-            )
+            # Handle timestamp conversion properly to avoid type errors
+            if self.state_changes:
+                try:
+                    # Convert ISO timestamp string back to timestamp float
+                    from datetime import datetime
+                    first_timestamp_str = self.state_changes[0]["timestamp"]
+                    first_timestamp = datetime.fromisoformat(first_timestamp_str).timestamp()
+                    uptime_seconds = time.time() - first_timestamp
+                except (ValueError, TypeError, KeyError) as e:
+                    # Fallback if timestamp parsing fails
+                    logging.warning(f"Error parsing circuit breaker timestamp: {e}")
+                    uptime_seconds = 0
+            else:
+                uptime_seconds = 0
 
             return {
                 "name": self.name,
