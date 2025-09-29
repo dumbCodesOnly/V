@@ -197,8 +197,15 @@ class SMCAnalyzer:
         # Convert to OHLCV format
         candlesticks = []
         for kline in klines:
+            # Handle potential type mismatch for timestamp
+            try:
+                timestamp_value = float(kline[0]) if isinstance(kline[0], str) else kline[0]
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid timestamp format in kline data: {kline[0]}")
+                continue
+                
             candlestick = {
-                "timestamp": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                "timestamp": datetime.fromtimestamp(timestamp_value / 1000, tz=timezone.utc),
                 "open": float(kline[1]),
                 "high": float(kline[2]),
                 "low": float(kline[3]),
@@ -1981,7 +1988,8 @@ class SMCAnalyzer:
 
         # Analyze daily bias confirmation
         daily_result = self._analyze_daily_bias_confirmation(
-            d1_structure, categories, h1_h4_result["score"]
+            d1_structure if d1_structure is not None else MarketStructure.CONSOLIDATION, 
+            categories, h1_h4_result["score"]
         )
         if daily_result["filtered"]:
             direction = self._determine_alignment_direction(categories)
@@ -2431,6 +2439,7 @@ class SMCAnalyzer:
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.now(timezone.utc),
+                    current_market_price=current_price,
                 )
 
             return None

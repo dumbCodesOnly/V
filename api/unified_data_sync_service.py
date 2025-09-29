@@ -496,8 +496,15 @@ class UnifiedDataSyncService:
         # Convert to standardized format
         klines = []
         for kline in klines_raw:
+            # Handle potential type mismatch for timestamp
+            try:
+                timestamp_value = float(kline[0]) if isinstance(kline[0], str) else kline[0]
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid timestamp format in kline data: {kline[0]}")
+                continue
+                
             klines.append({
-                "timestamp": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                "timestamp": datetime.fromtimestamp(timestamp_value / 1000, tz=timezone.utc),
                 "open": float(kline[1]),
                 "high": float(kline[2]), 
                 "low": float(kline[3]),
@@ -552,8 +559,15 @@ class UnifiedDataSyncService:
         # Convert to standardized format
         klines = []
         for kline in klines_raw:
+            # Handle potential type mismatch for timestamp
+            try:
+                timestamp_value = float(kline[0]) if isinstance(kline[0], str) else kline[0]
+            except (ValueError, TypeError):
+                logging.warning(f"Invalid timestamp format in kline data: {kline[0]}")
+                continue
+                
             klines.append({
-                "timestamp": datetime.fromtimestamp(kline[0] / 1000, tz=timezone.utc),
+                "timestamp": datetime.fromtimestamp(timestamp_value / 1000, tz=timezone.utc),
                 "open": float(kline[1]),
                 "high": float(kline[2]), 
                 "low": float(kline[3]),
