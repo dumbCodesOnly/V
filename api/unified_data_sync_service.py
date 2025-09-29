@@ -352,11 +352,22 @@ class SmartCache:
 
         with self.lock:
             # Clean price cache
-            expired_prices = [
-                symbol
-                for symbol, entry in self.price_cache.items()
-                if (current_time - entry["timestamp"]).total_seconds() >= entry["ttl"]
-            ]
+            expired_prices = []
+            for symbol, entry in self.price_cache.items():
+                try:
+                    # Ensure timestamp is a datetime object
+                    timestamp = entry["timestamp"]
+                    if isinstance(timestamp, str):
+                        from datetime import datetime
+                        timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    elif timestamp is None:
+                        continue  # Skip entries with no timestamp
+                    
+                    if (current_time - timestamp).total_seconds() >= entry["ttl"]:
+                        expired_prices.append(symbol)
+                except (TypeError, ValueError, KeyError) as e:
+                    logging.warning(f"Error processing timestamp for symbol {symbol}: {e}, removing entry")
+                    expired_prices.append(symbol)  # Remove problematic entries
             for symbol in expired_prices:
                 del self.price_cache[symbol]
                 removed_count += 1
@@ -371,12 +382,22 @@ class SmartCache:
             ]
             
             for cache_name, cache_dict in zip(cache_names, cache_dicts):
-                expired_keys = [
-                    key
-                    for key, entry in cache_dict.items()
-                    if (current_time - entry["timestamp"]).total_seconds()
-                    >= entry["ttl"]
-                ]
+                expired_keys = []
+                for key, entry in cache_dict.items():
+                    try:
+                        # Ensure timestamp is a datetime object
+                        timestamp = entry["timestamp"]
+                        if isinstance(timestamp, str):
+                            from datetime import datetime
+                            timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        elif timestamp is None:
+                            continue  # Skip entries with no timestamp
+                        
+                        if (current_time - timestamp).total_seconds() >= entry["ttl"]:
+                            expired_keys.append(key)
+                    except (TypeError, ValueError, KeyError) as e:
+                        logging.warning(f"Error processing timestamp for {cache_name} cache key {key}: {e}, removing entry")
+                        expired_keys.append(key)  # Remove problematic entries
                 for key in expired_keys:
                     del cache_dict[key]
                     removed_count += 1
