@@ -1235,7 +1235,7 @@ class SMCAnalyzer:
             # Both H1 and H4 bullish - trend-following long
             direction = "long"
             confidence = min(bullish_signals / 5.0, 1.0)
-            if confidence >= 0.7:  # Minimum confidence for trend trades
+            if confidence >= 0.6:  # Minimum confidence for trend trades
                 entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
                     current_price, order_blocks, candlesticks
                 )
@@ -1247,7 +1247,7 @@ class SMCAnalyzer:
             # Both H1 and H4 bearish - trend-following short
             direction = "short"
             confidence = min(bearish_signals / 5.0, 1.0)
-            if confidence >= 0.7:  # Minimum confidence for trend trades
+            if confidence >= 0.6:  # Minimum confidence for trend trades
                 entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
                     current_price, order_blocks, candlesticks
                 )
@@ -1268,7 +1268,7 @@ class SMCAnalyzer:
                 confidence += sweep_bonus
                 confidence = min(confidence, 1.0)  # Cap at 1.0
                 
-                if confidence >= 0.85:  # Higher confidence required for counter-trend
+                if confidence >= 0.6:  # Lowered confidence threshold for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
                         current_price, order_blocks, candlesticks
                     )
@@ -1288,7 +1288,7 @@ class SMCAnalyzer:
                 confidence += sweep_bonus
                 confidence = min(confidence, 1.0)  # Cap at 1.0
                 
-                if confidence >= 0.85:  # Higher confidence required for counter-trend
+                if confidence >= 0.6:  # Lowered confidence threshold for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
                         current_price, order_blocks, candlesticks
                     )
