@@ -313,6 +313,7 @@ class SMCConfig:
     LIQUIDITY_CONFIRMATION_CANDLES = (
         2  # Candles needed for structural confirmation after sweep
     )
+    REQUIRE_CONFIRMED_SWEEPS = True  # If False, sweeps without confirmation still count
 
     # Volume and Range Analysis
     VOLUME_RANGE_LOOKBACK = 10  # Candles to look back for volume/range calculations

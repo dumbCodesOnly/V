@@ -1259,9 +1259,15 @@ class SMCAnalyzer:
         elif h1_bullish and h4_bearish:
             # H1 CHoCH bullish, H4 bearish - potential reversal long
             confirmed_buy_sweeps = [s for s in liquidity_sweeps.get("buy_side", []) if s.get("confirmed", False)]
-            if confirmed_buy_sweeps and rsi < 35:  # RSI exhaustion for longs
+            if rsi < 35:  # RSI exhaustion for longs
                 direction = "long"
                 confidence = min(bullish_signals / 5.0, 1.0)
+                
+                # Add sweep bonus if confirmed sweeps are present
+                sweep_bonus = 0.2 if confirmed_buy_sweeps else 0.0
+                confidence += sweep_bonus
+                confidence = min(confidence, 1.0)  # Cap at 1.0
+                
                 if confidence >= 0.85:  # Higher confidence required for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
                         current_price, order_blocks, candlesticks
@@ -1273,9 +1279,15 @@ class SMCAnalyzer:
         elif h1_bearish and h4_bullish:
             # H1 CHoCH bearish, H4 bullish - potential reversal short  
             confirmed_sell_sweeps = [s for s in liquidity_sweeps.get("sell_side", []) if s.get("confirmed", False)]
-            if confirmed_sell_sweeps and rsi > 65:  # RSI exhaustion for shorts
+            if rsi > 65:  # RSI exhaustion for shorts
                 direction = "short"
                 confidence = min(bearish_signals / 5.0, 1.0)
+                
+                # Add sweep bonus if confirmed sweeps are present
+                sweep_bonus = 0.2 if confirmed_sell_sweeps else 0.0
+                confidence += sweep_bonus
+                confidence = min(confidence, 1.0)  # Cap at 1.0
+                
                 if confidence >= 0.85:  # Higher confidence required for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
                         current_price, order_blocks, candlesticks
@@ -1719,14 +1731,14 @@ class SMCAnalyzer:
         swing_lows = self._find_swing_lows(candlesticks)
 
         # Look for buy-side liquidity sweeps (wicks below swing lows)
-        for i, candle in enumerate(candlesticks[-10:], start=len(candlesticks) - 10):
+        for i, candle in enumerate(candlesticks[-30:], start=len(candlesticks) - 30):
             body_size = abs(candle["close"] - candle["open"])
             lower_wick = min(candle["open"], candle["close"]) - candle["low"]
 
             # Check if wick is significant
             if lower_wick >= body_size * SMCConfig.LIQUIDITY_SWEEP_WICK_RATIO:
                 # Check if wick swept below recent swing low
-                for swing in swing_lows[-5:]:
+                for swing in swing_lows[-10:]:
                     if (
                         swing["index"] < i
                         and candle["low"] < swing["low"]
@@ -1737,6 +1749,10 @@ class SMCAnalyzer:
                         confirmation = self._check_sweep_confirmation(
                             candlesticks, i, "buy_side"
                         )
+                        
+                        # If REQUIRE_CONFIRMED_SWEEPS is False, mark all sweeps as confirmed
+                        if not SMCConfig.REQUIRE_CONFIRMED_SWEEPS:
+                            confirmation = True
 
                         sweep = {
                             "price": swing["low"],
@@ -1749,14 +1765,14 @@ class SMCAnalyzer:
                         break
 
         # Look for sell-side liquidity sweeps (wicks above swing highs)
-        for i, candle in enumerate(candlesticks[-10:], start=len(candlesticks) - 10):
+        for i, candle in enumerate(candlesticks[-30:], start=len(candlesticks) - 30):
             body_size = abs(candle["close"] - candle["open"])
             upper_wick = candle["high"] - max(candle["open"], candle["close"])
 
             # Check if wick is significant
             if upper_wick >= body_size * SMCConfig.LIQUIDITY_SWEEP_WICK_RATIO:
                 # Check if wick swept above recent swing high
-                for swing in swing_highs[-5:]:
+                for swing in swing_highs[-10:]:
                     if (
                         swing["index"] < i
                         and candle["high"] > swing["high"]
@@ -1767,6 +1783,10 @@ class SMCAnalyzer:
                         confirmation = self._check_sweep_confirmation(
                             candlesticks, i, "sell_side"
                         )
+                        
+                        # If REQUIRE_CONFIRMED_SWEEPS is False, mark all sweeps as confirmed
+                        if not SMCConfig.REQUIRE_CONFIRMED_SWEEPS:
+                            confirmation = True
 
                         sweep = {
                             "price": swing["high"],
