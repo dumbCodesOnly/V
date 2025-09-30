@@ -1576,12 +1576,12 @@ class SMCAnalyzer:
                     # Check RSI for counter-trend requirements
                     if h1_structure in bullish_structures and h4_structure in bearish_structures:
                         if not (rsi and rsi < 35):
-                            rejection_reasons.append(f"RSI not in extreme oversold zone for reversal long (RSI: {rsi:.1f if rsi else 'N/A'})")
+                            rejection_reasons.append(f"RSI not in extreme oversold zone for reversal long (RSI: {f'{rsi:.1f}' if rsi is not None else 'N/A'})")
                         if not confirmed_buy_sweeps:
                             rejection_reasons.append("No confirmed buy-side liquidity sweeps for reversal confirmation")
                     elif h1_structure in bearish_structures and h4_structure in bullish_structures:
                         if not (rsi and rsi > 65):
-                            rejection_reasons.append(f"RSI not in extreme overbought zone for reversal short (RSI: {rsi:.1f if rsi else 'N/A'})")
+                            rejection_reasons.append(f"RSI not in extreme overbought zone for reversal short (RSI: {f'{rsi:.1f}' if rsi is not None else 'N/A'})")
                         if not confirmed_sell_sweeps:
                             rejection_reasons.append("No confirmed sell-side liquidity sweeps for reversal confirmation")
                 
