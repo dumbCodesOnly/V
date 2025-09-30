@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
@@ -1438,12 +1438,28 @@ class SMCAnalyzer:
         }
         logging.info(f"Cached new {signal.direction} signal for {signal.symbol} with entry at {signal.entry_price}")
 
-    def generate_trade_signal(self, symbol: str) -> Optional[SMCSignal]:
-        """Generate comprehensive trade signal based on SMC analysis with caching to prevent duplicate signals"""
+    def generate_trade_signal(self, symbol: str, return_diagnostics: bool = False) -> Union[Optional[SMCSignal], Tuple[Optional[SMCSignal], Dict]]:
+        """Generate comprehensive trade signal based on SMC analysis with caching to prevent duplicate signals
+        
+        Args:
+            symbol: Trading symbol to analyze
+            return_diagnostics: If True, returns tuple of (signal, diagnostics_dict) instead of just signal
+            
+        Returns:
+            If return_diagnostics=False: SMCSignal or None
+            If return_diagnostics=True: Tuple of (SMCSignal or None, diagnostics dict)
+        """
         try:
+            # Initialize diagnostics tracking
+            rejection_reasons = []
+            analysis_details = {}
+            
             # First, get current price to check existing signal validity
             quick_data = self.get_candlestick_data(symbol, "1h", 1)
             if not quick_data:
+                rejection_reasons.append("No price data available")
+                if return_diagnostics:
+                    return None, {"rejection_reasons": rejection_reasons, "details": analysis_details}
                 return None
             current_price = quick_data[-1]["close"]
             
@@ -1451,6 +1467,8 @@ class SMCAnalyzer:
             if self._is_signal_still_valid(symbol, current_price):
                 cached_signal = self.active_signals[symbol]['signal']
                 logging.debug(f"Using cached {cached_signal.direction} signal for {symbol} (entry: {cached_signal.entry_price})")
+                if return_diagnostics:
+                    return cached_signal, {"rejection_reasons": [], "details": {"cached": True}, "signal_generated": True}
                 return cached_signal
             
             # Get multi-timeframe data in batch to reduce API calls
@@ -1461,9 +1479,12 @@ class SMCAnalyzer:
             d1_data = timeframe_data.get("1d", [])
 
             if not h1_data or not h4_data:
+                rejection_reasons.append(f"Insufficient timeframe data (H1: {len(h1_data)} candles, H4: {len(h4_data)} candles)")
                 logging.warning(
                     f"Insufficient data for {symbol}: h1={len(h1_data)}, h4={len(h4_data)}"
                 )
+                if return_diagnostics:
+                    return None, {"rejection_reasons": rejection_reasons, "details": analysis_details}
                 return None
 
             current_price = h1_data[-1]["close"]
@@ -1471,18 +1492,33 @@ class SMCAnalyzer:
             # Analyze market structure across timeframes
             h1_structure = self.detect_market_structure(h1_data)
             h4_structure = self.detect_market_structure(h4_data)
+            analysis_details["h1_structure"] = h1_structure.value if hasattr(h1_structure, 'value') else str(h1_structure)
+            analysis_details["h4_structure"] = h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure)
 
             # Find key SMC elements
             order_blocks = self.find_order_blocks(h1_data)
             fvgs = self.find_fair_value_gaps(h1_data)
             liquidity_pools = self.find_liquidity_pools(h4_data)
+            analysis_details["order_blocks_count"] = len(order_blocks)
+            analysis_details["fvgs_count"] = len(fvgs)
+            analysis_details["liquidity_pools_count"] = len(liquidity_pools)
 
             # Calculate technical indicators
             rsi = self.calculate_rsi(h1_data)
             mas = self.calculate_moving_averages(h1_data)
+            analysis_details["rsi"] = rsi
+            analysis_details["rsi_status"] = "oversold" if rsi and rsi < 30 else "overbought" if rsi and rsi > 70 else "neutral"
 
             # Detect liquidity sweeps for reversal trade validation
             liquidity_sweeps = self.detect_liquidity_sweeps(h1_data)
+            confirmed_buy_sweeps = [s for s in liquidity_sweeps.get("buy_side", []) if s.get("confirmed", False)]
+            confirmed_sell_sweeps = [s for s in liquidity_sweeps.get("sell_side", []) if s.get("confirmed", False)]
+            analysis_details["liquidity_sweeps"] = {
+                "buy_side_total": len(liquidity_sweeps.get("buy_side", [])),
+                "buy_side_confirmed": len(confirmed_buy_sweeps),
+                "sell_side_total": len(liquidity_sweeps.get("sell_side", [])),
+                "sell_side_confirmed": len(confirmed_sell_sweeps)
+            }
             
             # Generate signal analysis with separate reasoning lists
             bullish_reasoning = []
@@ -1510,6 +1546,9 @@ class SMCAnalyzer:
                 mas,
                 bearish_reasoning,
             )
+            
+            analysis_details["bullish_signals_count"] = bullish_signals
+            analysis_details["bearish_signals_count"] = bearish_signals
 
             # Apply hybrid signal generation logic
             direction, confidence, entry_price, stop_loss, take_profits = (
@@ -1518,6 +1557,45 @@ class SMCAnalyzer:
                     current_price, order_blocks, h1_data, liquidity_sweeps, rsi
                 )
             )
+            
+            # Track why signal was rejected
+            if not direction:
+                # Determine specific rejection reasons
+                from .smc_analyzer import MarketStructure
+                
+                if h1_structure == MarketStructure.CONSOLIDATION or h4_structure == MarketStructure.CONSOLIDATION:
+                    rejection_reasons.append("Market in consolidation phase (no clear trend)")
+                    
+                bullish_structures = [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]
+                bearish_structures = [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]
+                
+                if (h1_structure in bullish_structures and h4_structure in bearish_structures) or \
+                   (h1_structure in bearish_structures and h4_structure in bullish_structures):
+                    rejection_reasons.append("H1/H4 timeframe structure conflict")
+                    
+                    # Check RSI for counter-trend requirements
+                    if h1_structure in bullish_structures and h4_structure in bearish_structures:
+                        if not (rsi and rsi < 35):
+                            rejection_reasons.append(f"RSI not in extreme oversold zone for reversal long (RSI: {rsi:.1f if rsi else 'N/A'})")
+                        if not confirmed_buy_sweeps:
+                            rejection_reasons.append("No confirmed buy-side liquidity sweeps for reversal confirmation")
+                    elif h1_structure in bearish_structures and h4_structure in bullish_structures:
+                        if not (rsi and rsi > 65):
+                            rejection_reasons.append(f"RSI not in extreme overbought zone for reversal short (RSI: {rsi:.1f if rsi else 'N/A'})")
+                        if not confirmed_sell_sweeps:
+                            rejection_reasons.append("No confirmed sell-side liquidity sweeps for reversal confirmation")
+                
+                if bullish_signals < 3 and bearish_signals < 3:
+                    rejection_reasons.append(f"Insufficient signal confluence (Bullish: {bullish_signals}, Bearish: {bearish_signals}, minimum: 3)")
+                    
+                if len(order_blocks) == 0:
+                    rejection_reasons.append("No valid order blocks detected")
+                    
+            elif confidence <= 0:
+                rejection_reasons.append(f"Confidence score too low ({confidence:.2f})")
+            
+            analysis_details["final_direction"] = direction
+            analysis_details["final_confidence"] = confidence
 
             # Check if signal meets minimum requirements
             if direction and confidence > 0:
@@ -1551,12 +1629,18 @@ class SMCAnalyzer:
                 # Cache the new signal to prevent duplicates
                 self._cache_signal(new_signal)
                 
+                if return_diagnostics:
+                    return new_signal, {"rejection_reasons": [], "details": analysis_details, "signal_generated": True}
                 return new_signal
 
+            if return_diagnostics:
+                return None, {"rejection_reasons": rejection_reasons, "details": analysis_details, "signal_generated": False}
             return None
 
         except Exception as e:
             logging.error(f"Error generating SMC signal for {symbol}: {e}")
+            if return_diagnostics:
+                return None, {"rejection_reasons": [f"Analysis error: {str(e)}"], "details": {}, "signal_generated": False}
             return None
 
     def _find_swing_highs(

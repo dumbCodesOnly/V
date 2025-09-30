@@ -10271,7 +10271,7 @@ def admin_smc_diagnostic():
         }
         
         try:
-            signal = analyzer.generate_trade_signal(symbol)
+            signal, signal_diagnostics = analyzer.generate_trade_signal(symbol, return_diagnostics=True)
             
             if signal:
                 step7['details'] = {
@@ -10284,7 +10284,8 @@ def admin_smc_diagnostic():
                     'signal_strength': signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
                     'risk_reward_ratio': signal.risk_reward_ratio,
                     'reasoning': signal.reasoning,
-                    'message': f"Generated {signal.direction} signal with {signal.confidence:.2f} confidence"
+                    'message': f"Generated {signal.direction} signal with {signal.confidence:.2f} confidence",
+                    'analysis_details': signal_diagnostics.get('details', {})
                 }
                 diagnostic['signal_generated'] = True
                 diagnostic['signal'] = {
@@ -10298,10 +10299,15 @@ def admin_smc_diagnostic():
                     'reasoning': signal.reasoning
                 }
             else:
+                rejection_reasons = signal_diagnostics.get('rejection_reasons', ['No valid signal conditions met'])
+                analysis_details = signal_diagnostics.get('details', {})
+                
                 step7['details'] = {
                     'signal_generated': False,
-                    'reason': 'No valid signal conditions met',
-                    'message': 'Analysis complete - No signal generated due to insufficient confluence or market conditions'
+                    'rejection_reasons': rejection_reasons,
+                    'analysis_details': analysis_details,
+                    'message': 'Analysis complete - No signal generated',
+                    'primary_reason': rejection_reasons[0] if rejection_reasons else 'Unknown reason'
                 }
             
             step7['status'] = 'completed'

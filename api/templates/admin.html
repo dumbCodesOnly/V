@@ -892,11 +892,20 @@
                                     </div>
                                 </div>
                                 <div id="step-7-no-signal" style="display: none;">
-                                    <div class="alert alert-info" role="alert">
+                                    <div class="alert alert-warning" role="alert">
                                         <h6 class="alert-heading">
-                                            <i class="bi bi-info-circle me-2"></i>No Signal Generated
+                                            <i class="bi bi-exclamation-triangle me-2"></i>No Signal Generated
                                         </h6>
-                                        <p id="step-7-no-signal-reason" class="mb-0">Analysis completed but no valid signal conditions were met.</p>
+                                        <p class="mb-2"><strong>Why no signal was generated:</strong></p>
+                                        <ul id="step-7-rejection-reasons" class="mb-2">
+                                            <!-- Rejection reasons will be populated here -->
+                                        </ul>
+                                        <div id="step-7-analysis-summary" class="mt-3 p-2 bg-light rounded" style="display: none;">
+                                            <small class="text-muted"><strong>Analysis Details:</strong></small>
+                                            <div id="step-7-analysis-details" class="small mt-1">
+                                                <!-- Analysis details will be populated here -->
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div id="step-7-message" class="mt-2 small text-muted"></div>
@@ -2185,7 +2194,55 @@
                 // Show no signal
                 document.getElementById('step-7-signal').style.display = 'none';
                 document.getElementById('step-7-no-signal').style.display = 'block';
-                document.getElementById('step-7-no-signal-reason').textContent = details.reason || 'Analysis completed but no valid signal conditions were met.';
+                
+                // Display rejection reasons
+                const rejectionReasons = details.rejection_reasons || [details.reason || 'Analysis completed but no valid signal conditions were met.'];
+                const reasonsList = document.getElementById('step-7-rejection-reasons');
+                reasonsList.innerHTML = '';
+                rejectionReasons.forEach(reason => {
+                    const li = document.createElement('li');
+                    li.className = 'mb-1';
+                    li.innerHTML = `<i class="bi bi-x-circle text-danger me-2"></i>${reason}`;
+                    reasonsList.appendChild(li);
+                });
+                
+                // Display analysis details if available
+                const analysisDetails = details.analysis_details || {};
+                if (Object.keys(analysisDetails).length > 0) {
+                    document.getElementById('step-7-analysis-summary').style.display = 'block';
+                    const detailsDiv = document.getElementById('step-7-analysis-details');
+                    let detailsHtml = '';
+                    
+                    // Market structure
+                    if (analysisDetails.h1_structure || analysisDetails.h4_structure) {
+                        detailsHtml += `<div class="mb-2"><strong>Market Structure:</strong> H1: ${analysisDetails.h1_structure || 'N/A'}, H4: ${analysisDetails.h4_structure || 'N/A'}</div>`;
+                    }
+                    
+                    // RSI
+                    if (analysisDetails.rsi !== undefined) {
+                        detailsHtml += `<div class="mb-2"><strong>RSI:</strong> ${analysisDetails.rsi ? analysisDetails.rsi.toFixed(1) : 'N/A'} (${analysisDetails.rsi_status || 'neutral'})</div>`;
+                    }
+                    
+                    // Signal counts
+                    if (analysisDetails.bullish_signals_count !== undefined || analysisDetails.bearish_signals_count !== undefined) {
+                        detailsHtml += `<div class="mb-2"><strong>Signal Confluence:</strong> Bullish: ${analysisDetails.bullish_signals_count || 0}, Bearish: ${analysisDetails.bearish_signals_count || 0}</div>`;
+                    }
+                    
+                    // Order blocks
+                    if (analysisDetails.order_blocks_count !== undefined) {
+                        detailsHtml += `<div class="mb-2"><strong>Order Blocks:</strong> ${analysisDetails.order_blocks_count || 0} detected</div>`;
+                    }
+                    
+                    // Liquidity sweeps
+                    if (analysisDetails.liquidity_sweeps) {
+                        const ls = analysisDetails.liquidity_sweeps;
+                        detailsHtml += `<div class="mb-2"><strong>Liquidity Sweeps:</strong> Buy-side: ${ls.buy_side_confirmed || 0}/${ls.buy_side_total || 0}, Sell-side: ${ls.sell_side_confirmed || 0}/${ls.sell_side_total || 0}</div>`;
+                    }
+                    
+                    detailsDiv.innerHTML = detailsHtml;
+                } else {
+                    document.getElementById('step-7-analysis-summary').style.display = 'none';
+                }
             }
         }
 
