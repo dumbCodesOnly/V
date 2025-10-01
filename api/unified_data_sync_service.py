@@ -1250,9 +1250,9 @@ class UnifiedDataSyncService:
                     # Variable delay based on operation type  
                     try:
                         if data_info.get("needs_initial_population", False):
-                            time.sleep(3.0)  # Extra 3 seconds for initial population (heavy operation)
+                            time.sleep(5.0)  # Extra 5 seconds for initial population/gap fill (heavy bulk operation - prevent rate limits)
                         elif existing_open_candle:
-                            time.sleep(0.5)  # Minimal delay for efficient open candle updates
+                            time.sleep(1.5)  # Conservative delay for open candle updates to prevent rate limiting
                     except (NameError, UnboundLocalError):
                         pass  # Variables may not be defined in error scenarios
 

@@ -66,9 +66,9 @@ class TimeConfig:
     USER_DATA_CACHE_TTL = 30  # seconds - how long to cache user data
     
     # API Rate Limiting - Delays between requests to respect rate limits  
-    BINANCE_API_DELAY = 0.5   # seconds - Much more conservative: ~120 requests/minute
-    BINANCE_KLINES_DELAY = 2.0  # seconds - Much more conservative for klines endpoints (30 requests/minute)
-    API_RETRY_DELAY = 3.0  # seconds - Longer base delay for retries
+    BINANCE_API_DELAY = 1.0   # seconds - Conservative: ~60 requests/minute
+    BINANCE_KLINES_DELAY = 3.0  # seconds - Conservative for klines endpoints (20 requests/minute)
+    API_RETRY_DELAY = 5.0  # seconds - Longer base delay for retries to prevent rate limit triggers
     API_BACKOFF_MULTIPLIER = 2.5  # Higher exponential backoff multiplier
 
     # Sync Intervals - COST OPTIMIZED FOR RENDER
