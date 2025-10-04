@@ -6358,6 +6358,24 @@
                         </div>
                     </div>
                     
+                    ${signal.scaled_entries && signal.scaled_entries.length > 0 ? `
+                        <div class="mt-2 p-2" style="background: rgba(108, 117, 125, 0.1); border-radius: 4px;">
+                            <div style="font-size: 0.75rem; font-weight: 600; color: #6c757d; margin-bottom: 4px;">
+                                📊 SCALED ENTRY STRATEGY
+                            </div>
+                            ${signal.scaled_entries.map((entry, idx) => `
+                                <div style="font-size: 0.7rem; margin-bottom: 2px; display: flex; justify-content: space-between;">
+                                    <span style="color: ${entry.order_type === 'market' ? '#28a745' : '#ffc107'};">
+                                        ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type})
+                                    </span>
+                                    <span style="font-weight: 600;">
+                                        ${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}
+                                    </span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
                     ${signal.reasoning && signal.reasoning.length > 0 ? `
                         <div class="smc-reasoning">
                             <div class="smc-reasoning-title">Analysis</div>
@@ -6463,6 +6481,37 @@
                                                         </div>
                                                     </div>
                                                 `).join('')}
+                                            </div>
+                                        ` : ''}
+                                        
+                                        ${data.scaled_entries && data.scaled_entries.length > 0 ? `
+                                            <h6 class="mb-1 fs-7">📊 Scaled Entry Strategy</h6>
+                                            <div class="p-3 mb-3" style="background: linear-gradient(135deg, rgba(108, 117, 125, 0.08) 0%, rgba(108, 117, 125, 0.03) 100%); border-radius: 8px; border: 1px solid rgba(108, 117, 125, 0.2);">
+                                                ${data.scaled_entries.map((entry, idx) => `
+                                                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 ${idx < data.scaled_entries.length - 1 ? 'border-bottom' : ''}" style="border-color: rgba(108, 117, 125, 0.15) !important;">
+                                                        <div>
+                                                            <span style="font-size: 0.85rem; font-weight: 600; color: ${entry.order_type === 'market' ? '#28a745' : '#ffc107'};">
+                                                                ${entry.order_type === 'market' ? '🟢 Market Order' : '🟡 Limit Order'} 
+                                                            </span>
+                                                            <div style="font-size: 0.7rem; color: #6c757d; margin-top: 2px;">
+                                                                Entry ${idx + 1} • ${entry.allocation_percent.toFixed(0)}% allocation
+                                                            </div>
+                                                        </div>
+                                                        <div style="text-align: right;">
+                                                            <div style="font-size: 0.9rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">
+                                                                $${entry.entry_price.toFixed(4)}
+                                                            </div>
+                                                            <div style="font-size: 0.7rem; color: #6c757d;">
+                                                                ${((Math.abs(entry.entry_price - data.entry_price) / data.entry_price) * 100).toFixed(2)}% from market
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                                <div class="mt-2 pt-2" style="border-top: 1px dashed rgba(108, 117, 125, 0.3);">
+                                                    <small style="color: #6c757d; font-size: 0.7rem;">
+                                                        <strong>Strategy:</strong> Institutional-grade DCA with POI alignment
+                                                    </small>
+                                                </div>
                                             </div>
                                         ` : ''}
                                         

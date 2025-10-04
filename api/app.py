@@ -3965,6 +3965,21 @@ def get_smc_analysis(symbol):
         if cached_signal:
             # Return cached signal
             signal = cached_signal.to_smc_signal()
+            # Serialize scaled entries if present
+            scaled_entries_data = None
+            if signal.scaled_entries:
+                scaled_entries_data = [
+                    {
+                        "entry_price": entry.entry_price,
+                        "allocation_percent": entry.allocation_percent,
+                        "order_type": entry.order_type,
+                        "stop_loss": entry.stop_loss,
+                        "take_profits": entry.take_profits,
+                        "status": entry.status
+                    }
+                    for entry in signal.scaled_entries
+                ]
+            
             return jsonify(
                 {
                     "symbol": signal.symbol,
@@ -3979,6 +3994,7 @@ def get_smc_analysis(symbol):
                     "timestamp": signal.timestamp.isoformat(),
                     "status": "cached_signal",
                     "cache_source": True,
+                    "scaled_entries": scaled_entries_data,
                 }
             )
 
@@ -3991,6 +4007,21 @@ def get_smc_analysis(symbol):
             cache_entry = SMCSignalCache.from_smc_signal(signal)
             db.session.add(cache_entry)
             db.session.commit()
+
+            # Serialize scaled entries if present
+            scaled_entries_data = None
+            if signal.scaled_entries:
+                scaled_entries_data = [
+                    {
+                        "entry_price": entry.entry_price,
+                        "allocation_percent": entry.allocation_percent,
+                        "order_type": entry.order_type,
+                        "stop_loss": entry.stop_loss,
+                        "take_profits": entry.take_profits,
+                        "status": entry.status
+                    }
+                    for entry in signal.scaled_entries
+                ]
 
             return jsonify(
                 {
@@ -4006,6 +4037,7 @@ def get_smc_analysis(symbol):
                     "timestamp": signal.timestamp.isoformat(),
                     "status": "new_signal_generated",
                     "cache_source": False,
+                    "scaled_entries": scaled_entries_data,
                 }
             )
         else:
@@ -4056,6 +4088,19 @@ def get_multiple_smc_signals():
                     # Use cached signal
                     signal = cached_signal.to_smc_signal()
                     cache_hits += 1
+                    
+                    # Serialize scaled entries if present
+                    scaled_entries_data = None
+                    if signal.scaled_entries:
+                        scaled_entries_data = [
+                            {
+                                "entry_price": entry.entry_price,
+                                "allocation_percent": entry.allocation_percent,
+                                "order_type": entry.order_type,
+                            }
+                            for entry in signal.scaled_entries
+                        ]
+                    
                     signals[symbol] = {
                         "direction": signal.direction,
                         "entry_price": signal.entry_price,
@@ -4069,6 +4114,7 @@ def get_multiple_smc_signals():
                         "risk_reward_ratio": signal.risk_reward_ratio,
                         "timestamp": signal.timestamp.isoformat(),
                         "cache_source": True,
+                        "scaled_entries": scaled_entries_data,
                     }
                 else:
                     # Generate new signal
@@ -4078,6 +4124,18 @@ def get_multiple_smc_signals():
                         cache_entry = SMCSignalCache.from_smc_signal(signal)
                         db.session.add(cache_entry)
                         new_signals_generated += 1
+
+                        # Serialize scaled entries if present
+                        scaled_entries_data = None
+                        if signal.scaled_entries:
+                            scaled_entries_data = [
+                                {
+                                    "entry_price": entry.entry_price,
+                                    "allocation_percent": entry.allocation_percent,
+                                    "order_type": entry.order_type,
+                                }
+                                for entry in signal.scaled_entries
+                            ]
 
                         signals[symbol] = {
                             "direction": signal.direction,
@@ -4092,6 +4150,7 @@ def get_multiple_smc_signals():
                             "risk_reward_ratio": signal.risk_reward_ratio,
                             "timestamp": signal.timestamp.isoformat(),
                             "cache_source": False,
+                            "scaled_entries": scaled_entries_data,
                         }
                     else:
                         signals[symbol] = {
