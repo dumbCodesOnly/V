@@ -224,6 +224,12 @@ class TradingConfig:
     TP_RR_RATIOS = [1.0, 2.0, 3.0]  # R:R for TP1, TP2, TP3
     ENABLE_TRAILING_AFTER_TP1 = True  # Activate trailing stop after TP1 is hit
     TRAILING_STOP_PERCENT = 0.8  # 0.8% trailing stop distance (adjust based on volatility and leverage)
+    
+    # Phase 7: ATR Risk Filter Configuration
+    USE_ATR_FILTER = True  # Enable ATR-based volatility filtering
+    MIN_ATR_15M_PERCENT = 0.8  # Minimum 0.8% ATR on 15m timeframe
+    MIN_ATR_H1_PERCENT = 1.2  # Minimum 1.2% ATR on H1 timeframe
+    USE_DYNAMIC_POSITION_SIZING = False  # Adjust position size based on ATR volatility (optional)
 
 
 # =============================================================================
