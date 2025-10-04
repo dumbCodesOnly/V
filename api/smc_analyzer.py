@@ -2041,6 +2041,51 @@ class SMCAnalyzer:
                     
                     logging.info(f"Phase 5: Refined stop-loss from ${original_sl:.2f} to ${refined_sl:.2f} using 15m swings + ATR buffer")
                 
+                # Phase 6: Calculate R:R-based take profits if enabled
+                if TradingConfig.USE_RR_BASED_TPS:
+                    # Extract liquidity target prices from liquidity pools
+                    liquidity_target_prices = []
+                    if liquidity_pools:
+                        for pool in liquidity_pools:
+                            liquidity_target_prices.append(pool.price)
+                    
+                    # Calculate R:R-based take profits
+                    rr_take_profits = self._calculate_rr_based_take_profits(
+                        entry_price=entry_price,
+                        stop_loss=stop_loss,
+                        direction=direction,
+                        liquidity_targets=liquidity_target_prices
+                    )
+                    
+                    # Extract TP prices and allocations
+                    original_tps = take_profits.copy() if take_profits else []
+                    take_profits = [tp_price for tp_price, _ in rr_take_profits]
+                    tp_allocations = [tp_alloc for _, tp_alloc in rr_take_profits]
+                    
+                    # Track Phase 6 metrics
+                    analysis_details["phase6_tp_levels"] = take_profits
+                    analysis_details["phase6_tp_allocations"] = tp_allocations
+                    analysis_details["phase6_original_tps"] = original_tps
+                    
+                    # Calculate R:R ratio using new TP1
+                    risk = abs(entry_price - stop_loss)
+                    reward = abs(take_profits[0] - entry_price) if take_profits else risk
+                    rr_ratio = reward / risk if risk > 0 else 1.0
+                    
+                    # Add Phase 6 reasoning
+                    if len(take_profits) >= 3:
+                        tp_rr_ratios = TradingConfig.TP_RR_RATIOS
+                        final_reasoning.append(
+                            f"Phase 6: R:R-based TPs - TP1: {tp_rr_ratios[0]}R ({tp_allocations[0]:.0f}%), "
+                            f"TP2: {tp_rr_ratios[1]}R ({tp_allocations[1]:.0f}%), "
+                            f"TP3: {tp_rr_ratios[2]}R ({tp_allocations[2]:.0f}%)"
+                        )
+                    
+                    logging.info(
+                        f"Phase 6: R:R-based take profits calculated - "
+                        f"TP1: ${take_profits[0]:.2f}, TP2: ${take_profits[1]:.2f}, TP3: ${take_profits[2]:.2f}"
+                    )
+                
                 # Phase 4: Calculate scaled entries
                 scaled_entries_list = None
                 if TradingConfig.USE_SCALED_ENTRIES:

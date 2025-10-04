@@ -217,6 +217,13 @@ class TradingConfig:
     USE_15M_SWING_SL = True  # Use 15m swing levels for stop-loss calculation
     SL_ATR_BUFFER_MULTIPLIER = 0.5  # 0.5x ATR buffer for stop-loss
     SL_MIN_DISTANCE_PERCENT = 0.5  # Minimum 0.5% SL distance from entry
+    
+    # Phase 6: Multi-Take Profit Configuration
+    USE_RR_BASED_TPS = True  # Use R:R-based take profit levels
+    TP_ALLOCATIONS = [40, 30, 30]  # TP1, TP2, TP3 percentages (must sum to 100)
+    TP_RR_RATIOS = [1.0, 2.0, 3.0]  # R:R for TP1, TP2, TP3
+    ENABLE_TRAILING_AFTER_TP1 = True  # Activate trailing stop after TP1 is hit
+    TRAILING_STOP_PERCENT = 2.0  # 2% trailing stop distance
 
 
 # =============================================================================

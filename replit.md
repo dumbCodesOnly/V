@@ -4,6 +4,26 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 6 Complete (Multi-Take Profit Management with R:R Ratios)
+  - Implemented `_calculate_rr_based_take_profits()` method for R:R-based TP calculation:
+    - TP1: 1R (100% risk as profit) with 40% allocation
+    - TP2: 2R (200% risk as profit) with 30% allocation
+    - TP3: Liquidity target or 3R with 30% allocation
+  - Created `_find_liquidity_target()` method for finding nearest liquidity levels beyond 2R
+  - Created `_should_trail_stop_after_tp1()` method for trailing stop activation logic
+  - Integrated Phase 6 into `generate_trade_signal()` method with R:R-based TP calculation
+  - Added Phase 6 configuration to `TradingConfig` class:
+    - `USE_RR_BASED_TPS = True` (enables R:R-based take profits)
+    - `TP_ALLOCATIONS = [40, 30, 30]` (TP allocation percentages)
+    - `TP_RR_RATIOS = [1.0, 2.0, 3.0]` (R:R ratios for each TP)
+    - `ENABLE_TRAILING_AFTER_TP1 = True` (trailing stop after TP1)
+    - `TRAILING_STOP_PERCENT = 2.0` (2% trailing stop distance)
+  - Take profits now scale based on risk amount for consistent R:R across all trades
+  - TP3 intelligently targets liquidity pools when available
+  - All Phase 6 features fully integrated and operational
+  - **Next Steps**: Implement Phase 7 (ATR Risk Filter for low-volatility filtering)
+  - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phase
+
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 5 Complete (Refined Stop-Loss with 15m Swings)
   - Implemented `_find_15m_swing_levels()` method to identify swing highs and lows on 15m timeframe
   - Created `_calculate_refined_sl_with_atr()` method for precise stop-loss calculation:
