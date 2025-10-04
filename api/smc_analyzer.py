@@ -1416,8 +1416,6 @@ class SMCAnalyzer:
             bearish_bias_count = 0
             reasoning = []
             
-            from .smc_analyzer import MarketStructure
-            
             if d1_structure == MarketStructure.BULLISH_BOS:
                 bullish_bias_count += 2
                 reasoning.append("Daily bullish break of structure (strong)")
@@ -1530,7 +1528,6 @@ class SMCAnalyzer:
                     "strength": fvg.alignment_score
                 })
             
-            from .smc_analyzer import MarketStructure
             structure_shift = "none"
             if h1_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
                 if h4_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
@@ -1600,8 +1597,6 @@ class SMCAnalyzer:
             
             alignment_score = 0.0
             signal_direction = None
-            
-            from .smc_analyzer import MarketStructure
             
             if htf_bias["bias"] == "bullish":
                 if m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
@@ -1893,8 +1888,6 @@ class SMCAnalyzer:
             # Track why signal was rejected
             if not direction:
                 # Determine specific rejection reasons
-                from .smc_analyzer import MarketStructure
-                
                 if h1_structure == MarketStructure.CONSOLIDATION or h4_structure == MarketStructure.CONSOLIDATION:
                     rejection_reasons.append("Market in consolidation phase (no clear trend)")
                     
