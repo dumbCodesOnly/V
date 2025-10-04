@@ -1774,6 +1774,7 @@ class SMCAnalyzer:
             h1_data = timeframe_data.get("1h", [])
             h4_data = timeframe_data.get("4h", [])
             d1_data = timeframe_data.get("1d", [])
+            m15_data = timeframe_data.get("15m", [])
 
             if not h1_data or not h4_data:
                 rejection_reasons.append(f"Insufficient timeframe data (H1: {len(h1_data)} candles, H4: {len(h4_data)} candles)")
@@ -1785,6 +1786,40 @@ class SMCAnalyzer:
                 return None
 
             current_price = h1_data[-1]["close"]
+
+            # Phase 2: Multi-Timeframe Hierarchical Analysis
+            # Step 1: Determine High Timeframe Bias (Daily + H4)
+            htf_bias = self._get_htf_bias(d1_data, h4_data)
+            analysis_details["htf_bias"] = htf_bias["bias"]
+            analysis_details["htf_confidence"] = htf_bias["confidence"]
+            analysis_details["htf_reason"] = htf_bias["reason"]
+            
+            logging.info(f"Phase 2 - HTF Bias for {symbol}: {htf_bias['bias']} (confidence: {htf_bias['confidence']:.2f}) - {htf_bias['reason']}")
+            
+            # Step 2: Analyze Intermediate Structure (H4 + H1)
+            intermediate_structure = self._get_intermediate_structure(h1_data, h4_data)
+            analysis_details["intermediate_structure"] = intermediate_structure["structure"]
+            analysis_details["intermediate_valid"] = intermediate_structure["valid"]
+            analysis_details["poi_count"] = len(intermediate_structure.get("poi_levels", []))
+            
+            # Step 3: Generate 15m Execution Signal (if 15m data available)
+            execution_signal_15m = None
+            if m15_data and len(m15_data) >= 20:
+                execution_signal_15m = self._get_execution_signal_15m(m15_data, htf_bias, intermediate_structure)
+                analysis_details["m15_signal"] = execution_signal_15m["signal"]
+                analysis_details["m15_alignment_score"] = execution_signal_15m["alignment_score"]
+                analysis_details["m15_reason"] = execution_signal_15m["reason"]
+                
+                logging.info(f"Phase 2 - 15m Execution Signal for {symbol}: {execution_signal_15m['signal']} (alignment: {execution_signal_15m['alignment_score']:.2f}) - {execution_signal_15m['reason']}")
+                
+                # Reject if 15m conflicts with HTF bias (low alignment score)
+                if execution_signal_15m["alignment_score"] < 0.3 and htf_bias["bias"] != "neutral":
+                    rejection_reasons.append(f"15m structure conflicts with HTF bias: {execution_signal_15m['reason']}")
+                    if return_diagnostics:
+                        return None, {"rejection_reasons": rejection_reasons, "details": analysis_details, "signal_generated": False}
+                    return None
+            else:
+                logging.warning(f"15m data unavailable or insufficient for {symbol} ({len(m15_data) if m15_data else 0} candles), proceeding with standard analysis")
 
             # Analyze market structure across timeframes
             h1_structure = self.detect_market_structure(h1_data)
