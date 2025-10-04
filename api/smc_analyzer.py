@@ -1924,8 +1924,53 @@ class SMCAnalyzer:
 
             # Check if signal meets minimum requirements
             if direction and confidence > 0:
-                rr_ratio, signal_strength = self._calculate_trade_metrics_enhanced(
-                    entry_price, stop_loss, take_profits, confidence, liquidity_sweeps, order_blocks, fvgs
+                # Phase 3: Apply Enhanced Confidence Scoring with 15m alignment
+                m15_alignment_score = 0.5  # Default neutral if no 15m data
+                if execution_signal_15m and execution_signal_15m.get("alignment_score") is not None:
+                    m15_alignment_score = execution_signal_15m["alignment_score"]
+                    analysis_details["phase3_m15_alignment"] = m15_alignment_score
+                
+                # Check for liquidity sweep confluence
+                liquidity_swept = len(confirmed_buy_sweeps) > 0 or len(confirmed_sell_sweeps) > 0
+                sweep_confirmed = (len(confirmed_buy_sweeps) > 0 and direction == "long") or (len(confirmed_sell_sweeps) > 0 and direction == "short")
+                
+                # Check if entry is from HTF POI (OB or FVG near entry price)
+                entry_from_htf_poi = False
+                for ob in order_blocks:
+                    price_diff_pct = abs(entry_price - ob.price_low if direction == "long" else ob.price_high) / entry_price * 100
+                    if price_diff_pct < 0.5 and not ob.mitigated:  # Within 0.5% of OB
+                        entry_from_htf_poi = True
+                        break
+                if not entry_from_htf_poi:
+                    for fvg in fvgs:
+                        price_diff_pct = abs(entry_price - (fvg.gap_low if direction == "long" else fvg.gap_high)) / entry_price * 100
+                        if price_diff_pct < 0.5:  # Within 0.5% of FVG
+                            entry_from_htf_poi = True
+                            break
+                
+                analysis_details["phase3_liquidity_swept"] = liquidity_swept
+                analysis_details["phase3_sweep_confirmed"] = sweep_confirmed
+                analysis_details["phase3_entry_from_poi"] = entry_from_htf_poi
+                
+                # Calculate enhanced confidence using Phase 3 method
+                # Convert confidence (which is 0-1) to confluence_score (which is 0-5 scale)
+                confluence_score_estimate = confidence * 5.0
+                
+                signal_strength, enhanced_confidence = self._calculate_signal_strength_and_confidence(
+                    confluence_score=confluence_score_estimate,
+                    m15_alignment_score=m15_alignment_score,
+                    liquidity_swept=liquidity_swept,
+                    sweep_confirmed=sweep_confirmed,
+                    entry_from_htf_poi=entry_from_htf_poi
+                )
+                
+                analysis_details["phase3_base_confidence"] = confidence
+                analysis_details["phase3_enhanced_confidence"] = enhanced_confidence
+                analysis_details["phase3_signal_strength"] = signal_strength.value if hasattr(signal_strength, 'value') else str(signal_strength)
+                
+                # Calculate risk/reward ratio
+                rr_ratio, _ = self._calculate_trade_metrics_enhanced(
+                    entry_price, stop_loss, take_profits, enhanced_confidence, liquidity_sweeps, order_blocks, fvgs
                 )
 
                 # Use reasoning that matches the final signal direction with defensive check
@@ -1936,6 +1981,14 @@ class SMCAnalyzer:
                 else:
                     # Fallback: use the reasoning from the stronger signal side
                     final_reasoning = bullish_reasoning if bullish_signals > bearish_signals else bearish_reasoning
+                
+                # Add Phase 3 bonuses to reasoning
+                if m15_alignment_score >= 0.8:
+                    final_reasoning.append(f"Phase 3: Perfect 15m alignment with HTF bias (+0.2 confidence)")
+                if liquidity_swept and sweep_confirmed:
+                    final_reasoning.append(f"Phase 3: Confirmed liquidity sweep ({direction}-side) (+0.1 confidence)")
+                if entry_from_htf_poi:
+                    final_reasoning.append("Phase 3: Entry from HTF POI (OB/FVG) (+0.1 confidence)")
 
                 new_signal = SMCSignal(
                     symbol=symbol,
@@ -1943,7 +1996,7 @@ class SMCAnalyzer:
                     entry_price=entry_price,
                     stop_loss=stop_loss,
                     take_profit_levels=take_profits,
-                    confidence=confidence,
+                    confidence=enhanced_confidence,  # Use Phase 3 enhanced confidence
                     reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
@@ -2751,18 +2804,122 @@ class SMCAnalyzer:
 
         return entry_price, stop_loss, take_profits
 
-    def _calculate_signal_strength_and_confidence(self, confluence_score):
-        """Calculate signal strength and final confidence."""
-        if confluence_score >= 4.0:
+    def _calculate_15m_alignment_score(self, m15_structure, htf_bias: str, intermediate_structure_direction: str, current_price: float, poi_levels: List[Dict]) -> float:
+        """
+        Phase 3: Calculate how well 15m structure aligns with HTF bias
+        
+        Args:
+            m15_structure: 15-minute market structure
+            htf_bias: High timeframe bias ('bullish', 'bearish', or 'neutral')
+            intermediate_structure_direction: Direction of H4/H1 intermediate structure
+            current_price: Current market price
+            poi_levels: Points of interest from intermediate structure
+            
+        Returns:
+            alignment_score: 0.0 (conflict) to 1.0 (perfect alignment)
+        """
+        alignment_score = 0.0
+        
+        if htf_bias == "neutral" or not m15_structure:
+            return 0.5  # Neutral - no alignment either way
+        
+        # Check 15m structure alignment with HTF bias
+        if htf_bias == "bullish":
+            if m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                alignment_score += 0.5  # Strong bullish alignment
+            elif m15_structure == MarketStructure.CONSOLIDATION:
+                alignment_score += 0.3  # Neutral but acceptable
+            elif m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                alignment_score = 0.1  # Conflict - bearish structure against bullish bias
+                
+        elif htf_bias == "bearish":
+            if m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                alignment_score += 0.5  # Strong bearish alignment
+            elif m15_structure == MarketStructure.CONSOLIDATION:
+                alignment_score += 0.3  # Neutral but acceptable
+            elif m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                alignment_score = 0.1  # Conflict - bullish structure against bearish bias
+        
+        # Bonus: Check if intermediate structure also aligns
+        if intermediate_structure_direction and intermediate_structure_direction.startswith(htf_bias):
+            alignment_score += 0.3
+        
+        # Bonus: Check if price is near a POI aligned with HTF bias
+        for poi in poi_levels:
+            price_diff_pct = abs(current_price - poi["price"]) / current_price * 100
+            if price_diff_pct < 1.0 and poi["direction"] == htf_bias:
+                alignment_score += 0.2
+                break
+        
+        # Ensure score is between 0.0 and 1.0
+        return min(alignment_score, 1.0)
+
+    def _calculate_signal_strength_and_confidence(
+        self, 
+        confluence_score: float,
+        m15_alignment_score: float = 0.5,
+        liquidity_swept: bool = False,
+        sweep_confirmed: bool = False,
+        entry_from_htf_poi: bool = False
+    ):
+        """
+        Phase 3: Calculate signal strength and final confidence with 15m alignment bonuses
+        
+        Confidence Scoring Rules:
+        - Base confidence from confluence score (0.5 - 0.8)
+        - +0.2 bonus if 15m perfectly aligns with HTF bias (alignment >= 0.8)
+        - -0.3 penalty if 15m conflicts with HTF bias (alignment < 0.3) - signal should be rejected
+        - +0.1 bonus if liquidity sweep confirmed
+        - +0.1 bonus if entry from H1/H4 OB/FVG
+        
+        Args:
+            confluence_score: Base confluence score from SMC analysis
+            m15_alignment_score: 15m alignment score (0.0-1.0)
+            liquidity_swept: Whether liquidity was swept
+            sweep_confirmed: Whether the sweep was confirmed
+            entry_from_htf_poi: Whether entry is from HTF point of interest
+        
+        Returns:
+            (signal_strength, final_confidence)
+        """
+        # Start with base confidence from confluence
+        base_confidence = min(confluence_score / 5.0, 1.0)
+        final_confidence = base_confidence
+        
+        # Phase 3: Apply 15m alignment adjustments
+        if m15_alignment_score >= 0.8:
+            # Perfect alignment bonus
+            final_confidence += 0.2
+            logging.debug(f"Phase 3: +0.2 confidence bonus for perfect 15m alignment (score: {m15_alignment_score:.2f})")
+        elif m15_alignment_score < 0.3:
+            # Conflict penalty - signal should be rejected before reaching here
+            final_confidence -= 0.3
+            logging.warning(f"Phase 3: -0.3 confidence penalty for 15m conflict (score: {m15_alignment_score:.2f})")
+        
+        # Liquidity sweep confluence bonus
+        if liquidity_swept and sweep_confirmed:
+            final_confidence += 0.1
+            logging.debug("Phase 3: +0.1 confidence bonus for confirmed liquidity sweep")
+        
+        # HTF POI entry bonus
+        if entry_from_htf_poi:
+            final_confidence += 0.1
+            logging.debug("Phase 3: +0.1 confidence bonus for HTF POI entry")
+        
+        # Ensure confidence stays in valid range [0.0, 1.0]
+        final_confidence = max(0.0, min(final_confidence, 1.0))
+        
+        # Determine signal strength based on final confidence and alignment
+        if final_confidence >= 0.8 and m15_alignment_score >= 0.7:
             signal_strength = SignalStrength.VERY_STRONG
-        elif confluence_score >= 3.0:
+        elif final_confidence >= 0.65 and m15_alignment_score >= 0.5:
             signal_strength = SignalStrength.STRONG
-        elif confluence_score >= 2.0:
+        elif final_confidence >= 0.5 and m15_alignment_score >= 0.3:
             signal_strength = SignalStrength.MODERATE
         else:
             signal_strength = SignalStrength.WEAK
-
-        final_confidence = min(confluence_score / 5.0, 1.0)
+        
+        logging.info(f"Phase 3: Final confidence: {final_confidence:.2f} (base: {base_confidence:.2f}, 15m alignment: {m15_alignment_score:.2f}) - {signal_strength.value}")
 
         return signal_strength, final_confidence
 
