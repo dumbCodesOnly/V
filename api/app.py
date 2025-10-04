@@ -3847,7 +3847,7 @@ def admin_klines_debug():
             "symbol_statistics": symbol_stats,
             "expiring_candles": expiring_candles,
             "supported_symbols": TradingConfig.SUPPORTED_SYMBOLS,
-            "timeframes": ["1h", "4h", "1d"]
+            "timeframes": ["15m", "1h", "4h", "1d"]
         })
         
     except Exception as e:

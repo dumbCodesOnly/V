@@ -390,11 +390,11 @@ class SMCAnalyzer:
 
             except CircuitBreakerError as e:
                 logging.warning(f"Circuit breaker blocked request for {symbol}: {e}")
-                all_symbol_data[symbol] = {"1h": [], "4h": [], "1d": []}
+                all_symbol_data[symbol] = {"15m": [], "1h": [], "4h": [], "1d": []}
 
             except Exception as e:
                 logging.error(f"Error in bulk fetch for {symbol}: {e}")
-                all_symbol_data[symbol] = {"1h": [], "4h": [], "1d": []}
+                all_symbol_data[symbol] = {"15m": [], "1h": [], "4h": [], "1d": []}
 
         successful_symbols = len(
             [
