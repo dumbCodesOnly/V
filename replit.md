@@ -37,7 +37,7 @@ This project is a comprehensive Telegram-based trading bot designed for USDT-M f
     - `SCALED_ENTRY_DEPTH_1 = 0.004` (0.4%)
     - `SCALED_ENTRY_DEPTH_2 = 0.010` (1.0%)
   - All Phase 4 features fully integrated and operational
-  - **Next Steps**: Implement Phase 5 (Refined Stop-Loss with 15m Swings)
+  - **Next Steps**: Implement Phase 6 (Multi-Take Profit Management with R:R ratios)
   - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phases
 
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 3 Complete (Enhanced Confidence Scoring)

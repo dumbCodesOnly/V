@@ -2011,7 +2011,7 @@ class SMCAnalyzer:
                 
                 # Phase 5: Calculate refined stop-loss with ATR buffer if enabled
                 from config import TradingConfig
-                if TradingConfig.USE_15M_SWING_SL and m15_swing_levels.get("last_swing_low") is not None or m15_swing_levels.get("last_swing_high") is not None:
+                if TradingConfig.USE_15M_SWING_SL and (m15_swing_levels.get("last_swing_low") is not None or m15_swing_levels.get("last_swing_high") is not None):
                     # Calculate ATR on 15m timeframe for buffer
                     atr_15m = self.calculate_atr(m15_data) if m15_data else 0.0
                     
