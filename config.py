@@ -333,6 +333,7 @@ class SMCConfig:
     ATR_SMOOTHING_FACTOR = 2.0  # EMA smoothing factor for ATR calculation
 
     # Timeframe Data Limits for Enhanced SMC Analysis - RESTORED for proper analysis
+    TIMEFRAME_15M_LIMIT = 400  # 400 candles = ~4 days of 15m data for precise execution
     TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
     TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
     TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
@@ -345,12 +346,14 @@ class RollingWindowConfig:
     """Rolling window configuration for klines data management"""
     
     # Target number of candles to keep per timeframe (not hard limits)
+    TARGET_CANDLES_15M = 400  # Target: 400 15-minute candles (~4 days)
     TARGET_CANDLES_1H = 300   # Target: 300 hourly candles (~12.5 days)
     TARGET_CANDLES_4H = 100   # Target: 100 4-hour candles (~16 days)
     TARGET_CANDLES_1D = 50    # Target: 50 daily candles (~7 weeks)
     
     # Conservative cleanup buffers - only start cleanup when we have MUCH more data
     # This ensures recent candles are never deleted prematurely
+    CLEANUP_BUFFER_15M = 100  # Only cleanup when we have 500+ 15m candles (100 buffer)
     CLEANUP_BUFFER_1H = 150   # Only cleanup when we have 450+ hourly candles (150 buffer)
     CLEANUP_BUFFER_4H = 50    # Only cleanup when we have 150+ 4h candles (50 buffer)  
     CLEANUP_BUFFER_1D = 25    # Only cleanup when we have 75+ daily candles (25 buffer)
@@ -363,6 +366,7 @@ class RollingWindowConfig:
     SAFETY_MARGIN = 20  # Keep 20 extra candles beyond target when cleaning up
     
     # Enable/disable rolling window per timeframe
+    ENABLED_15M = True
     ENABLED_1H = True
     ENABLED_4H = True 
     ENABLED_1D = True
@@ -371,6 +375,7 @@ class RollingWindowConfig:
     def get_target_candles(cls, timeframe: str) -> int:
         """Get target number of candles for a timeframe"""
         timeframe_targets = {
+            "15m": cls.TARGET_CANDLES_15M,
             "1h": cls.TARGET_CANDLES_1H,
             "4h": cls.TARGET_CANDLES_4H,
             "1d": cls.TARGET_CANDLES_1D
@@ -381,6 +386,7 @@ class RollingWindowConfig:
     def get_cleanup_threshold(cls, timeframe: str) -> int:
         """Get the threshold above which cleanup should start"""
         timeframe_thresholds = {
+            "15m": cls.TARGET_CANDLES_15M + cls.CLEANUP_BUFFER_15M,  # 500 candles
             "1h": cls.TARGET_CANDLES_1H + cls.CLEANUP_BUFFER_1H,  # 450 candles
             "4h": cls.TARGET_CANDLES_4H + cls.CLEANUP_BUFFER_4H,  # 150 candles
             "1d": cls.TARGET_CANDLES_1D + cls.CLEANUP_BUFFER_1D   # 75 candles
@@ -396,6 +402,7 @@ class RollingWindowConfig:
     def is_enabled(cls, timeframe: str) -> bool:
         """Check if rolling window is enabled for a timeframe"""
         timeframe_enabled = {
+            "15m": cls.ENABLED_15M,
             "1h": cls.ENABLED_1H,
             "4h": cls.ENABLED_4H,
             "1d": cls.ENABLED_1D
@@ -449,7 +456,9 @@ class CacheConfig:
             return 21 * 24 * 3600  # 21 days for complete candles
         elif kind == "klines_open":
             # Dynamic TTL based on timeframe
-            if timeframe == "1h":
+            if timeframe == "15m":
+                return 60     # 1 minute for 15m open candles
+            elif timeframe == "1h":
                 return 180    # 3 minutes
             elif timeframe == "4h":
                 return 480    # 8 minutes
@@ -478,6 +487,7 @@ class CacheConfig:
     )
 
     # Klines Cache Settings (minutes) - UPDATED FOR OPEN CANDLE TRACKING
+    KLINES_15M_CACHE_TTL = 1  # 1 minute cache for 15m timeframe (very short for fast execution)
     KLINES_1H_CACHE_TTL = 3  # 3 minutes cache for 1h timeframe (short for open candles)
     KLINES_4H_CACHE_TTL = 8  # 8 minutes cache for 4h timeframe (medium for open candles)
     KLINES_1D_CACHE_TTL = 20  # 20 minutes cache for 1d timeframe (longer for daily candles)

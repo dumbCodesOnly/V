@@ -105,7 +105,7 @@ class SMCAnalyzer:
     """Smart Money Concepts analyzer for detecting institutional trading patterns"""
 
     def __init__(self):
-        self.timeframes = ["1h", "4h", "1d"]  # Multiple timeframe analysis
+        self.timeframes = ["15m", "1h", "4h", "1d"]  # Multiple timeframe analysis (15m for execution)
         self.active_signals = {}  # Cache for active signals {symbol: {signal, expiry_time}}
         self.signal_timeout = 3600  # Signal valid for 1 hour (3600 seconds)
 
@@ -183,7 +183,7 @@ class SMCAnalyzer:
             fetch_limit = 1 if len(cached_data) > 0 else limit
 
         # Step 3: Fetch from Binance API with circuit breaker protection
-        tf_map = {"1h": "1h", "4h": "4h", "1d": "1d"}
+        tf_map = {"15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
         interval = tf_map.get(timeframe, "1h")
 
         url = f"https://api.binance.com/api/v3/klines"
@@ -221,7 +221,9 @@ class SMCAnalyzer:
                 current_candle = candlesticks[0]
                 
                 # Calculate appropriate TTL for open candle
-                if timeframe == "1h":
+                if timeframe == "15m":
+                    ttl_minutes = 1  # Very short TTL for 15m open candles
+                elif timeframe == "1h":
                     ttl_minutes = 2  # Very short TTL for hourly open candles
                 elif timeframe == "4h":
                     ttl_minutes = 5  # Short TTL for 4h open candles
@@ -253,6 +255,7 @@ class SMCAnalyzer:
             
             # Fallback: Use traditional batch save for multiple candles or when update fails
             ttl_config = {
+                "15m": getattr(CacheConfig, 'KLINES_15M_CACHE_TTL', 1),  # 1 minute cache for 15m
                 "1h": CacheConfig.KLINES_1H_CACHE_TTL,
                 "4h": CacheConfig.KLINES_4H_CACHE_TTL,
                 "1d": CacheConfig.KLINES_1D_CACHE_TTL,
