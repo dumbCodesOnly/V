@@ -10074,6 +10074,7 @@ def admin_smc_diagnostic():
         }
         
         try:
+            m15_data = timeframe_data.get("15m", [])
             h1_data = timeframe_data.get("1h", [])
             h4_data = timeframe_data.get("4h", [])
             d1_data = timeframe_data.get("1d", [])
@@ -10083,15 +10084,17 @@ def admin_smc_diagnostic():
                 step2['error'] = 'Insufficient data for analysis'
                 step2['details']['message'] = f"H1: {len(h1_data)} candles, H4: {len(h4_data)} candles"
             else:
+                m15_structure = analyzer.detect_market_structure(m15_data) if m15_data and len(m15_data) >= 20 else "No data"
                 h1_structure = analyzer.detect_market_structure(h1_data)
                 h4_structure = analyzer.detect_market_structure(h4_data)
                 d1_structure = analyzer.detect_market_structure(d1_data) if d1_data else "No data"
                 
                 step2['details'] = {
+                    'm15_structure': m15_structure.value if hasattr(m15_structure, 'value') else str(m15_structure),
                     'h1_structure': h1_structure.value if hasattr(h1_structure, 'value') else str(h1_structure),
                     'h4_structure': h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure),
                     'd1_structure': d1_structure.value if hasattr(d1_structure, 'value') else str(d1_structure),
-                    'message': 'Market structure analysis completed'
+                    'message': 'Market structure analysis completed (15m → 1h → 4h → 1d)'
                 }
                 step2['status'] = 'completed'
                 

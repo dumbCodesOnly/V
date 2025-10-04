@@ -606,21 +606,27 @@
                             </div>
                             <div id="step-1-details" class="step-details" style="display: none;">
                                 <div class="row g-2 mt-2">
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">1H Candles</small>
+                                            <small class="text-muted d-block">15m (Exec)</small>
+                                            <strong id="step-1-m15-count">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1h (HTF)</small>
                                             <strong id="step-1-h1-count">-</strong>
                                         </div>
                                     </div>
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">4H Candles</small>
+                                            <small class="text-muted d-block">4h (HTF)</small>
                                             <strong id="step-1-h4-count">-</strong>
                                         </div>
                                     </div>
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">1D Candles</small>
+                                            <small class="text-muted d-block">1d (HTF)</small>
                                             <strong id="step-1-d1-count">-</strong>
                                         </div>
                                     </div>
@@ -645,22 +651,28 @@
                             </div>
                             <div id="step-2-details" class="step-details" style="display: none;">
                                 <div class="row g-2 mt-2">
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">1H Structure</small>
-                                            <strong id="step-2-h1-structure" class="text-truncate d-block">-</strong>
+                                            <small class="text-muted d-block">15m (Exec)</small>
+                                            <strong id="step-2-m15-structure" class="text-truncate d-block" style="font-size: 0.85rem;">-</strong>
                                         </div>
                                     </div>
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">4H Structure</small>
-                                            <strong id="step-2-h4-structure" class="text-truncate d-block">-</strong>
+                                            <small class="text-muted d-block">1h (HTF)</small>
+                                            <strong id="step-2-h1-structure" class="text-truncate d-block" style="font-size: 0.85rem;">-</strong>
                                         </div>
                                     </div>
-                                    <div class="col-4">
+                                    <div class="col-3">
                                         <div class="text-center p-2 bg-white rounded">
-                                            <small class="text-muted d-block">1D Structure</small>
-                                            <strong id="step-2-d1-structure" class="text-truncate d-block">-</strong>
+                                            <small class="text-muted d-block">4h (HTF)</small>
+                                            <strong id="step-2-h4-structure" class="text-truncate d-block" style="font-size: 0.85rem;">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-3">
+                                        <div class="text-center p-2 bg-white rounded">
+                                            <small class="text-muted d-block">1d (HTF)</small>
+                                            <strong id="step-2-d1-structure" class="text-truncate d-block" style="font-size: 0.85rem;">-</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -2121,12 +2133,14 @@
 
         function populateStep1Details(details) {
             const timeframes = details.timeframes_fetched || {};
+            document.getElementById('step-1-m15-count').textContent = timeframes['15m']?.candles_count || 0;
             document.getElementById('step-1-h1-count').textContent = timeframes['1h']?.candles_count || 0;
             document.getElementById('step-1-h4-count').textContent = timeframes['4h']?.candles_count || 0;
             document.getElementById('step-1-d1-count').textContent = timeframes['1d']?.candles_count || 0;
         }
 
         function populateStep2Details(details) {
+            document.getElementById('step-2-m15-structure').textContent = details.m15_structure || '-';
             document.getElementById('step-2-h1-structure').textContent = details.h1_structure || '-';
             document.getElementById('step-2-h4-structure').textContent = details.h4_structure || '-';
             document.getElementById('step-2-d1-structure').textContent = details.d1_structure || '-';
