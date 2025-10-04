@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import requests
 
 # Import circuit breaker functionality
@@ -120,6 +121,12 @@ class SMCAnalyzer:
         self.timeframes = ["15m", "1h", "4h", "1d"]  # Multiple timeframe analysis (15m for execution)
         self.active_signals = {}  # Cache for active signals {symbol: {signal, expiry_time}}
         self.signal_timeout = 3600  # Signal valid for 1 hour (3600 seconds)
+        
+        # Auto-volatility tuning parameters (set to defaults, dynamically adjusted per signal)
+        self.atr_multiplier = 1.0
+        self.fvg_multiplier = 0.7
+        self.ob_volume_multiplier = 1.1
+        self.scaled_entry_depths = [0.004, 0.010]  # Default depths for scaled entries
 
     @with_circuit_breaker(
         "binance_klines_api", failure_threshold=8, recovery_timeout=120
@@ -486,9 +493,9 @@ class SMCAnalyzer:
             current = candlesticks[i]
             prev = candlesticks[i - 1]
 
-            # Volume filter - require above average volume
+            # Volume filter - require above average volume (dynamically tuned)
             volume_confirmed = (
-                current["volume"] >= avg_volume * SMCConfig.OB_VOLUME_MULTIPLIER
+                current["volume"] >= avg_volume * self.ob_volume_multiplier
             )
             if not volume_confirmed:
                 continue
@@ -561,12 +568,12 @@ class SMCAnalyzer:
         if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_FVG:
             return fvgs
 
-        # Calculate ATR for gap size filtering with safety floor
+        # Calculate ATR for gap size filtering with safety floor (dynamically tuned)
         atr = self.calculate_atr(candlesticks)
         if atr <= 0:  # Guard against insufficient data
             current_price = candlesticks[-1]["close"]
             atr = current_price * 0.001  # Use same 0.1% floor as trade calculations
-        min_gap_size = atr * SMCConfig.FVG_ATR_MULTIPLIER
+        min_gap_size = atr * self.fvg_multiplier
 
         for i in range(1, len(candlesticks) - 1):
             prev_candle = candlesticks[i - 1]
@@ -1747,8 +1754,54 @@ class SMCAnalyzer:
 
             current_price = h1_data[-1]["close"]
 
-            # Phase 7: ATR Risk Filter - Check volatility before proceeding with analysis
+            # --- Auto volatility detection ---
+            symbol_upper = symbol.upper()
             from config import TradingConfig
+            profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
+
+            # Compute recent ATR (14-period) from 1H candles
+            atr_values = [abs(c["high"] - c["low"]) for c in h1_data[-14:]]
+            current_atr = np.mean(atr_values) if atr_values else 0
+
+            base_atr = profile.get("BASE_ATR", current_atr or 1)
+            vol_ratio = current_atr / base_atr if base_atr > 0 else 1.0
+
+            # Classify volatility regime
+            if vol_ratio < 0.8:
+                vol_regime = "low"
+            elif vol_ratio < 1.3:
+                vol_regime = "normal"
+            else:
+                vol_regime = "high"
+
+            logging.info(f"{symbol_upper} volatility check → ATR={current_atr:.4f}, baseline={base_atr:.4f}, ratio={vol_ratio:.2f}, regime={vol_regime}")
+
+            # Dynamically scale institutional parameters
+            if vol_regime == "low":
+                atr_mult = 0.9
+                fvg_mult = 0.6
+                ob_mult = 0.9
+                depths = [0.003, 0.007]
+            elif vol_regime == "normal":
+                atr_mult = 1.0
+                fvg_mult = 0.7
+                ob_mult = 1.1
+                depths = [0.004, 0.010]
+            else:  # high volatility
+                atr_mult = 1.3
+                fvg_mult = 0.9
+                ob_mult = 1.3
+                depths = [0.006, 0.014]
+
+            # Apply dynamic tuning
+            self.atr_multiplier = atr_mult
+            self.fvg_multiplier = fvg_mult
+            self.ob_volume_multiplier = ob_mult
+            self.scaled_entry_depths = depths
+
+            logging.info(f"Adaptive tuning → ATR x{atr_mult}, FVG x{fvg_mult}, OB x{ob_mult}, Depths={depths}")
+
+            # Phase 7: ATR Risk Filter - Check volatility before proceeding with analysis
             use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
             
             if use_atr_filter and m15_data and len(m15_data) >= 15:
@@ -2721,7 +2774,7 @@ class SMCAnalyzer:
         for fvg in fvgs:
             if (
                 not fvg.filled
-                and fvg.atr_size >= SMCConfig.FVG_ATR_MULTIPLIER
+                and fvg.atr_size >= self.fvg_multiplier
                 and (
                     (
                         fvg.direction == "bullish"
@@ -3092,8 +3145,8 @@ class SMCAnalyzer:
         )
         scaled_entries.append(entry1)
         
-        # Entry 2: 25% at first depth level (0.4% better price)
-        depth1 = TradingConfig.SCALED_ENTRY_DEPTH_1
+        # Entry 2: 25% at first depth level (dynamically tuned)
+        depth1 = self.scaled_entry_depths[0]
         if direction == "long":
             # For long, better price means lower
             entry2_price = current_price * (1 - depth1)
@@ -3116,8 +3169,8 @@ class SMCAnalyzer:
         )
         scaled_entries.append(entry2)
         
-        # Entry 3: 25% at second depth level (1.0% better price)
-        depth2 = TradingConfig.SCALED_ENTRY_DEPTH_2
+        # Entry 3: 25% at second depth level (dynamically tuned)
+        depth2 = self.scaled_entry_depths[1]
         if direction == "long":
             entry3_price = current_price * (1 - depth2)
         else:  # short

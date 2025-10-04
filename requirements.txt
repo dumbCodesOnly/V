@@ -22,3 +22,6 @@ hyperliquid-python-sdk>=0.18.0
 
 # System utilities
 psutil>=5.9.0
+
+# Numerical computing
+numpy>=1.24.0

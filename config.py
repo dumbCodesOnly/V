@@ -207,6 +207,17 @@ class TradingConfig:
     SUPPORTED_EXCHANGES = ["toobit", "lbank", "hyperliquid"]
     DEFAULT_EXCHANGE = "lbank"
     
+    # Asset-Specific Volatility Profiles for Auto-Tuning
+    # BASE_ATR values represent typical 14-period ATR (Daily timeframe) for stable market conditions
+    ASSET_PROFILES = {
+        "BTCUSDT": {"BASE_ATR": 100, "VOL_CLASS": "low"},
+        "ETHUSDT": {"BASE_ATR": 60, "VOL_CLASS": "medium"},
+        "SOLUSDT": {"BASE_ATR": 1.5, "VOL_CLASS": "high"},
+        "BNBUSDT": {"BASE_ATR": 4.0, "VOL_CLASS": "medium"},
+        "XRPUSDT": {"BASE_ATR": 0.0035, "VOL_CLASS": "high"},
+        "ADAUSDT": {"BASE_ATR": 0.0025, "VOL_CLASS": "medium"}
+    }
+    
     # Phase 4: Scaling Entry Configuration
     USE_SCALED_ENTRIES = True
     SCALED_ENTRY_ALLOCATIONS = [50, 25, 25]  # Market, Limit1, Limit2 (must sum to 100)
