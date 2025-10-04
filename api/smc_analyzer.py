@@ -3564,6 +3564,115 @@ class SMCAnalyzer:
         
         return False
 
+    def _check_atr_filter(
+        self,
+        m15_data: List[Dict],
+        h1_data: List[Dict],
+        current_price: float
+    ) -> Dict:
+        """
+        Phase 7: Check if ATR meets minimum volatility requirements
+        
+        Args:
+            m15_data: 15-minute candlestick data
+            h1_data: Hourly candlestick data
+            current_price: Current market price
+        
+        Returns:
+            Dictionary with filter results:
+            - passes: Boolean indicating if filter passed
+            - atr_15m: ATR value on 15m timeframe
+            - atr_h1: ATR value on H1 timeframe
+            - atr_15m_percent: ATR as percentage of price on 15m
+            - atr_h1_percent: ATR as percentage of price on H1
+            - reason: Explanation of filter result
+        """
+        from config import TradingConfig
+        
+        # Calculate ATR on both timeframes
+        atr_15m = self.calculate_atr(m15_data, period=14) if len(m15_data) >= 15 else 0.0
+        atr_h1 = self.calculate_atr(h1_data, period=14) if len(h1_data) >= 15 else 0.0
+        
+        # Calculate ATR as percentage of current price
+        atr_15m_percent = (atr_15m / current_price) * 100 if current_price > 0 else 0.0
+        atr_h1_percent = (atr_h1 / current_price) * 100 if current_price > 0 else 0.0
+        
+        # Get minimum thresholds from config
+        min_atr_15m = getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
+        min_atr_h1 = getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
+        
+        # Check if both timeframes meet minimum requirements
+        passes_filter = (atr_15m_percent >= min_atr_15m and atr_h1_percent >= min_atr_h1)
+        
+        # Generate reason message
+        if not passes_filter:
+            reason = (
+                f"Phase 7: ATR filter failed - "
+                f"15m ATR: {atr_15m_percent:.2f}% (min {min_atr_15m}%), "
+                f"H1 ATR: {atr_h1_percent:.2f}% (min {min_atr_h1}%)"
+            )
+        else:
+            reason = (
+                f"Phase 7: ATR filter passed - "
+                f"15m ATR: {atr_15m_percent:.2f}%, H1 ATR: {atr_h1_percent:.2f}%"
+            )
+        
+        logging.info(reason)
+        
+        return {
+            "passes": passes_filter,
+            "atr_15m": atr_15m,
+            "atr_h1": atr_h1,
+            "atr_15m_percent": atr_15m_percent,
+            "atr_h1_percent": atr_h1_percent,
+            "reason": reason
+        }
+
+    def _calculate_dynamic_position_size(
+        self,
+        base_size: float,
+        atr_percent: float
+    ) -> float:
+        """
+        Phase 7: Adjust position size based on ATR volatility (OPTIONAL FEATURE)
+        
+        Higher ATR (more volatility) = smaller position size for risk management
+        Lower ATR (less volatility) = larger position size (within limits)
+        
+        Args:
+            base_size: Base position size multiplier (usually 1.0)
+            atr_percent: ATR as percentage of price
+        
+        Returns:
+            Adjusted position size multiplier (0.5 - 1.5)
+        """
+        from config import TradingConfig
+        
+        # Check if dynamic sizing is enabled
+        use_dynamic = getattr(TradingConfig, 'USE_DYNAMIC_POSITION_SIZING', False)
+        
+        if not use_dynamic:
+            return base_size
+        
+        # Volatility-based adjustment
+        if atr_percent > 3.0:
+            # High volatility - reduce size to 70%
+            adjusted_size = base_size * 0.7
+            logging.info(f"Phase 7: High volatility (ATR {atr_percent:.2f}%) - Reducing position size to 70%")
+        elif atr_percent < 1.5:
+            # Low volatility (but above threshold) - increase size to 120%
+            adjusted_size = base_size * 1.2
+            logging.info(f"Phase 7: Low volatility (ATR {atr_percent:.2f}%) - Increasing position size to 120%")
+        else:
+            # Normal volatility - use base size
+            adjusted_size = base_size
+            logging.debug(f"Phase 7: Normal volatility (ATR {atr_percent:.2f}%) - Using base position size")
+        
+        # Ensure size stays within reasonable bounds (0.5 - 1.5)
+        adjusted_size = max(0.5, min(1.5, adjusted_size))
+        
+        return adjusted_size
+
     def generate_enhanced_signal(
         self,
         symbol: str,
