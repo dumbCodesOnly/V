@@ -51,8 +51,19 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
 - Comprehensive error classification system with user-friendly messages.
 - Enhanced caching system with smart volatility-based TTL and user data caching, including a background cleanup worker.
 - Circuit breaker pattern for all external API calls.
-- SMC signals are correctly displayed and cached in the database with validation.
 - Modular exchange client architecture with factory pattern for seamless multi-exchange operation and a unified API interface.
+- **Multi-Timeframe SMC Analysis** (All 7 Phases Complete - October 2025):
+  - Institutional-grade top-down analysis across 4 timeframes (1d → 4h/1h → 15m execution)
+  - HTF bias determination from Daily and H4 structure
+  - Intermediate structure analysis on H4/H1 (Order Blocks, FVGs, BOS/CHoCH)
+  - 15m execution signals with HTF alignment validation
+  - Enhanced confidence scoring with multi-timeframe alignment bonuses
+  - Scaling entry strategy: 50% market + 25% + 25% limit orders at OB/FVG zones
+  - Refined stop-loss using 15m swing levels + ATR buffers
+  - R:R-based take profits (1R, 2R, liquidity targets) with 40/30/30 allocation
+  - ATR risk filter rejecting low-volatility choppy conditions (0.8% min on 15m, 1.2% min on H1)
+  - Optional dynamic position sizing based on ATR volatility
+  - SMC signals correctly displayed and cached in the database with validation
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing, and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
