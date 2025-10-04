@@ -3349,6 +3349,176 @@ class SMCAnalyzer:
         
         return sl
 
+    def _find_liquidity_target(
+        self,
+        entry_price: float,
+        direction: str,
+        liquidity_pools: List[LiquidityPool],
+        min_distance: float
+    ) -> Optional[float]:
+        """
+        Phase 6: Find nearest liquidity level beyond minimum distance for TP3
+        
+        Args:
+            entry_price: Entry price of the trade
+            direction: Trade direction ('long' or 'short')
+            liquidity_pools: List of detected liquidity pools
+            min_distance: Minimum distance from entry (e.g., 2R distance)
+        
+        Returns:
+            Liquidity target price or None if no valid target found
+        """
+        if not liquidity_pools:
+            return None
+        
+        valid_targets = []
+        
+        for pool in liquidity_pools:
+            # For long trades, look for buy-side liquidity above entry + min_distance
+            if direction == "long" and pool.type == "buy_side":
+                if pool.price > (entry_price + min_distance):
+                    valid_targets.append((pool.price, pool.strength))
+            
+            # For short trades, look for sell-side liquidity below entry - min_distance
+            elif direction == "short" and pool.type == "sell_side":
+                if pool.price < (entry_price - min_distance):
+                    valid_targets.append((pool.price, pool.strength))
+        
+        if not valid_targets:
+            logging.debug(f"Phase 6: No valid liquidity targets found beyond {min_distance:.2f} distance")
+            return None
+        
+        # Sort by distance from entry (nearest first) and strength
+        valid_targets.sort(key=lambda x: (abs(x[0] - entry_price), -x[1]))
+        
+        target_price = valid_targets[0][0]
+        target_strength = valid_targets[0][1]
+        
+        logging.info(
+            f"Phase 6: Found liquidity target at ${target_price:.2f} "
+            f"(strength: {target_strength:.2f}) for {direction} trade"
+        )
+        
+        return target_price
+
+    def _calculate_rr_based_take_profits(
+        self,
+        entry_price: float,
+        stop_loss: float,
+        direction: str,
+        liquidity_targets: List[float]
+    ) -> List[Tuple[float, float]]:
+        """
+        Phase 6: Calculate take profit levels based on R:R ratios
+        
+        Take Profit Levels:
+        - TP1: 1R (100% risk amount as profit) - 40% allocation
+        - TP2: 2R (200% risk amount as profit) - 30% allocation
+        - TP3: Liquidity cluster / HTF OB target or 3R - 30% allocation
+        
+        Args:
+            entry_price: Entry price of the trade
+            stop_loss: Stop-loss price
+            direction: Trade direction ('long' or 'short')
+            liquidity_targets: List of potential liquidity target prices
+        
+        Returns:
+            List of (TP price, allocation %) tuples
+        """
+        from config import TradingConfig
+        
+        # Get configuration
+        tp_allocations = getattr(TradingConfig, 'TP_ALLOCATIONS', [40, 30, 30])
+        tp_rr_ratios = getattr(TradingConfig, 'TP_RR_RATIOS', [1.0, 2.0, 3.0])
+        
+        # Calculate risk amount
+        risk_amount = abs(entry_price - stop_loss)
+        
+        take_profits = []
+        
+        # TP1: 1R
+        if direction == "long":
+            tp1_price = entry_price + (risk_amount * tp_rr_ratios[0])
+        else:  # short
+            tp1_price = entry_price - (risk_amount * tp_rr_ratios[0])
+        
+        take_profits.append((tp1_price, tp_allocations[0]))
+        logging.debug(f"Phase 6: TP1 at ${tp1_price:.2f} ({tp_rr_ratios[0]}R) - {tp_allocations[0]}% allocation")
+        
+        # TP2: 2R
+        if direction == "long":
+            tp2_price = entry_price + (risk_amount * tp_rr_ratios[1])
+        else:  # short
+            tp2_price = entry_price - (risk_amount * tp_rr_ratios[1])
+        
+        take_profits.append((tp2_price, tp_allocations[1]))
+        logging.debug(f"Phase 6: TP2 at ${tp2_price:.2f} ({tp_rr_ratios[1]}R) - {tp_allocations[1]}% allocation")
+        
+        # TP3: Nearest liquidity target beyond 2R, or 3R
+        min_distance_for_tp3 = risk_amount * tp_rr_ratios[1]  # 2R minimum
+        
+        # Try to find liquidity target (need to pass liquidity pools, not just targets)
+        # For now, check if any liquidity target is beyond 2R
+        tp3_price = None
+        if liquidity_targets:
+            for target in liquidity_targets:
+                if direction == "long" and target > (entry_price + min_distance_for_tp3):
+                    tp3_price = target
+                    logging.info(f"Phase 6: TP3 aligned with liquidity target at ${tp3_price:.2f}")
+                    break
+                elif direction == "short" and target < (entry_price - min_distance_for_tp3):
+                    tp3_price = target
+                    logging.info(f"Phase 6: TP3 aligned with liquidity target at ${tp3_price:.2f}")
+                    break
+        
+        # Fallback to 3R if no liquidity target found
+        if not tp3_price:
+            if direction == "long":
+                tp3_price = entry_price + (risk_amount * tp_rr_ratios[2])
+            else:  # short
+                tp3_price = entry_price - (risk_amount * tp_rr_ratios[2])
+            logging.debug(f"Phase 6: TP3 using {tp_rr_ratios[2]}R fallback at ${tp3_price:.2f}")
+        
+        take_profits.append((tp3_price, tp_allocations[2]))
+        logging.debug(f"Phase 6: TP3 at ${tp3_price:.2f} - {tp_allocations[2]}% allocation")
+        
+        # Validate allocations sum to 100%
+        total_allocation = sum(alloc for _, alloc in take_profits)
+        if abs(total_allocation - 100) > 0.1:
+            logging.warning(
+                f"Phase 6: TP allocations sum to {total_allocation}% (expected 100%). "
+                f"Check TradingConfig.TP_ALLOCATIONS"
+            )
+        
+        return take_profits
+
+    def _should_trail_stop_after_tp1(self, tp_statuses: List[str]) -> bool:
+        """
+        Phase 6: Determine if trailing stop should activate after TP1
+        
+        Args:
+            tp_statuses: List of TP statuses ('pending', 'hit', etc.)
+        
+        Returns:
+            True if trailing stop should activate, False otherwise
+        """
+        from config import TradingConfig
+        
+        # Check if trailing stop is enabled in config
+        enable_trailing = getattr(TradingConfig, 'ENABLE_TRAILING_AFTER_TP1', True)
+        
+        if not enable_trailing:
+            return False
+        
+        # Check if TP1 was hit (first TP in the list)
+        if tp_statuses and len(tp_statuses) > 0:
+            tp1_hit = tp_statuses[0] == 'hit'
+            if tp1_hit:
+                logging.info("Phase 6: TP1 hit - Trailing stop should activate")
+                return True
+        
+        return False
+
     def generate_enhanced_signal(
         self,
         symbol: str,
