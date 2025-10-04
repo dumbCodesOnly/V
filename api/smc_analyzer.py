@@ -87,6 +87,17 @@ class LiquidityPool:
 
 
 @dataclass
+class ScaledEntry:
+    """Phase 4: Represents a single entry level in a scaled entry strategy"""
+    entry_price: float
+    allocation_percent: float  # 50, 25, 25
+    order_type: str  # 'market' or 'limit'
+    stop_loss: float
+    take_profits: List[Tuple[float, float]]  # [(price, allocation), ...]
+    status: str = 'pending'  # 'pending', 'filled', 'cancelled'
+
+
+@dataclass
 class SMCSignal:
     symbol: str
     direction: str  # 'long' or 'short'
@@ -99,6 +110,7 @@ class SMCSignal:
     risk_reward_ratio: float
     timestamp: datetime
     current_market_price: float  # Actual market price when signal was generated
+    scaled_entries: Optional[List['ScaledEntry']] = None  # Phase 4: Scaled entry strategy
 
 
 class SMCAnalyzer:
