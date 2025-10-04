@@ -1895,7 +1895,7 @@
         let smcAnalysisStartTime = null;
 
         function showSMCConfig() {
-            showInfo('SMC Configuration:\n\n• Uses multiple timeframes (1H, 4H, 1D)\n• Analyzes market structure and order blocks\n• Detects fair value gaps and liquidity pools\n• Calculates technical indicators (RSI, Moving Averages)\n• Generates signals based on confluence of factors\n\nThis diagnostic tool shows the step-by-step analysis process even when no signals are generated.');
+            showInfo('SMC Institutional-Style Multi-Timeframe Analysis:\n\n• Daily (1d): Macro trend & liquidity targets (HTF bias)\n• H4 + H1: Intermediate structure (Order Blocks, FVGs, BOS/CHoCH)\n• 15m: Precise execution signals (must align with HTF)\n\n7-Phase Analysis:\n1. Data Acquisition (15m/1h/4h/1d)\n2. Market Structure Detection\n3. HTF Bias Determination (Daily + H4)\n4. Intermediate Structure Analysis (OBs, FVGs)\n5. 15m Execution Signal Generation\n6. Enhanced Confidence Scoring (with multi-timeframe alignment)\n7. ATR Risk Filter (0.8% min on 15m, 1.2% min on H1)\n\nSignal Features:\n• Scaled entry strategy (50% market + 25% + 25% limit orders)\n• Refined stop-loss using 15m swing levels + ATR buffers\n• R:R-based take profits (1R, 2R, liquidity targets)\n• Multi-timeframe alignment bonuses/penalties\n\nThis diagnostic tool shows the complete step-by-step analysis process.');
         }
 
         function clearSMCResults() {
