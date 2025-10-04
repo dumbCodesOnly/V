@@ -2058,8 +2058,8 @@ class SMCAnalyzer:
                     # Calculate ATR on 15m timeframe for buffer
                     atr_15m = self.calculate_atr(m15_data) if m15_data else 0.0
                     
-                    # Get ATR buffer multiplier from config
-                    atr_buffer_multiplier = getattr(TradingConfig, 'SL_ATR_BUFFER_MULTIPLIER', 0.5)
+                    # Use dynamic ATR buffer multiplier (adjusted for volatility)
+                    atr_buffer_multiplier = self.atr_multiplier * 0.5  # Apply volatility scaling to buffer
                     
                     # Calculate refined stop-loss using Phase 5 method
                     refined_sl = self._calculate_refined_sl_with_atr(
