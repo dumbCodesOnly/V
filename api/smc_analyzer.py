@@ -1391,6 +1391,299 @@ class SMCAnalyzer:
 
         return rr_ratio, signal_strength
 
+    def _get_htf_bias(self, d1_data: List[Dict], h4_data: List[Dict]) -> Dict:
+        """
+        Phase 2: Determine high timeframe bias from Daily and H4 structure
+        
+        Args:
+            d1_data: Daily candlestick data
+            h4_data: 4-hour candlestick data
+            
+        Returns:
+            Dict with HTF bias information including direction, confidence, and liquidity targets
+        """
+        try:
+            if not d1_data or not h4_data:
+                return {"bias": "neutral", "confidence": 0.0, "liquidity_targets": [], "reason": "Insufficient data"}
+            
+            d1_structure = self.detect_market_structure(d1_data)
+            h4_structure = self.detect_market_structure(h4_data)
+            
+            d1_liquidity = self.find_liquidity_pools(d1_data)
+            h4_order_blocks = self.find_order_blocks(h4_data)
+            
+            bullish_bias_count = 0
+            bearish_bias_count = 0
+            reasoning = []
+            
+            from .smc_analyzer import MarketStructure
+            
+            if d1_structure == MarketStructure.BULLISH_BOS:
+                bullish_bias_count += 2
+                reasoning.append("Daily bullish break of structure (strong)")
+            elif d1_structure == MarketStructure.BULLISH_CHoCH:
+                bullish_bias_count += 1
+                reasoning.append("Daily bullish change of character")
+            elif d1_structure == MarketStructure.BEARISH_BOS:
+                bearish_bias_count += 2
+                reasoning.append("Daily bearish break of structure (strong)")
+            elif d1_structure == MarketStructure.BEARISH_CHoCH:
+                bearish_bias_count += 1
+                reasoning.append("Daily bearish change of character")
+            
+            if h4_structure == MarketStructure.BULLISH_BOS or h4_structure == MarketStructure.BULLISH_CHoCH:
+                bullish_bias_count += 1
+                reasoning.append("H4 bullish structure alignment")
+            elif h4_structure == MarketStructure.BEARISH_BOS or h4_structure == MarketStructure.BEARISH_CHoCH:
+                bearish_bias_count += 1
+                reasoning.append("H4 bearish structure alignment")
+            
+            d1_trend = self._calculate_trend(self._find_swing_highs(d1_data) + self._find_swing_lows(d1_data), "price")
+            if d1_trend == "bullish":
+                bullish_bias_count += 1
+                reasoning.append("Daily trend is bullish")
+            elif d1_trend == "bearish":
+                bearish_bias_count += 1
+                reasoning.append("Daily trend is bearish")
+            
+            buy_side_liquidity = [lp for lp in d1_liquidity if lp.type == "buy_side" and not lp.swept]
+            sell_side_liquidity = [lp for lp in d1_liquidity if lp.type == "sell_side" and not lp.swept]
+            
+            liquidity_targets = []
+            if bullish_bias_count > bearish_bias_count:
+                bias = "bullish"
+                liquidity_targets = [{"price": lp.price, "type": lp.type, "strength": lp.strength} 
+                                     for lp in sorted(sell_side_liquidity, key=lambda x: x.price, reverse=True)[:3]]
+            elif bearish_bias_count > bullish_bias_count:
+                bias = "bearish"
+                liquidity_targets = [{"price": lp.price, "type": lp.type, "strength": lp.strength} 
+                                     for lp in sorted(buy_side_liquidity, key=lambda x: x.price)[:3]]
+            else:
+                bias = "neutral"
+                liquidity_targets = []
+            
+            max_count = max(bullish_bias_count, bearish_bias_count, 1)
+            confidence = max_count / 5.0
+            confidence = min(confidence, 1.0)
+            
+            return {
+                "bias": bias,
+                "confidence": confidence,
+                "liquidity_targets": liquidity_targets,
+                "reason": "; ".join(reasoning) if reasoning else "No clear bias",
+                "d1_structure": d1_structure.value if hasattr(d1_structure, 'value') else str(d1_structure),
+                "h4_structure": h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure),
+                "bullish_signals": bullish_bias_count,
+                "bearish_signals": bearish_bias_count
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in _get_htf_bias: {e}")
+            return {"bias": "neutral", "confidence": 0.0, "liquidity_targets": [], "reason": f"Error: {str(e)}"}
+
+    def _get_intermediate_structure(self, h1_data: List[Dict], h4_data: List[Dict]) -> Dict:
+        """
+        Phase 2: Analyze H4/H1 for order blocks, FVGs, and structure shifts
+        
+        Args:
+            h1_data: 1-hour candlestick data
+            h4_data: 4-hour candlestick data
+            
+        Returns:
+            Dict with intermediate structure information including order blocks, FVGs, and POI levels
+        """
+        try:
+            if not h1_data or not h4_data:
+                return {"valid": False, "reason": "Insufficient data", "order_blocks": [], "fvgs": [], "poi_levels": []}
+            
+            h1_order_blocks = self.find_order_blocks(h1_data)
+            h4_order_blocks = self.find_order_blocks(h4_data)
+            
+            h1_fvgs = self.find_fair_value_gaps(h1_data)
+            h4_fvgs = self.find_fair_value_gaps(h4_data)
+            
+            h1_structure = self.detect_market_structure(h1_data)
+            h4_structure = self.detect_market_structure(h4_data)
+            
+            unmitigated_h1_obs = [ob for ob in h1_order_blocks if not ob.mitigated]
+            unmitigated_h4_obs = [ob for ob in h4_order_blocks if not ob.mitigated]
+            
+            unfilled_h1_fvgs = [fvg for fvg in h1_fvgs if not fvg.filled and fvg.age_candles < SMCConfig.FVG_MAX_AGE_CANDLES]
+            unfilled_h4_fvgs = [fvg for fvg in h4_fvgs if not fvg.filled and fvg.age_candles < SMCConfig.FVG_MAX_AGE_CANDLES]
+            
+            poi_levels = []
+            for ob in unmitigated_h4_obs[:3]:
+                poi_levels.append({
+                    "price": (ob.price_high + ob.price_low) / 2,
+                    "type": "order_block",
+                    "direction": ob.direction,
+                    "timeframe": "H4",
+                    "strength": ob.strength
+                })
+            
+            for fvg in unfilled_h4_fvgs[:2]:
+                poi_levels.append({
+                    "price": (fvg.gap_high + fvg.gap_low) / 2,
+                    "type": "fvg",
+                    "direction": fvg.direction,
+                    "timeframe": "H4",
+                    "strength": fvg.alignment_score
+                })
+            
+            from .smc_analyzer import MarketStructure
+            structure_shift = "none"
+            if h1_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                if h4_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                    structure_shift = "bullish_aligned"
+                else:
+                    structure_shift = "bullish_h1_only"
+            elif h1_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                if h4_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                    structure_shift = "bearish_aligned"
+                else:
+                    structure_shift = "bearish_h1_only"
+            
+            return {
+                "valid": True,
+                "order_blocks": unmitigated_h1_obs + unmitigated_h4_obs,
+                "h1_order_blocks": unmitigated_h1_obs,
+                "h4_order_blocks": unmitigated_h4_obs,
+                "fvgs": unfilled_h1_fvgs + unfilled_h4_fvgs,
+                "h1_fvgs": unfilled_h1_fvgs,
+                "h4_fvgs": unfilled_h4_fvgs,
+                "structure": structure_shift,
+                "poi_levels": poi_levels,
+                "h1_structure": h1_structure.value if hasattr(h1_structure, 'value') else str(h1_structure),
+                "h4_structure": h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure)
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in _get_intermediate_structure: {e}")
+            return {"valid": False, "reason": f"Error: {str(e)}", "order_blocks": [], "fvgs": [], "poi_levels": []}
+
+    def _get_execution_signal_15m(self, m15_data: List[Dict], htf_bias: Dict, intermediate_structure: Dict) -> Dict:
+        """
+        Phase 2: Generate precise 15m execution signal aligned with HTF
+        
+        Args:
+            m15_data: 15-minute candlestick data
+            htf_bias: High timeframe bias from _get_htf_bias()
+            intermediate_structure: Intermediate structure from _get_intermediate_structure()
+            
+        Returns:
+            Dict with execution signal including entry, SL, TP levels and alignment score
+        """
+        try:
+            if not m15_data or len(m15_data) < 20:
+                return {
+                    "signal": None,
+                    "entry": 0.0,
+                    "sl": 0.0,
+                    "alignment_score": 0.0,
+                    "reason": "Insufficient 15m data"
+                }
+            
+            if htf_bias["bias"] == "neutral":
+                return {
+                    "signal": None,
+                    "entry": 0.0,
+                    "sl": 0.0,
+                    "alignment_score": 0.0,
+                    "reason": "No clear HTF bias"
+                }
+            
+            m15_structure = self.detect_market_structure(m15_data)
+            current_price = m15_data[-1]["close"]
+            
+            m15_swing_highs = self._find_swing_highs(m15_data, lookback=3)
+            m15_swing_lows = self._find_swing_lows(m15_data, lookback=3)
+            
+            alignment_score = 0.0
+            signal_direction = None
+            
+            from .smc_analyzer import MarketStructure
+            
+            if htf_bias["bias"] == "bullish":
+                if m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                    alignment_score += 0.5
+                    signal_direction = "long"
+                elif m15_structure == MarketStructure.CONSOLIDATION:
+                    alignment_score += 0.3
+                    signal_direction = "long"
+                elif m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                    alignment_score = 0.1
+                    return {
+                        "signal": None,
+                        "entry": current_price,
+                        "sl": 0.0,
+                        "alignment_score": alignment_score,
+                        "reason": "15m structure conflicts with bullish HTF bias"
+                    }
+            
+            elif htf_bias["bias"] == "bearish":
+                if m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                    alignment_score += 0.5
+                    signal_direction = "short"
+                elif m15_structure == MarketStructure.CONSOLIDATION:
+                    alignment_score += 0.3
+                    signal_direction = "short"
+                elif m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                    alignment_score = 0.1
+                    return {
+                        "signal": None,
+                        "entry": current_price,
+                        "sl": 0.0,
+                        "alignment_score": alignment_score,
+                        "reason": "15m structure conflicts with bearish HTF bias"
+                    }
+            
+            if intermediate_structure["structure"].startswith(htf_bias["bias"]):
+                alignment_score += 0.3
+            
+            poi_near_price = False
+            for poi in intermediate_structure["poi_levels"]:
+                price_diff_pct = abs(current_price - poi["price"]) / current_price * 100
+                if price_diff_pct < 1.0 and poi["direction"] == htf_bias["bias"]:
+                    alignment_score += 0.2
+                    poi_near_price = True
+                    break
+            
+            if signal_direction == "long":
+                entry_price = current_price
+                if m15_swing_lows:
+                    last_swing_low = min([sw["price"] for sw in m15_swing_lows[-3:]])
+                    sl = last_swing_low * 0.998
+                else:
+                    sl = current_price * 0.995
+            else:
+                entry_price = current_price
+                if m15_swing_highs:
+                    last_swing_high = max([sw["price"] for sw in m15_swing_highs[-3:]])
+                    sl = last_swing_high * 1.002
+                else:
+                    sl = current_price * 1.005
+            
+            return {
+                "signal": signal_direction,
+                "entry": entry_price,
+                "sl": sl,
+                "alignment_score": min(alignment_score, 1.0),
+                "reason": f"15m {signal_direction} signal aligned with {htf_bias['bias']} HTF bias" + 
+                         (" - near HTF POI" if poi_near_price else ""),
+                "m15_structure": m15_structure.value if hasattr(m15_structure, 'value') else str(m15_structure),
+                "poi_confluence": poi_near_price
+            }
+            
+        except Exception as e:
+            logging.error(f"Error in _get_execution_signal_15m: {e}")
+            return {
+                "signal": None,
+                "entry": 0.0,
+                "sl": 0.0,
+                "alignment_score": 0.0,
+                "reason": f"Error: {str(e)}"
+            }
+
     def _is_signal_still_valid(self, symbol: str, current_price: float) -> bool:
         """Check if existing cached signal is still valid and hasn't been invalidated."""
         if symbol not in self.active_signals:
