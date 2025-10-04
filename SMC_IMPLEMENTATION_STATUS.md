@@ -209,19 +209,98 @@ Phase 2 maintains full backward compatibility:
 
 ---
 
-## 📋 Remaining Work: Phases 3-7
+## ✅ Completed: Phase 3 - Enhanced Confidence Scoring
+
+### What Was Done
+
+Phase 3 successfully implemented enhanced confidence scoring with 15m alignment bonuses and penalties.
+
+#### File: `api/smc_analyzer.py`
+
+1. **Lines 2757-2805:** Created `_calculate_15m_alignment_score()` method
+   - Quantifies how well 15m structure aligns with HTF bias (0.0-1.0 scale)
+   - +0.5 for strong alignment (BOS/CHoCH matching HTF bias)
+   - +0.3 for consolidation (neutral but acceptable)
+   - +0.3 bonus when intermediate structure aligns with HTF
+   - +0.2 bonus when price is near HTF POI (within 1%)
+   - Returns 0.1 for conflicts (triggers rejection)
+   ```python
+   def _calculate_15m_alignment_score(self, m15_structure, htf_bias: str, intermediate_structure_direction: str, current_price: float, poi_levels: List[Dict]) -> float:
+       """Phase 3: Calculate how well 15m structure aligns with HTF bias"""
+   ```
+
+2. **Lines 2807-2874:** Enhanced `_calculate_signal_strength_and_confidence()` method
+   - Added Phase 3 confidence bonuses and penalties:
+     - **+0.2 bonus** for perfect 15m alignment (score ≥ 0.8)
+     - **-0.3 penalty** for 15m conflict (score < 0.3)
+     - **+0.1 bonus** for confirmed liquidity sweep
+     - **+0.1 bonus** for entry from HTF POI (OB/FVG)
+   - Updated signal strength thresholds to incorporate alignment
+   - Added comprehensive logging for confidence breakdown
+   ```python
+   def _calculate_signal_strength_and_confidence(
+       self, 
+       confluence_score: float,
+       m15_alignment_score: float = 0.5,
+       liquidity_swept: bool = False,
+       sweep_confirmed: bool = False,
+       entry_from_htf_poi: bool = False
+   ):
+   ```
+
+3. **Lines 1930-2008:** Integrated Phase 3 into `generate_trade_signal()` method
+   - Extracts 15m alignment score from execution signal
+   - Detects liquidity sweep confluence 
+   - Identifies entry from HTF POI (within 0.5% of OB/FVG)
+   - Applies enhanced confidence calculation with all bonuses
+   - Adds Phase 3 reasoning to signal explanations
+   - Tracks all Phase 3 metrics in diagnostics
+
+### Key Features Implemented
+
+1. **Confidence Scoring Rules:**
+   ```
+   Base Confidence (from confluence score)
+   + 0.2 if m15_alignment_score >= 0.8 (perfect alignment)
+   - 0.3 if m15_alignment_score < 0.3 (conflict - rejected earlier)
+   + 0.1 if liquidity swept AND confirmed in signal direction
+   + 0.1 if entry from HTF OB/FVG (within 0.5%)
+   = Final Confidence (0.0 - 1.0)
+   ```
+
+2. **Enhanced Signal Strength Thresholds:**
+   - VERY_STRONG: confidence ≥ 0.8 AND alignment ≥ 0.7
+   - STRONG: confidence ≥ 0.65 AND alignment ≥ 0.5
+   - MODERATE: confidence ≥ 0.5 AND alignment ≥ 0.3
+   - WEAK: all others
+
+3. **Comprehensive Diagnostics:**
+   - phase3_m15_alignment: Alignment score (0.0-1.0)
+   - phase3_liquidity_swept: Boolean sweep detection
+   - phase3_sweep_confirmed: Boolean directional confirmation
+   - phase3_entry_from_poi: Boolean HTF POI proximity
+   - phase3_base_confidence: Pre-enhancement confidence
+   - phase3_enhanced_confidence: Final confidence with bonuses
+   - phase3_signal_strength: Final signal strength classification
+
+4. **Enhanced Reasoning:**
+   - Adds "Phase 3: Perfect 15m alignment with HTF bias (+0.2 confidence)" when applicable
+   - Adds "Phase 3: Confirmed liquidity sweep (long/short-side) (+0.1 confidence)" when applicable
+   - Adds "Phase 3: Entry from HTF POI (OB/FVG) (+0.1 confidence)" when applicable
+
+### Testing Phase 3
+
+Implementation complete and integrated:
+- All Phase 3 methods added to smc_analyzer.py
+- Confidence calculation enhanced with bonuses/penalties
+- Signal generation uses Phase 3 enhanced logic
+- Comprehensive diagnostics and logging in place
+
+---
+
+## 📋 Remaining Work: Phases 4-7
 
 The comprehensive implementation plan is documented in `SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md`. Here's a quick overview of what remains:
-
-### Phase 3: Enhanced Confidence Scoring
-**Status:** Not Started  
-**Effort:** Medium (1 new method, updates to confidence calculation)  
-**Key Tasks:**
-- Create `_calculate_15m_alignment_score()` method
-- Update `_calculate_signal_strength_and_confidence()` method
-- Add +0.2 bonus for 15m alignment
-- Add -0.3 penalty for 15m conflict
-- Add liquidity sweep and OB/FVG entry bonuses
 
 ### Phase 4: Scaling Entry Management
 **Status:** Not Started  
@@ -392,15 +471,15 @@ Update this section as you complete each phase:
 
 - [x] **Phase 1:** 15m Timeframe Support ✅ (Completed October 2025)
 - [x] **Phase 2:** Multi-Timeframe Workflow ✅ (Completed October 2025)
-- [ ] **Phase 3:** Enhanced Confidence Scoring
+- [x] **Phase 3:** Enhanced Confidence Scoring ✅ (Completed October 4, 2025)
 - [ ] **Phase 4:** Scaling Entry Management
 - [ ] **Phase 5:** Refined Stop-Loss
 - [ ] **Phase 6:** Multi-Take Profit Management
 - [ ] **Phase 7:** ATR Risk Filter
 
-**Current Phase:** Phase 3 - Enhanced Confidence Scoring  
-**Last Completed:** Phase 2 - Multi-Timeframe Analysis Workflow (October 4, 2025)  
-**Next Step:** Implement `_calculate_15m_alignment_score()` method for dynamic confidence bonuses
+**Current Phase:** Phase 4 - Scaling Entry Management  
+**Last Completed:** Phase 3 - Enhanced Confidence Scoring (October 4, 2025)  
+**Next Step:** Create `ScaledEntry` dataclass and implement `_calculate_scaled_entries()` method
 
 ---
 

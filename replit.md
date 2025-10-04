@@ -4,6 +4,25 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 3 Complete (Enhanced Confidence Scoring)
+  - Implemented `_calculate_15m_alignment_score()` method for quantifying 15m/HTF bias alignment (0.0-1.0 scale)
+  - Enhanced `_calculate_signal_strength_and_confidence()` with Phase 3 bonuses and penalties:
+    - **+0.2 bonus** for perfect 15m alignment with HTF bias (score ≥ 0.8)
+    - **-0.3 penalty** for 15m/HTF conflict (score < 0.3) - signals rejected before this point
+    - **+0.1 bonus** for confirmed liquidity sweep in signal direction
+    - **+0.1 bonus** for entry from HTF point of interest (OB/FVG within 0.5%)
+  - Updated signal strength thresholds to incorporate 15m alignment:
+    - VERY_STRONG: confidence ≥ 0.8 AND alignment ≥ 0.7
+    - STRONG: confidence ≥ 0.65 AND alignment ≥ 0.5
+    - MODERATE: confidence ≥ 0.5 AND alignment ≥ 0.3
+  - Integrated Phase 3 logic into `generate_trade_signal()` method
+  - Added Phase 3 diagnostics tracking for alignment, sweeps, and POI entries
+  - Added Phase 3 bonus explanations to signal reasoning for transparency
+  - Comprehensive logging shows base vs enhanced confidence with breakdown
+  - All Phase 3 enhancements fully integrated and operational
+  - **Next Steps**: Implement Phase 4 (Scaling Entry Management with partial fills)
+  - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phases
+
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 2 Complete (Multi-Timeframe Analysis Workflow)
   - Implemented hierarchical analysis flow: Daily → H4/H1 → 15m execution
   - Created `_get_htf_bias()` method for Daily/H4 macro trend analysis with confidence scoring
@@ -15,8 +34,6 @@ This project is a comprehensive Telegram-based trading bot designed for USDT-M f
   - Enhanced logging for Phase 2 analysis debugging
   - Maintains full backward compatibility - proceeds with standard analysis if 15m unavailable
   - Syntax verification passed with no LSP errors
-  - **Next Steps**: Implement Phase 3 (Enhanced Confidence Scoring with 15m alignment bonuses)
-  - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phases
 
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 1 Complete
   - Added 15-minute timeframe support for institutional-style execution analysis
