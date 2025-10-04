@@ -44,6 +44,7 @@ venv.bak/
 
 # Logs
 *.log
+/tmp/
 
 # OS
 .DS_Store
@@ -51,3 +52,9 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Replit
+.replit
+.config/
+.upm/
+.pythonlibs/
