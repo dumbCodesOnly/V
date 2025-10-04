@@ -4215,24 +4215,24 @@ def get_smc_chart_data(symbol: str):
         try:
             # Generate or get cached SMC signal for this symbol
             signal = analyzer.generate_trade_signal(symbol)
-            if signal and signal.get("direction") and signal.get("direction") != "hold":
+            if signal and signal.direction and signal.direction != "hold":
                 current_price = float(h1_data[-1]["close"]) if h1_data else 0
                 
-                # Calculate entry, TP, SL levels from signal
-                entry_price = signal.get("entry_price", current_price)
-                stop_loss_price = signal.get("stop_loss_price")
-                take_profit_price = signal.get("take_profit_price")
+                # Calculate entry, TP, SL levels from signal (SMCSignal is a dataclass, not a dict)
+                entry_price = signal.entry_price
+                stop_loss_price = signal.stop_loss
+                take_profit_price = signal.take_profit_levels[0] if signal.take_profit_levels else None
                 
                 signal_overlay = {
-                    "direction": signal.get("direction"),  # 'long' or 'short'
+                    "direction": signal.direction,  # 'long' or 'short'
                     "entry_price": float(entry_price) if entry_price else None,
                     "stop_loss_price": float(stop_loss_price) if stop_loss_price else None,
                     "take_profit_price": float(take_profit_price) if take_profit_price else None,
-                    "confidence": signal.get("confidence", 0),
-                    "signal_strength": signal.get("signal_strength", "medium"),
-                    "entry_zone_high": signal.get("entry_zone_high"),
-                    "entry_zone_low": signal.get("entry_zone_low"),
-                    "timestamp": signal.get("timestamp", get_iran_time().isoformat())
+                    "confidence": signal.confidence,
+                    "signal_strength": signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
+                    "entry_zone_high": None,  # Not available in SMCSignal
+                    "entry_zone_low": None,  # Not available in SMCSignal
+                    "timestamp": signal.timestamp.isoformat() if signal.timestamp else get_iran_time().isoformat()
                 }
         except Exception as e:
             logging.error(f"Error fetching SMC signal for chart overlay: {e}")
