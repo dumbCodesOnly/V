@@ -206,6 +206,12 @@ class TradingConfig:
     # Supported exchanges
     SUPPORTED_EXCHANGES = ["toobit", "lbank", "hyperliquid"]
     DEFAULT_EXCHANGE = "lbank"
+    
+    # Phase 4: Scaling Entry Configuration
+    USE_SCALED_ENTRIES = True
+    SCALED_ENTRY_ALLOCATIONS = [50, 25, 25]  # Market, Limit1, Limit2 (must sum to 100)
+    SCALED_ENTRY_DEPTH_1 = 0.004  # 0.4% better price for first limit order
+    SCALED_ENTRY_DEPTH_2 = 0.010  # 1.0% better price for second limit order
 
 
 # =============================================================================

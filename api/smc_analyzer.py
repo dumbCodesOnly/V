@@ -2935,6 +2935,223 @@ class SMCAnalyzer:
 
         return signal_strength, final_confidence
 
+    def _calculate_scaled_entries(
+        self,
+        current_price: float,
+        direction: str,
+        order_blocks: List[OrderBlock],
+        fvgs: List[FairValueGap],
+        base_stop_loss: float,
+        base_take_profits: List[Tuple[float, float]]
+    ) -> List[ScaledEntry]:
+        """
+        Phase 4: Calculate 3-level scaled entry strategy
+        
+        Entry Allocation:
+        - 50% at market (immediate execution)
+        - 25% at first FVG/OB depth level (0.4% better price)
+        - 25% at second FVG/OB depth level (1.0% better price)
+        
+        Args:
+            current_price: Current market price
+            direction: Trade direction ('long' or 'short')
+            order_blocks: List of detected order blocks
+            fvgs: List of fair value gaps
+            base_stop_loss: Base stop-loss price
+            base_take_profits: List of (price, allocation) tuples for take profits
+        
+        Returns:
+            List of ScaledEntry objects
+        """
+        from config import TradingConfig
+        
+        if not TradingConfig.USE_SCALED_ENTRIES:
+            # If scaled entries disabled, return single market entry
+            return [ScaledEntry(
+                entry_price=current_price,
+                allocation_percent=100.0,
+                order_type='market',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )]
+        
+        scaled_entries = []
+        allocations = TradingConfig.SCALED_ENTRY_ALLOCATIONS
+        
+        # Entry 1: 50% at market (immediate execution)
+        entry1_price = current_price
+        entry1 = ScaledEntry(
+            entry_price=entry1_price,
+            allocation_percent=allocations[0],
+            order_type='market',
+            stop_loss=base_stop_loss,
+            take_profits=base_take_profits,
+            status='pending'
+        )
+        scaled_entries.append(entry1)
+        
+        # Entry 2: 25% at first depth level (0.4% better price)
+        depth1 = TradingConfig.SCALED_ENTRY_DEPTH_1
+        if direction == "long":
+            # For long, better price means lower
+            entry2_price = current_price * (1 - depth1)
+        else:  # short
+            # For short, better price means higher
+            entry2_price = current_price * (1 + depth1)
+        
+        # Try to align with nearest OB/FVG
+        entry2_price = self._align_entry_with_poi(
+            entry2_price, direction, order_blocks, fvgs, max_distance_pct=0.5
+        )
+        
+        entry2 = ScaledEntry(
+            entry_price=entry2_price,
+            allocation_percent=allocations[1],
+            order_type='limit',
+            stop_loss=base_stop_loss,
+            take_profits=base_take_profits,
+            status='pending'
+        )
+        scaled_entries.append(entry2)
+        
+        # Entry 3: 25% at second depth level (1.0% better price)
+        depth2 = TradingConfig.SCALED_ENTRY_DEPTH_2
+        if direction == "long":
+            entry3_price = current_price * (1 - depth2)
+        else:  # short
+            entry3_price = current_price * (1 + depth2)
+        
+        # Try to align with deeper OB/FVG
+        entry3_price = self._align_entry_with_poi(
+            entry3_price, direction, order_blocks, fvgs, max_distance_pct=1.0
+        )
+        
+        entry3 = ScaledEntry(
+            entry_price=entry3_price,
+            allocation_percent=allocations[2],
+            order_type='limit',
+            stop_loss=base_stop_loss,
+            take_profits=base_take_profits,
+            status='pending'
+        )
+        scaled_entries.append(entry3)
+        
+        logging.info(f"Phase 4: Calculated scaled entries - Market: ${entry1_price:.2f} ({allocations[0]}%), "
+                    f"Limit1: ${entry2_price:.2f} ({allocations[1]}%), Limit2: ${entry3_price:.2f} ({allocations[2]}%)")
+        
+        return scaled_entries
+
+    def _align_entry_with_poi(
+        self,
+        target_price: float,
+        direction: str,
+        order_blocks: List[OrderBlock],
+        fvgs: List[FairValueGap],
+        max_distance_pct: float = 0.5
+    ) -> float:
+        """
+        Phase 4: Align entry price with nearest order block or FVG if within tolerance
+        
+        Args:
+            target_price: Target entry price
+            direction: Trade direction ('long' or 'short')
+            order_blocks: List of order blocks
+            fvgs: List of fair value gaps
+            max_distance_pct: Maximum distance (%) to adjust price
+        
+        Returns:
+            Adjusted entry price (or original if no suitable POI)
+        """
+        best_price = target_price
+        min_distance = float('inf')
+        
+        # Check order blocks
+        for ob in order_blocks:
+            if direction == "long" and ob.direction == "bullish" and not ob.mitigated:
+                # For long, check if OB is below target (discount)
+                ob_price = (ob.price_high + ob.price_low) / 2
+                if ob_price < target_price:
+                    distance_pct = abs(ob_price - target_price) / target_price * 100
+                    if distance_pct < max_distance_pct and distance_pct < min_distance:
+                        best_price = ob_price
+                        min_distance = distance_pct
+            
+            elif direction == "short" and ob.direction == "bearish" and not ob.mitigated:
+                # For short, check if OB is above target (premium)
+                ob_price = (ob.price_high + ob.price_low) / 2
+                if ob_price > target_price:
+                    distance_pct = abs(ob_price - target_price) / target_price * 100
+                    if distance_pct < max_distance_pct and distance_pct < min_distance:
+                        best_price = ob_price
+                        min_distance = distance_pct
+        
+        # Check FVGs
+        for fvg in fvgs:
+            if direction == "long" and fvg.direction == "bullish" and not fvg.filled:
+                # For long, aim for middle of bullish FVG
+                fvg_price = (fvg.gap_high + fvg.gap_low) / 2
+                if fvg_price < target_price:
+                    distance_pct = abs(fvg_price - target_price) / target_price * 100
+                    if distance_pct < max_distance_pct and distance_pct < min_distance:
+                        best_price = fvg_price
+                        min_distance = distance_pct
+            
+            elif direction == "short" and fvg.direction == "bearish" and not fvg.filled:
+                # For short, aim for middle of bearish FVG
+                fvg_price = (fvg.gap_high + fvg.gap_low) / 2
+                if fvg_price > target_price:
+                    distance_pct = abs(fvg_price - target_price) / target_price * 100
+                    if distance_pct < max_distance_pct and distance_pct < min_distance:
+                        best_price = fvg_price
+                        min_distance = distance_pct
+        
+        if best_price != target_price:
+            logging.debug(f"Phase 4: Aligned entry from ${target_price:.2f} to ${best_price:.2f} (POI distance: {min_distance:.2f}%)")
+        
+        return best_price
+
+    def _calculate_entry_specific_sl(
+        self,
+        entry_price: float,
+        direction: str,
+        m15_swing_levels: Dict,
+        atr_value: float = 0.0
+    ) -> float:
+        """
+        Phase 4: Calculate stop-loss specific to each entry level using 15m swings
+        
+        Args:
+            entry_price: Entry price for this specific level
+            direction: Trade direction ('long' or 'short')
+            m15_swing_levels: Dictionary with 15m swing highs and lows
+            atr_value: ATR value for buffer (optional)
+        
+        Returns:
+            Stop-loss price for this entry
+        """
+        # Use 15m swing levels for precise stop-loss
+        if direction == "long":
+            # For long, SL below last swing low
+            sl_base = m15_swing_levels.get("last_swing_low", entry_price * 0.98)
+            # Add small ATR buffer if provided
+            if atr_value > 0:
+                sl = sl_base - (atr_value * 0.5)
+            else:
+                sl = sl_base
+        else:  # short
+            # For short, SL above last swing high
+            sl_base = m15_swing_levels.get("last_swing_high", entry_price * 1.02)
+            # Add small ATR buffer if provided
+            if atr_value > 0:
+                sl = sl_base + (atr_value * 0.5)
+            else:
+                sl = sl_base
+        
+        logging.debug(f"Phase 4: Entry-specific SL for ${entry_price:.2f} ({direction}): ${sl:.2f}")
+        
+        return sl
+
     def generate_enhanced_signal(
         self,
         symbol: str,
