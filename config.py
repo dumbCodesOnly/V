@@ -223,7 +223,7 @@ class TradingConfig:
     TP_ALLOCATIONS = [40, 30, 30]  # TP1, TP2, TP3 percentages (must sum to 100)
     TP_RR_RATIOS = [1.0, 2.0, 3.0]  # R:R for TP1, TP2, TP3
     ENABLE_TRAILING_AFTER_TP1 = True  # Activate trailing stop after TP1 is hit
-    TRAILING_STOP_PERCENT = 2.0  # 2% trailing stop distance
+    TRAILING_STOP_PERCENT = 0.8  # 0.8% trailing stop distance (adjust based on volatility and leverage)
 
 
 # =============================================================================
