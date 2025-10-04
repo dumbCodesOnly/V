@@ -315,13 +315,14 @@ class SMCAnalyzer:
         
         timeframe_data = {}
         timeframe_configs = [
+            ("15m", SMCConfig.TIMEFRAME_15M_LIMIT),
             ("1h", SMCConfig.TIMEFRAME_1H_LIMIT), 
             ("4h", SMCConfig.TIMEFRAME_4H_LIMIT), 
             ("1d", SMCConfig.TIMEFRAME_1D_LIMIT)
         ]
 
         logging.info(
-            f"Fetching batch candlestick data for {symbol} - 1h:{SMCConfig.TIMEFRAME_1H_LIMIT}, 4h:{SMCConfig.TIMEFRAME_4H_LIMIT}, 1d:{SMCConfig.TIMEFRAME_1D_LIMIT} candles"
+            f"Fetching batch candlestick data for {symbol} - 15m:{SMCConfig.TIMEFRAME_15M_LIMIT}, 1h:{SMCConfig.TIMEFRAME_1H_LIMIT}, 4h:{SMCConfig.TIMEFRAME_4H_LIMIT}, 1d:{SMCConfig.TIMEFRAME_1D_LIMIT} candles"
         )
 
         for timeframe, limit in timeframe_configs:

@@ -59,6 +59,35 @@ All necessary changes have been made to support 15-minute timeframe analysis:
    KLINES_15M_CACHE_TTL = 1  # 1 minute cache
    ```
 
+#### File: `api/unified_data_sync_service.py`
+1. **Lines 488-493:** Added 15m to timeframes dictionary with 60-second update interval
+   ```python
+   self.timeframes = {
+       "15m": 60,   # Update every 1 minute for fast execution
+       "1h": 120,   # Update every 2 minutes for live tracking
+       ...
+   }
+   ```
+
+2. **Lines 623-624:** Added 15m case to `_get_required_initial_candles()` method
+   ```python
+   if timeframe == "15m":
+       return SMCConfig.TIMEFRAME_15M_LIMIT  # 400 candles (~4 days)
+   ```
+
+#### File: `api/models.py`
+1. **Lines 75-77:** Added 15m case to `floor_to_period()` function for proper timestamp flooring
+   ```python
+   if timeframe == "15m":
+       minute = (dt_utc.minute // 15) * 15
+       return dt_utc.replace(minute=minute, second=0, microsecond=0)
+   ```
+
+2. **Line 1490:** Added 15m to default timeframes in `detect_all_gaps()` method
+   ```python
+   timeframes = ["15m", "1h", "4h", "1d"]
+   ```
+
 ### Testing Phase 1
 
 To verify Phase 1 is working:

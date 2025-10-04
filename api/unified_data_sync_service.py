@@ -483,6 +483,7 @@ class UnifiedDataSyncService:
         
         # Klines management
         self.timeframes = {
+            "15m": 60,   # Update every 1 minute for fast execution
             "1h": 120,   # Update every 2 minutes for live tracking
             "4h": 300,   # Update every 5 minutes  
             "1d": 900    # Update every 15 minutes for daily candles
@@ -616,7 +617,9 @@ class UnifiedDataSyncService:
     def _get_required_initial_candles(self, timeframe: str) -> int:
         """Calculate how many initial candles we need for each timeframe"""
         # Based on SMC analysis requirements and trading needs
-        if timeframe == "1h":
+        if timeframe == "15m":
+            return SMCConfig.TIMEFRAME_15M_LIMIT  # 400 candles (~4 days)
+        elif timeframe == "1h":
             return SMCConfig.TIMEFRAME_1H_LIMIT  # 300 candles (~12.5 days)
         elif timeframe == "4h": 
             return SMCConfig.TIMEFRAME_4H_LIMIT  # 100 candles (~16 days)

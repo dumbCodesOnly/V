@@ -69,7 +69,10 @@ def floor_to_period(dt_utc: datetime, timeframe: str) -> datetime:
     """Floor datetime to start of trading period (timezone-aware UTC)"""
     dt_utc = normalize_to_utc(dt_utc)
     
-    if timeframe == "1h":
+    if timeframe == "15m":
+        minute = (dt_utc.minute // 15) * 15
+        return dt_utc.replace(minute=minute, second=0, microsecond=0)
+    elif timeframe == "1h":
         return dt_utc.replace(minute=0, second=0, microsecond=0)
     elif timeframe == "4h":
         hour = (dt_utc.hour // 4) * 4
@@ -1481,7 +1484,7 @@ class KlinesCache(db.Model):
                 
             # Use provided timeframes or get all timeframes with data
             if timeframes is None:
-                timeframes = ["1h", "4h", "1d"]
+                timeframes = ["15m", "1h", "4h", "1d"]
             
             results = {}
             summary = {

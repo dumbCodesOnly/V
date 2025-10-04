@@ -38,8 +38,10 @@ This document outlines the comprehensive plan to upgrade the `SMCAnalyzer` class
    - Add case for `timeframe == "15m"`: return 120 (2 minutes)
 
 **Files Modified:**
-- `api/smc_analyzer.py` (lines 108, 186)
+- `api/smc_analyzer.py` (lines 111, 189, 227-228, 261, 321-329)
 - `config.py` (SMCConfig, RollingWindowConfig, CacheConfig)
+- `api/unified_data_sync_service.py` (lines 488-493, 623-624)
+- `api/models.py` (lines 75-77, 1490)
 
 **Testing Checklist:**
 - [ ] 15m data fetches successfully from Binance
