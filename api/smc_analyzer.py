@@ -2001,6 +2001,43 @@ class SMCAnalyzer:
                     final_reasoning.append(f"Phase 3: Confirmed liquidity sweep ({direction}-side) (+0.1 confidence)")
                 if entry_from_htf_poi:
                     final_reasoning.append("Phase 3: Entry from HTF POI (OB/FVG) (+0.1 confidence)")
+                
+                # Phase 4: Calculate scaled entries
+                scaled_entries_list = None
+                from config import TradingConfig
+                if TradingConfig.USE_SCALED_ENTRIES:
+                    # Extract 15m swing levels for stop-loss calculations
+                    m15_swing_levels = {}
+                    if m15_data and len(m15_data) >= 10:
+                        swing_highs_15m = self._find_swing_highs(m15_data, lookback=2)
+                        swing_lows_15m = self._find_swing_lows(m15_data, lookback=2)
+                        if swing_highs_15m:
+                            m15_swing_levels["last_swing_high"] = swing_highs_15m[-1]["high"]
+                        if swing_lows_15m:
+                            m15_swing_levels["last_swing_low"] = swing_lows_15m[-1]["low"]
+                    
+                    # Calculate base take profits for scaled entries
+                    base_take_profits = [(tp, 100.0/len(take_profits)) for tp in take_profits] if take_profits else []
+                    
+                    # Calculate scaled entries
+                    scaled_entries_list = self._calculate_scaled_entries(
+                        current_price=current_price,
+                        direction=direction,
+                        order_blocks=order_blocks,
+                        fvgs=fvgs,
+                        base_stop_loss=stop_loss,
+                        base_take_profits=base_take_profits
+                    )
+                    
+                    analysis_details["phase4_scaled_entries_count"] = len(scaled_entries_list)
+                    analysis_details["phase4_entry_allocations"] = [entry.allocation_percent for entry in scaled_entries_list]
+                    
+                    # Add Phase 4 reasoning
+                    if len(scaled_entries_list) > 1:
+                        allocs = [f"{e.allocation_percent:.0f}%" for e in scaled_entries_list]
+                        final_reasoning.append(f"Phase 4: Scaled entry strategy - {' + '.join(allocs)} allocation across {len(scaled_entries_list)} levels")
+                    
+                    logging.info(f"Phase 4: Generated {len(scaled_entries_list)} scaled entries for {symbol}")
 
                 new_signal = SMCSignal(
                     symbol=symbol,
@@ -2014,6 +2051,7 @@ class SMCAnalyzer:
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.utcnow(),
                     current_market_price=current_price,  # Store actual market price
+                    scaled_entries=scaled_entries_list  # Phase 4: Add scaled entries
                 )
                 
                 # Cache the new signal to prevent duplicates
