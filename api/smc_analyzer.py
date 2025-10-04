@@ -3190,6 +3190,137 @@ class SMCAnalyzer:
         
         return sl
 
+    def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
+        """
+        Phase 5: Find recent swing highs and lows on 15m timeframe
+        
+        Args:
+            m15_data: List of 15-minute candlestick dictionaries
+        
+        Returns:
+            Dictionary with swing levels:
+            {
+                "swing_highs": [list of swing high prices],
+                "swing_lows": [list of swing low prices],
+                "last_swing_high": most recent swing high,
+                "last_swing_low": most recent swing low
+            }
+        """
+        if len(m15_data) < 5:
+            logging.warning("Phase 5: Not enough 15m data for swing detection")
+            return {
+                "swing_highs": [],
+                "swing_lows": [],
+                "last_swing_high": None,
+                "last_swing_low": None
+            }
+        
+        swing_highs = []
+        swing_lows = []
+        lookback = 2  # Look 2 candles before and after for swing points
+        
+        # Identify swing highs and lows
+        for i in range(lookback, len(m15_data) - lookback):
+            current_candle = m15_data[i]
+            current_high = current_candle["high"]
+            current_low = current_candle["low"]
+            
+            # Check if this is a swing high
+            is_swing_high = True
+            for j in range(i - lookback, i + lookback + 1):
+                if j != i and m15_data[j]["high"] >= current_high:
+                    is_swing_high = False
+                    break
+            
+            if is_swing_high:
+                swing_highs.append(current_high)
+            
+            # Check if this is a swing low
+            is_swing_low = True
+            for j in range(i - lookback, i + lookback + 1):
+                if j != i and m15_data[j]["low"] <= current_low:
+                    is_swing_low = False
+                    break
+            
+            if is_swing_low:
+                swing_lows.append(current_low)
+        
+        result = {
+            "swing_highs": swing_highs,
+            "swing_lows": swing_lows,
+            "last_swing_high": swing_highs[-1] if swing_highs else None,
+            "last_swing_low": swing_lows[-1] if swing_lows else None
+        }
+        
+        logging.debug(f"Phase 5: Found {len(swing_highs)} swing highs and {len(swing_lows)} swing lows on 15m")
+        if result["last_swing_high"]:
+            logging.debug(f"Phase 5: Last swing high: ${result['last_swing_high']:.2f}")
+        if result["last_swing_low"]:
+            logging.debug(f"Phase 5: Last swing low: ${result['last_swing_low']:.2f}")
+        
+        return result
+
+    def _calculate_refined_sl_with_atr(
+        self,
+        direction: str,
+        swing_levels: Dict,
+        atr_value: float,
+        current_price: float,
+        atr_buffer_multiplier: float = 0.5
+    ) -> float:
+        """
+        Phase 5: Calculate stop-loss using 15m swings + ATR buffer
+        
+        Args:
+            direction: Trade direction ('long' or 'short')
+            swing_levels: Dictionary with 15m swing highs and lows from _find_15m_swing_levels()
+            atr_value: ATR value for buffer calculation
+            current_price: Current market price for fallback calculation
+            atr_buffer_multiplier: Multiplier for ATR buffer (default 0.5)
+        
+        Returns:
+            Refined stop-loss price
+        """
+        from config import TradingConfig
+        
+        min_sl_distance_percent = getattr(TradingConfig, 'SL_MIN_DISTANCE_PERCENT', 0.5) / 100.0
+        
+        if direction == "long":
+            # For long, SL below last swing low - ATR buffer
+            if swing_levels["last_swing_low"]:
+                sl_base = swing_levels["last_swing_low"]
+                sl = sl_base - (atr_value * atr_buffer_multiplier)
+                logging.debug(f"Phase 5: Long SL from swing low ${sl_base:.2f} - ATR buffer = ${sl:.2f}")
+            else:
+                # Fallback: use 2% below current price
+                sl = current_price * (1 - 0.02)
+                logging.warning(f"Phase 5: No swing low found, using fallback SL: ${sl:.2f}")
+            
+            # Ensure minimum distance
+            min_sl = current_price * (1 - min_sl_distance_percent)
+            if sl > min_sl:
+                logging.debug(f"Phase 5: SL too tight (${sl:.2f}), adjusting to min distance (${min_sl:.2f})")
+                sl = min_sl
+        
+        else:  # short
+            # For short, SL above last swing high + ATR buffer
+            if swing_levels["last_swing_high"]:
+                sl_base = swing_levels["last_swing_high"]
+                sl = sl_base + (atr_value * atr_buffer_multiplier)
+                logging.debug(f"Phase 5: Short SL from swing high ${sl_base:.2f} + ATR buffer = ${sl:.2f}")
+            else:
+                # Fallback: use 2% above current price
+                sl = current_price * (1 + 0.02)
+                logging.warning(f"Phase 5: No swing high found, using fallback SL: ${sl:.2f}")
+            
+            # Ensure minimum distance
+            max_sl = current_price * (1 + min_sl_distance_percent)
+            if sl < max_sl:
+                logging.debug(f"Phase 5: SL too tight (${sl:.2f}), adjusting to min distance (${max_sl:.2f})")
+                sl = max_sl
+        
+        return sl
+
     def generate_enhanced_signal(
         self,
         symbol: str,
