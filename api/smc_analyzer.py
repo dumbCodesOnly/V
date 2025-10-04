@@ -2002,20 +2002,48 @@ class SMCAnalyzer:
                 if entry_from_htf_poi:
                     final_reasoning.append("Phase 3: Entry from HTF POI (OB/FVG) (+0.1 confidence)")
                 
+                # Phase 5: Extract 15m swing levels using new Phase 5 method
+                m15_swing_levels = {}
+                if m15_data and len(m15_data) >= 5:
+                    m15_swing_levels = self._find_15m_swing_levels(m15_data)
+                    analysis_details["phase5_swing_high"] = m15_swing_levels.get("last_swing_high")
+                    analysis_details["phase5_swing_low"] = m15_swing_levels.get("last_swing_low")
+                
+                # Phase 5: Calculate refined stop-loss with ATR buffer if enabled
+                from config import TradingConfig
+                if TradingConfig.USE_15M_SWING_SL and m15_swing_levels.get("last_swing_low") is not None or m15_swing_levels.get("last_swing_high") is not None:
+                    # Calculate ATR on 15m timeframe for buffer
+                    atr_15m = self.calculate_atr(m15_data) if m15_data else 0.0
+                    
+                    # Get ATR buffer multiplier from config
+                    atr_buffer_multiplier = getattr(TradingConfig, 'SL_ATR_BUFFER_MULTIPLIER', 0.5)
+                    
+                    # Calculate refined stop-loss using Phase 5 method
+                    refined_sl = self._calculate_refined_sl_with_atr(
+                        direction=direction,
+                        swing_levels=m15_swing_levels,
+                        atr_value=atr_15m,
+                        current_price=current_price,
+                        atr_buffer_multiplier=atr_buffer_multiplier
+                    )
+                    
+                    # Update stop-loss with refined value
+                    original_sl = stop_loss
+                    stop_loss = refined_sl
+                    
+                    analysis_details["phase5_original_sl"] = original_sl
+                    analysis_details["phase5_refined_sl"] = refined_sl
+                    analysis_details["phase5_atr_15m"] = atr_15m
+                    
+                    # Add Phase 5 reasoning
+                    sl_improvement = abs(refined_sl - original_sl) / current_price * 100
+                    final_reasoning.append(f"Phase 5: Refined SL using 15m swings (improved by {sl_improvement:.2f}%)")
+                    
+                    logging.info(f"Phase 5: Refined stop-loss from ${original_sl:.2f} to ${refined_sl:.2f} using 15m swings + ATR buffer")
+                
                 # Phase 4: Calculate scaled entries
                 scaled_entries_list = None
-                from config import TradingConfig
                 if TradingConfig.USE_SCALED_ENTRIES:
-                    # Extract 15m swing levels for stop-loss calculations
-                    m15_swing_levels = {}
-                    if m15_data and len(m15_data) >= 10:
-                        swing_highs_15m = self._find_swing_highs(m15_data, lookback=2)
-                        swing_lows_15m = self._find_swing_lows(m15_data, lookback=2)
-                        if swing_highs_15m:
-                            m15_swing_levels["last_swing_high"] = swing_highs_15m[-1]["high"]
-                        if swing_lows_15m:
-                            m15_swing_levels["last_swing_low"] = swing_lows_15m[-1]["low"]
-                    
                     # Calculate base take profits for scaled entries
                     base_take_profits = [(tp, 100.0/len(take_profits)) for tp in take_profits] if take_profits else []
                     
