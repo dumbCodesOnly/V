@@ -4,6 +4,25 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 4 Complete (Scaling Entry Management)
+  - Implemented `ScaledEntry` dataclass for scaled entry strategy tracking
+  - Created `_calculate_scaled_entries()` method for 50%/25%/25% allocation strategy:
+    - Entry 1: 50% at market (immediate execution)
+    - Entry 2: 25% at first limit level (0.4% better price, aligned with OB/FVG)
+    - Entry 3: 25% at second limit level (1.0% better price, aligned with deeper OB/FVG)
+  - Created `_align_entry_with_poi()` helper to align limit orders with order blocks and FVGs
+  - Created `_calculate_entry_specific_sl()` method for entry-level specific stop-losses
+  - Updated `SMCSignal` dataclass to include `scaled_entries` field
+  - Integrated Phase 4 into `generate_trade_signal()` method
+  - Added Phase 4 configuration to `TradingConfig` class:
+    - `USE_SCALED_ENTRIES = True`
+    - `SCALED_ENTRY_ALLOCATIONS = [50, 25, 25]`
+    - `SCALED_ENTRY_DEPTH_1 = 0.004` (0.4%)
+    - `SCALED_ENTRY_DEPTH_2 = 0.010` (1.0%)
+  - All Phase 4 features fully integrated and operational
+  - **Next Steps**: Implement Phase 5 (Refined Stop-Loss with 15m Swings)
+  - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phases
+
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 3 Complete (Enhanced Confidence Scoring)
   - Implemented `_calculate_15m_alignment_score()` method for quantifying 15m/HTF bias alignment (0.0-1.0 scale)
   - Enhanced `_calculate_signal_strength_and_confidence()` with Phase 3 bonuses and penalties:
