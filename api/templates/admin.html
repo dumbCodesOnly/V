@@ -545,7 +545,7 @@
             <div class="card-header mobile-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="bi bi-graph-up-arrow me-2"></i>
-                    SMC Analysis Diagnostic
+                    SMC Multi-Timeframe Analysis (Institutional-Style)
                 </h5>
                 <div class="mobile-btn-group">
                     <button class="btn btn-sm btn-info" onclick="showSMCConfig()" title="SMC Configuration">
@@ -859,7 +859,10 @@
                                     <i class="bi bi-check-circle text-success step-success d-none"></i>
                                     <i class="bi bi-x-circle text-danger step-error d-none"></i>
                                 </div>
-                                <h6 class="mb-0">Step 7: Signal Generation</h6>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-0">Step 7: Institutional Signal Generation</h6>
+                                    <small class="text-muted">Phase 1-7: HTF Bias → Intermediate Structure → 15m Execution</small>
+                                </div>
                                 <span class="badge bg-secondary ms-auto step-status" id="step-7-status">Waiting</span>
                             </div>
                             <div id="step-7-details" class="step-details" style="display: none;">
@@ -2237,6 +2240,28 @@
                     if (analysisDetails.liquidity_sweeps) {
                         const ls = analysisDetails.liquidity_sweeps;
                         detailsHtml += `<div class="mb-2"><strong>Liquidity Sweeps:</strong> Buy-side: ${ls.buy_side_confirmed || 0}/${ls.buy_side_total || 0}, Sell-side: ${ls.sell_side_confirmed || 0}/${ls.sell_side_total || 0}</div>`;
+                    }
+                    
+                    // Phase 2: HTF Bias
+                    if (analysisDetails.htf_bias) {
+                        detailsHtml += `<div class="mb-2"><strong>Phase 2 (HTF Bias):</strong> ${analysisDetails.htf_bias} (Confidence: ${analysisDetails.htf_confidence ? (analysisDetails.htf_confidence * 100).toFixed(0) + '%' : 'N/A'})</div>`;
+                    }
+                    
+                    // Phase 3: 15m Alignment
+                    if (analysisDetails.phase3_m15_alignment !== undefined) {
+                        const alignmentScore = (analysisDetails.phase3_m15_alignment * 100).toFixed(0);
+                        detailsHtml += `<div class="mb-2"><strong>Phase 3 (15m Alignment):</strong> ${alignmentScore}% - ${analysisDetails.m15_reason || 'N/A'}</div>`;
+                    }
+                    
+                    // Phase 5: Stop-Loss Refinement
+                    if (analysisDetails.phase5_refined_sl) {
+                        detailsHtml += `<div class="mb-2"><strong>Phase 5 (SL Refinement):</strong> Refined using 15m swings (Swing High: $${analysisDetails.phase5_swing_high || 'N/A'}, Swing Low: $${analysisDetails.phase5_swing_low || 'N/A'})</div>`;
+                    }
+                    
+                    // Phase 7: ATR Filter
+                    if (analysisDetails.phase7_atr_filter) {
+                        const atrFilter = analysisDetails.phase7_atr_filter;
+                        detailsHtml += `<div class="mb-2"><strong>Phase 7 (ATR Filter):</strong> ${atrFilter.passes ? '✓ Passed' : '✗ Failed'} - ${atrFilter.reason || 'N/A'}</div>`;
                     }
                     
                     detailsDiv.innerHTML = detailsHtml;

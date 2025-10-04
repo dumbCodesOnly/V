@@ -1315,32 +1315,6 @@ class SMCAnalyzer:
         # If neither condition is met, do not generate signal
         return direction, confidence, entry_price, stop_loss, take_profits
 
-    def _determine_trade_direction_and_levels(
-        self, bullish_signals, bearish_signals, current_price, order_blocks, candlesticks
-    ):
-        """Legacy method - kept for backward compatibility."""
-        direction = None
-        confidence = 0.0
-        entry_price = current_price
-        stop_loss = 0.0
-        take_profits = []
-
-        if bullish_signals > bearish_signals and bullish_signals >= 3:
-            direction = "long"
-            confidence = min(bullish_signals / 5.0, 1.0)
-            entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
-                current_price, order_blocks, candlesticks
-            )
-
-        elif bearish_signals > bullish_signals and bearish_signals >= 3:
-            direction = "short"
-            confidence = min(bearish_signals / 5.0, 1.0)
-            entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
-                current_price, order_blocks, candlesticks
-            )
-
-        return direction, confidence, entry_price, stop_loss, take_profits
-
     def _calculate_trade_metrics_enhanced(
         self, entry_price, stop_loss, take_profits, confidence, liquidity_sweeps, order_blocks, fvgs
     ):
@@ -1376,27 +1350,6 @@ class SMCAnalyzer:
         elif effective_confidence >= 0.8:
             signal_strength = SignalStrength.STRONG
         elif effective_confidence >= 0.7:
-            signal_strength = SignalStrength.MODERATE
-        else:
-            signal_strength = SignalStrength.WEAK
-
-        return rr_ratio, signal_strength
-
-    def _calculate_trade_metrics(
-        self, entry_price, stop_loss, take_profits, confidence
-    ):
-        """Legacy method - calculate risk-reward ratio and signal strength."""
-        # Calculate risk-reward ratio
-        risk = abs(entry_price - stop_loss)
-        reward = abs(take_profits[0] - entry_price) if take_profits else risk
-        rr_ratio = reward / risk if risk > 0 else 1.0
-
-        # Determine signal strength
-        if confidence >= 0.9:
-            signal_strength = SignalStrength.VERY_STRONG
-        elif confidence >= 0.8:
-            signal_strength = SignalStrength.STRONG
-        elif confidence >= 0.7:
             signal_strength = SignalStrength.MODERATE
         else:
             signal_strength = SignalStrength.WEAK
