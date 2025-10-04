@@ -400,18 +400,111 @@ Phase 4 is fully operational and ready for live testing.
 
 ---
 
-## 📋 Remaining Work: Phases 5-7
+## ✅ Completed: Phase 5 - Refined Stop-Loss with 15m Swings
+
+### What Was Done
+
+Phase 5 successfully implemented refined stop-loss calculation using 15-minute swing levels and ATR buffer for precise risk management.
+
+#### File: `api/smc_analyzer.py`
+
+1. **Lines 3196-3264:** Created `_find_15m_swing_levels()` method
+   - Identifies swing highs and lows on 15m timeframe
+   - Uses 2-candle lookback for swing point detection
+   - Returns dictionary with swing_highs, swing_lows, last_swing_high, last_swing_low
+   - Comprehensive logging for swing detection results
+   ```python
+   def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
+       """Phase 5: Find recent swing highs and lows on 15m timeframe"""
+   ```
+
+2. **Lines 3266-3325:** Created `_calculate_refined_sl_with_atr()` method
+   - Calculates stop-loss using 15m swing levels + ATR buffer
+   - Long trades: SL below last swing low - ATR buffer
+   - Short trades: SL above last swing high + ATR buffer
+   - Enforces minimum SL distance from entry (default 0.5%)
+   - Includes fallback logic when swing levels unavailable
+   ```python
+   def _calculate_refined_sl_with_atr(
+       self,
+       direction: str,
+       swing_levels: Dict,
+       atr_value: float,
+       current_price: float,
+       atr_buffer_multiplier: float = 0.5
+   ) -> float:
+       """Phase 5: Calculate stop-loss using 15m swings + ATR buffer"""
+   ```
+
+3. **Lines 2008-2045:** Integrated Phase 5 into `generate_trade_signal()` method
+   - Extracts 15m swing levels using new `_find_15m_swing_levels()` method
+   - Calculates ATR on 15m timeframe for buffer calculation
+   - Calls `_calculate_refined_sl_with_atr()` when USE_15M_SWING_SL is enabled
+   - Updates stop-loss with refined value
+   - Tracks original vs refined SL in diagnostics
+   - Adds Phase 5 reasoning showing SL improvement percentage
+   - Comprehensive logging of stop-loss refinement
+
+#### File: `config.py`
+
+1. **Lines 219-222:** Added Phase 5 configuration to `TradingConfig` class
+   ```python
+   # Phase 5: Refined Stop-Loss Configuration
+   USE_15M_SWING_SL = True  # Use 15m swing levels for stop-loss calculation
+   SL_ATR_BUFFER_MULTIPLIER = 0.5  # 0.5x ATR buffer for stop-loss
+   SL_MIN_DISTANCE_PERCENT = 0.5  # Minimum 0.5% SL distance from entry
+   ```
+
+### Key Features Implemented
+
+1. **15m Swing Detection:**
+   - Identifies swing highs where price is higher than 2 candles before and after
+   - Identifies swing lows where price is lower than 2 candles before and after
+   - Returns most recent swing high and low for SL calculation
+
+2. **ATR Buffer Integration:**
+   - Calculates ATR on 15m timeframe for volatility-aware buffer
+   - Default 0.5x ATR buffer (configurable)
+   - Provides extra protection beyond swing levels
+
+3. **Minimum Distance Enforcement:**
+   - Ensures SL is at least 0.5% away from entry (configurable)
+   - Prevents overly tight stop-losses in ranging markets
+   - Adjusts SL if swing level is too close to entry
+
+4. **Fallback Logic:**
+   - Uses 2% from current price if no swing levels detected
+   - Ensures SL is always calculated even with insufficient data
+   - Logs warnings when fallback is used
+
+5. **Enhanced Diagnostics:**
+   - phase5_swing_high: Last 15m swing high
+   - phase5_swing_low: Last 15m swing low
+   - phase5_original_sl: Stop-loss before Phase 5 refinement
+   - phase5_refined_sl: Final refined stop-loss
+   - phase5_atr_15m: ATR value on 15m timeframe
+
+6. **Configuration Flexibility:**
+   - Can be enabled/disabled via `USE_15M_SWING_SL` flag
+   - Customizable ATR buffer multiplier
+   - Adjustable minimum SL distance
+
+### Testing Phase 5
+
+Implementation complete and integrated:
+- `_find_15m_swing_levels()` method created and operational
+- `_calculate_refined_sl_with_atr()` method created and operational
+- Signal generation uses Phase 5 refined stop-loss
+- Configuration settings added to TradingConfig
+- Comprehensive logging and diagnostics in place
+
+Phase 5 is fully operational and ready for live testing.
+
+---
+
+## 📋 Remaining Work: Phases 6-7
 
 The comprehensive implementation plan is documented in `SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md`. Here's a quick overview of what remains:
-
-### Phase 5: Refined Stop-Loss with 15m Swings
-**Status:** Not Started  
-**Effort:** Medium (2 new methods)  
-**Key Tasks:**
-- Create `_find_15m_swing_levels()` method
-- Create `_calculate_refined_sl_with_atr()` method
-- Update `generate_trade_signal()` to use 15m swings for SL
-- Add configuration to `TradingConfig`
 
 ### Phase 6: Multi-Take Profit Management
 **Status:** Not Started  
@@ -565,13 +658,13 @@ Update this section as you complete each phase:
 - [x] **Phase 2:** Multi-Timeframe Workflow ✅ (Completed October 2025)
 - [x] **Phase 3:** Enhanced Confidence Scoring ✅ (Completed October 4, 2025)
 - [x] **Phase 4:** Scaling Entry Management ✅ (Completed October 4, 2025)
-- [ ] **Phase 5:** Refined Stop-Loss
+- [x] **Phase 5:** Refined Stop-Loss with 15m Swings ✅ (Completed October 4, 2025)
 - [ ] **Phase 6:** Multi-Take Profit Management
 - [ ] **Phase 7:** ATR Risk Filter
 
-**Current Phase:** Phase 5 - Refined Stop-Loss with 15m Swings  
-**Last Completed:** Phase 4 - Scaling Entry Management (October 4, 2025)  
-**Next Step:** Create `_find_15m_swing_levels()` method and implement refined stop-loss logic
+**Current Phase:** Phase 6 - Multi-Take Profit Management  
+**Last Completed:** Phase 5 - Refined Stop-Loss with 15m Swings (October 4, 2025)  
+**Next Step:** Create `_calculate_rr_based_take_profits()` method and implement R:R-based TP levels
 
 ---
 

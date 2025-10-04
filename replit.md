@@ -4,6 +4,23 @@
 This project is a comprehensive Telegram-based trading bot designed for USDT-M futures trading on both Toobit and LBank exchanges. It enables users to manage multiple simultaneous trading configurations conversationally via Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The primary goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools.
 
 ## Recent Changes
+- **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 5 Complete (Refined Stop-Loss with 15m Swings)
+  - Implemented `_find_15m_swing_levels()` method to identify swing highs and lows on 15m timeframe
+  - Created `_calculate_refined_sl_with_atr()` method for precise stop-loss calculation:
+    - Long trades: SL below last 15m swing low - ATR buffer
+    - Short trades: SL above last 15m swing high + ATR buffer
+    - Enforces minimum 0.5% SL distance from entry
+    - Includes fallback logic when swing levels unavailable
+  - Integrated Phase 5 into `generate_trade_signal()` method
+  - Added Phase 5 configuration to `TradingConfig` class:
+    - `USE_15M_SWING_SL = True` (enables 15m swing-based SL)
+    - `SL_ATR_BUFFER_MULTIPLIER = 0.5` (0.5x ATR buffer)
+    - `SL_MIN_DISTANCE_PERCENT = 0.5` (minimum 0.5% SL distance)
+  - Stop-loss now uses precise 15m swing levels for tighter risk management
+  - All Phase 5 features fully integrated and operational
+  - **Next Steps**: Implement Phase 6 (Multi-Take Profit Management with R:R ratios)
+  - See SMC_MULTI_TIMEFRAME_IMPLEMENTATION_PLAN.md for detailed guidance on remaining phases
+
 - **October 4, 2025**: SMC ANALYZER ENHANCEMENT - Phase 4 Complete (Scaling Entry Management)
   - Implemented `ScaledEntry` dataclass for scaled entry strategy tracking
   - Created `_calculate_scaled_entries()` method for 50%/25%/25% allocation strategy:
