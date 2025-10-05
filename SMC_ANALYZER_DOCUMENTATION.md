@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 5, 2025  
-**Version:** 2.2 (All Phases Complete + All Critical Issues Fixed)  
-**Status:** ✅ Production Ready (All 9 critical/medium/low issues resolved)
+**Version:** 2.2 (All Phases Complete + Critical Issues Identified)  
+**Status:** ⚠️ **3 Critical Issues Pending Fix** (Issues #19-21 require immediate attention)
 
 ---
 
@@ -1039,6 +1039,421 @@ else:
 
 ---
 
+## Critical Issues Identified (October 5, 2025 - Latest Analysis)
+
+### Issue Summary - New Critical Findings
+
+**Total New Issues Identified:** 3  
+**Fixed:** 0 (0%) ⚠️  
+**Pending Fix:** 3 (100%)
+
+**By Priority:**
+- **Critical Priority (Data Integrity):** 2 issues (Issues #19, #20)
+- **Medium Priority (Configuration):** 1 issue (Issue #21)
+
+---
+
+### Issue 19: Configuration Values Being Ignored ❌ **CRITICAL**
+
+**Location:** `api/smc_analyzer.py` lines 128-129, 501
+
+**Problem:**
+The order block detection uses a **hardcoded** volume multiplier instead of the configured value from `SMCConfig`:
+
+```python
+# In __init__ (line 128-129)
+self.ob_volume_multiplier = 1.1  # ❌ Hardcoded, ignores config
+
+# In find_order_blocks (line 501)
+volume_confirmed = (
+    current["volume"] >= avg_volume * self.ob_volume_multiplier  # Uses 1.1
+)
+
+# But config.py defines (line 339):
+OB_VOLUME_MULTIPLIER = 1.2  # ⚠️ This value is NEVER used
+```
+
+**Impact:**
+- **HIGH** - Order block sensitivity is incorrect
+- Any configuration changes to `OB_VOLUME_MULTIPLIER` have **no effect**
+- Weaker order blocks may pass through (20% looser than intended)
+- Tuning the config cannot adjust OB detection behavior
+- Similar issue may exist for other dynamic multipliers (`atr_multiplier`, `fvg_multiplier`)
+
+**Why This Happened:**
+The `SMCAnalyzer` class initializes instance variables with hardcoded defaults, then only updates them during volatility regime detection (lines 1794-1797). The initial configuration value from `SMCConfig.OB_VOLUME_MULTIPLIER` is never read.
+
+**Solution:**
+
+**Option 1: Wire Configuration to Instance Variables (Recommended)**
+```python
+# In SMCAnalyzer.__init__() (line 120-129)
+def __init__(self):
+    from config import SMCConfig
+    
+    self.timeframes = ["15m", "1h", "4h", "1d"]
+    self.active_signals = {}
+    self.signal_timeout = 3600
+    
+    # Initialize from config instead of hardcoded values
+    self.atr_multiplier = 1.0  # Will be adjusted by volatility regime
+    self.fvg_multiplier = SMCConfig.FVG_ATR_MULTIPLIER  # Use config
+    self.ob_volume_multiplier = SMCConfig.OB_VOLUME_MULTIPLIER  # Use config ✅
+    self.scaled_entry_depths = [
+        TradingConfig.SCALED_ENTRY_DEPTH_1,
+        TradingConfig.SCALED_ENTRY_DEPTH_2
+    ]
+```
+
+**Option 2: Use Config Directly in Detection Methods**
+```python
+# In find_order_blocks() (line 501)
+from config import SMCConfig
+
+volume_confirmed = (
+    current["volume"] >= avg_volume * SMCConfig.OB_VOLUME_MULTIPLIER  # Direct config use ✅
+)
+```
+
+**Recommended Fix:** Use Option 1 to maintain the volatility regime scaling behavior while respecting the base configuration values.
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Issue 20: Stale Data from Incomplete Cache Refresh ❌ **CRITICAL**
+
+**Location:** `api/smc_analyzer.py` lines 167-202 (in `get_candlestick_data()`)
+
+**Problem:**
+The cache gap-filling logic has a **critical flaw** that can leave historical data gaps unfilled:
+
+```python
+# Lines 176-191
+if len(cached_data) > 0:
+    # Check if we have current open candle already
+    current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+    if current_open_candle:
+        # ❌ PROBLEM: Only fetches 1 candle, ignoring historical gaps
+        fetch_limit = 1
+        logging.info(
+            f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
+        )
+    else:
+        # Fetch only latest 2 candles (current + previous for gap filling)
+        fetch_limit = min(2, gap_info["fetch_count"])
+```
+
+**Scenario:**
+1. User requests SMC analysis for BTCUSDT
+2. Cache has 350 candles (gaps: missing candles 100-150)
+3. System checks for open candle → finds one
+4. Sets `fetch_limit = 1` (only updates the current candle)
+5. **Historical gap (100-150) remains unfilled**
+6. SMC analysis runs on incomplete data (350 candles with gaps)
+
+**Impact:**
+- **CRITICAL** - All SMC analysis phases operate on incomplete data
+- Market structure detection (BOS/CHoCH) uses partial history → incorrect structure
+- Order blocks and FVGs detected from incomplete windows → missed opportunities
+- HTF bias (Daily/H4) calculated from gapped data → wrong trend direction
+- Phase 2-7 confidence scoring based on faulty analysis → unreliable signals
+- **User receives signals based on corrupted historical data**
+
+**Root Cause:**
+The "efficiency optimization" for open candle updates prioritizes performance over data integrity. It assumes cached data is complete, but doesn't verify this assumption.
+
+**Solution:**
+
+**Fix Cache Refresh Logic:**
+```python
+# Lines 167-202 (modified)
+try:
+    gap_info = KlinesCache.get_data_gaps(symbol, timeframe, limit)
+    if not gap_info["needs_fetch"]:
+        logging.debug(
+            f"CACHE SUFFICIENT: Using existing cached data for {symbol} {timeframe}"
+        )
+        return KlinesCache.get_cached_data(symbol, timeframe, limit)
+
+    # ✅ FIX: Always respect minimum fetch count from gap analysis
+    min_required_fetch = gap_info["fetch_count"]
+    
+    if len(cached_data) > 0:
+        # Check if we have current open candle already
+        current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
+        if current_open_candle and min_required_fetch <= 2:
+            # SAFE: Only use efficient update when no historical gaps exist
+            fetch_limit = 1
+            logging.info(
+                f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
+            )
+        else:
+            # SAFE: Fetch minimum required to fill gaps
+            fetch_limit = min_required_fetch
+            if min_required_fetch > 2:
+                logging.warning(
+                    f"HISTORICAL GAPS DETECTED: Fetching {fetch_limit} candles for {symbol} {timeframe} to fill gaps"
+                )
+            else:
+                logging.info(
+                    f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
+                )
+    else:
+        # No cache data - fetch full amount 
+        fetch_limit = min_required_fetch
+        logging.info(
+            f"CACHE MISS: Fetching {fetch_limit} candles for {symbol} {timeframe}"
+        )
+
+except Exception as e:
+    logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
+    # ✅ FIX: Conservative fallback should fetch more data when uncertain
+    fetch_limit = min(10, limit) if len(cached_data) > 0 else limit
+```
+
+**Additional Validation:**
+```python
+# After fetching data, verify completeness
+def verify_data_completeness(symbol: str, timeframe: str, data: List[Dict]) -> bool:
+    """Verify candlestick data has no gaps"""
+    if len(data) < 2:
+        return True
+    
+    # Check for timestamp gaps larger than expected interval
+    interval_seconds = {
+        "15m": 900,
+        "1h": 3600,
+        "4h": 14400,
+        "1d": 86400
+    }
+    expected_gap = interval_seconds.get(timeframe, 3600)
+    
+    for i in range(1, len(data)):
+        time_diff = (data[i]["timestamp"] - data[i-1]["timestamp"]).total_seconds()
+        if time_diff > expected_gap * 1.5:  # Allow 50% tolerance
+            logging.warning(
+                f"Gap detected in {symbol} {timeframe} between {data[i-1]['timestamp']} and {data[i]['timestamp']}"
+            )
+            return False
+    return True
+```
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Issue 21: Pair-Specific ATR Thresholds Not Implemented ⚠️ **MEDIUM**
+
+**Location:** `api/smc_analyzer.py` lines 3844-3845, `config.py` lines 212-219, 244-243
+
+**Problem:**
+The Phase 7 ATR filter uses **fixed percentage thresholds** for all trading pairs, despite different assets having vastly different volatility profiles:
+
+```python
+# config.py - Asset profiles define BASE_ATR but not filter thresholds
+ASSET_PROFILES = {
+    "BTCUSDT": {"BASE_ATR": 100, "VOL_CLASS": "low"},      # ~$60k price
+    "ETHUSDT": {"BASE_ATR": 60, "VOL_CLASS": "medium"},    # ~$3k price
+    "SOLUSDT": {"BASE_ATR": 1.5, "VOL_CLASS": "high"},     # ~$100 price
+    "XRPUSDT": {"BASE_ATR": 0.0035, "VOL_CLASS": "high"},  # ~$0.50 price
+}
+
+# But ATR filter uses same thresholds for ALL pairs:
+MIN_ATR_15M_PERCENT = 0.8  # 0.8% for everyone
+MIN_ATR_H1_PERCENT = 1.2   # 1.2% for everyone
+```
+
+**Current Behavior:**
+- **BTC** at $60,000: 0.8% = **$480 minimum ATR** (reasonable)
+- **XRP** at $0.50: 0.8% = **$0.004 minimum ATR** (may be too strict/loose)
+- **SOL** at $100: 0.8% = **$0.80 minimum ATR** (different market dynamics)
+
+**Inconsistency:**
+The system **already** has pair-specific `BASE_ATR` values and `VOL_CLASS` classifications, but the ATR **filter thresholds** ignore these differences entirely.
+
+**Impact:**
+- **MEDIUM** - ATR filter may be too strict for some pairs, too loose for others
+- Low-volatility assets (BTC) may pass filter during choppy conditions
+- High-volatility assets (SOL, XRP) may get rejected during normal conditions
+- Inconsistent signal quality across different trading pairs
+
+**Why This Matters:**
+Different assets have different "normal" volatility levels:
+- **Large-cap (BTC, ETH):** Lower volatility, tighter ranges
+- **Mid-cap (BNB, SOL):** Medium volatility, moderate ranges
+- **Small-cap (XRP, ADA):** Higher volatility, wider ranges
+
+Using the same percentage threshold treats all assets identically, which doesn't match market reality.
+
+**Solution:**
+
+**Add Pair-Specific ATR Filter Thresholds:**
+
+```python
+# config.py - TradingConfig class (update ASSET_PROFILES)
+ASSET_PROFILES = {
+    "BTCUSDT": {
+        "BASE_ATR": 100,
+        "VOL_CLASS": "low",
+        "MIN_ATR_15M_PERCENT": 0.6,  # ✅ Lower threshold for stable asset
+        "MIN_ATR_H1_PERCENT": 1.0
+    },
+    "ETHUSDT": {
+        "BASE_ATR": 60,
+        "VOL_CLASS": "medium",
+        "MIN_ATR_15M_PERCENT": 0.8,  # ✅ Standard threshold
+        "MIN_ATR_H1_PERCENT": 1.2
+    },
+    "SOLUSDT": {
+        "BASE_ATR": 1.5,
+        "VOL_CLASS": "high",
+        "MIN_ATR_15M_PERCENT": 1.2,  # ✅ Higher threshold for volatile asset
+        "MIN_ATR_H1_PERCENT": 1.8
+    },
+    "BNBUSDT": {
+        "BASE_ATR": 4.0,
+        "VOL_CLASS": "medium",
+        "MIN_ATR_15M_PERCENT": 0.8,
+        "MIN_ATR_H1_PERCENT": 1.2
+    },
+    "XRPUSDT": {
+        "BASE_ATR": 0.0035,
+        "VOL_CLASS": "high",
+        "MIN_ATR_15M_PERCENT": 1.5,  # ✅ Much higher for very volatile asset
+        "MIN_ATR_H1_PERCENT": 2.0
+    },
+    "ADAUSDT": {
+        "BASE_ATR": 0.0025,
+        "VOL_CLASS": "medium",
+        "MIN_ATR_15M_PERCENT": 1.0,
+        "MIN_ATR_H1_PERCENT": 1.5
+    }
+}
+
+# Keep global defaults for unlisted pairs
+MIN_ATR_15M_PERCENT = 0.8  # Default fallback
+MIN_ATR_H1_PERCENT = 1.2   # Default fallback
+```
+
+**Update ATR Filter Logic:**
+
+```python
+# api/smc_analyzer.py - _check_atr_filter() (lines 3844-3845)
+def _check_atr_filter(
+    self,
+    m15_data: List[Dict],
+    h1_data: List[Dict],
+    current_price: float,
+    symbol: str = None  # ✅ Add symbol parameter
+) -> Dict:
+    from config import TradingConfig
+    
+    # Calculate ATR on both timeframes
+    atr_15m = self.calculate_atr(m15_data, period=14) if len(m15_data) >= 15 else 0.0
+    atr_h1 = self.calculate_atr(h1_data, period=14) if len(h1_data) >= 15 else 0.0
+    
+    # Calculate ATR as percentage of current price
+    atr_15m_percent = (atr_15m / current_price) * 100 if current_price > 0 else 0.0
+    atr_h1_percent = (atr_h1 / current_price) * 100 if current_price > 0 else 0.0
+    
+    # ✅ Get pair-specific thresholds from ASSET_PROFILES
+    symbol_upper = symbol.upper() if symbol else "UNKNOWN"
+    profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
+    
+    # Use pair-specific thresholds if available, otherwise use defaults
+    min_atr_15m = profile.get(
+        'MIN_ATR_15M_PERCENT',
+        getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
+    )
+    min_atr_h1 = profile.get(
+        'MIN_ATR_H1_PERCENT',
+        getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
+    )
+    
+    # Check if both timeframes meet minimum requirements
+    passes_filter = (atr_15m_percent >= min_atr_15m and atr_h1_percent >= min_atr_h1)
+    
+    # Generate reason message with pair-specific info
+    if not passes_filter:
+        reason = (
+            f"Phase 7: ATR filter failed for {symbol_upper} - "
+            f"15m ATR: {atr_15m_percent:.2f}% (min {min_atr_15m}%), "
+            f"H1 ATR: {atr_h1_percent:.2f}% (min {min_atr_h1}%)"
+        )
+    else:
+        reason = (
+            f"Phase 7: ATR filter passed for {symbol_upper} - "
+            f"15m ATR: {atr_15m_percent:.2f}%, H1 ATR: {atr_h1_percent:.2f}%"
+        )
+    
+    logging.info(reason)
+    
+    return {
+        "passes": passes_filter,
+        "atr_15m": atr_15m,
+        "atr_h1": atr_h1,
+        "atr_15m_percent": atr_15m_percent,
+        "atr_h1_percent": atr_h1_percent,
+        "min_atr_15m_threshold": min_atr_15m,  # ✅ Return thresholds used
+        "min_atr_h1_threshold": min_atr_h1,
+        "reason": reason
+    }
+```
+
+**Update Function Call:**
+
+```python
+# In generate_trade_signal() - Pass symbol to ATR filter
+atr_check = self._check_atr_filter(m15_data, h1_data, current_price, symbol=symbol)
+```
+
+**Benefits:**
+- ✅ Respects natural volatility differences between assets
+- ✅ More accurate signal filtering per pair
+- ✅ Reduces false positives on low-volatility pairs
+- ✅ Reduces false negatives on high-volatility pairs
+- ✅ Maintains backward compatibility with default thresholds
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Recommendations for New Issues
+
+**Priority 1 (Critical - Data Integrity):**
+1. ⚠️ **Fix Issue #20 IMMEDIATELY** - Stale data corrupts all SMC analysis
+2. ⚠️ **Fix Issue #19** - Configuration values must be respected
+
+**Priority 2 (Important - Accuracy):**
+3. ⚠️ **Fix Issue #21** - Pair-specific ATR thresholds improve signal quality
+
+**Testing Requirements:**
+- **Issue #19 Testing:**
+  - Modify `OB_VOLUME_MULTIPLIER` in config and verify it affects order block detection
+  - Test with different volatility regimes to ensure dynamic scaling still works
+  - Verify other multipliers (ATR, FVG) are also wired correctly
+
+- **Issue #20 Testing:**
+  - Simulate cache with gaps (delete random historical candles)
+  - Verify gap detection triggers full refetch
+  - Test open candle updates don't skip historical gaps
+  - Add data completeness validation checks
+
+- **Issue #21 Testing:**
+  - Test ATR filter with BTC (low volatility) vs SOL (high volatility)
+  - Verify pair-specific thresholds are applied correctly
+  - Test fallback to defaults for unlisted pairs
+  - Validate signal quality improves per asset class
+
+**Code Quality Improvements:**
+- Add configuration validation on startup
+- Implement data completeness checks in cache layer
+- Create unit tests for cache gap-filling logic
+- Add integration tests for pair-specific configurations
+
+---
+
 ## Usage Guide
 
 ### Basic Usage
@@ -1190,6 +1605,8 @@ signal, diagnostics = analyzer.generate_trade_signal("BTCUSDT", return_diagnosti
 
 ## Version History
 
+- **v2.2** (Oct 5, 2025) - Critical issue analysis: Configuration values, stale data, pair-specific ATR
+- **v2.1** (Oct 5, 2025) - All 18 issues resolved, production ready
 - **v2.0** (Oct 5, 2025) - Logic fixes, type safety improvements
 - **v1.7** (Oct 4, 2025) - Phase 7 complete (ATR filter)
 - **v1.6** (Oct 4, 2025) - Phase 6 complete (Multi-TP)
