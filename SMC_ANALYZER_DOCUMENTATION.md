@@ -424,6 +424,230 @@ H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
 
 ---
 
+## Known Issues & Fixes (October 5, 2025)
+
+### Critical Issues
+
+#### Issue 1: Swing Point KeyError in 15m Execution ❌ **URGENT**
+**Location:** `_get_execution_signal_15m()` (lines 1597-1598, 1604-1605)
+
+**Problem:**
+```python
+last_swing_low = min([sw["price"] for sw in m15_swing_lows[-3:]])  # ❌ KeyError
+last_swing_high = max([sw["price"] for sw in m15_swing_highs[-3:]])  # ❌ KeyError
+```
+Swing point dictionaries use keys `"low"` and `"high"`, not `"price"`. This will crash at runtime.
+
+**Solution:**
+```python
+last_swing_low = min([sw["low"] for sw in m15_swing_lows[-3:]])
+last_swing_high = max([sw["high"] for sw in m15_swing_highs[-3:]])
+```
+
+**Impact:** HIGH - Will cause runtime crash when 15m execution logic runs  
+**Status:** ❌ Not Fixed
+
+---
+
+#### Issue 2: Liquidity Pool Lookback Inconsistency ⚠️
+**Location:** `find_liquidity_pools()` (lines 644, 651)
+
+**Problem:**
+```python
+for high in swing_highs[-SMCConfig.RECENT_SWING_LOOKBACK:]:  # Uses config
+for low in swing_lows[-5:]:  # ❌ Hardcoded to 5
+```
+Sell-side liquidity uses configurable lookback, buy-side uses hardcoded value. Creates asymmetric analysis.
+
+**Solution:**
+```python
+for low in swing_lows[-SMCConfig.RECENT_SWING_LOOKBACK:]:  # Use config consistently
+```
+
+**Impact:** MEDIUM - Asymmetric liquidity detection  
+**Status:** ❌ Not Fixed
+
+---
+
+#### Issue 3: FVG Gap Boundary Logic Inconsistency ⚠️
+**Location:** `find_fair_value_gaps()` (lines 584-621)
+
+**Problem:**
+Gap boundary assignment is inverted between bullish and bearish FVGs:
+- Bullish: `gap_high=next_candle["low"]`, `gap_low=prev_candle["high"]`
+- Bearish: `gap_high=prev_candle["low"]`, `gap_low=next_candle["high"]`
+
+This creates confusion about which candle (prev vs next) forms the gap boundary.
+
+**Solution:**
+Standardize gap boundary logic to consistently use the middle candle that created the imbalance:
+- Bullish gap UP: Gap between prev high and next low
+- Bearish gap DOWN: Gap between prev low and next high
+
+**Impact:** MEDIUM - Affects FVG zone accuracy  
+**Status:** ❌ Not Fixed
+
+---
+
+#### Issue 4: Stop Loss Can Exceed Entry Price ⚠️
+**Location:** `_calculate_long_trade_levels()` (lines 982-983)
+
+**Problem:**
+```python
+stop_loss = max(stop_loss, current_price * 0.01)  # Floor at 1% of price
+stop_loss = min(stop_loss, entry_price * 0.99)   # Cap at 99% of entry
+```
+If `current_price` differs significantly from `entry_price` (e.g., discount entry), the `max()` operation could push SL above entry in edge cases.
+
+**Solution:**
+Add validation before applying floors:
+```python
+if stop_loss >= entry_price:
+    stop_loss = entry_price * 0.995  # Force below entry
+stop_loss = max(stop_loss, current_price * 0.01)
+stop_loss = min(stop_loss, entry_price * 0.99)
+```
+
+**Impact:** MEDIUM - Invalid stop loss in edge cases  
+**Status:** ❌ Not Fixed
+
+---
+
+### Logic Flaws
+
+#### Issue 5: Order Block Entry When Already Inside Zone ⚠️
+**Location:** `_calculate_long_trade_levels()` (lines 920-934)
+
+**Problem:**
+```python
+if ob.price_low <= current_price <= ob.price_high:
+    entry_price = ob.price_high  # ❌ Entry at/above current price
+```
+When price is already inside the OB, using `price_high` means entering at same level or higher than current price, which doesn't make sense for a discount entry.
+
+**Solution:**
+```python
+if ob.price_low <= current_price <= ob.price_high:
+    entry_price = current_price  # Use current price as entry
+    # Or use midpoint: entry_price = (ob.price_low + ob.price_high) / 2
+```
+
+**Impact:** MEDIUM - Illogical entry prices when inside OB  
+**Status:** ❌ Not Fixed
+
+---
+
+#### Issue 6: Duplicate Entry Calculation Methods 🔄
+**Location:** Multiple functions
+
+**Problem:**
+Two different entry calculation methods exist:
+1. `_calculate_long_trade_levels()` - Uses structural scoring (lines 890-945)
+2. `_calculate_long_prices()` - Uses simple distance-based selection (lines 2854-2882)
+
+The second method appears to be unused legacy code but creates maintenance confusion.
+
+**Solution:**
+Remove `_calculate_long_prices()` and `_calculate_short_prices()` methods as they are not called anywhere in the codebase.
+
+**Impact:** LOW - Code maintenance issue  
+**Status:** ❌ Not Fixed
+
+---
+
+### Inconsistencies
+
+#### Issue 7: ATR Floor Calculation Comments 📝
+**Location:** Multiple locations (lines 575, 866, 1045)
+
+**Problem:**
+Inconsistent commenting style for ATR floor:
+- Line 575: `atr = current_price * 0.001  # 0.1% floor` (confusing)
+- Line 866: `min_atr = current_price * 0.001  # 0.1% minimum ATR` (clear)
+
+**Solution:**
+Standardize all ATR floor comments:
+```python
+atr = current_price * 0.001  # 0.1% minimum ATR
+```
+
+**Impact:** LOW - Documentation clarity  
+**Status:** ❌ Not Fixed
+
+---
+
+#### Issue 8: Volatility Regime Adjustment Timing ⏱️
+**Location:** `generate_trade_signal()` (lines 1777-1821)
+
+**Problem:**
+Auto-volatility parameter tuning happens AFTER the ATR filter check but BEFORE pattern detection:
+1. ATR filter uses default/cached multipliers
+2. Pattern detection uses newly adjusted multipliers
+
+This creates parameter mismatch between filter and analysis.
+
+**Solution:**
+Move volatility regime adjustment before ATR filter OR ensure consistent multipliers throughout:
+```python
+# Option 1: Move tuning before filter
+volatility_regime = self._detect_volatility_regime(h1_candlesticks, current_price)
+self._adjust_parameters_for_volatility(volatility_regime)
+if not self._check_atr_filter(m15_candlesticks, h1_candlesticks, current_price):
+    return None
+```
+
+**Impact:** MEDIUM - Inconsistent parameter application  
+**Status:** ❌ Not Fixed
+
+---
+
+### Minor Issues
+
+#### Issue 9: Unused Default Value in Swing Strength 🔧
+**Location:** `find_liquidity_pools()` (line 651)
+
+**Problem:**
+```python
+pool = LiquidityPool(
+    price=low["low"], type="buy_side", strength=low.get("strength", 1.0)
+)
+```
+Swing lows always have a "strength" key (added in `_find_swing_lows()`), so the default `1.0` is never used.
+
+**Solution:**
+Use direct access since key always exists:
+```python
+strength=low["strength"]
+```
+
+**Impact:** LOW - Unnecessary defensive code  
+**Status:** ❌ Not Fixed
+
+---
+
+### Recommendations
+
+**Priority 1 (Immediate):**
+1. ✅ Fix Issue #1 (Swing point KeyError) - Will crash at runtime
+2. ✅ Fix Issue #4 (Stop loss validation) - Can generate invalid trades
+
+**Priority 2 (Important):**
+3. ✅ Fix Issue #2 (Liquidity pool consistency)
+4. ✅ Fix Issue #3 (FVG gap logic standardization)
+5. ✅ Fix Issue #5 (Order block entry logic)
+
+**Priority 3 (Maintenance):**
+6. ✅ Fix Issue #6 (Remove duplicate methods)
+7. ✅ Fix Issue #8 (Volatility timing)
+8. ✅ Fix Issue #7 (Comment standardization)
+
+**Testing Recommendations:**
+- Add integration tests for edge cases (price inside OB, extreme volatility)
+- Add validation for dictionary keys to prevent KeyError crashes
+- Add unit tests for entry/stop loss calculations with various market conditions
+
+---
+
 ## Usage Guide
 
 ### Basic Usage
