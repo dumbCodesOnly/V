@@ -17,14 +17,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask App"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "Flask App"
+name = "Start application"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
@@ -38,6 +35,10 @@ externalPort = 80
 [[ports]]
 localPort = 32899
 externalPort = 3002
+
+[[ports]]
+localPort = 39927
+externalPort = 3003
 
 [[ports]]
 localPort = 46435
