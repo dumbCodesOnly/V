@@ -572,7 +572,7 @@ class SMCAnalyzer:
         atr = self.calculate_atr(candlesticks)
         if atr <= 0:  # Guard against insufficient data
             current_price = candlesticks[-1]["close"]
-            atr = current_price * 0.001  # Use same 0.1% floor as trade calculations
+            atr = current_price * 0.001  # 0.1% minimum ATR
         min_gap_size = atr * self.fvg_multiplier
 
         for i in range(1, len(candlesticks) - 1):
@@ -863,7 +863,7 @@ class SMCAnalyzer:
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
-        min_atr = current_price * 0.001  # 0.1% of price minimum (removed problematic absolute floor)
+        min_atr = current_price * 0.001  # 0.1% minimum ATR
         if atr <= 0:
             # Calculate median true range from available data as fallback
             if len(candlesticks) >= 2:
@@ -1046,7 +1046,7 @@ class SMCAnalyzer:
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
-        min_atr = current_price * 0.001  # 0.1% of price minimum (removed problematic absolute floor)
+        min_atr = current_price * 0.001  # 0.1% minimum ATR
         if atr <= 0:
             # Calculate median true range from available data as fallback
             if len(candlesticks) >= 2:
