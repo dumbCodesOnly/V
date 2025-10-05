@@ -3224,9 +3224,16 @@ class SMCAnalyzer:
             }
         elif volatility_regime == "low":
             contraction = zone_size * 0.10
+            new_high = high - contraction
+            new_low = low + contraction
+            
+            if new_high <= new_low:
+                logging.warning(f"Zone too small for contraction (size: {zone_size:.6f}), using original zone")
+                return zone
+            
             return {
-                "high": high - contraction,
-                "low": low + contraction,
+                "high": new_high,
+                "low": new_low,
                 "type": zone["type"]
             }
         else:
@@ -3238,6 +3245,9 @@ class SMCAnalyzer:
         tick_size: float = 0.01
     ) -> float:
         """Round price to symbol's tick size"""
+        if tick_size <= 0:
+            logging.warning(f"Invalid tick_size {tick_size}, using default 0.01")
+            tick_size = 0.01
         return round(price / tick_size) * tick_size
 
     def _calculate_scaled_entries(
@@ -3313,6 +3323,14 @@ class SMCAnalyzer:
                 base_zone = fvg_zone or ob_zone
                 if base_zone:
                     logging.info(f"  - Using {base_zone['type']} zone: {base_zone}")
+            
+            if base_zone:
+                zone_distance = abs(current_price - float(base_zone["high"]))
+                max_distance = current_price * 0.05
+                
+                if zone_distance > max_distance:
+                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f}), using fallback")
+                    base_zone = None
         
         else:
             fvg_zone = self._find_nearest_bearish_fvg(current_price, fvgs)
@@ -3329,6 +3347,14 @@ class SMCAnalyzer:
                 base_zone = fvg_zone or ob_zone
                 if base_zone:
                     logging.info(f"  - Using {base_zone['type']} zone: {base_zone}")
+            
+            if base_zone:
+                zone_distance = abs(current_price - float(base_zone["low"]))
+                max_distance = current_price * 0.05
+                
+                if zone_distance > max_distance:
+                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f}), using fallback")
+                    base_zone = None
         
         scaled_entries = []
         
@@ -3342,18 +3368,24 @@ class SMCAnalyzer:
             zone_mid = (zone_high + zone_low) / 2.0
             
             if direction == "long":
-                entry1_price = self._round_to_tick(zone_high, tick_size)
+                entry1_price = current_price
                 entry2_price = self._round_to_tick(zone_mid, tick_size)
                 entry3_price = self._round_to_tick(zone_low, tick_size)
+                
+                if not (entry1_price >= entry2_price >= entry3_price):
+                    logging.error(f"Invalid LONG entry ordering: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
             else:
-                entry1_price = self._round_to_tick(zone_low, tick_size)
+                entry1_price = current_price
                 entry2_price = self._round_to_tick(zone_mid, tick_size)
                 entry3_price = self._round_to_tick(zone_high, tick_size)
+                
+                if not (entry1_price <= entry2_price <= entry3_price):
+                    logging.error(f"Invalid SHORT entry ordering: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
             
             entry1 = ScaledEntry(
                 entry_price=entry1_price,
                 allocation_percent=allocations[0],
-                order_type='limit',
+                order_type='market',
                 stop_loss=base_stop_loss,
                 take_profits=base_take_profits,
                 status='pending'
@@ -3381,9 +3413,9 @@ class SMCAnalyzer:
             scaled_entries.append(entry3)
             
             logging.info(f"Phase 4: SMC Zone-Based Entries ({adjusted_zone['type']}):")
-            logging.info(f"  - Entry 1 (Aggressive): ${entry1_price:.4f} ({allocations[0]}%)")
-            logging.info(f"  - Entry 2 (Balanced): ${entry2_price:.4f} ({allocations[1]}%)")
-            logging.info(f"  - Entry 3 (Deep): ${entry3_price:.4f} ({allocations[2]}%)")
+            logging.info(f"  - Entry 1 (Market): ${entry1_price:.4f} ({allocations[0]}%)")
+            logging.info(f"  - Entry 2 (Balanced Limit): ${entry2_price:.4f} ({allocations[1]}%)")
+            logging.info(f"  - Entry 3 (Deep Limit): ${entry3_price:.4f} ({allocations[2]}%)")
         
         else:
             logging.warning(f"No valid FVG/OB zone found for {direction} - using fixed-percentage fallback")
