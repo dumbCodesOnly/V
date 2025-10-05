@@ -3822,7 +3822,7 @@ class SMCAnalyzer:
         m15_data: List[Dict],
         h1_data: List[Dict],
         current_price: float,
-        symbol: str = None
+        symbol: Optional[str] = None
     ) -> Dict:
         """
         Phase 7: Check if ATR meets minimum volatility requirements
