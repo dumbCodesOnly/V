@@ -1745,44 +1745,8 @@ class SMCAnalyzer:
 
             current_price = h1_data[-1]["close"]
 
-            # Phase 7: ATR Risk Filter - Check volatility FIRST before any tuning (optimization)
+            # --- Auto volatility detection BEFORE ATR filter for consistent parameters ---
             from config import TradingConfig
-            use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
-            
-            if use_atr_filter and m15_data and len(m15_data) >= 15:
-                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price)
-                analysis_details["phase7_atr_filter"] = atr_filter_result
-                
-                if not atr_filter_result["passes"]:
-                    rejection_reasons.append(atr_filter_result["reason"])
-                    logging.info(f"Phase 7: Trade rejected for {symbol} - {atr_filter_result['reason']}")
-                    if return_diagnostics:
-                        return None, {
-                            "rejection_reasons": rejection_reasons,
-                            "details": analysis_details,
-                            "signal_generated": False
-                        }
-                    return None
-                
-                # Optional: Calculate dynamic position size based on ATR
-                position_size_multiplier = self._calculate_dynamic_position_size(
-                    base_size=1.0,
-                    atr_percent=atr_filter_result["atr_15m_percent"]
-                )
-                analysis_details["phase7_position_size_multiplier"] = position_size_multiplier
-                
-                if position_size_multiplier != 1.0:
-                    logging.info(
-                        f"Phase 7: Dynamic position sizing for {symbol} - "
-                        f"Multiplier: {position_size_multiplier:.2f}x (ATR: {atr_filter_result['atr_15m_percent']:.2f}%)"
-                    )
-            else:
-                if not use_atr_filter:
-                    logging.debug("Phase 7: ATR filter disabled in configuration")
-                elif not m15_data or len(m15_data) < 15:
-                    logging.warning(f"Phase 7: Insufficient 15m data for ATR filter ({len(m15_data) if m15_data else 0} candles)")
-
-            # --- Auto volatility detection (now after ATR filter passes) ---
             symbol_upper = symbol.upper()
             profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
 
@@ -1827,6 +1791,42 @@ class SMCAnalyzer:
             self.scaled_entry_depths = depths
 
             logging.info(f"Adaptive tuning → ATR x{atr_mult}, FVG x{fvg_mult}, OB x{ob_mult}, Depths={depths}")
+
+            # Phase 7: ATR Risk Filter - Check volatility with tuned parameters
+            use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
+            
+            if use_atr_filter and m15_data and len(m15_data) >= 15:
+                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price)
+                analysis_details["phase7_atr_filter"] = atr_filter_result
+                
+                if not atr_filter_result["passes"]:
+                    rejection_reasons.append(atr_filter_result["reason"])
+                    logging.info(f"Phase 7: Trade rejected for {symbol} - {atr_filter_result['reason']}")
+                    if return_diagnostics:
+                        return None, {
+                            "rejection_reasons": rejection_reasons,
+                            "details": analysis_details,
+                            "signal_generated": False
+                        }
+                    return None
+                
+                # Optional: Calculate dynamic position size based on ATR
+                position_size_multiplier = self._calculate_dynamic_position_size(
+                    base_size=1.0,
+                    atr_percent=atr_filter_result["atr_15m_percent"]
+                )
+                analysis_details["phase7_position_size_multiplier"] = position_size_multiplier
+                
+                if position_size_multiplier != 1.0:
+                    logging.info(
+                        f"Phase 7: Dynamic position sizing for {symbol} - "
+                        f"Multiplier: {position_size_multiplier:.2f}x (ATR: {atr_filter_result['atr_15m_percent']:.2f}%)"
+                    )
+            else:
+                if not use_atr_filter:
+                    logging.debug("Phase 7: ATR filter disabled in configuration")
+                elif not m15_data or len(m15_data) < 15:
+                    logging.warning(f"Phase 7: Insufficient 15m data for ATR filter ({len(m15_data) if m15_data else 0} candles)")
 
             # Phase 2: Multi-Timeframe Hierarchical Analysis
             # Step 1: Determine High Timeframe Bias (Daily + H4)
