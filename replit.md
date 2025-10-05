@@ -2,14 +2,16 @@
 
 ## Recent Changes
 
-### October 5, 2025 - SMC Analysis Logic Fixes
+### October 5, 2025 - SMC Documentation Consolidated & Logic Fixes
+- **📚 Consolidated Documentation**: All SMC docs merged into `/SMC_ANALYZER_DOCUMENTATION.md`
+  - Archived 6 old documents to `docs/archive/` for historical reference
+  - Single source of truth for SMC features, configuration, and usage
 - **Fixed Type Safety**: Added `@overload` decorators to `generate_trade_signal()` method, reducing LSP errors from 117 to 49
 - **Fixed Counter-Trend Logic**: Removed duplicate RSI/sweep validation to eliminate conflicting rejection reasons
 - **Fixed Confidence Scoring**: Eliminated triple-counting of bonuses - now Phase 3 is single source of truth
 - **Updated RSI Thresholds**: Changed from 35/65 to 30/70 to align with SMC standards
 - **Optimized ATR Filter**: Moved volatility check BEFORE parameter tuning to save computation
 - **Improved 15m Data Handling**: Changed missing data default from 0.5 (neutral) to 0.3 (borderline) for better risk assessment
-- See `SMC_FIXES_PLAN.md` for detailed documentation
 
 ## Overview
 This project is a Telegram-based trading bot designed for USDT-M futures trading across Toobit and LBank exchanges. It allows users to manage multiple trading configurations conversationally through Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools. The bot aims to be a robust solution for managing and automating trading strategies across multiple platforms.
@@ -64,6 +66,7 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
 - Circuit breaker pattern for all external API calls.
 - Modular exchange client architecture with factory pattern for seamless multi-exchange operation and a unified API interface.
 - **Multi-Timeframe SMC Analysis** (All 7 Phases Complete - October 2025):
+  - **📚 Complete Documentation: See `/SMC_ANALYZER_DOCUMENTATION.md`**
   - Institutional-grade top-down analysis across 4 timeframes (1d → 4h/1h → 15m execution)
   - HTF bias determination from Daily and H4 structure
   - Intermediate structure analysis on H4/H1 (Order Blocks, FVGs, BOS/CHoCH)
@@ -75,6 +78,7 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
   - ATR risk filter rejecting low-volatility choppy conditions (0.8% min on 15m, 1.2% min on H1)
   - Optional dynamic position sizing based on ATR volatility
   - SMC signals correctly displayed and cached in the database with validation
+  - Recent fixes (Oct 5, 2025): Type safety, confidence scoring, RSI thresholds, ATR optimization
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing, and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
