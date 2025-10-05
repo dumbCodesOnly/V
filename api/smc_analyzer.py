@@ -300,21 +300,24 @@ class SMCAnalyzer:
                 seen_timestamps = set()
                 unique_data = []
                 for candle in combined_data:
+                    # ISSUE #17 FIX: Create a copy to avoid mutating original data
+                    candle_copy = candle.copy()
+                    
                     # Normalize timestamp to timezone-aware UTC for consistent comparison
-                    if isinstance(candle["timestamp"], datetime):
+                    if isinstance(candle_copy["timestamp"], datetime):
                         # Ensure all timestamps are timezone-aware UTC
-                        if candle["timestamp"].tzinfo is None:
-                            normalized_timestamp = candle["timestamp"].replace(tzinfo=timezone.utc)
+                        if candle_copy["timestamp"].tzinfo is None:
+                            normalized_timestamp = candle_copy["timestamp"].replace(tzinfo=timezone.utc)
                         else:
-                            normalized_timestamp = candle["timestamp"].astimezone(timezone.utc)
-                        candle["timestamp"] = normalized_timestamp
+                            normalized_timestamp = candle_copy["timestamp"].astimezone(timezone.utc)
+                        candle_copy["timestamp"] = normalized_timestamp
                         timestamp_key = normalized_timestamp.isoformat()
                     else:
-                        timestamp_key = str(candle["timestamp"])
+                        timestamp_key = str(candle_copy["timestamp"])
                         
                     if timestamp_key not in seen_timestamps:
                         seen_timestamps.add(timestamp_key)
-                        unique_data.append(candle)
+                        unique_data.append(candle_copy)
 
                 # Sort by timestamp (now all timezone-aware) and limit
                 unique_data.sort(key=lambda x: x["timestamp"])
@@ -859,27 +862,15 @@ class SMCAnalyzer:
 
     def _calculate_long_trade_levels(self, current_price, order_blocks, candlesticks):
         """Calculate entry, stop loss, and take profits for long trades using stable SMC analysis."""
-        # Calculate ATR with robust fallback for insufficient data
+        # ISSUE #13 FIX: Use centralized ATR calculation for consistency
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
         min_atr = current_price * 0.001  # 0.1% minimum ATR
         if atr <= 0:
-            # Calculate median true range from available data as fallback
-            if len(candlesticks) >= 2:
-                true_ranges = []
-                for i in range(1, min(len(candlesticks), 20)):
-                    current = candlesticks[i]
-                    prev = candlesticks[i - 1]
-                    tr = max(
-                        current["high"] - current["low"],
-                        abs(current["high"] - prev["close"]),
-                        abs(current["low"] - prev["close"])
-                    )
-                    true_ranges.append(tr)
-                atr = sum(true_ranges) / len(true_ranges) if true_ranges else min_atr
-            else:
-                atr = min_atr
+            # Fallback to minimum ATR if centralized method fails
+            atr = min_atr
+            logging.warning(f"ATR calculation returned zero for long trade, using minimum ATR: {min_atr:.6f}")
         
         atr = max(atr, min_atr)  # Ensure minimum ATR
         
@@ -979,11 +970,15 @@ class SMCAnalyzer:
         if entry_price - stop_loss > max_risk_distance:
             stop_loss = entry_price - max_risk_distance
             
-        # Final safety check: ensure stop loss is positive and below entry
-        # Force stop loss below entry if it somehow exceeds it
-        if stop_loss >= entry_price:
-            stop_loss = entry_price * 0.995
+        # ISSUE #11 FIX: Reordered validation logic for proper constraint sequence
+        # First, ensure minimum price floor
         stop_loss = max(stop_loss, current_price * 0.01)  # At least 1% of price
+        
+        # Then, ensure it's below entry price for longs
+        if stop_loss >= entry_price:
+            stop_loss = entry_price * 0.995  # Force 0.5% below entry
+        
+        # Finally, cap at maximum (ensure it stays below entry)
         stop_loss = min(stop_loss, entry_price * 0.99)  # Below entry price
 
         # Take profits with guaranteed valid levels
@@ -1037,32 +1032,28 @@ class SMCAnalyzer:
                 last_tp = take_profits[-1]
                 next_tp = last_tp * 1.01  # 1% increment
                 take_profits.append(next_tp)
+        
+        # ISSUE #12 FIX: Explicit validation for LONG TP ordering
+        if len(take_profits) >= 3:
+            if not (take_profits[0] < take_profits[1] < take_profits[2]):
+                logging.error(f"Invalid LONG TP ordering detected: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+                # Force proper ordering
+                take_profits = sorted(take_profits)
+                logging.info(f"Corrected to: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
 
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
     def _calculate_short_trade_levels(self, current_price, order_blocks, candlesticks):
         """Calculate entry, stop loss, and take profits for short trades using stable SMC analysis."""
-        # Calculate ATR with robust fallback for insufficient data
+        # ISSUE #13 FIX: Use centralized ATR calculation for consistency
         atr = self.calculate_atr(candlesticks)
         
         # Apply ATR floor to handle low volatility and insufficient data cases
         min_atr = current_price * 0.001  # 0.1% minimum ATR
         if atr <= 0:
-            # Calculate median true range from available data as fallback
-            if len(candlesticks) >= 2:
-                true_ranges = []
-                for i in range(1, min(len(candlesticks), 20)):
-                    current = candlesticks[i]
-                    prev = candlesticks[i - 1]
-                    tr = max(
-                        current["high"] - current["low"],
-                        abs(current["high"] - prev["close"]),
-                        abs(current["low"] - prev["close"])
-                    )
-                    true_ranges.append(tr)
-                atr = sum(true_ranges) / len(true_ranges) if true_ranges else min_atr
-            else:
-                atr = min_atr
+            # Fallback to minimum ATR if centralized method fails
+            atr = min_atr
+            logging.warning(f"ATR calculation returned zero for short trade, using minimum ATR: {min_atr:.6f}")
         
         atr = max(atr, min_atr)  # Ensure minimum ATR
         
@@ -1124,6 +1115,11 @@ class SMCAnalyzer:
                 recent_swing_high = swing_highs[-1]["high"]
                 entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)  # 0.3% minimum
                 entry_price = recent_swing_high - entry_buffer
+                
+                # ISSUE #10 FIX: Ensure premium zone entry (must be >= current price for shorts)
+                if entry_price < current_price:
+                    entry_price = current_price + max(atr * 0.3, current_price * 0.003)
+                    logging.info(f"Short entry adjusted to premium zone: ${entry_price:.2f} (was below current price)")
             else:
                 # Final fallback: use structural premium from current price
                 entry_price = current_price + max(atr * 0.5, current_price * 0.005)  # 0.5% minimum
@@ -1161,11 +1157,13 @@ class SMCAnalyzer:
         if stop_loss - entry_price > max_risk_distance:
             stop_loss = entry_price + max_risk_distance
             
-        # Final safety check: ensure stop loss is above entry
-        # Force stop loss above entry if it somehow falls below it
+        # ISSUE #11 FIX: Reordered validation logic for proper constraint sequence
+        # First, ensure stop loss is above entry for shorts
         if stop_loss <= entry_price:
-            stop_loss = entry_price * 1.005
-        stop_loss = max(stop_loss, entry_price * 1.01)  # Above entry price
+            stop_loss = entry_price * 1.005  # Force 0.5% above entry
+        
+        # Finally, ensure minimum distance above entry
+        stop_loss = max(stop_loss, entry_price * 1.01)  # At least 1% above entry price
 
         # Take profits with guaranteed valid levels
         take_profits = []
@@ -1238,6 +1236,14 @@ class SMCAnalyzer:
                 # Ensure it's positive
                 next_tp = max(next_tp, current_price * 0.001)
                 take_profits.append(next_tp)
+        
+        # ISSUE #12 FIX: Explicit validation for SHORT TP ordering
+        if len(take_profits) >= 3:
+            if not (take_profits[0] > take_profits[1] > take_profits[2]):
+                logging.error(f"Invalid SHORT TP ordering detected: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+                # Force proper ordering (descending for shorts)
+                take_profits = sorted(take_profits, reverse=True)
+                logging.info(f"Corrected to: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
 
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
@@ -1962,7 +1968,8 @@ class SMCAnalyzer:
             # Check if signal meets minimum requirements
             if direction and confidence > 0:
                 # Phase 3: Apply Enhanced Confidence Scoring with 15m alignment
-                m15_alignment_score = 0.3  # Default borderline if no 15m data (missing info shouldn't be neutral)
+                # ISSUE #14 FIX: Increased default from 0.3 to 0.4 to allow borderline signals with strong HTF alignment
+                m15_alignment_score = 0.4  # Default borderline if no 15m data (missing info shouldn't be neutral)
                 if execution_signal_15m and execution_signal_15m.get("alignment_score") is not None:
                     m15_alignment_score = execution_signal_15m["alignment_score"]
                     analysis_details["phase3_m15_alignment"] = m15_alignment_score
@@ -2314,20 +2321,22 @@ class SMCAnalyzer:
         displacement_candles = candlesticks[
             ob_index + 1 : ob_index + 1 + SMCConfig.OB_DISPLACEMENT_CANDLES
         ]
+        
+        # ISSUE #18 FIX: Prevent division by zero when OB candle has no range
+        candle_range = ob_candle["high"] - ob_candle["low"]
+        if candle_range == 0:
+            logging.warning(f"Order block candle at index {ob_index} has zero range (high=low), skipping displacement check")
+            return False
 
         if direction == "bullish":
             # Check for strong upward displacement
             max_high = max(c["high"] for c in displacement_candles)
-            displacement_ratio = (max_high - ob_candle["high"]) / (
-                ob_candle["high"] - ob_candle["low"]
-            )
+            displacement_ratio = (max_high - ob_candle["high"]) / candle_range
             return displacement_ratio >= SMCConfig.OB_IMPULSIVE_MOVE_THRESHOLD
         else:
             # Check for strong downward displacement
             min_low = min(c["low"] for c in displacement_candles)
-            displacement_ratio = (ob_candle["low"] - min_low) / (
-                ob_candle["high"] - ob_candle["low"]
-            )
+            displacement_ratio = (ob_candle["low"] - min_low) / candle_range
             return displacement_ratio >= SMCConfig.OB_IMPULSIVE_MOVE_THRESHOLD
 
     def detect_liquidity_sweeps(
@@ -3212,10 +3221,16 @@ class SMCAnalyzer:
             
             if base_zone:
                 zone_distance = abs(current_price - float(base_zone["high"]))
-                max_distance = current_price * 0.05
+                # ISSUE #16 FIX: Adaptive max distance based on volatility regime
+                if volatility_regime == "high":
+                    max_distance = current_price * 0.10  # 10% in high volatility
+                elif volatility_regime == "low":
+                    max_distance = current_price * 0.03  # 3% in low volatility  
+                else:
+                    max_distance = current_price * 0.05  # 5% normal
                 
                 if zone_distance > max_distance:
-                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f}), using fallback")
+                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f} for {volatility_regime} volatility), using fallback")
                     base_zone = None
         
         else:
@@ -3236,10 +3251,16 @@ class SMCAnalyzer:
             
             if base_zone:
                 zone_distance = abs(current_price - float(base_zone["low"]))
-                max_distance = current_price * 0.05
+                # ISSUE #16 FIX: Adaptive max distance based on volatility regime
+                if volatility_regime == "high":
+                    max_distance = current_price * 0.10  # 10% in high volatility
+                elif volatility_regime == "low":
+                    max_distance = current_price * 0.03  # 3% in low volatility  
+                else:
+                    max_distance = current_price * 0.05  # 5% normal
                 
                 if zone_distance > max_distance:
-                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f}), using fallback")
+                    logging.warning(f"Zone too far from current price ({zone_distance:.2f} vs max {max_distance:.2f} for {volatility_regime} volatility), using fallback")
                     base_zone = None
         
         scaled_entries = []
@@ -3258,15 +3279,31 @@ class SMCAnalyzer:
                 entry2_price = self._round_to_tick(zone_mid, tick_size)
                 entry3_price = self._round_to_tick(zone_low, tick_size)
                 
+                # ISSUE #15 FIX: Validate and correct invalid LONG entry ordering
                 if not (entry1_price >= entry2_price >= entry3_price):
-                    logging.error(f"Invalid LONG entry ordering: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
+                    logging.warning(f"Correcting invalid LONG entry ordering: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
+                    # Ensure entry2 is below entry1
+                    if entry2_price > entry1_price:
+                        entry2_price = entry1_price * 0.996
+                    # Ensure entry3 is below entry2
+                    if entry3_price > entry2_price:
+                        entry3_price = entry2_price * 0.996
+                    logging.info(f"Corrected to: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
             else:
                 entry1_price = current_price
                 entry2_price = self._round_to_tick(zone_mid, tick_size)
                 entry3_price = self._round_to_tick(zone_high, tick_size)
                 
+                # ISSUE #15 FIX: Validate and correct invalid SHORT entry ordering
                 if not (entry1_price <= entry2_price <= entry3_price):
-                    logging.error(f"Invalid SHORT entry ordering: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
+                    logging.warning(f"Correcting invalid SHORT entry ordering: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
+                    # Ensure entry2 is above entry1
+                    if entry2_price < entry1_price:
+                        entry2_price = entry1_price * 1.004
+                    # Ensure entry3 is above entry2
+                    if entry3_price < entry2_price:
+                        entry3_price = entry2_price * 1.004
+                    logging.info(f"Corrected to: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
             
             entry1 = ScaledEntry(
                 entry_price=entry1_price,
