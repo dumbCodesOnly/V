@@ -118,14 +118,16 @@ class SMCAnalyzer:
     """Smart Money Concepts analyzer for detecting institutional trading patterns"""
 
     def __init__(self):
+        from config import SMCConfig
+        
         self.timeframes = ["15m", "1h", "4h", "1d"]  # Multiple timeframe analysis (15m for execution)
         self.active_signals = {}  # Cache for active signals {symbol: {signal, expiry_time}}
         self.signal_timeout = 3600  # Signal valid for 1 hour (3600 seconds)
         
         # Auto-volatility tuning parameters (set to defaults, dynamically adjusted per signal)
         self.atr_multiplier = 1.0
-        self.fvg_multiplier = 0.7
-        self.ob_volume_multiplier = 1.1
+        self.fvg_multiplier = SMCConfig.FVG_ATR_MULTIPLIER
+        self.ob_volume_multiplier = SMCConfig.OB_VOLUME_MULTIPLIER
         self.scaled_entry_depths = [0.004, 0.010]  # Default depths for scaled entries
 
     @with_circuit_breaker(
