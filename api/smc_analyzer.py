@@ -979,6 +979,9 @@ class SMCAnalyzer:
             stop_loss = entry_price - max_risk_distance
             
         # Final safety check: ensure stop loss is positive and below entry
+        # Force stop loss below entry if it somehow exceeds it
+        if stop_loss >= entry_price:
+            stop_loss = entry_price * 0.995
         stop_loss = max(stop_loss, current_price * 0.01)  # At least 1% of price
         stop_loss = min(stop_loss, entry_price * 0.99)  # Below entry price
 
@@ -1157,6 +1160,9 @@ class SMCAnalyzer:
             stop_loss = entry_price + max_risk_distance
             
         # Final safety check: ensure stop loss is above entry
+        # Force stop loss above entry if it somehow falls below it
+        if stop_loss <= entry_price:
+            stop_loss = entry_price * 1.005
         stop_loss = max(stop_loss, entry_price * 1.01)  # Above entry price
 
         # Take profits with guaranteed valid levels
