@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+### October 5, 2025 - SMC Bug Fixes & Code Cleanup
+- **🐛 Critical Bug Fixes**:
+  - Fixed swing point KeyError: Changed dict key access from "price" to "low"/"high" in `_get_execution_signal_15m()`
+  - Fixed stop loss validation: Added pre-validation to ensure SL doesn't exceed entry price in edge cases (both long/short)
+  - Fixed order block entry logic: Changed to use current_price when already inside OB zone for immediate entry
+  - Fixed liquidity pool inconsistency: Changed hardcoded -5 to use `SMCConfig.RECENT_SWING_LOOKBACK`
+- **🧹 Code Cleanup**:
+  - Removed 3 unused duplicate methods: `_calculate_long_prices()`, `_calculate_short_prices()`, `generate_enhanced_signal()`
+  - Standardized ATR floor comments to "0.1% minimum ATR" across all instances
+  - Moved volatility regime adjustment BEFORE ATR filter for consistent parameter application
+- **✅ Verified FVG gap logic as correct** - no changes needed
+- **📚 Updated Documentation**: Added comprehensive "Known Issues & Fixes" section to SMC_ANALYZER_DOCUMENTATION.md
+
 ### October 5, 2025 - SMC Documentation Consolidated & Logic Fixes
 - **📚 Consolidated Documentation**: All SMC docs merged into `/SMC_ANALYZER_DOCUMENTATION.md`
   - Archived 6 old documents to `docs/archive/` for historical reference

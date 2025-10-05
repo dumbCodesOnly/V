@@ -445,7 +445,7 @@ last_swing_high = max([sw["high"] for sw in m15_swing_highs[-3:]])
 ```
 
 **Impact:** HIGH - Will cause runtime crash when 15m execution logic runs  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Changed dict key access from "price" to "low"/"high"
 
 ---
 
@@ -465,7 +465,7 @@ for low in swing_lows[-SMCConfig.RECENT_SWING_LOOKBACK:]:  # Use config consiste
 ```
 
 **Impact:** MEDIUM - Asymmetric liquidity detection  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Changed hardcoded -5 to use SMCConfig.RECENT_SWING_LOOKBACK
 
 ---
 
@@ -485,7 +485,7 @@ Standardize gap boundary logic to consistently use the middle candle that create
 - Bearish gap DOWN: Gap between prev low and next high
 
 **Impact:** MEDIUM - Affects FVG zone accuracy  
-**Status:** ❌ Not Fixed
+**Status:** ✅ VERIFIED CORRECT - Logic is correct, no fix needed
 
 ---
 
@@ -509,7 +509,7 @@ stop_loss = min(stop_loss, entry_price * 0.99)
 ```
 
 **Impact:** MEDIUM - Invalid stop loss in edge cases  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Added pre-validation check for both long and short positions
 
 ---
 
@@ -533,7 +533,7 @@ if ob.price_low <= current_price <= ob.price_high:
 ```
 
 **Impact:** MEDIUM - Illogical entry prices when inside OB  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Changed to use current_price for immediate entry when inside OB
 
 ---
 
@@ -551,7 +551,7 @@ The second method appears to be unused legacy code but creates maintenance confu
 Remove `_calculate_long_prices()` and `_calculate_short_prices()` methods as they are not called anywhere in the codebase.
 
 **Impact:** LOW - Code maintenance issue  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Removed _calculate_long_prices(), _calculate_short_prices(), and generate_enhanced_signal()
 
 ---
 
@@ -572,7 +572,7 @@ atr = current_price * 0.001  # 0.1% minimum ATR
 ```
 
 **Impact:** LOW - Documentation clarity  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Standardized all comments to "0.1% minimum ATR"
 
 ---
 
@@ -597,7 +597,7 @@ if not self._check_atr_filter(m15_candlesticks, h1_candlesticks, current_price):
 ```
 
 **Impact:** MEDIUM - Inconsistent parameter application  
-**Status:** ❌ Not Fixed
+**Status:** ✅ FIXED - Moved volatility regime adjustment BEFORE ATR filter
 
 ---
 
