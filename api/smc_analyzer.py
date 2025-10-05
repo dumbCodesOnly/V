@@ -648,7 +648,7 @@ class SMCAnalyzer:
             liquidity_pools.append(pool)
 
         # Recent lows likely have buy-side liquidity below them
-        for low in swing_lows[-5:]:
+        for low in swing_lows[-SMCConfig.RECENT_SWING_LOOKBACK:]:
             pool = LiquidityPool(
                 price=low["low"], type="buy_side", strength=low.get("strength", 1.0)
             )
