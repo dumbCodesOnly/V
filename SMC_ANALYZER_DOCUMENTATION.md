@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 5, 2025  
-**Version:** 2.0 (All Phases Complete)  
-**Status:** ✅ Production Ready
+**Version:** 2.1 (All Phases Complete + Issue Documentation)  
+**Status:** ⚠️ Production Ready with Known Issues (9 pending fixes)
 
 ---
 
@@ -426,6 +426,25 @@ H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
 
 ## Known Issues & Fixes (October 5, 2025)
 
+### Issue Summary
+
+**Total Issues Identified:** 18  
+**Fixed:** 9 (50%)  
+**Pending Fix:** 9 (50%)
+
+**By Priority:**
+- **High Priority (Immediate):** 4 issues (2 fixed, 2 pending)
+- **Medium Priority (Important):** 8 issues (3 fixed, 5 pending)
+- **Low Priority (Maintenance):** 6 issues (4 fixed, 2 pending)
+
+**By Category:**
+- **Critical Logic Flaws:** Issues #1, #4, #10, #15 (2 fixed, 2 pending)
+- **Validation & Consistency:** Issues #2, #3, #5, #11, #12, #13 (3 fixed, 3 pending)
+- **Configuration & Thresholds:** Issues #8, #14, #16 (1 fixed, 2 pending)
+- **Code Quality:** Issues #6, #7, #9, #17, #18 (3 fixed, 2 pending)
+
+---
+
 ### Critical Issues
 
 #### Issue 1: Swing Point KeyError in 15m Execution ❌ **URGENT**
@@ -625,26 +644,383 @@ strength=low["strength"]
 
 ---
 
+#### Issue 10: Short Entry Price Premium Zone Logic Flaw ⚠️ **HIGH PRIORITY**
+**Location:** `_calculate_short_trade_levels()` (lines 1073-1130)
+
+**Problem:**
+The entry price calculation for shorts has a logical inconsistency where it searches for bearish order blocks above current price (premium zone), but the fallback logic can place entry below current price:
+
+```python
+# Line 1105: Looking for OB above current price (premium zone)
+if ob.price_low > current_price:  # Must be above current price for short entry
+    best_ob = ob
+    break
+
+# Lines 1122-1126: Fallback uses swing high minus buffer
+if swing_highs:
+    recent_swing_high = swing_highs[-1]["high"]
+    entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)
+    entry_price = recent_swing_high - entry_buffer  # ❌ Could be below current price!
+```
+
+**Why This Matters:**
+SMC principles require short entries from premium zones (price above equilibrium). If the recent swing high is close to current price, subtracting the buffer places entry below current price, violating premium zone entry rules.
+
+**Solution:**
+Add validation to ensure short entry is always >= current price for premium zone compliance:
+```python
+if swing_highs:
+    recent_swing_high = swing_highs[-1]["high"]
+    entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)
+    entry_price = recent_swing_high - entry_buffer
+    # Ensure premium zone entry
+    if entry_price < current_price:
+        entry_price = current_price + max(atr * 0.3, current_price * 0.003)
+```
+
+**Impact:** HIGH - Can generate invalid premium zone entries  
+**Status:** ❌ NOT FIXED - Requires code modification
+
+---
+
+#### Issue 11: Stop Loss Validation Logic Ordering ⚠️
+**Location:** `_calculate_long_trade_levels()` and `_calculate_short_trade_levels()` (lines 983-987, 1165-1168)
+
+**Problem:**
+The final safety checks apply operations in an order that can cause unnecessary computation and potential precision errors:
+
+```python
+# Long position validation (lines 984-987)
+if stop_loss >= entry_price:
+    stop_loss = entry_price * 0.995  # Forces 0.5% below
+stop_loss = max(stop_loss, current_price * 0.01)  # ❌ Could push SL above entry!
+stop_loss = min(stop_loss, entry_price * 0.99)   # Then forces below again
+```
+
+**Why This Matters:**
+The `max()` operation on line 986 could potentially push stop_loss above entry_price if current_price differs significantly from entry_price, then line 987 forces it back down. This creates redundant computation and could mask issues.
+
+**Solution:**
+Reorder validation logic to check constraints in proper sequence:
+```python
+# First, ensure minimum price floor
+stop_loss = max(stop_loss, current_price * 0.01)
+
+# Then, ensure it's below entry price
+if stop_loss >= entry_price:
+    stop_loss = entry_price * 0.995
+
+# Finally, cap at maximum
+stop_loss = min(stop_loss, entry_price * 0.99)
+```
+
+**Impact:** MEDIUM - Potential precision issues in edge cases  
+**Status:** ❌ NOT FIXED - Requires code refactoring
+
+---
+
+#### Issue 12: Take Profit Ordering Not Explicitly Validated ⚠️
+**Location:** `_calculate_long_trade_levels()` and `_calculate_short_trade_levels()` (lines 1032-1040, 1225-1240)
+
+**Problem:**
+The code uses `sorted(list(set()))` to deduplicate and order TPs, but doesn't explicitly validate the final ordering:
+
+```python
+# Long TPs (lines 1033-1040)
+take_profits = sorted(list(set(take_profits)))  # Ascending order
+if len(take_profits) < 3:
+    while len(take_profits) < 3:
+        last_tp = take_profits[-1]
+        next_tp = last_tp * 1.01  # ❌ Could create TP2 < TP1 if duplicates removed
+        take_profits.append(next_tp)
+```
+
+**Why This Matters:**
+If the `set()` operation removes a duplicate and changes the expected order, the fill logic could create incorrectly ordered TPs (e.g., TP2 might end up less than TP1 after filling missing levels).
+
+**Solution:**
+Add explicit validation after TP generation:
+```python
+# For longs - ensure ascending order
+take_profits = sorted(list(set(take_profits)))
+# Fill missing TPs
+while len(take_profits) < 3:
+    last_tp = take_profits[-1]
+    next_tp = last_tp * 1.01
+    take_profits.append(next_tp)
+
+# Explicit validation
+assert len(take_profits) >= 3, "Must have at least 3 TPs"
+assert take_profits[0] < take_profits[1] < take_profits[2], "TPs must be in ascending order for longs"
+```
+
+**Impact:** MEDIUM - Could generate invalid TP sequences  
+**Status:** ❌ NOT FIXED - Requires validation logic
+
+---
+
+#### Issue 13: ATR Calculation Inconsistency Between Methods ⚠️
+**Location:** `_calculate_short_trade_levels()` (lines 1045-1067) vs `calculate_atr()` (line 690)
+
+**Problem:**
+The fallback ATR calculation in trade level methods uses a simple average, while `calculate_atr()` uses exponential smoothing:
+
+```python
+# In _calculate_short_trade_levels (lines 1052-1063):
+for i in range(1, min(len(candlesticks), 20)):
+    # Calculate true range
+    tr = max(current["high"] - current["low"], ...)
+    true_ranges.append(tr)
+atr = sum(true_ranges) / len(true_ranges)  # ❌ Simple average
+
+# In calculate_atr() (lines 690-742):
+# Uses exponential moving average with smoothing factor
+```
+
+**Why This Matters:**
+Different ATR calculation methods can produce different values, leading to inconsistent risk management across the system. A simple average is more reactive to recent volatility, while EMA is smoother.
+
+**Solution:**
+Always use the centralized `calculate_atr()` method:
+```python
+# Replace manual calculation with centralized method
+atr = self.calculate_atr(candlesticks)
+if atr <= 0:
+    atr = min_atr  # Only fallback to minimum if method fails
+```
+
+**Impact:** MEDIUM - Inconsistent ATR values across system  
+**Status:** ❌ NOT FIXED - Requires refactoring to use centralized method
+
+---
+
+#### Issue 14: 15m Missing Data Score Too Restrictive ⚠️
+**Location:** `_get_execution_signal_15m()` - alignment score calculation
+
+**Problem:**
+According to the documentation (line 422), when 15m data is missing or insufficient, the alignment score defaults to 0.3 (borderline). However, the rejection threshold is also 0.3 (line 313: "Reject if alignment score < 0.3").
+
+**Why This Matters:**
+A score of 0.3 is at the exact rejection threshold, meaning missing 15m data results in automatic rejection. This is too harsh - if the HTF (Daily, H4, H1) all align perfectly, rejecting solely due to missing 15m data wastes good opportunities.
+
+**Solution:**
+Increase the missing data default score to 0.35 or 0.4 to allow borderline signals when 15m data is temporarily unavailable:
+```python
+# Current (from documentation):
+m15_alignment_score = 0.3  # Missing data default
+
+# Proposed:
+m15_alignment_score = 0.4  # Allow borderline signals with strong HTF alignment
+```
+
+**Impact:** MEDIUM - May reject valid signals with strong HTF alignment  
+**Status:** ❌ NOT FIXED - Requires threshold adjustment
+
+---
+
+#### Issue 15: Scaled Entry Validation Logs Error But Doesn't Prevent Invalid Orders ⚠️
+**Location:** `_calculate_scaled_entries()` (lines 3261-3269)
+
+**Problem:**
+The code detects invalid entry ordering and logs an error, but doesn't prevent the invalid entries from being created:
+
+```python
+# Lines 3261-3269
+if direction == "long":
+    # ... calculate entries ...
+    if not (entry1_price >= entry2_price >= entry3_price):
+        logging.error(f"Invalid LONG entry ordering: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
+    # ❌ No return or correction - invalid entries still added to list!
+
+# Entries are still appended even if ordering is invalid
+scaled_entries.append(entry1)
+scaled_entries.append(entry2)
+scaled_entries.append(entry3)
+```
+
+**Why This Matters:**
+If entries are in the wrong order (e.g., Entry2 > Entry1 for longs), limit orders could fill before market orders, or deep entries could fill before balanced entries, violating the scaling strategy.
+
+**Solution:**
+Either fix the ordering automatically or raise an exception:
+```python
+# Option 1: Fix ordering automatically
+if not (entry1_price >= entry2_price >= entry3_price):
+    logging.warning(f"Correcting invalid LONG entry ordering")
+    entry2_price = min(entry2_price, entry1_price * 0.996)
+    entry3_price = min(entry3_price, entry2_price * 0.996)
+
+# Option 2: Raise exception to prevent invalid trades
+if not (entry1_price >= entry2_price >= entry3_price):
+    raise ValueError(f"Invalid LONG entry ordering: {entry1_price} >= {entry2_price} >= {entry3_price}")
+```
+
+**Impact:** HIGH - Can generate invalid scaled entry sequences  
+**Status:** ❌ NOT FIXED - Requires validation logic
+
+---
+
+#### Issue 16: Zone Distance Threshold May Be Too Restrictive ⚠️
+**Location:** `_calculate_scaled_entries()` (lines 3214-3219, 3238-3243)
+
+**Problem:**
+The 5% maximum distance check rejects zones that are too far from current price, which may be appropriate for ranging markets but too restrictive for trending markets:
+
+```python
+# Lines 3214-3219
+zone_distance = abs(current_price - float(base_zone["high"]))
+max_distance = current_price * 0.05  # ❌ Fixed 5% maximum
+
+if zone_distance > max_distance:
+    logging.warning(f"Zone too far from current price, using fallback")
+    base_zone = None  # Rejects potentially valid institutional zone
+```
+
+**Why This Matters:**
+In strong trending markets, highly relevant order blocks can be 5-10% away but still represent key institutional zones. Rejecting these forces the system to use less accurate percentage-based fallbacks.
+
+**Solution:**
+Make max_distance configurable or scale it based on volatility regime:
+```python
+# Adjust max distance based on volatility
+if volatility_regime == "high":
+    max_distance = current_price * 0.10  # 10% in high volatility
+elif volatility_regime == "low":
+    max_distance = current_price * 0.03  # 3% in low volatility  
+else:
+    max_distance = current_price * 0.05  # 5% normal
+```
+
+**Impact:** MEDIUM - May reject valid institutional zones in trending markets  
+**Status:** ❌ NOT FIXED - Requires configuration enhancement
+
+---
+
+#### Issue 17: Timestamp Timezone Normalization Mutates Original Data ⚠️
+**Location:** `get_candlestick_data()` (lines 300-320)
+
+**Problem:**
+The timezone normalization logic directly mutates the original candle dictionaries:
+
+```python
+# Lines 304-314
+for candle in combined_data:
+    if isinstance(candle["timestamp"], datetime):
+        # ... normalization logic ...
+        candle["timestamp"] = normalized_timestamp  # ❌ Mutates original dict!
+```
+
+**Why This Matters:**
+If the `combined_data` references are reused elsewhere in the codebase, unexpected mutations could cause subtle bugs. This violates functional programming principles and makes debugging harder.
+
+**Solution:**
+Create new dictionaries instead of mutating:
+```python
+unique_data = []
+for candle in combined_data:
+    # Create a copy
+    normalized_candle = candle.copy()
+    
+    if isinstance(candle["timestamp"], datetime):
+        # Normalize on the copy
+        if candle["timestamp"].tzinfo is None:
+            normalized_candle["timestamp"] = candle["timestamp"].replace(tzinfo=timezone.utc)
+        else:
+            normalized_candle["timestamp"] = candle["timestamp"].astimezone(timezone.utc)
+    
+    timestamp_key = normalized_candle["timestamp"].isoformat()
+    if timestamp_key not in seen_timestamps:
+        seen_timestamps.add(timestamp_key)
+        unique_data.append(normalized_candle)
+```
+
+**Impact:** LOW - Potential side effects from data mutation  
+**Status:** ❌ NOT FIXED - Requires refactoring to avoid mutation
+
+---
+
+#### Issue 18: Division by Zero Defaults Need Logging 📝
+**Location:** Multiple locations calculating risk/reward ratios
+
+**Problem:**
+When risk = 0, the code defaults to 1.0 R:R ratio without logging:
+
+```python
+# Line 1334
+rr_ratio = reward / risk if risk > 0 else 1.0  # ❌ Silent default
+```
+
+**Why This Matters:**
+If entry_price equals stop_loss due to rounding errors or edge cases, defaulting to 1.0 R:R masks the underlying issue. This makes debugging harder and could allow invalid trades to pass through.
+
+**Solution:**
+Add logging when defaulting:
+```python
+if risk > 0:
+    rr_ratio = reward / risk
+else:
+    logging.warning(f"Risk is zero (entry={entry_price}, sl={stop_loss}), defaulting to 1.0 R:R")
+    rr_ratio = 1.0
+```
+
+**Impact:** LOW - Edge case debugging difficulty  
+**Status:** ❌ NOT FIXED - Requires logging enhancement
+
+---
+
 ### Recommendations
 
-**Priority 1 (Immediate):**
+**Priority 1 (Immediate - High Impact):**
 1. ✅ Fix Issue #1 (Swing point KeyError) - Will crash at runtime
 2. ✅ Fix Issue #4 (Stop loss validation) - Can generate invalid trades
+3. ❌ **Fix Issue #10 (Short entry premium zone logic)** - Can generate invalid premium zone entries
+4. ❌ **Fix Issue #15 (Scaled entry validation)** - Can generate invalid scaled entry sequences
 
-**Priority 2 (Important):**
-3. ✅ Fix Issue #2 (Liquidity pool consistency)
-4. ✅ Fix Issue #3 (FVG gap logic standardization)
-5. ✅ Fix Issue #5 (Order block entry logic)
+**Priority 2 (Important - Medium Impact):**
+5. ✅ Fix Issue #2 (Liquidity pool consistency)
+6. ✅ Fix Issue #3 (FVG gap logic standardization)
+7. ✅ Fix Issue #5 (Order block entry logic)
+8. ❌ **Fix Issue #11 (Stop loss ordering)** - Potential precision issues in edge cases
+9. ❌ **Fix Issue #12 (Take profit validation)** - Could generate invalid TP sequences
+10. ❌ **Fix Issue #13 (ATR calculation consistency)** - Inconsistent ATR values across system
+11. ❌ **Fix Issue #14 (15m missing data score)** - May reject valid signals with strong HTF alignment
+12. ❌ **Fix Issue #16 (Zone distance threshold)** - May reject valid institutional zones in trending markets
 
-**Priority 3 (Maintenance):**
-6. ✅ Fix Issue #6 (Remove duplicate methods)
-7. ✅ Fix Issue #8 (Volatility timing)
-8. ✅ Fix Issue #7 (Comment standardization)
+**Priority 3 (Maintenance - Low Impact):**
+13. ✅ Fix Issue #6 (Remove duplicate methods)
+14. ✅ Fix Issue #8 (Volatility timing)
+15. ✅ Fix Issue #7 (Comment standardization)
+16. ❌ Fix Issue #17 (Timestamp mutation) - Potential side effects from data mutation
+17. ❌ Fix Issue #18 (Division by zero logging) - Edge case debugging difficulty
+18. ❌ Fix Issue #9 (Unused default value) - Unnecessary defensive code
 
-**Testing Recommendations:**
-- Add integration tests for edge cases (price inside OB, extreme volatility)
-- Add validation for dictionary keys to prevent KeyError crashes
-- Add unit tests for entry/stop loss calculations with various market conditions
+**New Testing Recommendations:**
+- **Integration Tests:**
+  - Price inside OB scenarios
+  - Extreme volatility conditions
+  - Premium/discount zone entry validation
+  - Scaled entry ordering in various market conditions
+  
+- **Validation Tests:**
+  - Dictionary key validation to prevent KeyError crashes
+  - Entry/stop loss calculations with various market conditions
+  - TP ordering validation for both long and short positions
+  - Premium zone compliance for short entries
+  - Discount zone compliance for long entries
+  
+- **Edge Case Tests:**
+  - Missing 15m data with strong HTF alignment
+  - Entry price equals stop loss scenarios
+  - Zero risk/reward ratio handling
+  - Zone distance validation in trending vs ranging markets
+  - ATR calculation consistency across methods
+
+**Code Quality Improvements:**
+- Centralize ATR calculation to avoid duplication
+- Add explicit assertions for critical validations
+- Implement data immutability in timestamp normalization
+- Add comprehensive logging for edge cases
+- Create configuration for adaptive thresholds based on volatility regime
 
 ---
 
