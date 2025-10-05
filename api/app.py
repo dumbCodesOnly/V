@@ -4063,8 +4063,9 @@ def get_multiple_smc_signals():
         from .models import SMCSignalCache, db
         from .smc_analyzer import SMCAnalyzer
 
-        # Analyze popular trading pairs
-        symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]
+        # Analyze popular trading pairs from config
+        from config import TradingConfig
+        symbols = TradingConfig.SUPPORTED_SYMBOLS
         analyzer = SMCAnalyzer()
 
         signals = {}

@@ -403,6 +403,13 @@ class SMCConfig:
     TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
     TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
     TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
+    
+    # Signal Cache Configuration (used by SMCSignalCache model)
+    SIGNAL_CACHE_DURATION_VERY_STRONG = 30  # minutes - cache very strong signals longer
+    SIGNAL_CACHE_DURATION_STRONG = 23       # minutes - standard cache duration
+    SIGNAL_CACHE_DURATION_MODERATE = 15     # minutes - shorter cache for moderate signals
+    SIGNAL_CACHE_DURATION_WEAK = 8          # minutes - very short cache for weak signals
+    SIGNAL_MIN_CONFIDENCE = 0.3             # minimum confidence to return cached signal
 
 
 # =============================================================================

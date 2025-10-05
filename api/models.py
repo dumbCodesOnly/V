@@ -518,6 +518,7 @@ class SMCSignalCache(db.Model):
     def from_smc_signal(cls, signal, cache_duration_minutes=None):
         """Create database model from SMCSignal object with dynamic cache duration"""
         import json
+        from config import SMCConfig
         
         # Dynamic cache duration based on signal strength and market conditions
         if cache_duration_minutes is None:
@@ -525,13 +526,13 @@ class SMCSignalCache(db.Model):
             strength_name = signal.signal_strength.name if hasattr(signal.signal_strength, 'name') else str(signal.signal_strength)
             
             if strength_name == "VERY_STRONG":
-                cache_duration_minutes = 30  # Longer for very strong signals (50% increase: 20→30)
+                cache_duration_minutes = SMCConfig.SIGNAL_CACHE_DURATION_VERY_STRONG
             elif strength_name == "STRONG":
-                cache_duration_minutes = 23  # Standard duration (50% increase: 15→23)
+                cache_duration_minutes = SMCConfig.SIGNAL_CACHE_DURATION_STRONG
             elif strength_name == "MODERATE":
-                cache_duration_minutes = 15  # Shorter for moderate signals (50% increase: 10→15)
+                cache_duration_minutes = SMCConfig.SIGNAL_CACHE_DURATION_MODERATE
             else:  # WEAK or unknown
-                cache_duration_minutes = 8   # Very short for weak signals (50% increase: 5→8)
+                cache_duration_minutes = SMCConfig.SIGNAL_CACHE_DURATION_WEAK
 
         # Use naive UTC datetime for consistent database storage
         expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
@@ -551,8 +552,13 @@ class SMCSignalCache(db.Model):
         )
 
     @classmethod
-    def get_valid_signal(cls, symbol, current_price=None, min_confidence=0.3):
+    def get_valid_signal(cls, symbol, current_price=None, min_confidence=None):
         """Get a valid cached signal for symbol with enhanced validation"""
+        from config import SMCConfig
+        
+        # Use config value if not explicitly provided
+        if min_confidence is None:
+            min_confidence = SMCConfig.SIGNAL_MIN_CONFIDENCE
         # Use naive UTC datetime for consistent database comparison
         now = datetime.utcnow()
         
