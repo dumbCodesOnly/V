@@ -159,6 +159,59 @@ Update the call to `_calculate_scaled_entries()` in `generate_trade_signal()` to
 - `volatility_regime` (from existing detection)
 - `tick_size` (symbol-specific, can default to 0.01 for crypto)
 
+### Step 9: Bug Fixes and Validation Improvements
+**Status:** ✅ Complete
+
+After initial implementation, the following logic issues were identified and fixed:
+
+**Fix #1: Market Entry for Zone-Based Trades (CRITICAL)**
+- **Issue:** All 3 entries were limit orders, risking missed trades if price doesn't pull back
+- **Fix:** Changed first entry to market order when zone is found for immediate execution
+- **Impact:** Ensures 50% position enters immediately, while 50% awaits better prices
+
+**Fix #2: Zone Contraction Validation (CRITICAL)**
+- **Issue:** Low volatility contraction could create invalid zones (high <= low)
+- **Fix:** Added validation to check zone remains valid after contraction
+- **Code:**
+```python
+if new_high <= new_low:
+    logging.warning(f"Zone too small for contraction, using original zone")
+    return zone
+```
+
+**Fix #3: Maximum Zone Distance Check (IMPORTANT)**
+- **Issue:** No validation if detected zone is too far from current price
+- **Fix:** Added 5% maximum distance check to prevent unrealistic entry placements
+- **Code:**
+```python
+zone_distance = abs(current_price - float(base_zone["high/low"]))
+max_distance = current_price * 0.05
+if zone_distance > max_distance:
+    logging.warning(f"Zone too far, using fallback")
+    base_zone = None
+```
+
+**Fix #4: Tick Size Validation (SAFETY)**
+- **Issue:** No validation that tick_size > 0 before division
+- **Fix:** Added tick_size validation with default fallback to 0.01
+- **Code:**
+```python
+if tick_size <= 0:
+    logging.warning(f"Invalid tick_size, using default 0.01")
+    tick_size = 0.01
+```
+
+**Fix #5: Entry Price Ordering Validation (VALIDATION)**
+- **Issue:** No validation that entry prices follow expected ordering
+- **Fix:** Added validation and error logging for entry price sequences
+- **Expected:** LONG: entry1 >= entry2 >= entry3, SHORT: entry1 <= entry2 <= entry3
+- **Code:**
+```python
+if direction == "long":
+    if not (entry1_price >= entry2_price >= entry3_price):
+        logging.error(f"Invalid LONG entry ordering")
+```
+
 ---
 
 ## Testing Checklist
@@ -193,3 +246,24 @@ Use this plan to track implementation progress. Mark steps with:
 - ✅ Complete
 
 Last Updated: 2025-10-05
+
+---
+
+## Summary
+
+**Implementation Status:** ✅ **COMPLETE with Bug Fixes**
+
+All 9 steps implemented successfully including:
+- 8 new helper functions for zone detection and manipulation
+- Full zone-based entry logic with FVG/OB support
+- Volatility-aware zone adjustments
+- 5 critical bug fixes for robustness and safety
+- Comprehensive validation and fallback logic
+- Enhanced debug logging
+
+**Key Improvements:**
+1. Institutional-style entries at SMC zones (FVG/OB) instead of fixed percentages
+2. Market order for immediate 50% execution + limit orders for better 50% fills
+3. Zone distance and size validation to prevent unrealistic entries
+4. Proper error handling and logging for debugging
+5. Maintains backward compatibility with fallback to original logic
