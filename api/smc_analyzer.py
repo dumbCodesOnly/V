@@ -1812,7 +1812,7 @@ class SMCAnalyzer:
             use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
             
             if use_atr_filter and m15_data and len(m15_data) >= 15:
-                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price)
+                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price, symbol=symbol)
                 analysis_details["phase7_atr_filter"] = atr_filter_result
                 
                 if not atr_filter_result["passes"]:
@@ -3821,7 +3821,8 @@ class SMCAnalyzer:
         self,
         m15_data: List[Dict],
         h1_data: List[Dict],
-        current_price: float
+        current_price: float,
+        symbol: str = None
     ) -> Dict:
         """
         Phase 7: Check if ATR meets minimum volatility requirements
@@ -3830,6 +3831,7 @@ class SMCAnalyzer:
             m15_data: 15-minute candlestick data
             h1_data: Hourly candlestick data
             current_price: Current market price
+            symbol: Trading pair symbol for pair-specific thresholds
         
         Returns:
             Dictionary with filter results:
@@ -3838,6 +3840,8 @@ class SMCAnalyzer:
             - atr_h1: ATR value on H1 timeframe
             - atr_15m_percent: ATR as percentage of price on 15m
             - atr_h1_percent: ATR as percentage of price on H1
+            - min_atr_15m_threshold: The threshold used for 15m
+            - min_atr_h1_threshold: The threshold used for H1
             - reason: Explanation of filter result
         """
         from config import TradingConfig
@@ -3850,23 +3854,33 @@ class SMCAnalyzer:
         atr_15m_percent = (atr_15m / current_price) * 100 if current_price > 0 else 0.0
         atr_h1_percent = (atr_h1 / current_price) * 100 if current_price > 0 else 0.0
         
-        # Get minimum thresholds from config
-        min_atr_15m = getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
-        min_atr_h1 = getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
+        # Get pair-specific thresholds from ASSET_PROFILES
+        symbol_upper = symbol.upper() if symbol else "UNKNOWN"
+        profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
+        
+        # Use pair-specific thresholds if available, otherwise use defaults
+        min_atr_15m = profile.get(
+            'MIN_ATR_15M_PERCENT',
+            getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
+        )
+        min_atr_h1 = profile.get(
+            'MIN_ATR_H1_PERCENT',
+            getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
+        )
         
         # Check if both timeframes meet minimum requirements
         passes_filter = (atr_15m_percent >= min_atr_15m and atr_h1_percent >= min_atr_h1)
         
-        # Generate reason message
+        # Generate reason message with pair-specific info
         if not passes_filter:
             reason = (
-                f"Phase 7: ATR filter failed - "
+                f"Phase 7: ATR filter failed for {symbol_upper} - "
                 f"15m ATR: {atr_15m_percent:.2f}% (min {min_atr_15m}%), "
                 f"H1 ATR: {atr_h1_percent:.2f}% (min {min_atr_h1}%)"
             )
         else:
             reason = (
-                f"Phase 7: ATR filter passed - "
+                f"Phase 7: ATR filter passed for {symbol_upper} - "
                 f"15m ATR: {atr_15m_percent:.2f}%, H1 ATR: {atr_h1_percent:.2f}%"
             )
         
@@ -3878,6 +3892,8 @@ class SMCAnalyzer:
             "atr_h1": atr_h1,
             "atr_15m_percent": atr_15m_percent,
             "atr_h1_percent": atr_h1_percent,
+            "min_atr_15m_threshold": min_atr_15m,
+            "min_atr_h1_threshold": min_atr_h1,
             "reason": reason
         }
 

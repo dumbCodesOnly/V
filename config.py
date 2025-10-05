@@ -209,13 +209,44 @@ class TradingConfig:
     
     # Asset-Specific Volatility Profiles for Auto-Tuning
     # BASE_ATR values represent typical 14-period ATR (Daily timeframe) for stable market conditions
+    # MIN_ATR thresholds are customized per asset's typical volatility characteristics
     ASSET_PROFILES = {
-        "BTCUSDT": {"BASE_ATR": 100, "VOL_CLASS": "low"},
-        "ETHUSDT": {"BASE_ATR": 60, "VOL_CLASS": "medium"},
-        "SOLUSDT": {"BASE_ATR": 1.5, "VOL_CLASS": "high"},
-        "BNBUSDT": {"BASE_ATR": 4.0, "VOL_CLASS": "medium"},
-        "XRPUSDT": {"BASE_ATR": 0.0035, "VOL_CLASS": "high"},
-        "ADAUSDT": {"BASE_ATR": 0.0025, "VOL_CLASS": "medium"}
+        "BTCUSDT": {
+            "BASE_ATR": 100,
+            "VOL_CLASS": "low",
+            "MIN_ATR_15M_PERCENT": 0.6,
+            "MIN_ATR_H1_PERCENT": 1.0
+        },
+        "ETHUSDT": {
+            "BASE_ATR": 60,
+            "VOL_CLASS": "medium",
+            "MIN_ATR_15M_PERCENT": 0.8,
+            "MIN_ATR_H1_PERCENT": 1.2
+        },
+        "SOLUSDT": {
+            "BASE_ATR": 1.5,
+            "VOL_CLASS": "high",
+            "MIN_ATR_15M_PERCENT": 1.2,
+            "MIN_ATR_H1_PERCENT": 1.8
+        },
+        "BNBUSDT": {
+            "BASE_ATR": 4.0,
+            "VOL_CLASS": "medium",
+            "MIN_ATR_15M_PERCENT": 0.8,
+            "MIN_ATR_H1_PERCENT": 1.2
+        },
+        "XRPUSDT": {
+            "BASE_ATR": 0.0035,
+            "VOL_CLASS": "high",
+            "MIN_ATR_15M_PERCENT": 1.5,
+            "MIN_ATR_H1_PERCENT": 2.0
+        },
+        "ADAUSDT": {
+            "BASE_ATR": 0.0025,
+            "VOL_CLASS": "medium",
+            "MIN_ATR_15M_PERCENT": 1.0,
+            "MIN_ATR_H1_PERCENT": 1.5
+        }
     }
     
     # Phase 4: Scaling Entry Configuration
