@@ -930,7 +930,8 @@ class SMCAnalyzer:
                 # Check if current price is inside any high-scoring bullish order block
                 for ob, score in scored_obs[:3]:  # Check top 3 scoring OBs
                     if ob.price_low <= current_price <= ob.price_high:
-                        entry_price = ob.price_high  # Use top of OB as entry
+                        # Already inside OB - use current price for immediate entry
+                        entry_price = current_price
                         break
         
         # Fallback if no suitable order block found
@@ -1112,7 +1113,8 @@ class SMCAnalyzer:
                 # Check if current price is inside any high-scoring bearish order block
                 for ob, score in scored_obs[:3]:  # Check top 3 scoring OBs
                     if ob.price_low <= current_price <= ob.price_high:
-                        entry_price = ob.price_low  # Use bottom of OB as entry
+                        # Already inside OB - use current price for immediate entry
+                        entry_price = current_price
                         break
         
         # Fallback if no suitable order block found
