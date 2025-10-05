@@ -118,7 +118,7 @@ class SMCAnalyzer:
     """Smart Money Concepts analyzer for detecting institutional trading patterns"""
 
     def __init__(self):
-        from config import SMCConfig
+        from config import SMCConfig, TradingConfig
         
         self.timeframes = ["15m", "1h", "4h", "1d"]  # Multiple timeframe analysis (15m for execution)
         self.active_signals = {}  # Cache for active signals {symbol: {signal, expiry_time}}
@@ -128,7 +128,10 @@ class SMCAnalyzer:
         self.atr_multiplier = 1.0
         self.fvg_multiplier = SMCConfig.FVG_ATR_MULTIPLIER
         self.ob_volume_multiplier = SMCConfig.OB_VOLUME_MULTIPLIER
-        self.scaled_entry_depths = [0.004, 0.010]  # Default depths for scaled entries
+        self.scaled_entry_depths = [
+            TradingConfig.SCALED_ENTRY_DEPTH_1,
+            TradingConfig.SCALED_ENTRY_DEPTH_2
+        ]
 
     @with_circuit_breaker(
         "binance_klines_api", failure_threshold=8, recovery_timeout=120
@@ -992,6 +995,9 @@ class SMCAnalyzer:
         stop_loss = min(stop_loss, entry_price * 0.99)  # Below entry price
 
         # Take profits with guaranteed valid levels
+        from config import TradingConfig
+        tp_rr_ratios = getattr(TradingConfig, 'TP_RR_RATIOS', [1.0, 2.0, 3.0])
+        
         take_profits = []
         base_reward = max(atr * 0.8, current_price * 0.008)  # Minimum 0.8% reward
         
@@ -1008,16 +1014,16 @@ class SMCAnalyzer:
             if (ob.direction == "bearish" and ob.price_low > entry_price + base_reward):
                 tp1_candidates.append(ob.price_low)
         
-        # Select TP1
+        # Select TP1 using config R:R ratio
         if tp1_candidates:
             tp1 = min(tp1_candidates)
         else:
-            tp1 = entry_price + max(atr * 1.0, current_price * 0.01)
+            tp1 = entry_price + max(atr * tp_rr_ratios[0], current_price * 0.01)
         
         take_profits.append(tp1)
         
-        # TP2: Extended target, ensuring it's above TP1
-        tp2_base = entry_price + max(atr * 2.0, current_price * 0.02)
+        # TP2: Extended target, ensuring it's above TP1 (using config R:R ratio)
+        tp2_base = entry_price + max(atr * tp_rr_ratios[1], current_price * 0.02)
         extended_highs = [s["high"] for s in swing_highs[-10:] if s["high"] > tp1]
         if extended_highs:
             tp2 = min(extended_highs)
@@ -1027,9 +1033,9 @@ class SMCAnalyzer:
         
         take_profits.append(tp2)
         
-        # TP3: Full extension, ensuring it's above TP2
+        # TP3: Full extension, ensuring it's above TP2 (using config R:R ratio)
         tp3 = max(
-            entry_price + max(atr * 3.0, current_price * 0.03),
+            entry_price + max(atr * tp_rr_ratios[2], current_price * 0.03),
             tp2 * 1.01
         )
         take_profits.append(tp3)
@@ -1176,6 +1182,9 @@ class SMCAnalyzer:
         stop_loss = max(stop_loss, entry_price * 1.01)  # At least 1% above entry price
 
         # Take profits with guaranteed valid levels
+        from config import TradingConfig
+        tp_rr_ratios = getattr(TradingConfig, 'TP_RR_RATIOS', [1.0, 2.0, 3.0])
+        
         take_profits = []
         base_reward = max(atr * 0.8, current_price * 0.008)  # Minimum 0.8% reward
         
@@ -1193,11 +1202,11 @@ class SMCAnalyzer:
                 and ob.price_high > 0):
                 tp1_candidates.append(ob.price_high)
         
-        # Select TP1
+        # Select TP1 using config R:R ratio
         if tp1_candidates:
             tp1 = max(tp1_candidates)
         else:
-            tp1 = entry_price - max(atr * 1.0, current_price * 0.01)
+            tp1 = entry_price - max(atr * tp_rr_ratios[0], current_price * 0.01)
         
         # Ensure TP1 is positive and below entry
         tp1 = max(tp1, current_price * 0.01)  # At least 1% of current price
@@ -1205,8 +1214,8 @@ class SMCAnalyzer:
         
         take_profits.append(tp1)
         
-        # TP2: Extended target, ensuring it's below TP1
-        tp2_base = entry_price - max(atr * 2.0, current_price * 0.02)
+        # TP2: Extended target, ensuring it's below TP1 (using config R:R ratio)
+        tp2_base = entry_price - max(atr * tp_rr_ratios[1], current_price * 0.02)
         extended_lows = [s["low"] for s in swing_lows[-10:] if s["low"] < tp1 and s["low"] > 0]
         if extended_lows:
             tp2 = max(extended_lows)
@@ -1219,9 +1228,9 @@ class SMCAnalyzer:
         
         take_profits.append(tp2)
         
-        # TP3: Full extension, ensuring it's below TP2
+        # TP3: Full extension, ensuring it's below TP2 (using config R:R ratio)
         tp3 = min(
-            entry_price - max(atr * 3.0, current_price * 0.03),
+            entry_price - max(atr * tp_rr_ratios[2], current_price * 0.03),
             tp2 * 0.99
         )
         
@@ -1783,22 +1792,28 @@ class SMCAnalyzer:
 
             logging.info(f"{symbol_upper} volatility check → ATR={current_atr:.4f}, baseline={base_atr:.4f}, ratio={vol_ratio:.2f}, regime={vol_regime}")
 
-            # Dynamically scale institutional parameters
+            # Dynamically scale institutional parameters based on volatility regime
+            # Scale config baseline values instead of using hardcoded multipliers
+            base_fvg = SMCConfig.FVG_ATR_MULTIPLIER
+            base_ob = SMCConfig.OB_VOLUME_MULTIPLIER
+            base_depth1 = TradingConfig.SCALED_ENTRY_DEPTH_1
+            base_depth2 = TradingConfig.SCALED_ENTRY_DEPTH_2
+            
             if vol_regime == "low":
                 atr_mult = 0.9
-                fvg_mult = 0.6
-                ob_mult = 0.9
-                depths = [0.003, 0.007]
+                fvg_mult = base_fvg * 0.85  # 85% of config value
+                ob_mult = base_ob * 0.82  # 82% of config value
+                depths = [base_depth1 * 0.75, base_depth2 * 0.70]  # Tighter entries
             elif vol_regime == "normal":
                 atr_mult = 1.0
-                fvg_mult = 0.7
-                ob_mult = 1.1
-                depths = [0.004, 0.010]
+                fvg_mult = base_fvg  # Use config value as-is
+                ob_mult = base_ob * 0.92  # 92% of config value
+                depths = [base_depth1, base_depth2]  # Use config as-is
             else:  # high volatility
                 atr_mult = 1.3
-                fvg_mult = 0.9
-                ob_mult = 1.3
-                depths = [0.006, 0.014]
+                fvg_mult = base_fvg * 1.29  # 129% of config value
+                ob_mult = base_ob * 1.08  # 108% of config value
+                depths = [base_depth1 * 1.50, base_depth2 * 1.40]  # Wider entries
 
             # Apply dynamic tuning
             self.atr_multiplier = atr_mult
