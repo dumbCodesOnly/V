@@ -3089,6 +3089,157 @@ class SMCAnalyzer:
 
         return signal_strength, final_confidence
 
+    def _find_nearest_bullish_fvg(
+        self, 
+        current_price: float, 
+        fvgs: List[FairValueGap]
+    ) -> Optional[Dict[str, Union[float, str]]]:
+        """Find nearest bullish FVG below current price"""
+        valid_fvgs = [
+            fvg for fvg in fvgs 
+            if fvg.direction == "bullish" 
+            and not fvg.filled 
+            and fvg.gap_high < current_price
+        ]
+        
+        if not valid_fvgs:
+            return None
+        
+        nearest_fvg = min(valid_fvgs, key=lambda x: current_price - x.gap_high)
+        return {
+            "high": nearest_fvg.gap_high,
+            "low": nearest_fvg.gap_low,
+            "type": "FVG"
+        }
+    
+    def _find_nearest_bearish_fvg(
+        self, 
+        current_price: float, 
+        fvgs: List[FairValueGap]
+    ) -> Optional[Dict[str, Union[float, str]]]:
+        """Find nearest bearish FVG above current price"""
+        valid_fvgs = [
+            fvg for fvg in fvgs 
+            if fvg.direction == "bearish" 
+            and not fvg.filled 
+            and fvg.gap_low > current_price
+        ]
+        
+        if not valid_fvgs:
+            return None
+        
+        nearest_fvg = min(valid_fvgs, key=lambda x: x.gap_low - current_price)
+        return {
+            "high": nearest_fvg.gap_high,
+            "low": nearest_fvg.gap_low,
+            "type": "FVG"
+        }
+    
+    def _find_nearest_bullish_ob(
+        self, 
+        current_price: float, 
+        order_blocks: List[OrderBlock]
+    ) -> Optional[Dict[str, Union[float, str]]]:
+        """Find nearest bullish OB below current price"""
+        valid_obs = [
+            ob for ob in order_blocks 
+            if ob.direction == "bullish" 
+            and not ob.mitigated 
+            and ob.price_high < current_price
+        ]
+        
+        if not valid_obs:
+            return None
+        
+        nearest_ob = min(valid_obs, key=lambda x: current_price - x.price_high)
+        return {
+            "high": nearest_ob.price_high,
+            "low": nearest_ob.price_low,
+            "type": "OB"
+        }
+    
+    def _find_nearest_bearish_ob(
+        self, 
+        current_price: float, 
+        order_blocks: List[OrderBlock]
+    ) -> Optional[Dict[str, Union[float, str]]]:
+        """Find nearest bearish OB above current price"""
+        valid_obs = [
+            ob for ob in order_blocks 
+            if ob.direction == "bearish" 
+            and not ob.mitigated 
+            and ob.price_low > current_price
+        ]
+        
+        if not valid_obs:
+            return None
+        
+        nearest_ob = min(valid_obs, key=lambda x: x.price_low - current_price)
+        return {
+            "high": nearest_ob.price_high,
+            "low": nearest_ob.price_low,
+            "type": "OB"
+        }
+    
+    def _zones_overlap(
+        self, 
+        zone1: Dict[str, Union[float, str]], 
+        zone2: Dict[str, Union[float, str]]
+    ) -> bool:
+        """Check if two zones overlap"""
+        high1 = float(zone1["high"])
+        low1 = float(zone1["low"])
+        high2 = float(zone2["high"])
+        low2 = float(zone2["low"])
+        return not (high1 < low2 or high2 < low1)
+    
+    def _merge_zones(
+        self, 
+        zone1: Dict[str, Union[float, str]], 
+        zone2: Dict[str, Union[float, str]]
+    ) -> Dict[str, Union[float, str]]:
+        """Merge two overlapping zones"""
+        return {
+            "high": max(float(zone1["high"]), float(zone2["high"])),
+            "low": min(float(zone1["low"]), float(zone2["low"])),
+            "type": f"{zone1['type']}+{zone2['type']}"
+        }
+    
+    def _adjust_zone_for_volatility(
+        self, 
+        zone: Dict[str, Union[float, str]], 
+        volatility_regime: str
+    ) -> Dict[str, Union[float, str]]:
+        """Expand or shrink zone based on volatility regime"""
+        high = float(zone["high"])
+        low = float(zone["low"])
+        zone_size = high - low
+        
+        if volatility_regime == "high":
+            expansion = zone_size * 0.10
+            return {
+                "high": high + expansion,
+                "low": low - expansion,
+                "type": zone["type"]
+            }
+        elif volatility_regime == "low":
+            contraction = zone_size * 0.10
+            return {
+                "high": high - contraction,
+                "low": low + contraction,
+                "type": zone["type"]
+            }
+        else:
+            return zone
+    
+    def _round_to_tick(
+        self, 
+        price: float, 
+        tick_size: float = 0.01
+    ) -> float:
+        """Round price to symbol's tick size"""
+        return round(price / tick_size) * tick_size
+
     def _calculate_scaled_entries(
         self,
         current_price: float,
@@ -3096,15 +3247,21 @@ class SMCAnalyzer:
         order_blocks: List[OrderBlock],
         fvgs: List[FairValueGap],
         base_stop_loss: float,
-        base_take_profits: List[Tuple[float, float]]
+        base_take_profits: List[Tuple[float, float]],
+        volatility_regime: str = "normal",
+        tick_size: float = 0.01
     ) -> List[ScaledEntry]:
         """
-        Phase 4: Calculate 3-level scaled entry strategy
+        Phase 4: Calculate 3-level scaled entry strategy using SMC zones
+        
+        UPGRADED: Uses institutional-style Smart Money Concepts (SMC) rules
+        for limit placement using Fair Value Gaps (FVG) and Order Blocks (OB)
+        instead of fixed percentage offsets.
         
         Entry Allocation:
-        - 50% at market (immediate execution)
-        - 25% at first FVG/OB depth level (0.4% better price)
-        - 25% at second FVG/OB depth level (1.0% better price)
+        - 50% at aggressive level (market or zone top/bottom)
+        - 25% at balanced level (zone midpoint)
+        - 25% at deep mitigation level (zone bottom/top)
         
         Args:
             current_price: Current market price
@@ -3113,6 +3270,8 @@ class SMCAnalyzer:
             fvgs: List of fair value gaps
             base_stop_loss: Base stop-loss price
             base_take_profits: List of (price, allocation) tuples for take profits
+            volatility_regime: Volatility regime ('high', 'normal', 'low')
+            tick_size: Symbol's tick size for rounding (default 0.01)
         
         Returns:
             List of ScaledEntry objects
@@ -3120,7 +3279,6 @@ class SMCAnalyzer:
         from config import TradingConfig
         
         if not TradingConfig.USE_SCALED_ENTRIES:
-            # If scaled entries disabled, return single market entry
             return [ScaledEntry(
                 entry_price=current_price,
                 allocation_percent=100.0,
@@ -3130,69 +3288,156 @@ class SMCAnalyzer:
                 status='pending'
             )]
         
-        scaled_entries = []
         allocations = TradingConfig.SCALED_ENTRY_ALLOCATIONS
         
-        # Entry 1: 50% at market (immediate execution)
-        entry1_price = current_price
-        entry1 = ScaledEntry(
-            entry_price=entry1_price,
-            allocation_percent=allocations[0],
-            order_type='market',
-            stop_loss=base_stop_loss,
-            take_profits=base_take_profits,
-            status='pending'
-        )
-        scaled_entries.append(entry1)
+        if sum(allocations) != 100 or len(allocations) != 3:
+            logging.warning(f"Invalid allocations {allocations}, using fallback [50,25,25]")
+            allocations = [50, 25, 25]
         
-        # Entry 2: 25% at first depth level (dynamically tuned)
-        depth1 = self.scaled_entry_depths[0]
+        base_zone = None
+        fvg_zone = None
+        ob_zone = None
+        
         if direction == "long":
-            # For long, better price means lower
-            entry2_price = current_price * (1 - depth1)
-        else:  # short
-            # For short, better price means higher
-            entry2_price = current_price * (1 + depth1)
+            fvg_zone = self._find_nearest_bullish_fvg(current_price, fvgs)
+            ob_zone = self._find_nearest_bullish_ob(current_price, order_blocks)
+            
+            logging.info(f"SMC Zone Detection for LONG:")
+            logging.info(f"  - FVG Zone: {fvg_zone}")
+            logging.info(f"  - OB Zone: {ob_zone}")
+            
+            if fvg_zone and ob_zone and self._zones_overlap(fvg_zone, ob_zone):
+                base_zone = self._merge_zones(fvg_zone, ob_zone)
+                logging.info(f"  - Using merged FVG+OB zone: {base_zone}")
+            else:
+                base_zone = fvg_zone or ob_zone
+                if base_zone:
+                    logging.info(f"  - Using {base_zone['type']} zone: {base_zone}")
         
-        # Try to align with nearest OB/FVG
-        entry2_price = self._align_entry_with_poi(
-            entry2_price, direction, order_blocks, fvgs, max_distance_pct=0.5
-        )
+        else:
+            fvg_zone = self._find_nearest_bearish_fvg(current_price, fvgs)
+            ob_zone = self._find_nearest_bearish_ob(current_price, order_blocks)
+            
+            logging.info(f"SMC Zone Detection for SHORT:")
+            logging.info(f"  - FVG Zone: {fvg_zone}")
+            logging.info(f"  - OB Zone: {ob_zone}")
+            
+            if fvg_zone and ob_zone and self._zones_overlap(fvg_zone, ob_zone):
+                base_zone = self._merge_zones(fvg_zone, ob_zone)
+                logging.info(f"  - Using merged FVG+OB zone: {base_zone}")
+            else:
+                base_zone = fvg_zone or ob_zone
+                if base_zone:
+                    logging.info(f"  - Using {base_zone['type']} zone: {base_zone}")
         
-        entry2 = ScaledEntry(
-            entry_price=entry2_price,
-            allocation_percent=allocations[1],
-            order_type='limit',
-            stop_loss=base_stop_loss,
-            take_profits=base_take_profits,
-            status='pending'
-        )
-        scaled_entries.append(entry2)
+        scaled_entries = []
         
-        # Entry 3: 25% at second depth level (dynamically tuned)
-        depth2 = self.scaled_entry_depths[1]
-        if direction == "long":
-            entry3_price = current_price * (1 - depth2)
-        else:  # short
-            entry3_price = current_price * (1 + depth2)
+        if base_zone:
+            adjusted_zone = self._adjust_zone_for_volatility(base_zone, volatility_regime)
+            logging.info(f"  - Volatility Regime: {volatility_regime}")
+            logging.info(f"  - Adjusted Zone: {adjusted_zone}")
+            
+            zone_high = float(adjusted_zone["high"])
+            zone_low = float(adjusted_zone["low"])
+            zone_mid = (zone_high + zone_low) / 2.0
+            
+            if direction == "long":
+                entry1_price = self._round_to_tick(zone_high, tick_size)
+                entry2_price = self._round_to_tick(zone_mid, tick_size)
+                entry3_price = self._round_to_tick(zone_low, tick_size)
+            else:
+                entry1_price = self._round_to_tick(zone_low, tick_size)
+                entry2_price = self._round_to_tick(zone_mid, tick_size)
+                entry3_price = self._round_to_tick(zone_high, tick_size)
+            
+            entry1 = ScaledEntry(
+                entry_price=entry1_price,
+                allocation_percent=allocations[0],
+                order_type='limit',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry1)
+            
+            entry2 = ScaledEntry(
+                entry_price=entry2_price,
+                allocation_percent=allocations[1],
+                order_type='limit',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry2)
+            
+            entry3 = ScaledEntry(
+                entry_price=entry3_price,
+                allocation_percent=allocations[2],
+                order_type='limit',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry3)
+            
+            logging.info(f"Phase 4: SMC Zone-Based Entries ({adjusted_zone['type']}):")
+            logging.info(f"  - Entry 1 (Aggressive): ${entry1_price:.4f} ({allocations[0]}%)")
+            logging.info(f"  - Entry 2 (Balanced): ${entry2_price:.4f} ({allocations[1]}%)")
+            logging.info(f"  - Entry 3 (Deep): ${entry3_price:.4f} ({allocations[2]}%)")
         
-        # Try to align with deeper OB/FVG
-        entry3_price = self._align_entry_with_poi(
-            entry3_price, direction, order_blocks, fvgs, max_distance_pct=1.0
-        )
-        
-        entry3 = ScaledEntry(
-            entry_price=entry3_price,
-            allocation_percent=allocations[2],
-            order_type='limit',
-            stop_loss=base_stop_loss,
-            take_profits=base_take_profits,
-            status='pending'
-        )
-        scaled_entries.append(entry3)
-        
-        logging.info(f"Phase 4: Calculated scaled entries - Market: ${entry1_price:.2f} ({allocations[0]}%), "
-                    f"Limit1: ${entry2_price:.2f} ({allocations[1]}%), Limit2: ${entry3_price:.2f} ({allocations[2]}%)")
+        else:
+            logging.warning(f"No valid FVG/OB zone found for {direction} - using fixed-percentage fallback")
+            
+            entry1_price = current_price
+            entry1 = ScaledEntry(
+                entry_price=entry1_price,
+                allocation_percent=allocations[0],
+                order_type='market',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry1)
+            
+            depth1 = self.scaled_entry_depths[0]
+            depth2 = self.scaled_entry_depths[1]
+            
+            if direction == "long":
+                entry2_price = current_price * (1 - depth1)
+                entry3_price = current_price * (1 - depth2)
+            else:
+                entry2_price = current_price * (1 + depth1)
+                entry3_price = current_price * (1 + depth2)
+            
+            entry2_price = self._align_entry_with_poi(
+                entry2_price, direction, order_blocks, fvgs, max_distance_pct=0.5
+            )
+            entry3_price = self._align_entry_with_poi(
+                entry3_price, direction, order_blocks, fvgs, max_distance_pct=1.0
+            )
+            
+            entry2 = ScaledEntry(
+                entry_price=entry2_price,
+                allocation_percent=allocations[1],
+                order_type='limit',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry2)
+            
+            entry3 = ScaledEntry(
+                entry_price=entry3_price,
+                allocation_percent=allocations[2],
+                order_type='limit',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )
+            scaled_entries.append(entry3)
+            
+            logging.info(f"Phase 4: Fallback Scaled Entries - Market: ${entry1_price:.2f} ({allocations[0]}%), "
+                        f"Limit1: ${entry2_price:.2f} ({allocations[1]}%), Limit2: ${entry3_price:.2f} ({allocations[2]}%)")
         
         return scaled_entries
 
