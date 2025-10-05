@@ -1,5 +1,16 @@
 # Multi-Exchange Trading Bot
 
+## Recent Changes
+
+### October 5, 2025 - SMC Analysis Logic Fixes
+- **Fixed Type Safety**: Added `@overload` decorators to `generate_trade_signal()` method, reducing LSP errors from 117 to 49
+- **Fixed Counter-Trend Logic**: Removed duplicate RSI/sweep validation to eliminate conflicting rejection reasons
+- **Fixed Confidence Scoring**: Eliminated triple-counting of bonuses - now Phase 3 is single source of truth
+- **Updated RSI Thresholds**: Changed from 35/65 to 30/70 to align with SMC standards
+- **Optimized ATR Filter**: Moved volatility check BEFORE parameter tuning to save computation
+- **Improved 15m Data Handling**: Changed missing data default from 0.5 (neutral) to 0.3 (borderline) for better risk assessment
+- See `SMC_FIXES_PLAN.md` for detailed documentation
+
 ## Overview
 This project is a Telegram-based trading bot designed for USDT-M futures trading across Toobit and LBank exchanges. It allows users to manage multiple trading configurations conversationally through Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools. The bot aims to be a robust solution for managing and automating trading strategies across multiple platforms.
 

@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, overload
 
 import numpy as np
 import requests
@@ -1282,14 +1282,11 @@ class SMCAnalyzer:
         elif h1_bullish and h4_bearish:
             # H1 CHoCH bullish, H4 bearish - potential reversal long
             confirmed_buy_sweeps = [s for s in liquidity_sweeps.get("buy_side", []) if s.get("confirmed", False)]
-            if rsi < 35:  # RSI exhaustion for longs
+            if rsi < 30:  # RSI exhaustion for longs (SMC standard)
                 direction = "long"
                 confidence = min(bullish_signals / 5.0, 1.0)
                 
-                # Add sweep bonus if confirmed sweeps are present
-                sweep_bonus = 0.2 if confirmed_buy_sweeps else 0.0
-                confidence += sweep_bonus
-                confidence = min(confidence, 1.0)  # Cap at 1.0
+                # Note: Sweep bonuses now applied only in Phase 3 to avoid triple counting
                 
                 if confidence >= 0.6:  # Lowered confidence threshold for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_long_trade_levels(
@@ -1302,14 +1299,11 @@ class SMCAnalyzer:
         elif h1_bearish and h4_bullish:
             # H1 CHoCH bearish, H4 bullish - potential reversal short  
             confirmed_sell_sweeps = [s for s in liquidity_sweeps.get("sell_side", []) if s.get("confirmed", False)]
-            if rsi > 65:  # RSI exhaustion for shorts
+            if rsi > 70:  # RSI exhaustion for shorts (SMC standard)
                 direction = "short"
                 confidence = min(bearish_signals / 5.0, 1.0)
                 
-                # Add sweep bonus if confirmed sweeps are present
-                sweep_bonus = 0.2 if confirmed_sell_sweeps else 0.0
-                confidence += sweep_bonus
-                confidence = min(confidence, 1.0)  # Cap at 1.0
+                # Note: Sweep bonuses now applied only in Phase 3 to avoid triple counting
                 
                 if confidence >= 0.6:  # Lowered confidence threshold for counter-trend
                     entry_price, stop_loss, take_profits = self._calculate_short_trade_levels(
@@ -1325,33 +1319,16 @@ class SMCAnalyzer:
     def _calculate_trade_metrics_enhanced(
         self, entry_price, stop_loss, take_profits, confidence, liquidity_sweeps, order_blocks, fvgs
     ):
-        """Calculate risk-reward ratio and signal strength with liquidity sweep and confluence bonuses."""
+        """Calculate risk-reward ratio and signal strength (confidence bonuses handled in Phase 3 only)."""
         # Calculate risk-reward ratio
         risk = abs(entry_price - stop_loss)
         reward = abs(take_profits[0] - entry_price) if take_profits else risk
         rr_ratio = reward / risk if risk > 0 else 1.0
 
-        # Start with base confidence
+        # Use base confidence without duplicate bonuses (Phase 3 handles all bonuses)
         effective_confidence = confidence
-        
-        # Liquidity sweep bonus: +0.2 if confirmed sweep present
-        confirmed_sweeps = []
-        for sweep_type in ["buy_side", "sell_side"]:
-            confirmed_sweeps.extend([s for s in liquidity_sweeps.get(sweep_type, []) if s.get("confirmed", False)])
-        
-        if confirmed_sweeps:
-            effective_confidence += 0.2
-            
-        # Structural confluence bonus: +0.1 for order block alignment, +0.1 for FVG alignment
-        if order_blocks:
-            effective_confidence += 0.1
-        if fvgs:
-            effective_confidence += 0.1
-            
-        # Cap at 1.0
-        effective_confidence = min(effective_confidence, 1.0)
 
-        # Determine signal strength based on enhanced confidence
+        # Determine signal strength based on confidence
         if effective_confidence >= 0.9:
             signal_strength = SignalStrength.VERY_STRONG
         elif effective_confidence >= 0.8:
@@ -1702,7 +1679,13 @@ class SMCAnalyzer:
         }
         logging.info(f"Cached new {signal.direction} signal for {signal.symbol} with entry at {signal.entry_price}")
 
-    def generate_trade_signal(self, symbol: str, return_diagnostics: bool = False) -> Union[Optional[SMCSignal], Tuple[Optional[SMCSignal], Dict]]:
+    @overload
+    def generate_trade_signal(self, symbol: str, return_diagnostics: Literal[False] = False) -> Optional[SMCSignal]: ...
+    
+    @overload
+    def generate_trade_signal(self, symbol: str, return_diagnostics: Literal[True] = ...) -> Tuple[Optional[SMCSignal], Dict]: ...
+    
+    def generate_trade_signal(self, symbol: str, return_diagnostics: bool = False):
         """Generate comprehensive trade signal based on SMC analysis with caching to prevent duplicate signals
         
         Args:
@@ -1754,9 +1737,45 @@ class SMCAnalyzer:
 
             current_price = h1_data[-1]["close"]
 
-            # --- Auto volatility detection ---
-            symbol_upper = symbol.upper()
+            # Phase 7: ATR Risk Filter - Check volatility FIRST before any tuning (optimization)
             from config import TradingConfig
+            use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
+            
+            if use_atr_filter and m15_data and len(m15_data) >= 15:
+                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price)
+                analysis_details["phase7_atr_filter"] = atr_filter_result
+                
+                if not atr_filter_result["passes"]:
+                    rejection_reasons.append(atr_filter_result["reason"])
+                    logging.info(f"Phase 7: Trade rejected for {symbol} - {atr_filter_result['reason']}")
+                    if return_diagnostics:
+                        return None, {
+                            "rejection_reasons": rejection_reasons,
+                            "details": analysis_details,
+                            "signal_generated": False
+                        }
+                    return None
+                
+                # Optional: Calculate dynamic position size based on ATR
+                position_size_multiplier = self._calculate_dynamic_position_size(
+                    base_size=1.0,
+                    atr_percent=atr_filter_result["atr_15m_percent"]
+                )
+                analysis_details["phase7_position_size_multiplier"] = position_size_multiplier
+                
+                if position_size_multiplier != 1.0:
+                    logging.info(
+                        f"Phase 7: Dynamic position sizing for {symbol} - "
+                        f"Multiplier: {position_size_multiplier:.2f}x (ATR: {atr_filter_result['atr_15m_percent']:.2f}%)"
+                    )
+            else:
+                if not use_atr_filter:
+                    logging.debug("Phase 7: ATR filter disabled in configuration")
+                elif not m15_data or len(m15_data) < 15:
+                    logging.warning(f"Phase 7: Insufficient 15m data for ATR filter ({len(m15_data) if m15_data else 0} candles)")
+
+            # --- Auto volatility detection (now after ATR filter passes) ---
+            symbol_upper = symbol.upper()
             profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
 
             # Compute recent ATR (14-period) from 1H candles
@@ -1800,42 +1819,6 @@ class SMCAnalyzer:
             self.scaled_entry_depths = depths
 
             logging.info(f"Adaptive tuning → ATR x{atr_mult}, FVG x{fvg_mult}, OB x{ob_mult}, Depths={depths}")
-
-            # Phase 7: ATR Risk Filter - Check volatility before proceeding with analysis
-            use_atr_filter = getattr(TradingConfig, 'USE_ATR_FILTER', True)
-            
-            if use_atr_filter and m15_data and len(m15_data) >= 15:
-                atr_filter_result = self._check_atr_filter(m15_data, h1_data, current_price)
-                analysis_details["phase7_atr_filter"] = atr_filter_result
-                
-                if not atr_filter_result["passes"]:
-                    rejection_reasons.append(atr_filter_result["reason"])
-                    logging.info(f"Phase 7: Trade rejected for {symbol} - {atr_filter_result['reason']}")
-                    if return_diagnostics:
-                        return None, {
-                            "rejection_reasons": rejection_reasons,
-                            "details": analysis_details,
-                            "signal_generated": False
-                        }
-                    return None
-                
-                # Optional: Calculate dynamic position size based on ATR
-                position_size_multiplier = self._calculate_dynamic_position_size(
-                    base_size=1.0,
-                    atr_percent=atr_filter_result["atr_15m_percent"]
-                )
-                analysis_details["phase7_position_size_multiplier"] = position_size_multiplier
-                
-                if position_size_multiplier != 1.0:
-                    logging.info(
-                        f"Phase 7: Dynamic position sizing for {symbol} - "
-                        f"Multiplier: {position_size_multiplier:.2f}x (ATR: {atr_filter_result['atr_15m_percent']:.2f}%)"
-                    )
-            else:
-                if not use_atr_filter:
-                    logging.debug("Phase 7: ATR filter disabled in configuration")
-                elif not m15_data or len(m15_data) < 15:
-                    logging.warning(f"Phase 7: Insufficient 15m data for ATR filter ({len(m15_data) if m15_data else 0} candles)")
 
             # Phase 2: Multi-Timeframe Hierarchical Analysis
             # Step 1: Determine High Timeframe Bias (Daily + H4)
@@ -1953,17 +1936,8 @@ class SMCAnalyzer:
                    (h1_structure in bearish_structures and h4_structure in bullish_structures):
                     rejection_reasons.append("H1/H4 timeframe structure conflict")
                     
-                    # Check RSI for counter-trend requirements
-                    if h1_structure in bullish_structures and h4_structure in bearish_structures:
-                        if not (rsi and rsi < 35):
-                            rejection_reasons.append(f"RSI not in extreme oversold zone for reversal long (RSI: {f'{rsi:.1f}' if rsi is not None else 'N/A'})")
-                        if not confirmed_buy_sweeps:
-                            rejection_reasons.append("No confirmed buy-side liquidity sweeps for reversal confirmation")
-                    elif h1_structure in bearish_structures and h4_structure in bullish_structures:
-                        if not (rsi and rsi > 65):
-                            rejection_reasons.append(f"RSI not in extreme overbought zone for reversal short (RSI: {f'{rsi:.1f}' if rsi is not None else 'N/A'})")
-                        if not confirmed_sell_sweeps:
-                            rejection_reasons.append("No confirmed sell-side liquidity sweeps for reversal confirmation")
+                    # Note: RSI and sweep validation already done in hybrid logic
+                    # No need to duplicate the checks here - they're already part of signal generation
                 
                 if bullish_signals < 3 and bearish_signals < 3:
                     rejection_reasons.append(f"Insufficient signal confluence (Bullish: {bullish_signals}, Bearish: {bearish_signals}, minimum: 3)")
@@ -1980,10 +1954,12 @@ class SMCAnalyzer:
             # Check if signal meets minimum requirements
             if direction and confidence > 0:
                 # Phase 3: Apply Enhanced Confidence Scoring with 15m alignment
-                m15_alignment_score = 0.5  # Default neutral if no 15m data
+                m15_alignment_score = 0.3  # Default borderline if no 15m data (missing info shouldn't be neutral)
                 if execution_signal_15m and execution_signal_15m.get("alignment_score") is not None:
                     m15_alignment_score = execution_signal_15m["alignment_score"]
                     analysis_details["phase3_m15_alignment"] = m15_alignment_score
+                else:
+                    analysis_details["phase3_m15_alignment_missing"] = True  # Track when 15m data is missing
                 
                 # Check for liquidity sweep confluence
                 liquidity_swept = len(confirmed_buy_sweeps) > 0 or len(confirmed_sell_sweeps) > 0
