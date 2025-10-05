@@ -175,33 +175,41 @@ class SMCAnalyzer:
                 )
                 return KlinesCache.get_cached_data(symbol, timeframe, limit)
 
+            # Always respect minimum fetch count from gap analysis
+            min_required_fetch = gap_info["fetch_count"]
+            
             # EFFICIENT OPTIMIZATION: If we have existing cache data, check if we just need to update open candle
             if len(cached_data) > 0:
                 # Check if we have current open candle already
                 current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
-                if current_open_candle:
-                    # Just update the existing open candle (most efficient approach)
+                if current_open_candle and min_required_fetch <= 2:
+                    # SAFE: Only use efficient update when no historical gaps exist
                     fetch_limit = 1
                     logging.info(
                         f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
                     )
                 else:
-                    # Fetch only latest 2 candles (current + previous for gap filling)
-                    fetch_limit = min(2, gap_info["fetch_count"])
-                    logging.info(
-                        f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
-                    )
+                    # SAFE: Fetch minimum required to fill gaps
+                    fetch_limit = min_required_fetch
+                    if min_required_fetch > 2:
+                        logging.warning(
+                            f"HISTORICAL GAPS DETECTED: Fetching {fetch_limit} candles for {symbol} {timeframe} to fill gaps"
+                        )
+                    else:
+                        logging.info(
+                            f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
+                        )
             else:
                 # No cache data - fetch full amount 
-                fetch_limit = gap_info["fetch_count"]
+                fetch_limit = min_required_fetch
                 logging.info(
                     f"CACHE MISS: Fetching {fetch_limit} candles for {symbol} {timeframe}"
                 )
 
         except Exception as e:
             logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
-            # Conservative fallback: only fetch latest 1 candle if we have cached data (efficient open candle update)
-            fetch_limit = 1 if len(cached_data) > 0 else limit
+            # Conservative fallback: fetch more data when uncertain
+            fetch_limit = min(10, limit) if len(cached_data) > 0 else limit
 
         # Step 3: Fetch from Binance API with circuit breaker protection
         tf_map = {"15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
