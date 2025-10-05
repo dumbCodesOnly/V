@@ -1595,14 +1595,14 @@ class SMCAnalyzer:
             if signal_direction == "long":
                 entry_price = current_price
                 if m15_swing_lows:
-                    last_swing_low = min([sw["price"] for sw in m15_swing_lows[-3:]])
+                    last_swing_low = min([sw["low"] for sw in m15_swing_lows[-3:]])
                     sl = last_swing_low * 0.998
                 else:
                     sl = current_price * 0.995
             else:
                 entry_price = current_price
                 if m15_swing_highs:
-                    last_swing_high = max([sw["price"] for sw in m15_swing_highs[-3:]])
+                    last_swing_high = max([sw["high"] for sw in m15_swing_highs[-3:]])
                     sl = last_swing_high * 1.002
                 else:
                     sl = current_price * 1.005
