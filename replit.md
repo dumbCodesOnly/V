@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+### October 6, 2025 - ATR Filter Further Reduced for Rally Conditions
+- **📊 ATR Filter Thresholds Significantly Lowered** (~40% reduction for rally conditions):
+  - Default: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
+  - BTCUSDT: 0.45% → 0.25% (15m), 0.75% → 0.45% (H1)
+  - ETHUSDT: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
+  - SOLUSDT: 0.9% → 0.55% (15m), 1.35% → 0.85% (H1)
+  - BNBUSDT: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
+  - XRPUSDT: 1.1% → 0.7% (15m), 1.5% → 1.0% (H1)
+  - ADAUSDT: 0.75% → 0.45% (15m), 1.1% → 0.7% (H1)
+- **Result**: Much less restrictive filter allows signals during strong rallies and trending markets
+
 ### October 6, 2025 - ATR Filter Optimization & Code Review
 - **📊 ATR Filter Thresholds Lowered** (~25% reduction for all pairs):
   - Default: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
@@ -105,7 +116,7 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
   - Scaling entry strategy: 50% market + 25% + 25% limit orders at OB/FVG zones
   - Refined stop-loss using 15m swing levels + ATR buffers
   - R:R-based take profits (1R, 2R, liquidity targets) with 40/30/30 allocation
-  - ATR risk filter rejecting low-volatility choppy conditions (lowered Oct 6: 0.6% min on 15m, 0.9% min on H1)
+  - ATR risk filter rejecting low-volatility choppy conditions (lowered Oct 6: 0.35% min on 15m, 0.55% min on H1)
   - Optional dynamic position sizing based on ATR volatility
   - SMC signals correctly displayed and cached in the database with validation
   - Recent fixes (Oct 5, 2025): Type safety, confidence scoring, RSI thresholds, ATR optimization
