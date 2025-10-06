@@ -2,7 +2,7 @@
 
 ## Recent Changes
 
-### October 6, 2025 - ATR Filter Optimization
+### October 6, 2025 - ATR Filter Optimization & Code Review
 - **📊 ATR Filter Thresholds Lowered** (~25% reduction for all pairs):
   - Default: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
   - BTCUSDT: 0.6% → 0.45% (15m), 1.0% → 0.75% (H1)
@@ -12,6 +12,12 @@
   - XRPUSDT: 1.5% → 1.1% (15m), 2.0% → 1.5% (H1)
   - ADAUSDT: 1.0% → 0.75% (15m), 1.5% → 1.1% (H1)
 - **Result**: Less strict signal generation, more signals will pass ATR filter
+- **🔍 SMC Code Review Completed**:
+  - Identified 3 new issues (Issues #22, #23, #24)
+  - Issue #22: Alignment score conflict logic flaw (HIGH)
+  - Issue #23: FVG alignment score not calculated (MEDIUM)
+  - Issue #24: ATR filter default values outdated (HIGH)
+  - Documentation updated in SMC_ANALYZER_DOCUMENTATION.md
 
 ### October 5, 2025 - SMC Bug Fixes & Code Cleanup
 - **🐛 Critical Bug Fixes**:

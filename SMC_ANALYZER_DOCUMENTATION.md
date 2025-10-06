@@ -449,9 +449,9 @@ H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
 
 ### Issue Summary
 
-**Total Issues Identified:** 18  
-**Fixed:** 18 (100%) ✅  
-**Pending Fix:** 0 (0%)
+**Total Issues Identified:** 21 (18 previous + 3 new from Oct 6)  
+**Fixed:** 18 (86%) ✅  
+**Pending Fix:** 3 (14%) - Issues #22, #23, #24
 
 **By Priority:**
 - **High Priority (Immediate):** 4 issues (4 fixed ✅)
@@ -1492,6 +1492,180 @@ atr_check = self._check_atr_filter(m15_data, h1_data, current_price, symbol=symb
 
 ---
 
+## Active Issues (October 6, 2025 - Code Review)
+
+### Issue Summary
+
+**Total New Issues Identified:** 3  
+**Priority Breakdown:**
+- **High Priority:** 2 issues (require immediate attention)
+- **Medium Priority:** 1 issue (important for signal quality)
+
+---
+
+### Issue 22: Alignment Score Conflict Logic Flaw ❌ **HIGH PRIORITY**
+
+**Location:** `api/smc_analyzer.py`, lines 2907-2941 (`_calculate_15m_alignment_score`)
+
+**Problem:**
+When 15m structure conflicts with HTF bias, the alignment score is set to 0.1 (indicating conflict), but then bonuses are still added for intermediate structure alignment (+0.3) and POI proximity (+0.2). This is logically inconsistent.
+
+**Example:**
+```python
+# If 15m is bearish but HTF is bullish:
+alignment_score = 0.1  # Conflict detected
+
+# But then bonuses still apply:
+if intermediate_structure_direction.startswith(htf_bias):
+    alignment_score += 0.3  # Now 0.4
+if poi near price:
+    alignment_score += 0.2  # Now 0.6
+```
+
+**Impact:**
+- A conflicting 15m structure could still get a moderate alignment score (0.6)
+- Defeats the purpose of conflict detection
+- Could allow low-quality signals to pass through
+
+**Solution:**
+```python
+# When conflict detected, exit early without bonuses
+if m15_structure conflicts with htf_bias:
+    alignment_score = 0.1
+    return min(alignment_score, 1.0)  # Exit early
+
+# Only add bonuses if no conflict
+if intermediate_structure_direction and intermediate_structure_direction.startswith(htf_bias):
+    alignment_score += 0.3
+```
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Issue 23: FVG Alignment Score Not Calculated ⚠️ **MEDIUM PRIORITY**
+
+**Location:** `api/smc_analyzer.py`, lines 580-649 (`find_fair_value_gaps`)
+
+**Problem:**
+The `FairValueGap` dataclass has an `alignment_score` field, but it's never populated during FVG detection. It defaults to 0.0 and is used later in `_get_intermediate_structure` (line 1510) where it affects POI strength.
+
+**Current Code:**
+```python
+fvg = FairValueGap(
+    gap_high=next_candle["low"],
+    gap_low=prev_candle["high"],
+    timestamp=current["timestamp"],
+    direction="bullish",
+    atr_size=gap_size / atr,
+    age_candles=0,
+    # alignment_score missing - defaults to 0.0
+)
+```
+
+**Impact:**
+- FVGs are not prioritized by their alignment with market structure
+- POI strength always gets 0.0 for FVGs (line 1510: `"strength": fvg.alignment_score`)
+- Reduces effectiveness of FVG-based confluence scoring
+
+**Solution:**
+Calculate alignment score based on FVG direction vs current market structure:
+```python
+# Calculate alignment with current trend
+alignment_score = 0.0
+current_structure = self.detect_market_structure(candlesticks[:i+2])
+if direction == "bullish" and current_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+    alignment_score = 0.8
+elif direction == "bearish" and current_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+    alignment_score = 0.8
+else:
+    alignment_score = 0.3
+
+fvg = FairValueGap(
+    ...
+    alignment_score=alignment_score
+)
+```
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Issue 24: ATR Filter Default Values Outdated ❌ **HIGH PRIORITY**
+
+**Location:** `api/smc_analyzer.py`, lines 3877-3884 (`_check_atr_filter`)
+
+**Problem:**
+The ATR filter has hardcoded default fallback values (0.8 for 15m, 1.2 for H1) that don't match the recently updated config values (0.6 for 15m, 0.9 for H1 - updated Oct 6, 2025).
+
+**Current Code:**
+```python
+min_atr_15m = profile.get(
+    'MIN_ATR_15M_PERCENT',
+    getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)  # ❌ Old default
+)
+min_atr_h1 = profile.get(
+    'MIN_ATR_H1_PERCENT',
+    getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)  # ❌ Old default
+)
+```
+
+**Impact:**
+- If `TradingConfig` somehow fails to load, the system falls back to the stricter old values
+- Inconsistent with the current configuration intent
+- Could reject valid signals using outdated thresholds
+
+**Solution:**
+Update hardcoded defaults to match current config:
+```python
+min_atr_15m = profile.get(
+    'MIN_ATR_15M_PERCENT',
+    getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.6)  # ✅ Updated
+)
+min_atr_h1 = profile.get(
+    'MIN_ATR_H1_PERCENT',
+    getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 0.9)  # ✅ Updated
+)
+```
+
+**Status:** ⚠️ **PENDING FIX**
+
+---
+
+### Code Quality Observations
+
+**Strengths:**
+- ✅ Extensive error handling and logging throughout
+- ✅ Well-documented fix comments (18 ISSUE #X fixes documented)
+- ✅ Proper use of type hints in critical methods
+- ✅ Good separation of concerns with helper methods
+- ✅ Comprehensive validation of trade levels
+
+**Areas for Improvement:**
+- 🔧 Alignment score logic needs consistency (Issue #22)
+- 🔧 FVG scoring needs implementation (Issue #23)
+- 🔧 Default values need updating (Issue #24)
+- 🔧 Some methods exceed 100 lines (consider further breakdown)
+- 🔧 Magic numbers could be moved to config (e.g., 0.1, 0.3, 0.5 in alignment scoring)
+
+---
+
+### Priority Recommendations
+
+**Immediate (High Priority):**
+1. **Fix Issue #22** - Alignment score conflict logic (prevents false signals)
+2. **Fix Issue #24** - Update ATR filter defaults (ensures consistency)
+
+**Important (Medium Priority):**
+1. **Fix Issue #23** - Implement FVG alignment scoring (improves signal quality)
+
+**Maintenance (Low Priority):**
+1. Refactor magic numbers to configuration
+2. Add more unit tests for edge cases
+3. Break down long methods (>100 lines)
+
+---
+
 ## Usage Guide
 
 ### Basic Usage
@@ -1643,6 +1817,7 @@ signal, diagnostics = analyzer.generate_trade_signal("BTCUSDT", return_diagnosti
 
 ## Version History
 
+- **v2.3** (Oct 6, 2025) - Code review: 3 new issues identified (alignment score logic, FVG scoring, ATR defaults)
 - **v2.2** (Oct 5, 2025) - Critical issue analysis: Configuration values, stale data, pair-specific ATR
 - **v2.1** (Oct 5, 2025) - All 18 issues resolved, production ready
 - **v2.0** (Oct 5, 2025) - Logic fixes, type safety improvements
