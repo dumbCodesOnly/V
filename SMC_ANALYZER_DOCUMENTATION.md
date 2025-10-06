@@ -279,13 +279,21 @@ H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `USE_ATR_FILTER` | True | Enable ATR risk filter |
-| `MIN_ATR_15M_PERCENT` | 0.8 | Min ATR % on 15m (0.8%) |
-| `MIN_ATR_H1_PERCENT` | 1.2 | Min ATR % on H1 (1.2%) |
+| `MIN_ATR_15M_PERCENT` | 0.6 | Min ATR % on 15m (0.6%, lowered Oct 2025) |
+| `MIN_ATR_H1_PERCENT` | 0.9 | Min ATR % on H1 (0.9%, lowered Oct 2025) |
 | `USE_DYNAMIC_POSITION_SIZING` | False | Adjust size by ATR |
+
+**Pair-Specific ATR Thresholds (Lowered Oct 2025):**
+- **BTCUSDT**: 0.45% (15m), 0.75% (H1) - Low volatility pair
+- **ETHUSDT**: 0.6% (15m), 0.9% (H1) - Medium volatility
+- **SOLUSDT**: 0.9% (15m), 1.35% (H1) - High volatility
+- **BNBUSDT**: 0.6% (15m), 0.9% (H1) - Medium volatility
+- **XRPUSDT**: 1.1% (15m), 1.5% (H1) - High volatility
+- **ADAUSDT**: 0.75% (15m), 1.1% (H1) - Medium volatility
 
 **Filter Logic:**
 1. Calculate ATR% = (ATR / current_price) × 100
-2. Check 15m ATR% ≥ 0.8% AND H1 ATR% ≥ 1.2%
+2. Check 15m ATR% ≥ threshold AND H1 ATR% ≥ threshold (pair-specific or default)
 3. Reject if either threshold not met
 4. Optional: Scale position size by volatility
 

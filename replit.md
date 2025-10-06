@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+### October 6, 2025 - ATR Filter Optimization
+- **📊 ATR Filter Thresholds Lowered** (~25% reduction for all pairs):
+  - Default: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
+  - BTCUSDT: 0.6% → 0.45% (15m), 1.0% → 0.75% (H1)
+  - ETHUSDT: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
+  - SOLUSDT: 1.2% → 0.9% (15m), 1.8% → 1.35% (H1)
+  - BNBUSDT: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
+  - XRPUSDT: 1.5% → 1.1% (15m), 2.0% → 1.5% (H1)
+  - ADAUSDT: 1.0% → 0.75% (15m), 1.5% → 1.1% (H1)
+- **Result**: Less strict signal generation, more signals will pass ATR filter
+
 ### October 5, 2025 - SMC Bug Fixes & Code Cleanup
 - **🐛 Critical Bug Fixes**:
   - Fixed swing point KeyError: Changed dict key access from "price" to "low"/"high" in `_get_execution_signal_15m()`
@@ -88,7 +99,7 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
   - Scaling entry strategy: 50% market + 25% + 25% limit orders at OB/FVG zones
   - Refined stop-loss using 15m swing levels + ATR buffers
   - R:R-based take profits (1R, 2R, liquidity targets) with 40/30/30 allocation
-  - ATR risk filter rejecting low-volatility choppy conditions (0.8% min on 15m, 1.2% min on H1)
+  - ATR risk filter rejecting low-volatility choppy conditions (lowered Oct 6: 0.6% min on 15m, 0.9% min on H1)
   - Optional dynamic position sizing based on ATR volatility
   - SMC signals correctly displayed and cached in the database with validation
   - Recent fixes (Oct 5, 2025): Type safety, confidence scoring, RSI thresholds, ATR optimization
