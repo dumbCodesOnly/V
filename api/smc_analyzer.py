@@ -606,6 +606,20 @@ class SMCAnalyzer:
 
                 # Apply ATR filter
                 if gap_size >= min_gap_size:
+                    # ISSUE #23 FIX: Calculate alignment score based on market structure
+                    alignment_score = 0.0
+                    # Get market structure up to this point for context
+                    if i >= 10:  # Need enough data for structure detection
+                        recent_structure = self.detect_market_structure(candlesticks[:i+2])
+                        if recent_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                            alignment_score = 0.8  # Strong alignment with bullish structure
+                        elif recent_structure == MarketStructure.CONSOLIDATION:
+                            alignment_score = 0.5  # Neutral consolidation
+                        else:
+                            alignment_score = 0.3  # Weak alignment or counter-trend
+                    else:
+                        alignment_score = 0.5  # Default for early candles
+                    
                     fvg = FairValueGap(
                         gap_high=next_candle["low"],
                         gap_low=prev_candle["high"],
@@ -613,6 +627,7 @@ class SMCAnalyzer:
                         direction="bullish",
                         atr_size=gap_size / atr,
                         age_candles=0,
+                        alignment_score=alignment_score,
                     )
                     fvgs.append(fvg)
 
@@ -626,6 +641,20 @@ class SMCAnalyzer:
 
                 # Apply ATR filter
                 if gap_size >= min_gap_size:
+                    # ISSUE #23 FIX: Calculate alignment score based on market structure
+                    alignment_score = 0.0
+                    # Get market structure up to this point for context
+                    if i >= 10:  # Need enough data for structure detection
+                        recent_structure = self.detect_market_structure(candlesticks[:i+2])
+                        if recent_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                            alignment_score = 0.8  # Strong alignment with bearish structure
+                        elif recent_structure == MarketStructure.CONSOLIDATION:
+                            alignment_score = 0.5  # Neutral consolidation
+                        else:
+                            alignment_score = 0.3  # Weak alignment or counter-trend
+                    else:
+                        alignment_score = 0.5  # Default for early candles
+                    
                     fvg = FairValueGap(
                         gap_high=prev_candle["low"],
                         gap_low=next_candle["high"],
@@ -633,6 +662,7 @@ class SMCAnalyzer:
                         direction="bearish",
                         atr_size=gap_size / atr,
                         age_candles=0,
+                        alignment_score=alignment_score,
                     )
                     fvgs.append(fvg)
 
@@ -2916,7 +2946,9 @@ class SMCAnalyzer:
             elif m15_structure == MarketStructure.CONSOLIDATION:
                 alignment_score += 0.3  # Neutral but acceptable
             elif m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+                # ISSUE #22 FIX: Conflict detected - exit early without bonuses
                 alignment_score = 0.1  # Conflict - bearish structure against bullish bias
+                return min(alignment_score, 1.0)  # Exit immediately, no bonuses for conflicts
                 
         elif htf_bias == "bearish":
             if m15_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
@@ -2924,13 +2956,15 @@ class SMCAnalyzer:
             elif m15_structure == MarketStructure.CONSOLIDATION:
                 alignment_score += 0.3  # Neutral but acceptable
             elif m15_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+                # ISSUE #22 FIX: Conflict detected - exit early without bonuses
                 alignment_score = 0.1  # Conflict - bullish structure against bearish bias
+                return min(alignment_score, 1.0)  # Exit immediately, no bonuses for conflicts
         
-        # Bonus: Check if intermediate structure also aligns
+        # Bonus: Check if intermediate structure also aligns (only if no conflict)
         if intermediate_structure_direction and intermediate_structure_direction.startswith(htf_bias):
             alignment_score += 0.3
         
-        # Bonus: Check if price is near a POI aligned with HTF bias
+        # Bonus: Check if price is near a POI aligned with HTF bias (only if no conflict)
         for poi in poi_levels:
             price_diff_pct = abs(current_price - poi["price"]) / current_price * 100
             if price_diff_pct < 1.0 and poi["direction"] == htf_bias:
@@ -3873,14 +3907,14 @@ class SMCAnalyzer:
         symbol_upper = symbol.upper() if symbol else "UNKNOWN"
         profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
         
-        # Use pair-specific thresholds if available, otherwise use defaults
+        # ISSUE #24 FIX: Use pair-specific thresholds if available, otherwise use updated defaults
         min_atr_15m = profile.get(
             'MIN_ATR_15M_PERCENT',
-            getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
+            getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.6)  # Updated from 0.8 to 0.6
         )
         min_atr_h1 = profile.get(
             'MIN_ATR_H1_PERCENT',
-            getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
+            getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 0.9)  # Updated from 1.2 to 0.9
         )
         
         # Check if both timeframes meet minimum requirements

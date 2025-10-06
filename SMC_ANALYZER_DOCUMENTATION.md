@@ -450,8 +450,8 @@ H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
 ### Issue Summary
 
 **Total Issues Identified:** 21 (18 previous + 3 new from Oct 6)  
-**Fixed:** 18 (86%) ✅  
-**Pending Fix:** 3 (14%) - Issues #22, #23, #24
+**Fixed:** 21 (100%) ✅  
+**Pending Fix:** 0 (0%)
 
 **By Priority:**
 - **High Priority (Immediate):** 4 issues (4 fixed ✅)
@@ -1497,9 +1497,10 @@ atr_check = self._check_atr_filter(m15_data, h1_data, current_price, symbol=symb
 ### Issue Summary
 
 **Total New Issues Identified:** 3  
+**All Issues Fixed:** ✅ **3/3 (100%)**
 **Priority Breakdown:**
-- **High Priority:** 2 issues (require immediate attention)
-- **Medium Priority:** 1 issue (important for signal quality)
+- **High Priority:** 2 issues (both fixed ✅)
+- **Medium Priority:** 1 issue (fixed ✅)
 
 ---
 
@@ -1539,7 +1540,12 @@ if intermediate_structure_direction and intermediate_structure_direction.startsw
     alignment_score += 0.3
 ```
 
-**Status:** ⚠️ **PENDING FIX**
+**Status:** ✅ **FIXED** (October 6, 2025)
+
+**Fix Applied:**
+- Added early return when conflict detected (alignment_score = 0.1)
+- Bonuses only applied when no conflict exists
+- Prevents conflicting 15m structure from getting moderate alignment scores
 
 ---
 
@@ -1587,7 +1593,14 @@ fvg = FairValueGap(
 )
 ```
 
-**Status:** ⚠️ **PENDING FIX**
+**Status:** ✅ **FIXED** (October 6, 2025)
+
+**Fix Applied:**
+- Calculates alignment_score based on market structure during FVG detection
+- Bullish FVG with bullish structure: 0.8 alignment
+- Bearish FVG with bearish structure: 0.8 alignment
+- Consolidation or counter-trend: 0.3-0.5 alignment
+- Now properly used in POI strength calculations
 
 ---
 
@@ -1628,7 +1641,12 @@ min_atr_h1 = profile.get(
 )
 ```
 
-**Status:** ⚠️ **PENDING FIX**
+**Status:** ✅ **FIXED** (October 6, 2025)
+
+**Fix Applied:**
+- Updated hardcoded fallback defaults from 0.8/1.2 to 0.6/0.9
+- Now consistent with current configuration (updated Oct 6, 2025)
+- Ensures proper fallback behavior if config fails to load
 
 ---
 
@@ -1641,28 +1659,16 @@ min_atr_h1 = profile.get(
 - ✅ Good separation of concerns with helper methods
 - ✅ Comprehensive validation of trade levels
 
-**Areas for Improvement:**
-- 🔧 Alignment score logic needs consistency (Issue #22)
-- 🔧 FVG scoring needs implementation (Issue #23)
-- 🔧 Default values need updating (Issue #24)
+**Recent Improvements (Oct 6, 2025):**
+- ✅ Alignment score conflict logic fixed (Issue #22)
+- ✅ FVG alignment scoring implemented (Issue #23)
+- ✅ ATR filter defaults updated (Issue #24)
+- ✅ All 21 identified issues now resolved
+
+**Future Considerations:**
 - 🔧 Some methods exceed 100 lines (consider further breakdown)
 - 🔧 Magic numbers could be moved to config (e.g., 0.1, 0.3, 0.5 in alignment scoring)
-
----
-
-### Priority Recommendations
-
-**Immediate (High Priority):**
-1. **Fix Issue #22** - Alignment score conflict logic (prevents false signals)
-2. **Fix Issue #24** - Update ATR filter defaults (ensures consistency)
-
-**Important (Medium Priority):**
-1. **Fix Issue #23** - Implement FVG alignment scoring (improves signal quality)
-
-**Maintenance (Low Priority):**
-1. Refactor magic numbers to configuration
-2. Add more unit tests for edge cases
-3. Break down long methods (>100 lines)
+- 🔧 Add more unit tests for edge cases
 
 ---
 
@@ -1817,6 +1823,7 @@ signal, diagnostics = analyzer.generate_trade_signal("BTCUSDT", return_diagnosti
 
 ## Version History
 
+- **v2.4** (Oct 6, 2025) - All issues resolved: Fixed alignment score logic, FVG scoring, and ATR defaults (Issues #22, #23, #24)
 - **v2.3** (Oct 6, 2025) - Code review: 3 new issues identified (alignment score logic, FVG scoring, ATR defaults)
 - **v2.2** (Oct 5, 2025) - Critical issue analysis: Configuration values, stale data, pair-specific ATR
 - **v2.1** (Oct 5, 2025) - All 18 issues resolved, production ready
