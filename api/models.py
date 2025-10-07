@@ -423,6 +423,7 @@ class SMCSignalCache(db.Model):
         db.String(20), nullable=False
     )  # WEAK, MODERATE, STRONG, VERY_STRONG
     risk_reward_ratio = db.Column(db.Float, nullable=False)
+    scaled_entries = db.Column(db.Text, nullable=True)  # JSON array of scaled entry levels
 
     # Caching metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -485,7 +486,7 @@ class SMCSignalCache(db.Model):
         """Convert database model to SMCSignal object"""
         import json
 
-        from .smc_analyzer import SignalStrength, SMCSignal
+        from .smc_analyzer import SignalStrength, SMCSignal, ScaledEntry
 
         # Parse JSON fields
         take_profits = json.loads(self.take_profit_levels)
@@ -500,6 +501,27 @@ class SMCSignalCache(db.Model):
         }
         signal_strength = strength_map.get(self.signal_strength, SignalStrength.WEAK)
 
+        # Parse scaled entries if present
+        scaled_entries_list = None
+        if self.scaled_entries:
+            try:
+                scaled_entries_data = json.loads(self.scaled_entries)
+                scaled_entries_list = [
+                    ScaledEntry(
+                        entry_price=entry['entry_price'],
+                        allocation_percent=entry['allocation_percent'],
+                        order_type=entry['order_type'],
+                        stop_loss=entry['stop_loss'],
+                        take_profits=entry['take_profits'],
+                        status=entry.get('status', 'pending')
+                    )
+                    for entry in scaled_entries_data
+                ]
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                import logging
+                logging.warning(f"Failed to parse scaled_entries from database: {e}")
+                scaled_entries_list = None
+
         return SMCSignal(
             symbol=self.symbol,
             direction=self.direction,
@@ -511,7 +533,8 @@ class SMCSignalCache(db.Model):
             signal_strength=signal_strength,
             risk_reward_ratio=self.risk_reward_ratio,
             timestamp=self.created_at,
-            current_market_price=self.market_price_at_signal,  # Restore the actual market price
+            current_market_price=self.market_price_at_signal,
+            scaled_entries=scaled_entries_list
         )
 
     @classmethod
