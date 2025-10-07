@@ -414,16 +414,19 @@ class SMCSignalCache(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     symbol = db.Column(db.String(20), nullable=False, index=True)
     direction = db.Column(db.String(10), nullable=False)  # 'long' or 'short'
-    entry_price = db.Column(db.Float, nullable=False)
-    stop_loss = db.Column(db.Float, nullable=False)
-    take_profit_levels = db.Column(db.Text, nullable=False)  # JSON array of TP levels
+    entry_price = db.Column(db.Float, nullable=True)
+    stop_loss = db.Column(db.Float, nullable=True)
+    take_profit_levels = db.Column(db.Text, nullable=True)  # JSON array of TP levels
     confidence = db.Column(db.Float, nullable=False)
     reasoning = db.Column(db.Text, nullable=False)  # JSON array of reasoning
     signal_strength = db.Column(
         db.String(20), nullable=False
     )  # WEAK, MODERATE, STRONG, VERY_STRONG
     risk_reward_ratio = db.Column(db.Float, nullable=False)
-    scaled_entries = db.Column(db.Text, nullable=True)  # JSON array of scaled entry levels
+    scaled_entries = db.Column(db.Text, nullable=False)  # JSON array of scaled entry levels (Phase 4 required)
+    htf_bias = db.Column(db.String(50), nullable=True)  # Daily/H4 bias for context
+    intermediate_structure = db.Column(db.String(100), nullable=True)  # H4/H1 structure
+    execution_timeframe = db.Column(db.String(10), nullable=True, default="15m")  # Execution timeframe
 
     # Caching metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -483,13 +486,12 @@ class SMCSignalCache(db.Model):
         return base_confidence * age_factor * price_factor
 
     def to_smc_signal(self):
-        """Convert database model to SMCSignal object"""
+        """Convert database model to SMCSignal object (Phase 4: Institutional scaled entries format)"""
         import json
 
         from .smc_analyzer import SignalStrength, SMCSignal, ScaledEntry
 
         # Parse JSON fields
-        take_profits = json.loads(self.take_profit_levels)
         reasoning_list = json.loads(self.reasoning)
 
         # Convert string to enum
@@ -501,8 +503,8 @@ class SMCSignalCache(db.Model):
         }
         signal_strength = strength_map.get(self.signal_strength, SignalStrength.WEAK)
 
-        # Parse scaled entries if present
-        scaled_entries_list = None
+        # Parse scaled entries (required in Phase 4)
+        scaled_entries_list = []
         if self.scaled_entries:
             try:
                 scaled_entries_data = json.loads(self.scaled_entries)
@@ -520,21 +522,36 @@ class SMCSignalCache(db.Model):
             except (json.JSONDecodeError, KeyError, TypeError) as e:
                 import logging
                 logging.warning(f"Failed to parse scaled_entries from database: {e}")
-                scaled_entries_list = None
+                # Create fallback scaled entry from legacy fields if available
+                if self.entry_price and self.stop_loss and self.take_profit_levels:
+                    try:
+                        take_profits = json.loads(self.take_profit_levels)
+                        scaled_entries_list = [
+                            ScaledEntry(
+                                entry_price=self.entry_price,
+                                allocation_percent=100.0,
+                                order_type='market',
+                                stop_loss=self.stop_loss,
+                                take_profits=[(tp, 100.0/len(take_profits)) for tp in take_profits],
+                                status='pending'
+                            )
+                        ]
+                    except Exception:
+                        scaled_entries_list = []
 
         return SMCSignal(
             symbol=self.symbol,
             direction=self.direction,
-            entry_price=self.entry_price,
-            stop_loss=self.stop_loss,
-            take_profit_levels=take_profits,
             confidence=self.confidence,
             reasoning=reasoning_list,
             signal_strength=signal_strength,
             risk_reward_ratio=self.risk_reward_ratio,
             timestamp=self.created_at,
             current_market_price=self.market_price_at_signal,
-            scaled_entries=scaled_entries_list
+            scaled_entries=scaled_entries_list,
+            htf_bias=self.htf_bias or "Unknown",
+            intermediate_structure=self.intermediate_structure or "Unknown",
+            execution_timeframe=self.execution_timeframe or "15m"
         )
 
     @classmethod
@@ -560,8 +577,8 @@ class SMCSignalCache(db.Model):
         # Use naive UTC datetime for consistent database storage
         expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
 
-        # Serialize scaled entries if present
-        scaled_entries_json = None
+        # Serialize scaled entries (Phase 4: required)
+        scaled_entries_json = "[]"  # Default empty array
         if signal.scaled_entries:
             try:
                 scaled_entries_json = json.dumps([
@@ -578,21 +595,35 @@ class SMCSignalCache(db.Model):
             except (AttributeError, TypeError) as e:
                 import logging
                 logging.warning(f"Failed to serialize scaled_entries: {e}")
-                scaled_entries_json = None
+                scaled_entries_json = "[]"
+
+        # Extract legacy fields from first scaled entry for backward compatibility
+        entry_price = None
+        stop_loss = None
+        take_profit_levels = None
+        if signal.scaled_entries and len(signal.scaled_entries) > 0:
+            first_entry = signal.scaled_entries[0]
+            entry_price = first_entry.entry_price
+            stop_loss = first_entry.stop_loss
+            # Extract just prices from take_profits
+            take_profit_levels = json.dumps([tp[0] for tp in first_entry.take_profits]) if first_entry.take_profits else "[]"
 
         return cls(
             symbol=signal.symbol,
             direction=signal.direction,
-            entry_price=signal.entry_price,
-            stop_loss=signal.stop_loss,
-            take_profit_levels=json.dumps(signal.take_profit_levels),
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit_levels=take_profit_levels,
             confidence=signal.confidence,
             reasoning=json.dumps(signal.reasoning),
             signal_strength=signal.signal_strength.name,  # Store enum name for consistency
             risk_reward_ratio=signal.risk_reward_ratio,
             expires_at=expires_at,
             market_price_at_signal=signal.current_market_price,  # Use actual market price, not entry price
-            scaled_entries=scaled_entries_json
+            scaled_entries=scaled_entries_json,
+            htf_bias=signal.htf_bias,
+            intermediate_structure=signal.intermediate_structure,
+            execution_timeframe=signal.execution_timeframe
         )
 
     @classmethod
