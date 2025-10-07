@@ -3980,23 +3980,29 @@ def get_smc_analysis(symbol):
                     for entry in signal.scaled_entries
                 ]
             
-            return jsonify(
-                {
-                    "symbol": signal.symbol,
-                    "direction": signal.direction,
-                    "entry_price": signal.entry_price,
-                    "stop_loss": signal.stop_loss,
-                    "take_profit_levels": signal.take_profit_levels,
-                    "confidence": signal.confidence,
-                    "reasoning": signal.reasoning,
-                    "signal_strength": signal.signal_strength.value,
-                    "risk_reward_ratio": signal.risk_reward_ratio,
-                    "timestamp": signal.timestamp.isoformat(),
-                    "status": "cached_signal",
-                    "cache_source": True,
-                    "scaled_entries": scaled_entries_data,
-                }
-            )
+            # Build response - only include legacy fields if NOT using institutional scaled entries
+            response_data = {
+                "symbol": signal.symbol,
+                "direction": signal.direction,
+                "confidence": signal.confidence,
+                "reasoning": signal.reasoning,
+                "signal_strength": signal.signal_strength.value,
+                "risk_reward_ratio": signal.risk_reward_ratio,
+                "timestamp": signal.timestamp.isoformat(),
+                "status": "cached_signal",
+                "cache_source": True,
+            }
+            
+            # If using institutional scaled entries, ONLY return those (not legacy fields)
+            if scaled_entries_data:
+                response_data["scaled_entries"] = scaled_entries_data
+            else:
+                # Legacy mode: return single entry with TPs
+                response_data["entry_price"] = signal.entry_price
+                response_data["stop_loss"] = signal.stop_loss
+                response_data["take_profit_levels"] = signal.take_profit_levels
+            
+            return jsonify(response_data)
 
         # No valid cached signal, generate new one
         analyzer = SMCAnalyzer()
@@ -4023,23 +4029,29 @@ def get_smc_analysis(symbol):
                     for entry in signal.scaled_entries
                 ]
 
-            return jsonify(
-                {
-                    "symbol": signal.symbol,
-                    "direction": signal.direction,
-                    "entry_price": signal.entry_price,
-                    "stop_loss": signal.stop_loss,
-                    "take_profit_levels": signal.take_profit_levels,
-                    "confidence": signal.confidence,
-                    "reasoning": signal.reasoning,
-                    "signal_strength": signal.signal_strength.value,
-                    "risk_reward_ratio": signal.risk_reward_ratio,
-                    "timestamp": signal.timestamp.isoformat(),
-                    "status": "new_signal_generated",
-                    "cache_source": False,
-                    "scaled_entries": scaled_entries_data,
-                }
-            )
+            # Build response - only include legacy fields if NOT using institutional scaled entries
+            response_data = {
+                "symbol": signal.symbol,
+                "direction": signal.direction,
+                "confidence": signal.confidence,
+                "reasoning": signal.reasoning,
+                "signal_strength": signal.signal_strength.value,
+                "risk_reward_ratio": signal.risk_reward_ratio,
+                "timestamp": signal.timestamp.isoformat(),
+                "status": "new_signal_generated",
+                "cache_source": False,
+            }
+            
+            # If using institutional scaled entries, ONLY return those (not legacy fields)
+            if scaled_entries_data:
+                response_data["scaled_entries"] = scaled_entries_data
+            else:
+                # Legacy mode: return single entry with TPs
+                response_data["entry_price"] = signal.entry_price
+                response_data["stop_loss"] = signal.stop_loss
+                response_data["take_profit_levels"] = signal.take_profit_levels
+            
+            return jsonify(response_data)
         else:
             return jsonify(
                 {
@@ -4102,21 +4114,27 @@ def get_multiple_smc_signals():
                             for entry in signal.scaled_entries
                         ]
                     
-                    signals[symbol] = {
+                    # Build signal data - only include legacy fields if NOT using institutional scaled entries
+                    signal_data = {
                         "direction": signal.direction,
-                        "entry_price": signal.entry_price,
-                        "stop_loss": signal.stop_loss,
-                        "take_profit_levels": signal.take_profit_levels,
                         "confidence": signal.confidence,
-                        "reasoning": signal.reasoning[
-                            :3
-                        ],  # Limit reasoning for summary
+                        "reasoning": signal.reasoning[:3],  # Limit reasoning for summary
                         "signal_strength": signal.signal_strength.value,
                         "risk_reward_ratio": signal.risk_reward_ratio,
                         "timestamp": signal.timestamp.isoformat(),
                         "cache_source": True,
-                        "scaled_entries": scaled_entries_data,
                     }
+                    
+                    # If using institutional scaled entries, ONLY return those (not legacy fields)
+                    if scaled_entries_data:
+                        signal_data["scaled_entries"] = scaled_entries_data
+                    else:
+                        # Legacy mode: return single entry with TPs
+                        signal_data["entry_price"] = signal.entry_price
+                        signal_data["stop_loss"] = signal.stop_loss
+                        signal_data["take_profit_levels"] = signal.take_profit_levels
+                    
+                    signals[symbol] = signal_data
                 else:
                     # Generate new signal
                     signal = analyzer.generate_trade_signal(symbol)
@@ -4138,21 +4156,27 @@ def get_multiple_smc_signals():
                                 for entry in signal.scaled_entries
                             ]
 
-                        signals[symbol] = {
+                        # Build signal data - only include legacy fields if NOT using institutional scaled entries
+                        signal_data = {
                             "direction": signal.direction,
-                            "entry_price": signal.entry_price,
-                            "stop_loss": signal.stop_loss,
-                            "take_profit_levels": signal.take_profit_levels,
                             "confidence": signal.confidence,
-                            "reasoning": signal.reasoning[
-                                :3
-                            ],  # Limit reasoning for summary
+                            "reasoning": signal.reasoning[:3],  # Limit reasoning for summary
                             "signal_strength": signal.signal_strength.value,
                             "risk_reward_ratio": signal.risk_reward_ratio,
                             "timestamp": signal.timestamp.isoformat(),
                             "cache_source": False,
-                            "scaled_entries": scaled_entries_data,
                         }
+                        
+                        # If using institutional scaled entries, ONLY return those (not legacy fields)
+                        if scaled_entries_data:
+                            signal_data["scaled_entries"] = scaled_entries_data
+                        else:
+                            # Legacy mode: return single entry with TPs
+                            signal_data["entry_price"] = signal.entry_price
+                            signal_data["stop_loss"] = signal.stop_loss
+                            signal_data["take_profit_levels"] = signal.take_profit_levels
+                        
+                        signals[symbol] = signal_data
                     else:
                         signals[symbol] = {
                             "status": "no_signal",
