@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 7, 2025  
-**Version:** 2.7 (Code Review - New Issues Identified)  
-**Status:** ⚠️ **6 NEW ISSUES IDENTIFIED** (Issues #33-38 - Code Review Findings)
+**Version:** 2.8 (Legacy Field Migration Required)  
+**Status:** ⚠️ **10 ISSUES TOTAL** - 6 Fixed ✅ | 4 Pending ⚠️ (Issues #33-#42)
 
 ---
 
@@ -271,7 +271,9 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 
 ### ⚠️ NEW ISSUES IDENTIFIED - Code Review (October 7, 2025)
 
-**6 New Issues Found During Comprehensive Code Review:**
+**10 New Issues Found During Comprehensive Code Review (Issues #33-#42):**
+
+**First Batch: Core Logic Fixes (Issues #33-#38) - ✅ COMPLETED**
 
 #### ⚠️ Issue #33: Deprecated datetime.utcnow() Usage (MEDIUM)
 - **Severity:** MEDIUM (Future Compatibility Issue)
@@ -291,7 +293,7 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
   timestamp=datetime.now(timezone.utc)
   ```
 - **Impact:** Will cause DeprecationWarning in Python 3.12+ and break in future versions
-- **Status:** ⚠️ NOT FIXED - Requires immediate attention for Python 3.12+ compatibility
+- **Status:** ✅ FIXED (October 7, 2025) - All instances replaced with `datetime.now(timezone.utc)`
 
 #### ⚠️ Issue #34: Hardcoded Lookback in _find_15m_swing_levels (LOW)
 - **Severity:** LOW (Configuration Inconsistency)
@@ -314,7 +316,7 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
       lookback = SMCConfig.SWING_LOOKBACK_15M  # ✅ Use config constant (value: 3)
   ```
 - **Impact:** Inconsistency between configuration and actual behavior - Phase 5 swing detection uses looser criteria than documented
-- **Status:** ⚠️ NOT FIXED - Minor inconsistency but affects swing detection precision
+- **Status:** ✅ FIXED (October 7, 2025) - Changed to use `SMCConfig.SWING_LOOKBACK_15M` constant
 
 #### ⚠️ Issue #35: Potential Missing Recent Order Blocks (MEDIUM)
 - **Severity:** MEDIUM (Logic Issue)
@@ -336,7 +338,7 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
       # _check_impulsive_move already validates we have enough candles ahead
   ```
 - **Impact:** May miss valid order blocks from the most recent 3-4 candles, reducing signal quality
-- **Status:** ⚠️ NOT FIXED - Needs validation of intended behavior vs. actual behavior
+- **Status:** ✅ FIXED (October 7, 2025) - Loop range adjusted to `len(candlesticks) - 1` with bounds checking in `_check_impulsive_move`
 
 #### ⚠️ Issue #36: Potential KeyError in _calculate_trend (LOW)
 - **Severity:** LOW (Edge Case Handling)
@@ -366,7 +368,7 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
           recent_prices.append(point[price_key])
   ```
 - **Impact:** Currently mitigated by Issue #30 fix (swing points are normalized before passing to this method), but defensive programming would improve robustness
-- **Status:** ⚠️ NOT FIXED - Low priority, partially mitigated by earlier fixes
+- **Status:** ✅ FIXED (October 7, 2025) - Added key validation with warning logs before accessing dictionary values
 
 #### ⚠️ Issue #37: No Validation for Empty Liquidity Pools (LOW)
 - **Severity:** LOW (Missing Validation)
@@ -405,7 +407,7 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
           targets = [pool for pool in liquidity_pools if ...]
   ```
 - **Impact:** May cause errors if liquidity detection fails and returns empty list
-- **Status:** ⚠️ NOT FIXED - Missing defensive programming
+- **Status:** ✅ FIXED (October 7, 2025) - Added validation with debug logging for empty/None liquidity pools
 
 #### ⚠️ Issue #38: Duplicate Alignment Score Logic (LOW)
 - **Severity:** LOW (Code Redundancy)
@@ -442,22 +444,304 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
       # Unified alignment score logic
       # ... single source of truth
   ```
-- **Status:** ⚠️ NOT FIXED - Refactoring recommended but not critical
+- **Status:** 📝 DOCUMENTED - Refactoring recommended for future optimization sprint (not critical)
 
-**Summary of New Issues:**
-1. ⚠️ **Issue #33** - Python 3.12+ compatibility (deprecated datetime.utcnow)
-2. ⚠️ **Issue #34** - Hardcoded lookback vs. config value inconsistency
-3. ⚠️ **Issue #35** - Potential missing recent order blocks in loop range
-4. ⚠️ **Issue #36** - Missing KeyError protection in _calculate_trend
-5. ⚠️ **Issue #37** - No validation for empty liquidity pools
-6. ⚠️ **Issue #38** - Duplicate alignment score calculation logic
+---
 
-**Priority Recommendations:**
-- **HIGH:** Fix Issue #33 (Python 3.12+ compatibility) immediately
-- **MEDIUM:** Fix Issue #35 (missing recent OBs) and Issue #34 (config consistency)
-- **LOW:** Issues #36-38 are defensive improvements but not critical
+**Second Batch: Legacy Signal Fields & UI Issues (Issues #39-#42) - ⚠️ PENDING**
 
-**Impact:** These issues are primarily code quality and future compatibility concerns. None cause immediate runtime failures, but addressing them will improve robustness and maintainability.
+#### ⚠️ Issue #39: SMCSignal Class Still Contains Legacy Single-Entry Fields (HIGH)
+- **Severity:** HIGH (Architecture Mismatch)
+- **Location:** `api/smc_analyzer.py` lines 102-114 (SMCSignal dataclass)
+- **Problem:** The `SMCSignal` dataclass still contains legacy single-entry fields (`entry_price`, `stop_loss`, `take_profit_levels`) alongside the new institutional `scaled_entries` field
+- **Current Structure:**
+  ```python
+  @dataclass
+  class SMCSignal:
+      symbol: str
+      direction: str
+      entry_price: float              # ❌ Legacy: Single entry price
+      stop_loss: float                # ❌ Legacy: Single stop loss
+      take_profit_levels: List[float] # ❌ Legacy: Simple TP list
+      confidence: float
+      reasoning: List[str]
+      signal_strength: SignalStrength
+      risk_reward_ratio: float
+      timestamp: datetime
+      current_market_price: float
+      scaled_entries: Optional[List['ScaledEntry']] = None  # ✅ New: Institutional
+  ```
+- **Institutional Conflict:** 
+  - Institutional traders use **scaled entries** (50%/25%/25%) with **zone-based pricing** and **entry-specific stop losses**
+  - Legacy fields represent **retail-style** single entry/exit approach
+  - Having BOTH creates confusion and data inconsistency
+- **Required Architectural Fix:**
+  ```python
+  @dataclass
+  class SMCSignal:
+      symbol: str
+      direction: str
+      # Remove legacy fields - use scaled_entries exclusively
+      # entry_price: float              # ❌ REMOVE
+      # stop_loss: float                # ❌ REMOVE  
+      # take_profit_levels: List[float] # ❌ REMOVE
+      confidence: float
+      reasoning: List[str]
+      signal_strength: SignalStrength
+      risk_reward_ratio: float
+      timestamp: datetime
+      current_market_price: float
+      
+      # Institutional-grade fields (always present)
+      scaled_entries: List['ScaledEntry']  # ✅ Make required, not Optional
+      htf_bias: str  # ✅ Add: Daily/H4 bias for context
+      intermediate_structure: str  # ✅ Add: H4/H1 structure
+      execution_timeframe: str = "15m"  # ✅ Add: Execution TF
+  ```
+- **Impact:** 
+  - Current dual-field approach is confusing for users
+  - API responses inconsistent (sometimes legacy fields, sometimes scaled entries)
+  - Chart annotations use legacy fields instead of institutional scaled entries
+- **Status:** ⚠️ NOT FIXED - Requires dataclass refactoring and migration
+
+#### ⚠️ Issue #40: Frontend UI Still Displays Legacy Single Entry/SL/TP (HIGH)
+- **Severity:** HIGH (UX/UI Mismatch)
+- **Location:** `api/templates/mini_app.html` lines 6350-6357
+- **Problem:** SMC Signals tab displays legacy single-entry fields instead of institutional scaled entries
+- **Current Display Logic:**
+  ```javascript
+  // ❌ Shows legacy fields (even when scaled_entries exist)
+  <div class="smc-detail-item compact">
+      <div class="smc-detail-label">ENTRY</div>
+      <div class="smc-detail-value">$${signal.entry_price?.toFixed(4) || 'N/A'}</div>
+  </div>
+  <div class="smc-detail-item compact">
+      <div class="smc-detail-label">STOP LOSS</div>
+      <div class="smc-detail-value">$${signal.stop_loss?.toFixed(4) || 'N/A'}</div>
+  </div>
+  ```
+- **Issue:** The UI shows BOTH legacy fields AND scaled entries section, creating visual clutter and confusion
+- **Required UI Fix:**
+  ```javascript
+  // ✅ Only show institutional scaled entries (remove legacy fields completely)
+  ${signal.scaled_entries && signal.scaled_entries.length > 0 ? `
+      <div class="institutional-strategy-banner">
+          📊 INSTITUTIONAL SCALED ENTRY STRATEGY
+      </div>
+      <div class="scaled-entries-grid">
+          ${signal.scaled_entries.map((entry, idx) => `
+              <div class="scaled-entry-card">
+                  <div class="entry-header">
+                      Entry ${idx + 1}: ${entry.order_type.toUpperCase()}
+                  </div>
+                  <div class="entry-details">
+                      <span class="price">$${entry.entry_price.toFixed(4)}</span>
+                      <span class="allocation">${entry.allocation_percent}%</span>
+                  </div>
+                  <div class="entry-sl">
+                      SL: $${entry.stop_loss.toFixed(4)}
+                  </div>
+                  <div class="entry-tps">
+                      ${entry.take_profits.map(tp => `
+                          TP: $${tp[0].toFixed(4)} (${tp[1]}%)
+                      `).join('')}
+                  </div>
+              </div>
+          `).join('')}
+      </div>
+      <div class="strategy-summary">
+          <strong>HTF Bias:</strong> ${signal.htf_bias} | 
+          <strong>Structure:</strong> ${signal.intermediate_structure}
+      </div>
+  ` : `
+      <div class="no-signal-message">
+          No institutional signal available
+      </div>
+  `}
+  ```
+- **Impact:** 
+  - Users see confusing mixed signals (legacy + institutional)
+  - Doesn't reflect the actual multi-timeframe SMC analysis being performed
+  - Undermines the institutional-grade positioning
+- **Status:** ⚠️ NOT FIXED - Requires frontend template refactoring
+
+#### ⚠️ Issue #41: Chart Annotations Use Legacy Signal Fields (MEDIUM)
+- **Severity:** MEDIUM (Visualization Issue)
+- **Location:** `api/templates/mini_app.html` lines 6821-6878
+- **Problem:** Chart.js annotations display legacy `entry_price`, `stop_loss_price`, `take_profit_price` instead of institutional scaled entries
+- **Current Chart Code:**
+  ```javascript
+  // ❌ Legacy single entry/sl/tp annotation
+  annotations[`signal_entry_${annotationId++}`] = {
+      type: 'line',
+      mode: 'horizontal',
+      scaleID: 'y',
+      value: signal.entry_price,  // ❌ Single entry
+      borderColor: signalColors.entryBorder,
+      label: {
+          content: `Entry: $${signal.entry_price.toFixed(4)}`,
+          // ...
+      }
+  };
+  
+  annotations[`signal_sl_${annotationId++}`] = {
+      // ...
+      value: signal.stop_loss_price,  // ❌ Single SL
+      // ...
+  };
+  ```
+- **Required Chart Fix:**
+  ```javascript
+  // ✅ Show all 3 scaled entries with color gradients
+  if (signal.scaled_entries && signal.scaled_entries.length > 0) {
+      signal.scaled_entries.forEach((entry, idx) => {
+          const opacity = 1.0 - (idx * 0.2); // Fade for depth
+          
+          // Entry level annotation
+          annotations[`scaled_entry_${idx}_${annotationId++}`] = {
+              type: 'line',
+              mode: 'horizontal',
+              scaleID: 'y',
+              value: entry.entry_price,
+              borderColor: `rgba(59, 130, 246, ${opacity})`,
+              borderWidth: 2,
+              borderDash: idx === 0 ? [] : [4, 2],  // Solid for market, dashed for limits
+              label: {
+                  display: true,
+                  content: `E${idx + 1} (${entry.allocation_percent}%): $${entry.entry_price.toFixed(4)} - ${entry.order_type}`,
+                  position: idx % 2 === 0 ? 'start' : 'end',
+                  backgroundColor: `rgba(59, 130, 246, ${opacity * 0.8})`,
+                  color: '#ffffff',
+                  font: { size: 10, weight: 'bold' }
+              }
+          };
+          
+          // Entry-specific SL annotation
+          annotations[`scaled_sl_${idx}_${annotationId++}`] = {
+              type: 'line',
+              mode: 'horizontal',
+              scaleID: 'y',
+              value: entry.stop_loss,
+              borderColor: `rgba(239, 68, 68, ${opacity})`,
+              borderWidth: 1,
+              borderDash: [6, 3],
+              label: {
+                  content: `SL${idx + 1}: $${entry.stop_loss.toFixed(4)}`,
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  // ...
+              }
+          };
+      });
+      
+      // Add HTF bias indicator box
+      annotations[`htf_bias_${annotationId++}`] = {
+          type: 'box',
+          xMin: /* ... */,
+          xMax: /* ... */,
+          yMin: /* ... */,
+          yMax: /* ... */,
+          backgroundColor: signal.htf_bias === 'bullish' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+          borderColor: signal.htf_bias === 'bullish' ? '#22c55e' : '#ef4444',
+          borderWidth: 1,
+          label: {
+              content: `HTF Bias: ${signal.htf_bias.toUpperCase()}`,
+              enabled: true,
+              position: 'start'
+          }
+      };
+  }
+  ```
+- **Impact:** 
+  - Charts don't visualize the actual institutional strategy (3 entries, zone-based SLs)
+  - Users can't see the scaling strategy on the chart
+  - Misses opportunity to educate users on SMC concepts visually
+- **Status:** ⚠️ NOT FIXED - Requires chart annotation refactoring
+
+#### ⚠️ Issue #42: API Response Still Returns Legacy Fields for Backward Compatibility (LOW)
+- **Severity:** LOW (API Design Issue)
+- **Location:** `api/app.py` lines 4117-4130 (`/api/smc-signals` endpoint)
+- **Problem:** API conditionally returns legacy fields for backward compatibility, creating inconsistent response structure
+- **Current API Logic:**
+  ```python
+  # Build signal data
+  signal_data = {
+      "direction": signal.direction,
+      "confidence": signal.confidence,
+      "reasoning": signal.reasoning[:3],
+      "signal_strength": signal.signal_strength.value,
+      "risk_reward_ratio": signal.risk_reward_ratio,
+      "timestamp": signal.timestamp.isoformat(),
+      "cache_source": True,
+  }
+  
+  # If using institutional scaled entries, ONLY return those (not legacy fields)
+  if scaled_entries_data:
+      signal_data["scaled_entries"] = scaled_entries_data
+      # ❌ BUT signal object still has entry_price, stop_loss fields
+  else:
+      # ❌ Falls back to legacy single-entry format (shouldn't happen with Phase 4 complete)
+      signal_data["entry_price"] = signal.entry_price
+      signal_data["stop_loss"] = signal.stop_loss
+      signal_data["take_profit_levels"] = signal.take_profit_levels
+  ```
+- **Issue:** 
+  - Response structure differs based on whether scaled_entries exist
+  - Frontend must handle both formats
+  - Legacy code path should be removed since Phase 4 (Scaled Entries) is complete
+- **Required API Fix:**
+  ```python
+  # ✅ Always return institutional format (Phase 4+ complete)
+  signal_data = {
+      "direction": signal.direction,
+      "confidence": signal.confidence,
+      "reasoning": signal.reasoning,  # Full reasoning, not truncated
+      "signal_strength": signal.signal_strength.value,
+      "risk_reward_ratio": signal.risk_reward_ratio,
+      "timestamp": signal.timestamp.isoformat(),
+      "htf_bias": signal.htf_bias,  # Add HTF context
+      "intermediate_structure": signal.intermediate_structure,  # Add structure
+      "execution_timeframe": signal.execution_timeframe,
+      "scaled_entries": [
+          {
+              "entry_price": entry.entry_price,
+              "allocation_percent": entry.allocation_percent,
+              "order_type": entry.order_type,
+              "stop_loss": entry.stop_loss,
+              "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
+          }
+          for entry in signal.scaled_entries
+      ],
+      "cache_source": cached_signal is not None
+  }
+  # ❌ Remove all legacy field references
+  ```
+- **Impact:** 
+  - Inconsistent API responses confuse frontend developers
+  - Harder to maintain with dual code paths
+  - Doesn't enforce the institutional-grade approach
+- **Status:** ⚠️ NOT FIXED - Requires API response standardization
+
+---
+
+**Summary of All Issues:**
+- ✅ **Issues #33-#37** - FIXED (Core logic, Python 3.12+ compatibility, defensive programming)
+- 📝 **Issue #38** - DOCUMENTED (Code refactoring - future optimization)
+- ⚠️ **Issues #39-#42** - PENDING (Legacy field migration & UI update)
+
+**Critical Next Steps:**
+1. **HIGH Priority (Issues #39-#40):** Remove legacy fields from SMCSignal dataclass and update UI to display only institutional scaled entries
+2. **MEDIUM Priority (Issue #41):** Update chart annotations to visualize scaled entry strategy
+3. **LOW Priority (Issue #42):** Standardize API response to always return institutional format
+
+**Migration Path:**
+1. Add new institutional fields to SMCSignal (htf_bias, intermediate_structure, execution_timeframe)
+2. Make scaled_entries required (not Optional)
+3. Remove legacy fields (entry_price, stop_loss, take_profit_levels)
+4. Update frontend UI to display institutional strategy exclusively
+5. Update chart to show all 3 scaled entries with proper visualization
+6. Standardize API responses to remove dual-format logic
+
+**Impact:** These legacy field issues prevent users from fully experiencing the institutional-grade multi-timeframe SMC analysis. Current mixed approach (retail + institutional) undermines the advanced analysis being performed.
 
 ---
 
