@@ -443,14 +443,17 @@ class SMCAnalyzer:
         )
         return all_symbol_data
 
-    def detect_market_structure(self, candlesticks: List[Dict]) -> MarketStructure:
-        """Detect current market structure using SMC principles"""
+    def detect_market_structure(self, candlesticks: List[Dict], timeframe: str = "1h") -> MarketStructure:
+        """Detect current market structure using SMC principles with timeframe-aware swing lookback"""
         if len(candlesticks) < SMCConfig.MIN_CANDLESTICKS_FOR_STRUCTURE:
             return MarketStructure.CONSOLIDATION
 
-        # Get recent swing highs and lows
-        swing_highs = self._find_swing_highs(candlesticks)
-        swing_lows = self._find_swing_lows(candlesticks)
+        # Determine swing lookback based on timeframe - more points for daily to avoid false consolidation
+        lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.STRUCTURE_SWING_LOOKBACK_DEFAULT
+
+        # Get recent swing highs and lows with timeframe parameter
+        swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
+        swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
 
         if (
             len(swing_highs) < SMCConfig.MIN_SWING_POINTS
@@ -458,9 +461,9 @@ class SMCAnalyzer:
         ):
             return MarketStructure.CONSOLIDATION
 
-        # Analyze the pattern of highs and lows
-        recent_highs = swing_highs[-3:]
-        recent_lows = swing_lows[-3:]
+        # Analyze the pattern of highs and lows using timeframe-specific lookback
+        recent_highs = swing_highs[-lookback:]
+        recent_lows = swing_lows[-lookback:]
 
         # Check for Break of Structure (BOS)
         if len(recent_highs) >= 2:

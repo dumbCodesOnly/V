@@ -355,6 +355,8 @@ class SMCConfig:
         20  # Minimum candles needed for market structure analysis
     )
     MIN_SWING_POINTS = 2  # Minimum swing highs/lows needed for consolidation check
+    STRUCTURE_SWING_LOOKBACK_1D = 7   # Daily: analyze 7 swing points with 200 candles for institutional structure
+    STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # Other timeframes: analyze 3 recent swing points
 
     # Swing Point Detection
     DEFAULT_LOOKBACK_PERIOD = 5  # Default lookback period for swing highs/lows
