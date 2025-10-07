@@ -693,23 +693,26 @@ class SMCAnalyzer:
         # Older FVGs from institutional timeframes are prioritized for confluence
         return valid_fvgs[-20:]
 
-    def find_liquidity_pools(self, candlesticks: List[Dict]) -> List[LiquidityPool]:
-        """Identify liquidity pools - areas where stops are likely clustered"""
+    def find_liquidity_pools(self, candlesticks: List[Dict], timeframe: str = "4h") -> List[LiquidityPool]:
+        """Identify liquidity pools - areas where stops are likely clustered with timeframe-aware lookback"""
         liquidity_pools = []
 
-        # Find recent swing highs and lows as potential liquidity areas
-        swing_highs = self._find_swing_highs(candlesticks)
-        swing_lows = self._find_swing_lows(candlesticks)
+        # Determine lookback based on timeframe - more swings for daily with 200-candle context
+        lookback = SMCConfig.RECENT_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT
+
+        # Find recent swing highs and lows as potential liquidity areas with timeframe parameter
+        swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
+        swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
 
         # Recent highs likely have sell-side liquidity above them
-        for high in swing_highs[-SMCConfig.RECENT_SWING_LOOKBACK :]:
+        for high in swing_highs[-lookback:]:
             pool = LiquidityPool(
                 price=high["high"], type="sell_side", strength=high.get("strength", 1.0)
             )
             liquidity_pools.append(pool)
 
         # Recent lows likely have buy-side liquidity below them
-        for low in swing_lows[-SMCConfig.RECENT_SWING_LOOKBACK:]:
+        for low in swing_lows[-lookback:]:
             pool = LiquidityPool(
                 price=low["low"], type="buy_side", strength=low.get("strength", 1.0)
             )
@@ -1446,10 +1449,10 @@ class SMCAnalyzer:
                     "bearish_signals": 0
                 }
             
-            d1_structure = self.detect_market_structure(d1_data)
-            h4_structure = self.detect_market_structure(h4_data)
+            d1_structure = self.detect_market_structure(d1_data, timeframe="1d")
+            h4_structure = self.detect_market_structure(h4_data, timeframe="4h")
             
-            d1_liquidity = self.find_liquidity_pools(d1_data)
+            d1_liquidity = self.find_liquidity_pools(d1_data, timeframe="1d")
             h4_order_blocks = self.find_order_blocks(h4_data)
             
             bullish_bias_count = 0

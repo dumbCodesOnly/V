@@ -377,7 +377,9 @@ class SMCConfig:
     OB_MAX_AGE_CANDLES = 150  # Maximum age for OB validity (same as FVG - institutional zones from 200-candle daily lookback)
 
     # Liquidity Pool Analysis
-    RECENT_SWING_LOOKBACK = 5  # Number of recent swing points to analyze for liquidity
+    RECENT_SWING_LOOKBACK = 5  # Number of recent swing points to analyze for liquidity (default)
+    RECENT_SWING_LOOKBACK_1D = 20  # Daily: look back 20 swings with 200 candles to capture institutional liquidity
+    RECENT_SWING_LOOKBACK_DEFAULT = 5  # Other timeframes: standard lookback
     LIQUIDITY_SWEEP_WICK_RATIO = (
         0.3  # Minimum wick size vs candle body for sweep detection
     )
