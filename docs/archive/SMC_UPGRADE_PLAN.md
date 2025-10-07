@@ -1,5 +1,17 @@
 # SMC Scaled Entry Upgrade Plan
 
+**Status:** ⚠️ ARCHIVED - ✅ COMPLETED  
+**Last Updated:** October 7, 2025
+
+## ⚠️ ARCHIVE NOTICE
+
+**This document is archived. The scaled entry upgrade has been completed.**
+
+**For current SMC documentation, see:**
+👉 **`/SMC_ANALYZER_DOCUMENTATION.md`** (root directory)
+
+---
+
 ## Overview
 Upgrade the `generate_scaled_entries()` logic in `api/smc_analyzer.py` to use institutional-style Smart Money Concepts (SMC) rules for limit placement instead of fixed percentage offsets.
 

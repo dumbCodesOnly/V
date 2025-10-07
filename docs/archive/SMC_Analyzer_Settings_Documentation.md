@@ -1,8 +1,20 @@
 # SMC Analyzer Settings Documentation
 
-**Last Updated:** October 4, 2025  
+**Created:** October 4, 2025  
+**Last Updated:** October 7, 2025  
 **Version:** Multi-Timeframe Institutional Analysis v2.0  
-**Status:** All 7 Phases Complete
+**Status:** ⚠️ ARCHIVED - All 7 Phases Complete
+
+---
+
+## ⚠️ ARCHIVE NOTICE
+
+**This document is archived and represents configuration as of October 4, 2025.**
+
+**For current SMC documentation and configuration details, see:**
+👉 **`/SMC_ANALYZER_DOCUMENTATION.md`** (root directory)
+
+Note: Some configuration values and implementation details may have changed since this document was archived.
 
 ---
 

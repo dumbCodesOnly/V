@@ -1,7 +1,17 @@
 # Phase 7 Completion Summary - ATR Risk Filter
 
 **Date:** October 4, 2025  
-**Status:** ✅ COMPLETE - All 7 SMC Phases Implemented
+**Last Updated:** October 7, 2025  
+**Status:** ⚠️ ARCHIVED - ✅ COMPLETE - All 7 SMC Phases Implemented
+
+---
+
+## ⚠️ ARCHIVE NOTICE
+
+**This document is archived and covers Phase 7 completion from October 4, 2025.**
+
+**For current SMC documentation including all recent improvements, see:**
+👉 **`/SMC_ANALYZER_DOCUMENTATION.md`** (root directory)
 
 ---
 
