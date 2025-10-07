@@ -575,7 +575,18 @@ class SMCAnalyzer:
                     )
                     order_blocks.append(order_block)
 
-        # Return last 15 order blocks to capture institutional zones from extended 200-candle daily lookback
+        # Filter order blocks by age - only keep OBs within max age and not mitigated
+        if order_blocks and len(candlesticks) > 0:
+            current_time = candlesticks[-1]["timestamp"]
+            valid_obs = []
+            for ob in order_blocks:
+                # Calculate age in candles
+                age = len([c for c in candlesticks if c["timestamp"] > ob.timestamp])
+                if age <= SMCConfig.OB_MAX_AGE_CANDLES and not ob.mitigated:
+                    valid_obs.append(ob)
+            order_blocks = valid_obs
+        
+        # Return last 15 valid order blocks to capture institutional zones from extended 200-candle daily lookback
         # Older OBs from institutional timeframes are prioritized for confluence
         return order_blocks[-15:]
 

@@ -370,6 +370,7 @@ class SMCConfig:
     OB_VOLUME_MULTIPLIER = 1.2  # Minimum volume multiplier vs average
     OB_MAX_RETEST_COUNT = 2  # Maximum retests before OB becomes invalid
     OB_DISPLACEMENT_CANDLES = 3  # Candles to check for impulsive displacement
+    OB_MAX_AGE_CANDLES = 150  # Maximum age for OB validity (same as FVG - institutional zones from 200-candle daily lookback)
 
     # Liquidity Pool Analysis
     RECENT_SWING_LOOKBACK = 5  # Number of recent swing points to analyze for liquidity
