@@ -2272,7 +2272,7 @@ class SMCAnalyzer:
     def _find_swing_highs(
         self,
         candlesticks: List[Dict],
-        lookback: int = None,
+        lookback: Optional[int] = None,
         timeframe: str = "1h"
     ) -> List[Dict]:
         """Find swing highs in price data with timeframe-aware lookback"""
@@ -2315,7 +2315,7 @@ class SMCAnalyzer:
     def _find_swing_lows(
         self,
         candlesticks: List[Dict],
-        lookback: int = None,
+        lookback: Optional[int] = None,
         timeframe: str = "1h"
     ) -> List[Dict]:
         """Find swing lows in price data with timeframe-aware lookback"""

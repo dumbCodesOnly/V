@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 7, 2025  
-**Version:** 2.5 (Extended Daily Candles - All Issues Resolved)  
-**Status:** ✅ **All 6 Critical Issues RESOLVED** (Issues #25-30 - Extended 200-Candle Implementation)
+**Version:** 2.6 (Type Safety Fixes - Complete)  
+**Status:** ✅ **All Type Errors RESOLVED** (Issues #31-32 - Type Safety Improvements Complete)
 
 ---
 
@@ -204,6 +204,68 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 6. ✅ **Issue #26** - Scaled market structure swing lookback (1d: 7, others: 3)
 
 **Impact:** All fixes successfully implemented and tested. The extended 200-candle daily lookback now functions correctly for institutional-grade analysis without crashes or false signals. Application is running smoothly on port 5000.
+
+### ✅ TYPE SAFETY FIXES - Type Safety Improvements (October 7, 2025)
+
+**2 Type Errors Found and FIXED via LSP Analysis:**
+
+#### ✅ Issue #31: Type Error in _find_swing_highs (FIXED)
+- **Severity:** MEDIUM (LSP Type Error)
+- **Location:** `api/smc_analyzer.py` line 2275
+- **Problem:** Function parameter `lookback: int = None` is invalid - `int` type cannot have `None` as default value
+- **Error Message:** `Expression of type "None" cannot be assigned to parameter of type "int"`
+- **Current Code:**
+  ```python
+  def _find_swing_highs(
+      self,
+      candlesticks: List[Dict],
+      lookback: int = None,  # ❌ Type error: int cannot be None
+      timeframe: str = "1h"
+  ) -> List[Dict]:
+  ```
+- **Solution Required:**
+  ```python
+  def _find_swing_highs(
+      self,
+      candlesticks: List[Dict],
+      lookback: Optional[int] = None,  # ✅ Correct: Optional[int] allows None
+      timeframe: str = "1h"
+  ) -> List[Dict]:
+  ```
+- **Impact:** Type safety issue - doesn't cause runtime errors but violates type contract
+
+#### ✅ Issue #32: Type Error in _find_swing_lows (FIXED)
+- **Severity:** MEDIUM (LSP Type Error)
+- **Location:** `api/smc_analyzer.py` line 2318
+- **Problem:** Function parameter `lookback: int = None` is invalid - `int` type cannot have `None` as default value
+- **Error Message:** `Expression of type "None" cannot be assigned to parameter of type "int"`
+- **Current Code:**
+  ```python
+  def _find_swing_lows(
+      self,
+      candlesticks: List[Dict],
+      lookback: int = None,  # ❌ Type error: int cannot be None
+      timeframe: str = "1h"
+  ) -> List[Dict]:
+  ```
+- **Solution Required:**
+  ```python
+  def _find_swing_lows(
+      self,
+      candlesticks: List[Dict],
+      lookback: Optional[int] = None,  # ✅ Correct: Optional[int] allows None
+      timeframe: str = "1h"
+  ) -> List[Dict]:
+  ```
+- **Impact:** Type safety issue - doesn't cause runtime errors but violates type contract
+
+**Fix Implementation:**
+1. ✅ Verified `Optional` was already imported from `typing` module
+2. ✅ Updated both function signatures to use `Optional[int]` instead of `int` for the `lookback` parameter
+3. ✅ Verified LSP errors are resolved (0 diagnostics found)
+4. ✅ Application verified to be running without regression
+
+**Result:** All type safety issues resolved. LSP diagnostics show 0 errors.
 
 ---
 
