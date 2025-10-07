@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 7, 2025  
-**Version:** 2.6 (Type Safety Fixes - Complete)  
-**Status:** ✅ **All Type Errors RESOLVED** (Issues #31-32 - Type Safety Improvements Complete)
+**Version:** 2.7 (Code Review - New Issues Identified)  
+**Status:** ⚠️ **6 NEW ISSUES IDENTIFIED** (Issues #33-38 - Code Review Findings)
 
 ---
 
@@ -266,6 +266,198 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 4. ✅ Application verified to be running without regression
 
 **Result:** All type safety issues resolved. LSP diagnostics show 0 errors.
+
+---
+
+### ⚠️ NEW ISSUES IDENTIFIED - Code Review (October 7, 2025)
+
+**6 New Issues Found During Comprehensive Code Review:**
+
+#### ⚠️ Issue #33: Deprecated datetime.utcnow() Usage (MEDIUM)
+- **Severity:** MEDIUM (Future Compatibility Issue)
+- **Locations:** `api/smc_analyzer.py` lines 1740, 1774, 2250
+- **Problem:** Uses deprecated `datetime.utcnow()` method which will be removed in future Python versions (3.12+)
+- **Current Code:**
+  ```python
+  current_time = datetime.utcnow().timestamp()  # Line 1740
+  expiry_time = datetime.utcnow().timestamp() + self.signal_timeout  # Line 1774
+  timestamp=datetime.utcnow()  # Line 2250
+  ```
+- **Required Fix:**
+  ```python
+  # Replace all instances with timezone-aware version
+  current_time = datetime.now(timezone.utc).timestamp()
+  expiry_time = datetime.now(timezone.utc).timestamp() + self.signal_timeout
+  timestamp=datetime.now(timezone.utc)
+  ```
+- **Impact:** Will cause DeprecationWarning in Python 3.12+ and break in future versions
+- **Status:** ⚠️ NOT FIXED - Requires immediate attention for Python 3.12+ compatibility
+
+#### ⚠️ Issue #34: Hardcoded Lookback in _find_15m_swing_levels (LOW)
+- **Severity:** LOW (Configuration Inconsistency)
+- **Location:** `api/smc_analyzer.py` line 3653
+- **Problem:** Uses hardcoded `lookback = 2` instead of config constant `SMCConfig.SWING_LOOKBACK_15M` (which is 3)
+- **Current Code:**
+  ```python
+  def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
+      # ...
+      swing_highs = []
+      swing_lows = []
+      lookback = 2  # ❌ Hardcoded instead of using config
+  ```
+- **Required Fix:**
+  ```python
+  def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
+      # ...
+      swing_highs = []
+      swing_lows = []
+      lookback = SMCConfig.SWING_LOOKBACK_15M  # ✅ Use config constant (value: 3)
+  ```
+- **Impact:** Inconsistency between configuration and actual behavior - Phase 5 swing detection uses looser criteria than documented
+- **Status:** ⚠️ NOT FIXED - Minor inconsistency but affects swing detection precision
+
+#### ⚠️ Issue #35: Potential Missing Recent Order Blocks (MEDIUM)
+- **Severity:** MEDIUM (Logic Issue)
+- **Location:** `api/smc_analyzer.py` line 511
+- **Problem:** Loop range `range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES)` excludes the last N candles, potentially missing recent valid order blocks
+- **Current Code:**
+  ```python
+  for i in range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES):
+      # OB_DISPLACEMENT_CANDLES = 3, so if len = 100, loops through [3, 97)
+      # This SKIPS candles 97, 98, 99 - missing potential recent OBs
+  ```
+- **Issue:** When `OB_DISPLACEMENT_CANDLES = 3` and we have 100 candles, the loop only goes to index 96. We need to check if a candle at index 97 forms an OB (by looking at candles 97-99 for displacement). Current logic skips this.
+- **Required Fix:**
+  ```python
+  # Option 1: Reduce the subtraction to allow checking recent candles
+  for i in range(3, len(candlesticks) - 1):  # Stop at second-to-last candle
+      # Still check for impulsive displacement, which handles the lookback
+      impulsive_exit = self._check_impulsive_move(candlesticks, i, direction)
+      # _check_impulsive_move already validates we have enough candles ahead
+  ```
+- **Impact:** May miss valid order blocks from the most recent 3-4 candles, reducing signal quality
+- **Status:** ⚠️ NOT FIXED - Needs validation of intended behavior vs. actual behavior
+
+#### ⚠️ Issue #36: Potential KeyError in _calculate_trend (LOW)
+- **Severity:** LOW (Edge Case Handling)
+- **Location:** `api/smc_analyzer.py` line 2397
+- **Problem:** Accesses `point[price_key]` without verifying the key exists in the dictionary
+- **Current Code:**
+  ```python
+  def _calculate_trend(self, swing_points: List[Dict], price_key: str) -> str:
+      if len(swing_points) < 2:
+          return "neutral"
+      
+      recent_prices = [point[price_key] for point in swing_points[-3:]]  # ❌ No key validation
+  ```
+- **Issue:** If swing_points contain dictionaries without the expected price_key, will raise KeyError
+- **Required Fix:**
+  ```python
+  def _calculate_trend(self, swing_points: List[Dict], price_key: str) -> str:
+      if len(swing_points) < 2:
+          return "neutral"
+      
+      # Validate all points have the required key
+      recent_prices = []
+      for point in swing_points[-3:]:
+          if price_key not in point:
+              logging.warning(f"Missing '{price_key}' in swing point: {point}")
+              return "neutral"
+          recent_prices.append(point[price_key])
+  ```
+- **Impact:** Currently mitigated by Issue #30 fix (swing points are normalized before passing to this method), but defensive programming would improve robustness
+- **Status:** ⚠️ NOT FIXED - Low priority, partially mitigated by earlier fixes
+
+#### ⚠️ Issue #37: No Validation for Empty Liquidity Pools (LOW)
+- **Severity:** LOW (Missing Validation)
+- **Location:** `api/smc_analyzer.py` line 3757 (`_find_liquidity_target` method)
+- **Problem:** Method doesn't handle the case when `liquidity_pools` list is empty or None
+- **Current Code:**
+  ```python
+  def _find_liquidity_target(
+      self,
+      entry_price: float,
+      direction: str,
+      liquidity_pools: List[LiquidityPool],
+      min_distance: float
+  ) -> Optional[float]:
+      # ❌ No check if liquidity_pools is empty or None
+      if direction == "long":
+          # Filter for sell-side liquidity above entry
+          targets = [pool for pool in liquidity_pools if ...]
+  ```
+- **Required Fix:**
+  ```python
+  def _find_liquidity_target(
+      self,
+      entry_price: float,
+      direction: str,
+      liquidity_pools: List[LiquidityPool],
+      min_distance: float
+  ) -> Optional[float]:
+      # ✅ Add validation
+      if not liquidity_pools:
+          logging.debug("Phase 6: No liquidity pools available for target selection")
+          return None
+      
+      if direction == "long":
+          # Filter for sell-side liquidity above entry
+          targets = [pool for pool in liquidity_pools if ...]
+  ```
+- **Impact:** May cause errors if liquidity detection fails and returns empty list
+- **Status:** ⚠️ NOT FIXED - Missing defensive programming
+
+#### ⚠️ Issue #38: Duplicate Alignment Score Logic (LOW)
+- **Severity:** LOW (Code Redundancy)
+- **Locations:** 
+  - `api/smc_analyzer.py` line 2981 (`_calculate_15m_alignment_score`)
+  - `api/smc_analyzer.py` line 1609 (`_get_execution_signal_15m`)
+- **Problem:** Both methods calculate 15m alignment scores with similar logic, creating maintenance burden and potential inconsistency
+- **Current State:**
+  ```python
+  # Method 1: _calculate_15m_alignment_score (line 2981)
+  def _calculate_15m_alignment_score(self, m15_structure, htf_bias, ...):
+      alignment_score = 0.0
+      if htf_bias == "bullish":
+          if m15_structure in [MarketStructure.BULLISH_BOS, ...]:
+              alignment_score += 0.5
+      # ... similar logic
+  
+  # Method 2: _get_execution_signal_15m (line 1609)
+  def _get_execution_signal_15m(self, m15_data, htf_bias, ...):
+      alignment_score = 0.0
+      if htf_bias["bias"] == "bullish":
+          if m15_structure in [MarketStructure.BULLISH_BOS, ...]:
+              alignment_score += 0.5
+      # ... nearly identical logic
+  ```
+- **Impact:** 
+  - Duplicate code increases maintenance burden
+  - Risk of inconsistency if one is updated and the other isn't
+  - Both methods appear to be used in different contexts (Phase 2 vs Phase 3)
+- **Recommended Fix:**
+  ```python
+  # Consolidate into single method used by both callers
+  def _calculate_alignment_score_internal(self, m15_structure, htf_bias_value, intermediate_structure, poi_levels, current_price):
+      # Unified alignment score logic
+      # ... single source of truth
+  ```
+- **Status:** ⚠️ NOT FIXED - Refactoring recommended but not critical
+
+**Summary of New Issues:**
+1. ⚠️ **Issue #33** - Python 3.12+ compatibility (deprecated datetime.utcnow)
+2. ⚠️ **Issue #34** - Hardcoded lookback vs. config value inconsistency
+3. ⚠️ **Issue #35** - Potential missing recent order blocks in loop range
+4. ⚠️ **Issue #36** - Missing KeyError protection in _calculate_trend
+5. ⚠️ **Issue #37** - No validation for empty liquidity pools
+6. ⚠️ **Issue #38** - Duplicate alignment score calculation logic
+
+**Priority Recommendations:**
+- **HIGH:** Fix Issue #33 (Python 3.12+ compatibility) immediately
+- **MEDIUM:** Fix Issue #35 (missing recent OBs) and Issue #34 (config consistency)
+- **LOW:** Issues #36-38 are defensive improvements but not critical
+
+**Impact:** These issues are primarily code quality and future compatibility concerns. None cause immediate runtime failures, but addressing them will improve robustness and maintainability.
 
 ---
 
@@ -2025,6 +2217,9 @@ signal, diagnostics = analyzer.generate_trade_signal("BTCUSDT", return_diagnosti
 
 ## Version History
 
+- **v2.7** (Oct 7, 2025) - Code review: 6 new issues identified (Issues #33-38: datetime deprecation, config inconsistency, logic flaws, code redundancy)
+- **v2.6** (Oct 7, 2025) - Type safety fixes complete (Issues #31-32: Optional[int] for swing detection parameters)
+- **v2.5** (Oct 7, 2025) - Extended 200-candle implementation (Issues #25-30: Daily data validation, OB expiration, timeframe-aware swing detection, liquidity lookback)
 - **v2.4** (Oct 6, 2025) - All issues resolved: Fixed alignment score logic, FVG scoring, and ATR defaults (Issues #22, #23, #24)
 - **v2.3** (Oct 6, 2025) - Code review: 3 new issues identified (alignment score logic, FVG scoring, ATR defaults)
 - **v2.2** (Oct 5, 2025) - Critical issue analysis: Configuration values, stale data, pair-specific ATR
