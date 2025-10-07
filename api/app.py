@@ -3965,20 +3965,18 @@ def get_smc_analysis(symbol):
         if cached_signal:
             # Return cached signal
             signal = cached_signal.to_smc_signal()
-            # Serialize scaled entries if present
-            scaled_entries_data = None
-            if signal.scaled_entries:
-                scaled_entries_data = [
-                    {
-                        "entry_price": entry.entry_price,
-                        "allocation_percent": entry.allocation_percent,
-                        "order_type": entry.order_type,
-                        "stop_loss": entry.stop_loss,
-                        "take_profits": entry.take_profits,
-                        "status": entry.status
-                    }
-                    for entry in signal.scaled_entries
-                ]
+            # Serialize scaled entries (institutional format)
+            scaled_entries_data = [
+                {
+                    "entry_price": entry.entry_price,
+                    "allocation_percent": entry.allocation_percent,
+                    "order_type": entry.order_type,
+                    "stop_loss": entry.stop_loss,
+                    "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits],
+                    "status": entry.status
+                }
+                for entry in signal.scaled_entries
+            ]
             
             # Build response - only include legacy fields if NOT using institutional scaled entries
             response_data = {
@@ -3993,14 +3991,11 @@ def get_smc_analysis(symbol):
                 "cache_source": True,
             }
             
-            # If using institutional scaled entries, ONLY return those (not legacy fields)
-            if scaled_entries_data:
-                response_data["scaled_entries"] = scaled_entries_data
-            else:
-                # Legacy mode: return single entry with TPs
-                response_data["entry_price"] = signal.entry_price
-                response_data["stop_loss"] = signal.stop_loss
-                response_data["take_profit_levels"] = signal.take_profit_levels
+            # Always use institutional format
+            response_data["htf_bias"] = signal.htf_bias
+            response_data["intermediate_structure"] = signal.intermediate_structure
+            response_data["execution_timeframe"] = signal.execution_timeframe
+            response_data["scaled_entries"] = scaled_entries_data
             
             return jsonify(response_data)
 
@@ -4014,20 +4009,18 @@ def get_smc_analysis(symbol):
             db.session.add(cache_entry)
             db.session.commit()
 
-            # Serialize scaled entries if present
-            scaled_entries_data = None
-            if signal.scaled_entries:
-                scaled_entries_data = [
-                    {
-                        "entry_price": entry.entry_price,
-                        "allocation_percent": entry.allocation_percent,
-                        "order_type": entry.order_type,
-                        "stop_loss": entry.stop_loss,
-                        "take_profits": entry.take_profits,
-                        "status": entry.status
-                    }
-                    for entry in signal.scaled_entries
-                ]
+            # Serialize scaled entries (institutional format)
+            scaled_entries_data = [
+                {
+                    "entry_price": entry.entry_price,
+                    "allocation_percent": entry.allocation_percent,
+                    "order_type": entry.order_type,
+                    "stop_loss": entry.stop_loss,
+                    "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits],
+                    "status": entry.status
+                }
+                for entry in signal.scaled_entries
+            ]
 
             # Build response - only include legacy fields if NOT using institutional scaled entries
             response_data = {
@@ -4042,14 +4035,11 @@ def get_smc_analysis(symbol):
                 "cache_source": False,
             }
             
-            # If using institutional scaled entries, ONLY return those (not legacy fields)
-            if scaled_entries_data:
-                response_data["scaled_entries"] = scaled_entries_data
-            else:
-                # Legacy mode: return single entry with TPs
-                response_data["entry_price"] = signal.entry_price
-                response_data["stop_loss"] = signal.stop_loss
-                response_data["take_profit_levels"] = signal.take_profit_levels
+            # Always use institutional format
+            response_data["htf_bias"] = signal.htf_bias
+            response_data["intermediate_structure"] = signal.intermediate_structure
+            response_data["execution_timeframe"] = signal.execution_timeframe
+            response_data["scaled_entries"] = scaled_entries_data
             
             return jsonify(response_data)
         else:
@@ -4102,37 +4092,32 @@ def get_multiple_smc_signals():
                     signal = cached_signal.to_smc_signal()
                     cache_hits += 1
                     
-                    # Serialize scaled entries if present
-                    scaled_entries_data = None
-                    if signal.scaled_entries:
-                        scaled_entries_data = [
-                            {
-                                "entry_price": entry.entry_price,
-                                "allocation_percent": entry.allocation_percent,
-                                "order_type": entry.order_type,
-                            }
-                            for entry in signal.scaled_entries
-                        ]
+                    # Serialize scaled entries (always present in institutional format)
+                    scaled_entries_data = [
+                        {
+                            "entry_price": entry.entry_price,
+                            "allocation_percent": entry.allocation_percent,
+                            "order_type": entry.order_type,
+                            "stop_loss": entry.stop_loss,
+                            "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
+                        }
+                        for entry in signal.scaled_entries
+                    ]
                     
-                    # Build signal data - only include legacy fields if NOT using institutional scaled entries
+                    # Build institutional-grade signal data
                     signal_data = {
                         "direction": signal.direction,
                         "confidence": signal.confidence,
-                        "reasoning": signal.reasoning[:3],  # Limit reasoning for summary
+                        "reasoning": signal.reasoning,  # Full reasoning
                         "signal_strength": signal.signal_strength.value,
                         "risk_reward_ratio": signal.risk_reward_ratio,
                         "timestamp": signal.timestamp.isoformat(),
+                        "htf_bias": signal.htf_bias,  # HTF context
+                        "intermediate_structure": signal.intermediate_structure,  # Structure context
+                        "execution_timeframe": signal.execution_timeframe,
+                        "scaled_entries": scaled_entries_data,  # Institutional scaled entries
                         "cache_source": True,
                     }
-                    
-                    # If using institutional scaled entries, ONLY return those (not legacy fields)
-                    if scaled_entries_data:
-                        signal_data["scaled_entries"] = scaled_entries_data
-                    else:
-                        # Legacy mode: return single entry with TPs
-                        signal_data["entry_price"] = signal.entry_price
-                        signal_data["stop_loss"] = signal.stop_loss
-                        signal_data["take_profit_levels"] = signal.take_profit_levels
                     
                     signals[symbol] = signal_data
                 else:
@@ -4144,37 +4129,32 @@ def get_multiple_smc_signals():
                         db.session.add(cache_entry)
                         new_signals_generated += 1
 
-                        # Serialize scaled entries if present
-                        scaled_entries_data = None
-                        if signal.scaled_entries:
-                            scaled_entries_data = [
-                                {
-                                    "entry_price": entry.entry_price,
-                                    "allocation_percent": entry.allocation_percent,
-                                    "order_type": entry.order_type,
-                                }
-                                for entry in signal.scaled_entries
-                            ]
+                        # Serialize scaled entries (always present in institutional format)
+                        scaled_entries_data = [
+                            {
+                                "entry_price": entry.entry_price,
+                                "allocation_percent": entry.allocation_percent,
+                                "order_type": entry.order_type,
+                                "stop_loss": entry.stop_loss,
+                                "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
+                            }
+                            for entry in signal.scaled_entries
+                        ]
 
-                        # Build signal data - only include legacy fields if NOT using institutional scaled entries
+                        # Build institutional-grade signal data
                         signal_data = {
                             "direction": signal.direction,
                             "confidence": signal.confidence,
-                            "reasoning": signal.reasoning[:3],  # Limit reasoning for summary
+                            "reasoning": signal.reasoning,  # Full reasoning
                             "signal_strength": signal.signal_strength.value,
                             "risk_reward_ratio": signal.risk_reward_ratio,
                             "timestamp": signal.timestamp.isoformat(),
+                            "htf_bias": signal.htf_bias,  # HTF context
+                            "intermediate_structure": signal.intermediate_structure,  # Structure context
+                            "execution_timeframe": signal.execution_timeframe,
+                            "scaled_entries": scaled_entries_data,  # Institutional scaled entries
                             "cache_source": False,
                         }
-                        
-                        # If using institutional scaled entries, ONLY return those (not legacy fields)
-                        if scaled_entries_data:
-                            signal_data["scaled_entries"] = scaled_entries_data
-                        else:
-                            # Legacy mode: return single entry with TPs
-                            signal_data["entry_price"] = signal.entry_price
-                            signal_data["stop_loss"] = signal.stop_loss
-                            signal_data["take_profit_levels"] = signal.take_profit_levels
                         
                         signals[symbol] = signal_data
                     else:
@@ -4302,20 +4282,23 @@ def get_smc_chart_data(symbol: str):
             if signal and signal.direction and signal.direction != "hold":
                 current_price = float(h1_data[-1]["close"]) if h1_data else 0
                 
-                # Calculate entry, TP, SL levels from signal (SMCSignal is a dataclass, not a dict)
-                entry_price = signal.entry_price
-                stop_loss_price = signal.stop_loss
-                take_profit_price = signal.take_profit_levels[0] if signal.take_profit_levels else None
-                
+                # Use institutional scaled entries for chart overlay
                 signal_overlay = {
-                    "direction": signal.direction,  # 'long' or 'short'
-                    "entry_price": float(entry_price) if entry_price else None,
-                    "stop_loss_price": float(stop_loss_price) if stop_loss_price else None,
-                    "take_profit_price": float(take_profit_price) if take_profit_price else None,
+                    "direction": signal.direction,
                     "confidence": signal.confidence,
                     "signal_strength": signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
-                    "entry_zone_high": None,  # Not available in SMCSignal
-                    "entry_zone_low": None,  # Not available in SMCSignal
+                    "htf_bias": signal.htf_bias,
+                    "intermediate_structure": signal.intermediate_structure,
+                    "scaled_entries": [
+                        {
+                            "entry_price": float(entry.entry_price),
+                            "allocation_percent": float(entry.allocation_percent),
+                            "order_type": entry.order_type,
+                            "stop_loss": float(entry.stop_loss),
+                            "take_profits": [{"price": float(tp[0]), "allocation": float(tp[1])} for tp in entry.take_profits]
+                        }
+                        for entry in signal.scaled_entries
+                    ],
                     "timestamp": signal.timestamp.isoformat() if signal.timestamp else get_iran_time().isoformat()
                 }
         except Exception as e:
@@ -4396,13 +4379,16 @@ def create_auto_trade_from_smc():
         # Generate trade ID
         trade_id = f"smc_{symbol}_{int(datetime.now().timestamp())}"
 
+        # Use first scaled entry for auto-trading (institutional: 50% market order)
+        first_entry = signal.scaled_entries[0]
+        
         # Get current market price for comparison with error handling
         try:
             current_market_price = get_live_market_price(symbol, user_id=user_id, prefer_exchange=True)
             if not current_market_price:
                 raise ValueError("Unable to fetch current market price")
             current_price_float = float(current_market_price)
-            signal_entry_float = float(signal.entry_price)
+            signal_entry_float = float(first_entry.entry_price)
         except Exception as e:
             logging.error(f"Failed to fetch/parse market price for SMC signal: {e}")
             return (
@@ -4426,7 +4412,7 @@ def create_auto_trade_from_smc():
         trade_config.side = signal.direction
         trade_config.amount = margin_amount
         trade_config.leverage = 5  # Conservative leverage for auto-trades
-        trade_config.entry_price = signal.entry_price
+        trade_config.entry_price = first_entry.entry_price
         
         # SMC order type logic - Respect user preference or auto-determine based on price difference
         if user_entry_type and user_entry_type.lower() in ["market", "limit"]:
@@ -4447,15 +4433,16 @@ def create_auto_trade_from_smc():
                 trade_config.entry_price = current_price_float  # Use current price for market execution
                 logging.info(f"SMC {signal.direction.upper()} MARKET order (auto): entry={signal_entry_float:.4f}, current={current_price_float:.4f}, diff={price_diff_percent:.2f}%")
 
+        # Use first entry's stop loss for auto-trading
         # FIXED: Calculate stop loss percentage on margin for system compatibility
         # The monitoring system expects margin-based percentages for trigger comparison
         if signal.direction == "long":
             sl_price_movement_percent = (
-                (signal.entry_price - signal.stop_loss) / signal.entry_price
+                (first_entry.entry_price - first_entry.stop_loss) / first_entry.entry_price
             ) * 100
         else:
             sl_price_movement_percent = (
-                (signal.stop_loss - signal.entry_price) / signal.entry_price
+                (first_entry.stop_loss - first_entry.entry_price) / first_entry.entry_price
             ) * 100
 
         # Convert to margin percentage for system compatibility while preserving SMC intent
@@ -4465,49 +4452,32 @@ def create_auto_trade_from_smc():
         )  # Cap at 25% margin loss for safety
         
         # Store SMC references for debugging/analysis (internal use)
-        setattr(trade_config, '_smc_stop_loss_price', signal.stop_loss)
+        setattr(trade_config, '_smc_stop_loss_price', first_entry.stop_loss)
         setattr(trade_config, '_smc_price_movement', sl_price_movement_percent)
 
-        # Set up take profit levels with proper allocation logic
+        # Use first entry's take profits for auto-trading
         tp_levels = []
-        num_tp_levels = min(len(signal.take_profit_levels), 3)  # Max 3 TP levels
-
-        # Define allocation strategies based on number of TP levels
-        # CORRECTED: More conservative and standard allocation strategies
-        allocation_strategies = {
-            1: [100],  # Single TP: close full position
-            2: [50, 50],  # Two TPs: 50% each (more balanced)
-            3: [
-                40,
-                35,
-                25,
-            ],  # Three TPs: 40%, 35%, 25% (ensures all allocations add to 100%)
-        }
-
-        allocations = allocation_strategies.get(num_tp_levels, [100])
-
-        for i, tp_price in enumerate(signal.take_profit_levels[:3]):
+        for i, (tp_price, tp_allocation) in enumerate(first_entry.take_profits[:3]):
             # FIXED: Calculate TP percentage on margin for system compatibility while preserving SMC intent
             # The monitoring system expects margin-based percentages for trigger comparison
 
             if signal.direction == "long":
                 price_movement_percent = (
-                    (tp_price - signal.entry_price) / signal.entry_price
+                    (tp_price - first_entry.entry_price) / first_entry.entry_price
                 ) * 100
             else:
                 price_movement_percent = (
-                    (signal.entry_price - tp_price) / signal.entry_price
+                    (first_entry.entry_price - tp_price) / first_entry.entry_price
                 ) * 100
 
             # Convert to margin percentage for system compatibility
             # This maintains proper trigger levels while preserving SMC accuracy
             tp_percent_on_margin = price_movement_percent * trade_config.leverage
-            allocation = allocations[i] if i < len(allocations) else 10
 
             tp_levels.append(
                 {
                     "percentage": tp_percent_on_margin,  # Store margin percentage for trigger compatibility
-                    "allocation": allocation,
+                    "allocation": tp_allocation,  # Use institutional allocation from scaled entry
                     "triggered": False,
                     "_smc_price_target": tp_price,  # Internal reference to original SMC price
                     "_smc_price_movement": price_movement_percent,  # Internal reference to price movement
@@ -10364,9 +10334,18 @@ def admin_smc_diagnostic():
                 step7['details'] = {
                     'signal_generated': True,
                     'direction': signal.direction,
-                    'entry_price': signal.entry_price,
-                    'stop_loss': signal.stop_loss,
-                    'take_profits': signal.take_profit_levels,
+                    'htf_bias': signal.htf_bias,
+                    'intermediate_structure': signal.intermediate_structure,
+                    'scaled_entries': [
+                        {
+                            'entry_price': entry.entry_price,
+                            'allocation_percent': entry.allocation_percent,
+                            'order_type': entry.order_type,
+                            'stop_loss': entry.stop_loss,
+                            'take_profits': [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
+                        }
+                        for entry in signal.scaled_entries
+                    ],
                     'confidence': signal.confidence,
                     'signal_strength': signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
                     'risk_reward_ratio': signal.risk_reward_ratio,
@@ -10377,9 +10356,18 @@ def admin_smc_diagnostic():
                 diagnostic['signal_generated'] = True
                 diagnostic['signal'] = {
                     'direction': signal.direction,
-                    'entry_price': signal.entry_price,
-                    'stop_loss': signal.stop_loss,
-                    'take_profits': signal.take_profit_levels,
+                    'htf_bias': signal.htf_bias,
+                    'intermediate_structure': signal.intermediate_structure,
+                    'scaled_entries': [
+                        {
+                            'entry_price': entry.entry_price,
+                            'allocation_percent': entry.allocation_percent,
+                            'order_type': entry.order_type,
+                            'stop_loss': entry.stop_loss,
+                            'take_profits': [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
+                        }
+                        for entry in signal.scaled_entries
+                    ],
                     'confidence': signal.confidence,
                     'signal_strength': signal.signal_strength.value if hasattr(signal.signal_strength, 'value') else str(signal.signal_strength),
                     'risk_reward_ratio': signal.risk_reward_ratio,

@@ -102,16 +102,16 @@ class ScaledEntry:
 class SMCSignal:
     symbol: str
     direction: str  # 'long' or 'short'
-    entry_price: float
-    stop_loss: float
-    take_profit_levels: List[float]
     confidence: float
     reasoning: List[str]
     signal_strength: SignalStrength
     risk_reward_ratio: float
     timestamp: datetime
     current_market_price: float  # Actual market price when signal was generated
-    scaled_entries: Optional[List['ScaledEntry']] = None  # Phase 4: Scaled entry strategy
+    scaled_entries: List['ScaledEntry']  # Institutional scaled entry strategy (always present)
+    htf_bias: str  # Daily/H4 bias for context
+    intermediate_structure: str  # H4/H1 structure
+    execution_timeframe: str = "15m"  # Execution timeframe
 
 
 class SMCAnalyzer:
@@ -1744,28 +1744,42 @@ class SMCAnalyzer:
             del self.active_signals[symbol]
             return False
         
-        # Check if signal has been invalidated by price action
-        if signal.direction == "long":
-            # Long signal invalidated if price hits stop loss or final take profit
-            if current_price <= signal.stop_loss:
-                logging.info(f"Long signal invalidated for {symbol}: price hit stop loss ({current_price} <= {signal.stop_loss})")
-                del self.active_signals[symbol]
-                return False
-            elif signal.take_profit_levels and current_price >= signal.take_profit_levels[-1]:
-                logging.info(f"Long signal completed for {symbol}: price hit final TP ({current_price} >= {signal.take_profit_levels[-1]})")
-                del self.active_signals[symbol]
-                return False
-        
-        elif signal.direction == "short":
-            # Short signal invalidated if price hits stop loss or final take profit
-            if current_price >= signal.stop_loss:
-                logging.info(f"Short signal invalidated for {symbol}: price hit stop loss ({current_price} >= {signal.stop_loss})")
-                del self.active_signals[symbol]
-                return False
-            elif signal.take_profit_levels and current_price <= signal.take_profit_levels[-1]:
-                logging.info(f"Short signal completed for {symbol}: price hit final TP ({current_price} <= {signal.take_profit_levels[-1]})")
-                del self.active_signals[symbol]
-                return False
+        # Check if signal has been invalidated by price action using scaled entries
+        if signal.scaled_entries:
+            # Get all stop losses and take profits from scaled entries
+            stop_losses = [entry.stop_loss for entry in signal.scaled_entries]
+            all_tps = []
+            for entry in signal.scaled_entries:
+                for tp_price, _ in entry.take_profits:
+                    all_tps.append(tp_price)
+            
+            if signal.direction == "long":
+                # Long signal invalidated if price hits lowest stop loss
+                lowest_sl = min(stop_losses) if stop_losses else None
+                if lowest_sl and current_price <= lowest_sl:
+                    logging.info(f"Long signal invalidated for {symbol}: price hit stop loss ({current_price} <= {lowest_sl})")
+                    del self.active_signals[symbol]
+                    return False
+                # Signal completed if price hits highest take profit
+                highest_tp = max(all_tps) if all_tps else None
+                if highest_tp and current_price >= highest_tp:
+                    logging.info(f"Long signal completed for {symbol}: price hit final TP ({current_price} >= {highest_tp})")
+                    del self.active_signals[symbol]
+                    return False
+            
+            elif signal.direction == "short":
+                # Short signal invalidated if price hits highest stop loss
+                highest_sl = max(stop_losses) if stop_losses else None
+                if highest_sl and current_price >= highest_sl:
+                    logging.info(f"Short signal invalidated for {symbol}: price hit stop loss ({current_price} >= {highest_sl})")
+                    del self.active_signals[symbol]
+                    return False
+                # Signal completed if price hits lowest take profit
+                lowest_tp = min(all_tps) if all_tps else None
+                if lowest_tp and current_price <= lowest_tp:
+                    logging.info(f"Short signal completed for {symbol}: price hit final TP ({current_price} <= {lowest_tp})")
+                    del self.active_signals[symbol]
+                    return False
         
         # Signal is still valid
         return True
@@ -1777,7 +1791,8 @@ class SMCAnalyzer:
             'signal': signal,
             'expiry_time': expiry_time
         }
-        logging.info(f"Cached new {signal.direction} signal for {signal.symbol} with entry at {signal.entry_price}")
+        first_entry = signal.scaled_entries[0].entry_price if signal.scaled_entries else "N/A"
+        logging.info(f"Cached new {signal.direction} signal for {signal.symbol} with first entry at {first_entry}")
 
     @overload
     def generate_trade_signal(self, symbol: str, return_diagnostics: Literal[False] = False) -> Optional[SMCSignal]: ...
@@ -1813,7 +1828,8 @@ class SMCAnalyzer:
             # Check if we have a valid cached signal for this symbol
             if self._is_signal_still_valid(symbol, current_price):
                 cached_signal = self.active_signals[symbol]['signal']
-                logging.debug(f"Using cached {cached_signal.direction} signal for {symbol} (entry: {cached_signal.entry_price})")
+                first_entry = cached_signal.scaled_entries[0].entry_price if cached_signal.scaled_entries else "N/A"
+                logging.debug(f"Using cached {cached_signal.direction} signal for {symbol} (first entry: {first_entry})")
                 if return_diagnostics:
                     return cached_signal, {"rejection_reasons": [], "details": {"cached": True}, "signal_generated": True}
                 return cached_signal
@@ -2241,19 +2257,31 @@ class SMCAnalyzer:
                     
                     logging.info(f"Phase 4: Generated {len(scaled_entries_list)} scaled entries for {symbol}")
 
+                # Ensure we have scaled entries (institutional requirement)
+                if not scaled_entries_list:
+                    logging.warning(f"No scaled entries generated for {symbol}, creating default single entry")
+                    scaled_entries_list = [ScaledEntry(
+                        entry_price=entry_price,
+                        allocation_percent=100.0,
+                        order_type='market',
+                        stop_loss=stop_loss,
+                        take_profits=[(tp, 100.0/len(take_profits)) for tp in take_profits] if take_profits else [],
+                        status='pending'
+                    )]
+                
                 new_signal = SMCSignal(
                     symbol=symbol,
                     direction=direction,
-                    entry_price=entry_price,
-                    stop_loss=stop_loss,
-                    take_profit_levels=take_profits,
                     confidence=enhanced_confidence,  # Use Phase 3 enhanced confidence
                     reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
                     timestamp=datetime.now(timezone.utc),
                     current_market_price=current_price,  # Store actual market price
-                    scaled_entries=scaled_entries_list  # Phase 4: Add scaled entries
+                    scaled_entries=scaled_entries_list,  # Institutional scaled entry strategy
+                    htf_bias=htf_bias["bias"],  # Daily/H4 bias
+                    intermediate_structure=intermediate_structure["structure"],  # H4/H1 structure
+                    execution_timeframe="15m"  # Execution timeframe
                 )
                 
                 # Cache the new signal to prevent duplicates

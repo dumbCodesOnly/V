@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 7, 2025  
-**Version:** 2.8 (Legacy Field Migration Required)  
-**Status:** ⚠️ **10 ISSUES TOTAL** - 6 Fixed ✅ | 4 Pending ⚠️ (Issues #33-#42)
+**Version:** 3.0 (Institutional-Grade Complete)  
+**Status:** ✅ **ALL 10 ISSUES FIXED** - Full Institutional Migration Complete (Issues #33-#42)
 
 ---
 
@@ -448,9 +448,9 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 
 ---
 
-**Second Batch: Legacy Signal Fields & UI Issues (Issues #39-#42) - ⚠️ PENDING**
+**Second Batch: Legacy Signal Fields & UI Issues (Issues #39-#42) - ✅ COMPLETED (October 7, 2025)**
 
-#### ⚠️ Issue #39: SMCSignal Class Still Contains Legacy Single-Entry Fields (HIGH)
+#### ✅ Issue #39: SMCSignal Class Legacy Fields Removed - FIXED (HIGH)
 - **Severity:** HIGH (Architecture Mismatch)
 - **Location:** `api/smc_analyzer.py` lines 102-114 (SMCSignal dataclass)
 - **Problem:** The `SMCSignal` dataclass still contains legacy single-entry fields (`entry_price`, `stop_loss`, `take_profit_levels`) alongside the new institutional `scaled_entries` field
@@ -502,9 +502,15 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
   - Current dual-field approach is confusing for users
   - API responses inconsistent (sometimes legacy fields, sometimes scaled entries)
   - Chart annotations use legacy fields instead of institutional scaled entries
-- **Status:** ⚠️ NOT FIXED - Requires dataclass refactoring and migration
+- **Status:** ✅ FIXED (October 7, 2025) - All legacy fields removed, scaled_entries now required
+- **Solution Implemented:**
+  - Removed `entry_price`, `stop_loss`, and `take_profit_levels` fields from SMCSignal dataclass
+  - Made `scaled_entries` required (no longer Optional)
+  - Added institutional fields: `htf_bias`, `intermediate_structure`, `execution_timeframe`
+  - Updated all references to use scaled_entries instead of legacy fields
+  - Fixed signal validation logic to check all scaled entry stop losses and take profits
 
-#### ⚠️ Issue #40: Frontend UI Still Displays Legacy Single Entry/SL/TP (HIGH)
+#### ✅ Issue #40: Frontend UI Updated to Institutional Format - FIXED (HIGH)
 - **Severity:** HIGH (UX/UI Mismatch)
 - **Location:** `api/templates/mini_app.html` lines 6350-6357
 - **Problem:** SMC Signals tab displays legacy single-entry fields instead of institutional scaled entries
@@ -563,9 +569,15 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
   - Users see confusing mixed signals (legacy + institutional)
   - Doesn't reflect the actual multi-timeframe SMC analysis being performed
   - Undermines the institutional-grade positioning
-- **Status:** ⚠️ NOT FIXED - Requires frontend template refactoring
+- **Status:** ✅ FIXED (October 7, 2025) - Frontend now displays only institutional scaled entries
+- **Solution Implemented:**
+  - Removed legacy entry_price and stop_loss display fields
+  - Made scaled entries the primary display (not secondary)
+  - Added HTF Bias and Structure context to signal cards
+  - Updated modal detail view to show all scaled entries with TPs/SLs
+  - Enhanced visual styling to emphasize institutional strategy
 
-#### ⚠️ Issue #41: Chart Annotations Use Legacy Signal Fields (MEDIUM)
+#### ✅ Issue #41: Chart Annotations Updated for Scaled Entries - FIXED (MEDIUM)
 - **Severity:** MEDIUM (Visualization Issue)
 - **Location:** `api/templates/mini_app.html` lines 6821-6878
 - **Problem:** Chart.js annotations display legacy `entry_price`, `stop_loss_price`, `take_profit_price` instead of institutional scaled entries
@@ -655,9 +667,16 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
   - Charts don't visualize the actual institutional strategy (3 entries, zone-based SLs)
   - Users can't see the scaling strategy on the chart
   - Misses opportunity to educate users on SMC concepts visually
-- **Status:** ⚠️ NOT FIXED - Requires chart annotation refactoring
+- **Status:** ✅ FIXED (October 7, 2025) - Chart now visualizes all scaled entries
+- **Solution Implemented:**
+  - Replaced single entry/SL/TP lines with multi-entry visualization
+  - Each scaled entry shown with unique color opacity (fading for depth)
+  - Market orders shown as solid lines, limit orders as dashed
+  - Entry-specific stop losses displayed for each entry
+  - HTF Bias indicator box added to chart
+  - Visual hierarchy: Entry 1 (50%) → Entry 2 (25%) → Entry 3 (25%)
 
-#### ⚠️ Issue #42: API Response Still Returns Legacy Fields for Backward Compatibility (LOW)
+#### ✅ Issue #42: API Response Standardized to Institutional Format - FIXED (LOW)
 - **Severity:** LOW (API Design Issue)
 - **Location:** `api/app.py` lines 4117-4130 (`/api/smc-signals` endpoint)
 - **Problem:** API conditionally returns legacy fields for backward compatibility, creating inconsistent response structure
@@ -719,7 +738,24 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
   - Inconsistent API responses confuse frontend developers
   - Harder to maintain with dual code paths
   - Doesn't enforce the institutional-grade approach
-- **Status:** ⚠️ NOT FIXED - Requires API response standardization
+- **Status:** ✅ FIXED (October 7, 2025) - API now always returns institutional format
+- **Solution Implemented:**
+  - Removed conditional legacy field fallback logic
+  - Always return `scaled_entries` with full details (entry_price, allocation, stop_loss, take_profits)
+  - Added `htf_bias`, `intermediate_structure`, and `execution_timeframe` to all responses
+  - Removed dual code paths - single institutional format only
+  - Updated both `/api/smc-signals` and `/api/smc-analysis/<symbol>` endpoints
+
+**Summary of Issues #39-#42 Implementation:**
+
+All 4 pending issues have been successfully resolved with a complete migration to institutional-grade format:
+
+1. ✅ **Issue #39** - SMCSignal dataclass refactored (legacy fields removed, scaled_entries required)
+2. ✅ **Issue #40** - Frontend UI displays only institutional scaled entries  
+3. ✅ **Issue #41** - Chart annotations visualize all scaled entries with HTF bias
+4. ✅ **Issue #42** - API responses standardized to institutional format only
+
+**Impact:** The system now operates 100% in institutional mode with no legacy field remnants. All components (backend, frontend, API, charts) use the scaled entry strategy exclusively.
 
 ---
 

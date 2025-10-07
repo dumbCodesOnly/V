@@ -6347,34 +6347,39 @@
                         </div>
                     </div>
                     
-                    <div class="smc-signal-details">
-                        <div class="smc-detail-item">
-                            <div class="smc-detail-label">Entry</div>
-                            <div class="smc-detail-value">$${signal.entry_price?.toFixed(4) || 'N/A'}</div>
-                        </div>
-                        <div class="smc-detail-item">
-                            <div class="smc-detail-label">Stop Loss</div>
-                            <div class="smc-detail-value">$${signal.stop_loss?.toFixed(4) || 'N/A'}</div>
-                        </div>
-                    </div>
-                    
                     ${signal.scaled_entries && signal.scaled_entries.length > 0 ? `
-                        <div class="mt-2 p-2" style="background: rgba(108, 117, 125, 0.1); border-radius: 4px;">
-                            <div style="font-size: 0.75rem; font-weight: 600; color: #6c757d; margin-bottom: 4px;">
-                                📊 SCALED ENTRY STRATEGY
+                        <div class="mt-2 p-3" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.1)); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <div style="font-size: 0.85rem; font-weight: 700; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                📊 Institutional Scaled Entry Strategy
+                            </div>
+                            <div class="mb-2" style="font-size: 0.7rem; color: #64748b;">
+                                <strong>HTF Bias:</strong> ${signal.htf_bias || 'N/A'} | 
+                                <strong>Structure:</strong> ${signal.intermediate_structure || 'N/A'}
                             </div>
                             ${signal.scaled_entries.map((entry, idx) => `
-                                <div style="font-size: 0.7rem; margin-bottom: 2px; display: flex; justify-content: space-between;">
-                                    <span style="color: ${entry.order_type === 'market' ? '#28a745' : '#ffc107'};">
-                                        ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type})
-                                    </span>
-                                    <span style="font-weight: 600;">
-                                        ${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}
-                                    </span>
+                                <div style="font-size: 0.75rem; margin-bottom: 6px; padding: 6px; background: rgba(255, 255, 255, 0.5); border-radius: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                        <span style="color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'}; font-weight: 600;">
+                                            ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type.toUpperCase()})
+                                        </span>
+                                        <span style="font-weight: 700; color: #1e293b;">
+                                            ${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}
+                                        </span>
+                                    </div>
+                                    <div style="font-size: 0.65rem; color: #64748b; display: flex; justify-content: space-between;">
+                                        <span>SL: $${entry.stop_loss.toFixed(4)}</span>
+                                        ${entry.take_profits && entry.take_profits.length > 0 ? `
+                                            <span>TPs: ${entry.take_profits.length} levels</span>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             `).join('')}
                         </div>
-                    ` : ''}
+                    ` : `
+                        <div class="mt-2 p-3" style="background: rgba(239, 68, 68, 0.1); border-radius: 6px; text-align: center;">
+                            <span style="font-size: 0.75rem; color: #dc2626;">No institutional signal available</span>
+                        </div>
+                    `}
                     
                     ${signal.reasoning && signal.reasoning.length > 0 ? `
                         <div class="smc-reasoning">
@@ -6452,14 +6457,14 @@
                                         <div class="row mb-2 g-2">
                                             <div class="col-4">
                                                 <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Entry Price</div>
-                                                    <div class="smc-detail-value">$${data.entry_price?.toFixed(4)}</div>
+                                                    <div class="smc-detail-label">HTF Bias</div>
+                                                    <div class="smc-detail-value">${data.htf_bias || 'N/A'}</div>
                                                 </div>
                                             </div>
                                             <div class="col-4">
                                                 <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Stop Loss</div>
-                                                    <div class="smc-detail-value">$${data.stop_loss?.toFixed(4)}</div>
+                                                    <div class="smc-detail-label">Structure</div>
+                                                    <div class="smc-detail-value">${data.intermediate_structure || 'N/A'}</div>
                                                 </div>
                                             </div>
                                             <div class="col-4">
@@ -6469,6 +6474,36 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        
+                                        ${data.scaled_entries && data.scaled_entries.length > 0 ? `
+                                            <h6 class="mb-2 fs-7" style="color: #3b82f6; font-weight: 700;">📊 Institutional Scaled Entry Strategy</h6>
+                                            <div class="row g-2 mb-3">
+                                                ${data.scaled_entries.map((entry, idx) => `
+                                                    <div class="col-12">
+                                                        <div class="card" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(99, 102, 241, 0.05)); border: 1px solid rgba(59, 130, 246, 0.2);">
+                                                            <div class="card-body p-2">
+                                                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                                                    <span style="font-weight: 600; color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'};">
+                                                                        ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type.toUpperCase()})
+                                                                    </span>
+                                                                    <span style="font-weight: 700;">${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}</span>
+                                                                </div>
+                                                                <div style="font-size: 0.75rem; color: #64748b;">
+                                                                    <strong>SL:</strong> $${entry.stop_loss.toFixed(4)}
+                                                                    ${entry.take_profits && entry.take_profits.length > 0 ? `
+                                                                        <br><strong>TPs:</strong> ${entry.take_profits.map(tp => `$${tp[0].toFixed(4)} (${tp[1].toFixed(0)}%)`).join(', ')}
+                                                                    ` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        ` : `
+                                            <div class="alert alert-warning" role="alert">
+                                                No institutional scaled entry data available
+                                            </div>
+                                        `}
                                         
                                         ${data.take_profit_levels && data.take_profit_levels.length > 0 ? `
                                             <h6 class="mb-1 fs-7">Take Profit Levels</h6>
@@ -6798,112 +6833,109 @@
                 };
             });
             
-            // Add SMC Signal Overlay (transparent like TradingView but less visible)
+            // Add SMC Institutional Scaled Entry Overlay
             if (chartData.signal_overlay && chartData.signal_overlay.direction !== 'hold') {
                 const signal = chartData.signal_overlay;
                 const isLong = signal.direction === 'long';
                 
-                // Color scheme for signal overlay (very transparent)
-                const signalColors = {
-                    entry: isLong ? 'rgba(0, 150, 255, 0.15)' : 'rgba(255, 100, 100, 0.15)',
-                    entryBorder: isLong ? 'rgba(0, 150, 255, 0.4)' : 'rgba(255, 100, 100, 0.4)',
-                    tp: 'rgba(34, 197, 94, 0.2)',  // Green for TP
-                    sl: 'rgba(239, 68, 68, 0.2)',  // Red for SL
-                    zone: isLong ? 'rgba(0, 150, 255, 0.08)' : 'rgba(255, 100, 100, 0.08)'
-                };
+                // Institutional color scheme
+                const baseColor = isLong ? '59, 130, 246' : '239, 68, 68'; // Blue for long, Red for short
                 
-                // Entry Price Line
-                if (signal.entry_price) {
-                    annotations[`signal_entry_${annotationId++}`] = {
-                        type: 'line',
-                        mode: 'horizontal',
-                        scaleID: 'y',
-                        value: signal.entry_price,
-                        borderColor: signalColors.entryBorder,
-                        borderWidth: 1,
-                        borderDash: [4, 2],
-                        label: {
-                            display: true,
-                            content: `Entry: $${signal.entry_price.toFixed(4)}`,
-                            position: 'end',
-                            backgroundColor: signalColors.entry,
-                            color: '#ffffff',
-                            padding: 2,
-                            font: {
-                                size: 9
+                // Visualize all scaled entries if available
+                if (signal.scaled_entries && signal.scaled_entries.length > 0) {
+                    signal.scaled_entries.forEach((entry, idx) => {
+                        const opacity = 1.0 - (idx * 0.15); // Fade for depth
+                        const isMarket = entry.order_type === 'market';
+                        
+                        // Entry level annotation
+                        annotations[`scaled_entry_${idx}_${annotationId++}`] = {
+                            type: 'line',
+                            mode: 'horizontal',
+                            scaleID: 'y',
+                            value: entry.entry_price,
+                            borderColor: `rgba(${baseColor}, ${opacity * 0.6})`,
+                            borderWidth: isMarket ? 2 : 1,
+                            borderDash: isMarket ? [] : [4, 2],
+                            label: {
+                                display: true,
+                                content: `E${idx + 1} ${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)} (${entry.order_type})`,
+                                position: idx % 2 === 0 ? 'start' : 'end',
+                                backgroundColor: `rgba(${baseColor}, ${opacity * 0.3})`,
+                                color: '#ffffff',
+                                padding: 2,
+                                font: { size: 8, weight: isMarket ? 'bold' : 'normal' }
                             }
-                        }
-                    };
-                }
-                
-                // Take Profit Line
-                if (signal.take_profit_price) {
-                    annotations[`signal_tp_${annotationId++}`] = {
-                        type: 'line',
-                        mode: 'horizontal',
-                        scaleID: 'y',
-                        value: signal.take_profit_price,
-                        borderColor: signalColors.tp,
-                        borderWidth: 1,
-                        borderDash: [6, 3],
-                        label: {
-                            display: true,
-                            content: `TP: $${signal.take_profit_price.toFixed(4)}`,
-                            position: 'end',
-                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                            color: '#ffffff',
-                            padding: 2,
-                            font: {
-                                size: 9
+                        };
+                        
+                        // Entry-specific Stop Loss
+                        annotations[`scaled_sl_${idx}_${annotationId++}`] = {
+                            type: 'line',
+                            mode: 'horizontal',
+                            scaleID: 'y',
+                            value: entry.stop_loss,
+                            borderColor: `rgba(239, 68, 68, ${opacity * 0.5})`,
+                            borderWidth: 1,
+                            borderDash: [6, 3],
+                            label: {
+                                display: idx === 0, // Only show label for first entry
+                                content: `SL${idx + 1}: $${entry.stop_loss.toFixed(4)}`,
+                                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                color: '#ffffff',
+                                padding: 2,
+                                font: { size: 8 }
                             }
+                        };
+                        
+                        // Take profit levels for this entry
+                        if (entry.take_profits && entry.take_profits.length > 0) {
+                            entry.take_profits.forEach((tp, tpIdx) => {
+                                const [tpPrice, tpAlloc] = tp;
+                                annotations[`scaled_tp_${idx}_${tpIdx}_${annotationId++}`] = {
+                                    type: 'line',
+                                    mode: 'horizontal',
+                                    scaleID: 'y',
+                                    value: tpPrice,
+                                    borderColor: `rgba(34, 197, 94, ${opacity * 0.4})`,
+                                    borderWidth: 1,
+                                    borderDash: [8, 4],
+                                    label: {
+                                        display: idx === 0 && tpIdx === 0, // Only show one TP label
+                                        content: `TP: $${tpPrice.toFixed(4)}`,
+                                        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                                        color: '#ffffff',
+                                        padding: 2,
+                                        font: { size: 8 }
+                                    }
+                                };
+                            });
                         }
-                    };
-                }
-                
-                // Stop Loss Line
-                if (signal.stop_loss_price) {
-                    annotations[`signal_sl_${annotationId++}`] = {
-                        type: 'line',
-                        mode: 'horizontal',
-                        scaleID: 'y',
-                        value: signal.stop_loss_price,
-                        borderColor: signalColors.sl,
-                        borderWidth: 1,
-                        borderDash: [6, 3],
-                        label: {
-                            display: true,
-                            content: `SL: $${signal.stop_loss_price.toFixed(4)}`,
-                            position: 'end',
-                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                            color: '#ffffff',
-                            padding: 2,
-                            font: {
-                                size: 9
-                            }
-                        }
-                    };
-                }
-                
-                // Entry Zone (if available)
-                if (signal.entry_zone_high && signal.entry_zone_low) {
-                    // Calculate time range for entry zone (recent candles)
-                    const recentTime = chartData.candlesticks[chartData.candlesticks.length - 1].time;
-                    const zoneWidth = 1000 * 60 * 60 * 2; // 2 hours width
+                    });
                     
-                    annotations[`signal_zone_${annotationId++}`] = {
-                        type: 'box',
-                        xMin: recentTime - zoneWidth,
-                        xMax: recentTime + zoneWidth,
-                        yMin: Math.min(signal.entry_zone_low, signal.entry_zone_high),
-                        yMax: Math.max(signal.entry_zone_low, signal.entry_zone_high),
-                        backgroundColor: signalColors.zone,
-                        borderColor: signalColors.entryBorder,
-                        borderWidth: 0.5,
-                        borderDash: [8, 4],
-                        label: {
-                            display: false
-                        }
-                    };
+                    // HTF Bias indicator box
+                    if (signal.htf_bias) {
+                        const recentTime = chartData.candlesticks[chartData.candlesticks.length - 1].time;
+                        const boxWidth = 1000 * 60 * 60 * 4; // 4 hours
+                        
+                        annotations[`htf_bias_${annotationId++}`] = {
+                            type: 'box',
+                            xMin: recentTime - boxWidth,
+                            xMax: recentTime,
+                            yMin: Math.min(...signal.scaled_entries.map(e => e.stop_loss)),
+                            yMax: Math.max(...signal.scaled_entries.map(e => e.entry_price)),
+                            backgroundColor: signal.htf_bias === 'bullish' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                            borderColor: signal.htf_bias === 'bullish' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+                            borderWidth: 1,
+                            borderDash: [10, 5],
+                            label: {
+                                display: true,
+                                content: `HTF: ${signal.htf_bias.toUpperCase()}`,
+                                position: 'start',
+                                backgroundColor: signal.htf_bias === 'bullish' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                color: '#ffffff',
+                                font: { size: 9, weight: 'bold' }
+                            }
+                        };
+                    }
                 }
             }
             
