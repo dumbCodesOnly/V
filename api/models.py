@@ -277,10 +277,10 @@ class TradeConfiguration(db.Model):
 
     def to_trade_config(self):
         """Convert database model to TradeConfig object"""
-        # Import locally to avoid circular dependency
-        from . import app
+        # Lazy import to avoid circular dependency
+        from .app import TradeConfig
 
-        config = app.TradeConfig(self.trade_id, self.name)
+        config = TradeConfig(self.trade_id, self.name)
         config.symbol = self.symbol
         config.side = self.side
         config.amount = self.amount
@@ -308,10 +308,9 @@ class TradeConfiguration(db.Model):
                 float(self.breakeven_after) if self.breakeven_after else 0.0
             )
         config.breakeven_sl_triggered = getattr(self, "breakeven_sl_triggered", False)
-        # Set breakeven SL price to entry price when breakeven is triggered
-        config.breakeven_sl_price = (
-            self.entry_price if config.breakeven_sl_triggered else 0.0
-        )
+        # Breakeven SL price should be calculated dynamically during monitoring, not stored
+        # Setting to 0.0 here - monitoring logic will calculate when needed
+        config.breakeven_sl_price = 0.0
         config.trailing_stop_enabled = self.trailing_stop_enabled
         config.trail_percentage = self.trail_percentage
         config.trail_activation_price = self.trail_activation_price
@@ -358,19 +357,18 @@ class TradeConfiguration(db.Model):
         db_config.entry_price = config.entry_price
         db_config.take_profits = json.dumps(config.take_profits)
         db_config.stop_loss_percent = config.stop_loss_percent
-        # Convert breakeven_after - handle string values
+        # Standardize breakeven_after to numeric: 0.0 (disabled), 1.0 (after TP1), 2.0 (after TP2), 3.0 (after TP3)
         if hasattr(config, "breakeven_after"):
-            if config.breakeven_after == "disabled" or config.breakeven_after == 0:
+            breakeven_value = config.breakeven_after
+            if isinstance(breakeven_value, str):
+                # Convert string representations to numeric
+                breakeven_map = {"disabled": 0.0, "tp1": 1.0, "tp2": 2.0, "tp3": 3.0}
+                db_config.breakeven_after = breakeven_map.get(breakeven_value.lower(), 0.0)
+            elif breakeven_value == 0 or breakeven_value is None:
                 db_config.breakeven_after = 0.0
-            elif config.breakeven_after == "tp1":
-                db_config.breakeven_after = 1.0
-            elif config.breakeven_after == "tp2":
-                db_config.breakeven_after = 2.0
-            elif config.breakeven_after == "tp3":
-                db_config.breakeven_after = 3.0
             else:
                 try:
-                    db_config.breakeven_after = float(config.breakeven_after)
+                    db_config.breakeven_after = float(breakeven_value)
                 except (ValueError, TypeError):
                     db_config.breakeven_after = 0.0
         else:

@@ -133,6 +133,70 @@ class SMCAnalyzer:
             TradingConfig.SCALED_ENTRY_DEPTH_2
         ]
 
+    def _validate_long_tp_ordering(self, take_profits: List[float], entry_price: float) -> List[float]:
+        """Ensure valid LONG TP ordering with duplicate handling (Issue #46 fix)"""
+        # Remove duplicates
+        unique_tps = sorted(list(set(take_profits)))
+        
+        # Ensure we have at least 3 levels
+        if len(unique_tps) < 3:
+            # Generate missing levels using fixed percentages
+            tp_percentages = [2.0, 4.0, 6.0]  # 2%, 4%, 6%
+            take_profits = [entry_price * (1 + pct/100) for pct in tp_percentages]
+            logging.warning(f"Insufficient unique TP levels for LONG, generated: {take_profits}")
+        else:
+            take_profits = unique_tps[:3]
+        
+        # Verify strict ordering
+        if not (take_profits[0] < take_profits[1] < take_profits[2]):
+            raise ValueError(f"LONG TP ordering validation failed: {take_profits}")
+        
+        return take_profits
+    
+    def _validate_short_tp_ordering(self, take_profits: List[float], entry_price: float) -> List[float]:
+        """Ensure valid SHORT TP ordering with duplicate handling (Issue #47 fix)"""
+        # Remove duplicates
+        unique_tps = sorted(list(set(take_profits)), reverse=True)
+        
+        # Ensure we have at least 3 levels
+        if len(unique_tps) < 3:
+            # Generate missing levels using fixed percentages
+            tp_percentages = [2.0, 4.0, 6.0]  # 2%, 4%, 6%
+            take_profits = [entry_price * (1 - pct/100) for pct in tp_percentages]
+            logging.warning(f"Insufficient unique TP levels for SHORT, generated: {take_profits}")
+        else:
+            take_profits = unique_tps[:3]
+        
+        # Verify strict ordering (descending for SHORT)
+        if not (take_profits[0] > take_profits[1] > take_profits[2]):
+            raise ValueError(f"SHORT TP ordering validation failed: {take_profits}")
+        
+        return take_profits
+
+    def _validate_scaled_entries(self, scaled_entries: List[ScaledEntry], direction: str) -> bool:
+        """Validate scaled entry logic and ordering (Issue #52 fix)"""
+        if not scaled_entries:
+            raise ValueError("No scaled entries generated")
+        
+        # Check allocations sum to 100%
+        total_allocation = sum(e.allocation_percent for e in scaled_entries)
+        if not (99.0 <= total_allocation <= 101.0):  # Allow 1% tolerance
+            logging.warning(f"Scaled entry allocations sum to {total_allocation}%, expected 100%")
+        
+        # Check entry price ordering
+        entry_prices = [e.entry_price for e in scaled_entries]
+        if direction == "long":
+            # For LONG: entries should be in descending order (market price highest, limit entries lower)
+            if not all(entry_prices[i] >= entry_prices[i+1] for i in range(len(entry_prices)-1)):
+                raise ValueError(f"LONG scaled entries not in correct order: {entry_prices}")
+        else:
+            # For SHORT: entries should be in ascending order (market price lowest, limit entries higher)
+            if not all(entry_prices[i] <= entry_prices[i+1] for i in range(len(entry_prices)-1)):
+                raise ValueError(f"SHORT scaled entries not in correct order: {entry_prices}")
+        
+        logging.info(f"Scaled entries validated successfully for {direction}: {len(scaled_entries)} entries, total allocation: {total_allocation}%")
+        return True
+
     @with_circuit_breaker(
         "binance_klines_api", failure_threshold=8, recovery_timeout=120
     )
@@ -1101,13 +1165,14 @@ class SMCAnalyzer:
                 next_tp = last_tp * 1.01  # 1% increment
                 take_profits.append(next_tp)
         
-        # ISSUE #12 FIX: Explicit validation for LONG TP ordering
-        if len(take_profits) >= 3:
-            if not (take_profits[0] < take_profits[1] < take_profits[2]):
-                logging.error(f"Invalid LONG TP ordering detected: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
-                # Force proper ordering
-                take_profits = sorted(take_profits)
-                logging.info(f"Corrected to: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+        # ISSUE #46 FIX: Robust validation for LONG TP ordering with duplicate handling
+        try:
+            take_profits = self._validate_long_tp_ordering(take_profits, entry_price)
+            logging.info(f"Validated LONG TPs: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+        except ValueError as e:
+            logging.error(f"LONG TP validation failed: {e}")
+            # Fallback: generate valid TPs
+            take_profits = [entry_price * (1 + pct/100) for pct in [2.0, 4.0, 6.0]]
 
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
@@ -1308,13 +1373,14 @@ class SMCAnalyzer:
                 next_tp = max(next_tp, current_price * 0.001)
                 take_profits.append(next_tp)
         
-        # ISSUE #12 FIX: Explicit validation for SHORT TP ordering
-        if len(take_profits) >= 3:
-            if not (take_profits[0] > take_profits[1] > take_profits[2]):
-                logging.error(f"Invalid SHORT TP ordering detected: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
-                # Force proper ordering (descending for shorts)
-                take_profits = sorted(take_profits, reverse=True)
-                logging.info(f"Corrected to: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+        # ISSUE #47 FIX: Robust validation for SHORT TP ordering with duplicate handling
+        try:
+            take_profits = self._validate_short_tp_ordering(take_profits, entry_price)
+            logging.info(f"Validated SHORT TPs: TP1={take_profits[0]:.2f}, TP2={take_profits[1]:.2f}, TP3={take_profits[2]:.2f}")
+        except ValueError as e:
+            logging.error(f"SHORT TP validation failed: {e}")
+            # Fallback: generate valid TPs
+            take_profits = [entry_price * (1 - pct/100) for pct in [2.0, 4.0, 6.0]]
 
         return entry_price, stop_loss, take_profits[:3]  # Return exactly 3 TPs
 
@@ -3579,6 +3645,21 @@ class SMCAnalyzer:
             logging.info(f"Phase 4: Fallback entry-specific SLs - Entry1: ${entry1_sl:.2f}, Entry2: ${entry2_sl:.2f}, Entry3: ${entry3_sl:.2f}")
             logging.info(f"Phase 4: Fallback Scaled Entries - Market: ${entry1_price:.2f} ({allocations[0]}%), "
                         f"Limit1: ${entry2_price:.2f} ({allocations[1]}%), Limit2: ${entry3_price:.2f} ({allocations[2]}%)")
+        
+        # ISSUE #52 FIX: Validate scaled entries before returning
+        try:
+            self._validate_scaled_entries(scaled_entries, direction)
+        except ValueError as e:
+            logging.error(f"Scaled entry validation failed: {e}")
+            # Return a safe fallback single entry
+            return [ScaledEntry(
+                entry_price=current_price,
+                allocation_percent=100.0,
+                order_type='market',
+                stop_loss=base_stop_loss,
+                take_profits=base_take_profits,
+                status='pending'
+            )]
         
         return scaled_entries
 
