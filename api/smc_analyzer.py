@@ -2129,6 +2129,7 @@ class SMCAnalyzer:
                 
                 # Phase 5: Extract 15m swing levels using new Phase 5 method
                 m15_swing_levels = {}
+                atr_15m = 0.0  # Initialize ATR value for later use
                 if m15_data and len(m15_data) >= 5:
                     m15_swing_levels = self._find_15m_swing_levels(m15_data)
                     analysis_details["phase5_swing_high"] = m15_swing_levels.get("last_swing_high")
@@ -2217,14 +2218,16 @@ class SMCAnalyzer:
                     # Calculate base take profits for scaled entries
                     base_take_profits = [(tp, 100.0/len(take_profits)) for tp in take_profits] if take_profits else []
                     
-                    # Calculate scaled entries
+                    # Calculate scaled entries with entry-specific stop-losses
                     scaled_entries_list = self._calculate_scaled_entries(
                         current_price=current_price,
                         direction=direction,
                         order_blocks=order_blocks,
                         fvgs=fvgs,
                         base_stop_loss=stop_loss,
-                        base_take_profits=base_take_profits
+                        base_take_profits=base_take_profits,
+                        m15_swing_levels=m15_swing_levels if m15_swing_levels else {},
+                        atr_value=atr_15m
                     )
                     
                     analysis_details["phase4_scaled_entries_count"] = len(scaled_entries_list)
@@ -3270,6 +3273,8 @@ class SMCAnalyzer:
         fvgs: List[FairValueGap],
         base_stop_loss: float,
         base_take_profits: List[Tuple[float, float]],
+        m15_swing_levels: Optional[Dict] = None,
+        atr_value: float = 0.0,
         volatility_regime: str = "normal",
         tick_size: float = 0.01
     ) -> List[ScaledEntry]:
@@ -3422,11 +3427,22 @@ class SMCAnalyzer:
                         entry3_price = entry2_price * 1.004
                     logging.info(f"Corrected to: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
             
+            # Calculate entry-specific stop-losses for each entry
+            if m15_swing_levels:
+                entry1_sl = self._calculate_entry_specific_sl(entry1_price, direction, m15_swing_levels, atr_value)
+                entry2_sl = self._calculate_entry_specific_sl(entry2_price, direction, m15_swing_levels, atr_value)
+                entry3_sl = self._calculate_entry_specific_sl(entry3_price, direction, m15_swing_levels, atr_value)
+            else:
+                # Fallback to base stop-loss if no swing data
+                entry1_sl = base_stop_loss
+                entry2_sl = base_stop_loss
+                entry3_sl = base_stop_loss
+            
             entry1 = ScaledEntry(
                 entry_price=entry1_price,
                 allocation_percent=allocations[0],
                 order_type='market',
-                stop_loss=base_stop_loss,
+                stop_loss=entry1_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
@@ -3436,7 +3452,7 @@ class SMCAnalyzer:
                 entry_price=entry2_price,
                 allocation_percent=allocations[1],
                 order_type='limit',
-                stop_loss=base_stop_loss,
+                stop_loss=entry2_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
@@ -3446,11 +3462,13 @@ class SMCAnalyzer:
                 entry_price=entry3_price,
                 allocation_percent=allocations[2],
                 order_type='limit',
-                stop_loss=base_stop_loss,
+                stop_loss=entry3_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
             scaled_entries.append(entry3)
+            
+            logging.info(f"Phase 4: Entry-specific SLs - Entry1: ${entry1_sl:.2f}, Entry2: ${entry2_sl:.2f}, Entry3: ${entry3_sl:.2f}")
             
             logging.info(f"Phase 4: SMC Zone-Based Entries ({adjusted_zone['type']}):")
             logging.info(f"  - Entry 1 (Market): ${entry1_price:.4f} ({allocations[0]}%)")
@@ -3461,11 +3479,18 @@ class SMCAnalyzer:
             logging.warning(f"No valid FVG/OB zone found for {direction} - using fixed-percentage fallback")
             
             entry1_price = current_price
+            
+            # Calculate entry-specific stop-loss for entry 1
+            if m15_swing_levels:
+                entry1_sl = self._calculate_entry_specific_sl(entry1_price, direction, m15_swing_levels, atr_value)
+            else:
+                entry1_sl = base_stop_loss
+            
             entry1 = ScaledEntry(
                 entry_price=entry1_price,
                 allocation_percent=allocations[0],
                 order_type='market',
-                stop_loss=base_stop_loss,
+                stop_loss=entry1_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
@@ -3488,11 +3513,19 @@ class SMCAnalyzer:
                 entry3_price, direction, order_blocks, fvgs, max_distance_pct=1.0
             )
             
+            # Calculate entry-specific stop-losses for entries 2 and 3
+            if m15_swing_levels:
+                entry2_sl = self._calculate_entry_specific_sl(entry2_price, direction, m15_swing_levels, atr_value)
+                entry3_sl = self._calculate_entry_specific_sl(entry3_price, direction, m15_swing_levels, atr_value)
+            else:
+                entry2_sl = base_stop_loss
+                entry3_sl = base_stop_loss
+            
             entry2 = ScaledEntry(
                 entry_price=entry2_price,
                 allocation_percent=allocations[1],
                 order_type='limit',
-                stop_loss=base_stop_loss,
+                stop_loss=entry2_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
@@ -3502,12 +3535,13 @@ class SMCAnalyzer:
                 entry_price=entry3_price,
                 allocation_percent=allocations[2],
                 order_type='limit',
-                stop_loss=base_stop_loss,
+                stop_loss=entry3_sl,
                 take_profits=base_take_profits,
                 status='pending'
             )
             scaled_entries.append(entry3)
             
+            logging.info(f"Phase 4: Fallback entry-specific SLs - Entry1: ${entry1_sl:.2f}, Entry2: ${entry2_sl:.2f}, Entry3: ${entry3_sl:.2f}")
             logging.info(f"Phase 4: Fallback Scaled Entries - Market: ${entry1_price:.2f} ({allocations[0]}%), "
                         f"Limit1: ${entry2_price:.2f} ({allocations[1]}%), Limit2: ${entry3_price:.2f} ({allocations[2]}%)")
         
