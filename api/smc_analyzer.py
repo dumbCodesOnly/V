@@ -508,7 +508,8 @@ class SMCAnalyzer:
         volumes = [c["volume"] for c in candlesticks[-20:] if c["volume"] > 0]
         avg_volume = sum(volumes) / len(volumes) if volumes else 1
 
-        for i in range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES):
+        # Loop through candles, allowing checks closer to the end since _check_impulsive_move validates bounds
+        for i in range(3, len(candlesticks) - 1):
             current = candlesticks[i]
             prev = candlesticks[i - 1]
 
@@ -526,7 +527,7 @@ class SMCAnalyzer:
                 > (current["open"] - prev["close"]) * 2
             ):
 
-                # Check for impulsive exit (displacement)
+                # Check for impulsive exit (displacement) - _check_impulsive_move handles bounds
                 impulsive_exit = self._check_impulsive_move(candlesticks, i, "bullish")
 
                 # Check continuation strength
@@ -1737,7 +1738,7 @@ class SMCAnalyzer:
         expiry_time = signal_data.get('expiry_time', 0)
         
         # Check if signal has expired
-        current_time = datetime.utcnow().timestamp()
+        current_time = datetime.now(timezone.utc).timestamp()
         if current_time > expiry_time:
             logging.info(f"Signal expired for {symbol}, removing from cache")
             del self.active_signals[symbol]
@@ -1771,7 +1772,7 @@ class SMCAnalyzer:
     
     def _cache_signal(self, signal: SMCSignal) -> None:
         """Cache a new signal with expiry time."""
-        expiry_time = datetime.utcnow().timestamp() + self.signal_timeout
+        expiry_time = datetime.now(timezone.utc).timestamp() + self.signal_timeout
         self.active_signals[signal.symbol] = {
             'signal': signal,
             'expiry_time': expiry_time
@@ -2250,7 +2251,7 @@ class SMCAnalyzer:
                     reasoning=final_reasoning,
                     signal_strength=signal_strength,
                     risk_reward_ratio=rr_ratio,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     current_market_price=current_price,  # Store actual market price
                     scaled_entries=scaled_entries_list  # Phase 4: Add scaled entries
                 )
@@ -2397,7 +2398,13 @@ class SMCAnalyzer:
         if len(swing_points) < 2:
             return "neutral"
 
-        recent_prices = [point[price_key] for point in swing_points[-3:]]
+        # Validate all points have the required key before accessing
+        recent_prices = []
+        for point in swing_points[-3:]:
+            if price_key not in point:
+                logging.warning(f"Missing '{price_key}' in swing point: {point}")
+                return "neutral"
+            recent_prices.append(point[price_key])
 
         if len(recent_prices) >= SMCConfig.MIN_PRICES_FOR_TREND:
             if all(
@@ -3684,7 +3691,7 @@ class SMCAnalyzer:
         
         swing_highs = []
         swing_lows = []
-        lookback = 2  # Look 2 candles before and after for swing points
+        lookback = SMCConfig.SWING_LOOKBACK_15M  # Use config constant for 15m swing detection
         
         # Identify swing highs and lows
         for i in range(lookback, len(m15_data) - lookback):
@@ -3807,7 +3814,9 @@ class SMCAnalyzer:
         Returns:
             Liquidity target price or None if no valid target found
         """
+        # Validate liquidity_pools is not empty or None
         if not liquidity_pools:
+            logging.debug("Phase 6: No liquidity pools available for target selection")
             return None
         
         valid_targets = []
