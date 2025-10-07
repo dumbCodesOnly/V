@@ -1422,6 +1422,19 @@ class SMCAnalyzer:
             if not d1_data or not h4_data:
                 return {"bias": "neutral", "confidence": 0.0, "liquidity_targets": [], "reason": "Insufficient data"}
             
+            if len(d1_data) < SMCConfig.TIMEFRAME_1D_LIMIT:
+                logging.warning(f"Insufficient daily data for institutional analysis: {len(d1_data)} / {SMCConfig.TIMEFRAME_1D_LIMIT} required")
+                return {
+                    "bias": "neutral", 
+                    "confidence": 0.0, 
+                    "liquidity_targets": [], 
+                    "reason": f"Insufficient daily data ({len(d1_data)}/{SMCConfig.TIMEFRAME_1D_LIMIT})",
+                    "d1_structure": "unknown",
+                    "h4_structure": "unknown",
+                    "bullish_signals": 0,
+                    "bearish_signals": 0
+                }
+            
             d1_structure = self.detect_market_structure(d1_data)
             h4_structure = self.detect_market_structure(h4_data)
             
