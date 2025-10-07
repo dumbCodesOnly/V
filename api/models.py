@@ -560,6 +560,26 @@ class SMCSignalCache(db.Model):
         # Use naive UTC datetime for consistent database storage
         expires_at = datetime.utcnow() + timedelta(minutes=cache_duration_minutes)
 
+        # Serialize scaled entries if present
+        scaled_entries_json = None
+        if signal.scaled_entries:
+            try:
+                scaled_entries_json = json.dumps([
+                    {
+                        'entry_price': entry.entry_price,
+                        'allocation_percent': entry.allocation_percent,
+                        'order_type': entry.order_type,
+                        'stop_loss': entry.stop_loss,
+                        'take_profits': entry.take_profits,
+                        'status': entry.status
+                    }
+                    for entry in signal.scaled_entries
+                ])
+            except (AttributeError, TypeError) as e:
+                import logging
+                logging.warning(f"Failed to serialize scaled_entries: {e}")
+                scaled_entries_json = None
+
         return cls(
             symbol=signal.symbol,
             direction=signal.direction,
@@ -572,6 +592,7 @@ class SMCSignalCache(db.Model):
             risk_reward_ratio=signal.risk_reward_ratio,
             expires_at=expires_at,
             market_price_at_signal=signal.current_market_price,  # Use actual market price, not entry price
+            scaled_entries=scaled_entries_json
         )
 
     @classmethod
