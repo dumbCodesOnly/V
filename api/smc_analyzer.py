@@ -575,7 +575,9 @@ class SMCAnalyzer:
                     )
                     order_blocks.append(order_block)
 
-        return order_blocks[-5:]  # Return last 5 order blocks
+        # Return last 15 order blocks to capture institutional zones from extended 200-candle daily lookback
+        # Older OBs from institutional timeframes are prioritized for confluence
+        return order_blocks[-15:]
 
     def find_fair_value_gaps(self, candlesticks: List[Dict]) -> List[FairValueGap]:
         """Enhanced FVG detection with ATR filtering and alignment scoring"""
@@ -676,7 +678,9 @@ class SMCAnalyzer:
                 fvg.age_candles = age
                 valid_fvgs.append(fvg)
 
-        return valid_fvgs[-10:]  # Return last 10 valid FVGs
+        # Return last 20 valid FVGs to capture institutional zones from extended 200-candle daily lookback
+        # Older FVGs from institutional timeframes are prioritized for confluence
+        return valid_fvgs[-20:]
 
     def find_liquidity_pools(self, candlesticks: List[Dict]) -> List[LiquidityPool]:
         """Identify liquidity pools - areas where stops are likely clustered"""

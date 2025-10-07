@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+### October 6, 2025 - Critical SMC Fix: Extended Daily Candles for Institutional Structure Detection
+- **🔧 ISSUE IDENTIFIED**: Only fetching 50 1D candles was insufficient for institutional OB/FVG/structure detection
+  - Resulted in false "HTF consolidation" signals even during strong rallies (BNB +70% in 10 days with Bullish BOS)
+  - Missed critical institutional order blocks and fair value gaps from macro timeframe
+  - Insufficient data for proper market structure analysis on daily timeframe
+  
+- **✅ SOLUTION IMPLEMENTED**:
+  - **Extended Daily Candles**: Increased from 50 to 200 candles (~6.5 months of daily data)
+  - **Rate Limiting Protection**: 
+    - Binance klines delay: 3.0s → 5.0s (12 requests/minute for extended fetches)
+    - API retry delay: 5.0s → 8.0s with 3.0x backoff multiplier
+    - Circuit breaker: 8 → 10 failure threshold, 120s → 180s recovery timeout
+  - **Enhanced Institutional Zone Detection**:
+    - FVG max age: 50 → 150 candles (captures older institutional zones)
+    - FVG return limit: 10 → 20 zones (more institutional levels)
+    - Order Block return limit: 5 → 15 blocks (comprehensive institutional footprint)
+  - **Rolling Window Updated**: 
+    - Daily target: 50 → 200 candles
+    - Daily cleanup buffer: 25 → 100 candles (300+ before cleanup)
+  
+- **RESULT**: Proper detection of institutional structure, OBs, and FVGs across 6+ months of daily data
+- **IMPACT**: Eliminates false consolidation signals during strong trending markets and rallies
+
 ### October 6, 2025 - ATR Filter Further Reduced for Rally Conditions
 - **📊 ATR Filter Thresholds Significantly Lowered** (~40% reduction for rally conditions):
   - Default: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
@@ -108,7 +131,7 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
 - Modular exchange client architecture with factory pattern for seamless multi-exchange operation and a unified API interface.
 - **Multi-Timeframe SMC Analysis** (All 7 Phases Complete - October 2025):
   - **📚 Complete Documentation: See `/SMC_ANALYZER_DOCUMENTATION.md`**
-  - Institutional-grade top-down analysis across 4 timeframes (1d → 4h/1h → 15m execution)
+  - Institutional-grade top-down analysis across 4 timeframes (200x 1d → 4h/1h → 15m execution)
   - HTF bias determination from Daily and H4 structure
   - Intermediate structure analysis on H4/H1 (Order Blocks, FVGs, BOS/CHoCH)
   - 15m execution signals with HTF alignment validation

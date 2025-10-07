@@ -67,9 +67,9 @@ class TimeConfig:
     
     # API Rate Limiting - Delays between requests to respect rate limits  
     BINANCE_API_DELAY = 1.0   # seconds - Conservative: ~60 requests/minute
-    BINANCE_KLINES_DELAY = 3.0  # seconds - Conservative for klines endpoints (20 requests/minute)
-    API_RETRY_DELAY = 5.0  # seconds - Longer base delay for retries to prevent rate limit triggers
-    API_BACKOFF_MULTIPLIER = 2.5  # Higher exponential backoff multiplier
+    BINANCE_KLINES_DELAY = 5.0  # seconds - Conservative for klines endpoints with extended 1D candles (12 requests/minute)
+    API_RETRY_DELAY = 8.0  # seconds - Longer base delay for retries to prevent rate limit triggers
+    API_BACKOFF_MULTIPLIER = 3.0  # Higher exponential backoff multiplier for extended data fetches
 
     # Sync Intervals - COST OPTIMIZED FOR RENDER
     EXCHANGE_SYNC_INTERVAL = (
@@ -330,8 +330,8 @@ class CircuitBreakerConfig:
     LAST_STATE_CHANGES_DISPLAY = 5  # Number of recent state changes to show in stats
 
     # API-Specific Circuit Breaker Settings
-    BINANCE_FAILURE_THRESHOLD = 8  # Much less sensitive - allow more failures before opening
-    BINANCE_RECOVERY_TIMEOUT = 120  # Longer recovery time to avoid hitting limits again
+    BINANCE_FAILURE_THRESHOLD = 10  # Much less sensitive - allow more failures before opening (increased for extended 1D fetches)
+    BINANCE_RECOVERY_TIMEOUT = 180  # Longer recovery time to avoid hitting limits again (3 min for extended data)
 
     TOOBIT_FAILURE_THRESHOLD = 3  # More sensitive for exchange operations
     TOOBIT_RECOVERY_TIMEOUT = 60  # Longer recovery for exchange APIs
@@ -363,7 +363,7 @@ class SMCConfig:
     # Fair Value Gap (FVG) Detection
     MIN_CANDLESTICKS_FOR_FVG = 3  # Minimum candles needed for FVG detection
     FVG_ATR_MULTIPLIER = 0.2  # Minimum FVG size as percentage of ATR (20% of ATR)
-    FVG_MAX_AGE_CANDLES = 50  # Maximum age for FVG validity
+    FVG_MAX_AGE_CANDLES = 150  # Maximum age for FVG validity (increased for 200-candle daily lookback - institutional zones)
 
     # Order Block Enhancement
     OB_IMPULSIVE_MOVE_THRESHOLD = 1.5  # Minimum displacement ratio for impulsive exit
@@ -398,11 +398,11 @@ class SMCConfig:
     ATR_PERIOD = 14  # Period for Average True Range calculation
     ATR_SMOOTHING_FACTOR = 2.0  # EMA smoothing factor for ATR calculation
 
-    # Timeframe Data Limits for Enhanced SMC Analysis - RESTORED for proper analysis
+    # Timeframe Data Limits for Enhanced SMC Analysis - EXTENDED for institutional-grade structure detection
     TIMEFRAME_15M_LIMIT = 400  # 400 candles = ~4 days of 15m data for precise execution
     TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
     TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
-    TIMEFRAME_1D_LIMIT = 50   # 50 candles = ~7 weeks of daily data for macro structure
+    TIMEFRAME_1D_LIMIT = 200   # 200 candles = ~6.5 months of daily data for institutional OB/FVG/structure detection
     
     # Signal Cache Configuration (used by SMCSignalCache model)
     SIGNAL_CACHE_DURATION_VERY_STRONG = 30  # minutes - cache very strong signals longer
@@ -422,14 +422,14 @@ class RollingWindowConfig:
     TARGET_CANDLES_15M = 400  # Target: 400 15-minute candles (~4 days)
     TARGET_CANDLES_1H = 300   # Target: 300 hourly candles (~12.5 days)
     TARGET_CANDLES_4H = 100   # Target: 100 4-hour candles (~16 days)
-    TARGET_CANDLES_1D = 50    # Target: 50 daily candles (~7 weeks)
+    TARGET_CANDLES_1D = 200    # Target: 200 daily candles (~6.5 months for institutional structure)
     
     # Conservative cleanup buffers - only start cleanup when we have MUCH more data
     # This ensures recent candles are never deleted prematurely
     CLEANUP_BUFFER_15M = 100  # Only cleanup when we have 500+ 15m candles (100 buffer)
     CLEANUP_BUFFER_1H = 150   # Only cleanup when we have 450+ hourly candles (150 buffer)
     CLEANUP_BUFFER_4H = 50    # Only cleanup when we have 150+ 4h candles (50 buffer)  
-    CLEANUP_BUFFER_1D = 25    # Only cleanup when we have 75+ daily candles (25 buffer)
+    CLEANUP_BUFFER_1D = 100    # Only cleanup when we have 300+ daily candles (100 buffer for institutional patterns)
     
     # Batch cleanup settings - smaller batches to be gentler
     CLEANUP_BATCH_SIZE = 10   # Very small batches to avoid aggressive deletion
