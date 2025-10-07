@@ -358,6 +358,10 @@ class SMCConfig:
 
     # Swing Point Detection
     DEFAULT_LOOKBACK_PERIOD = 5  # Default lookback period for swing highs/lows
+    SWING_LOOKBACK_15M = 3   # 15m: tight swings for precise execution
+    SWING_LOOKBACK_1H = 5    # 1h: standard swing detection
+    SWING_LOOKBACK_4H = 7    # 4h: broader swings for intermediate structure
+    SWING_LOOKBACK_1D = 15   # 1d: institutional swings (200-candle context requires wider lookback)
     CONTINUATION_LOOKAHEAD = 4  # Candles to look ahead for continuation strength
 
     # Fair Value Gap (FVG) Detection

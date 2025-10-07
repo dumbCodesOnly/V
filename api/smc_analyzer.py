@@ -1476,8 +1476,8 @@ class SMCAnalyzer:
                 bearish_bias_count += 1
                 reasoning.append("H4 bearish structure alignment")
             
-            swing_points = [{"price": p["high"], "timestamp": p["timestamp"]} for p in self._find_swing_highs(d1_data)]
-            swing_points += [{"price": p["low"], "timestamp": p["timestamp"]} for p in self._find_swing_lows(d1_data)]
+            swing_points = [{"price": p["high"], "timestamp": p["timestamp"]} for p in self._find_swing_highs(d1_data, timeframe="1d")]
+            swing_points += [{"price": p["low"], "timestamp": p["timestamp"]} for p in self._find_swing_lows(d1_data, timeframe="1d")]
             d1_trend = self._calculate_trend(sorted(swing_points, key=lambda x: x["timestamp"]), "price")
             if d1_trend == "bullish":
                 bullish_bias_count += 1
@@ -2266,9 +2266,20 @@ class SMCAnalyzer:
     def _find_swing_highs(
         self,
         candlesticks: List[Dict],
-        lookback: int = SMCConfig.DEFAULT_LOOKBACK_PERIOD,
+        lookback: int = None,
+        timeframe: str = "1h"
     ) -> List[Dict]:
-        """Find swing highs in price data"""
+        """Find swing highs in price data with timeframe-aware lookback"""
+        # Determine lookback based on timeframe if not explicitly provided
+        if lookback is None:
+            lookback_map = {
+                "15m": SMCConfig.SWING_LOOKBACK_15M,
+                "1h": SMCConfig.SWING_LOOKBACK_1H,
+                "4h": SMCConfig.SWING_LOOKBACK_4H,
+                "1d": SMCConfig.SWING_LOOKBACK_1D
+            }
+            lookback = lookback_map.get(timeframe, SMCConfig.DEFAULT_LOOKBACK_PERIOD)
+        
         swing_highs = []
 
         for i in range(lookback, len(candlesticks) - lookback):
@@ -2298,9 +2309,20 @@ class SMCAnalyzer:
     def _find_swing_lows(
         self,
         candlesticks: List[Dict],
-        lookback: int = SMCConfig.DEFAULT_LOOKBACK_PERIOD,
+        lookback: int = None,
+        timeframe: str = "1h"
     ) -> List[Dict]:
-        """Find swing lows in price data"""
+        """Find swing lows in price data with timeframe-aware lookback"""
+        # Determine lookback based on timeframe if not explicitly provided
+        if lookback is None:
+            lookback_map = {
+                "15m": SMCConfig.SWING_LOOKBACK_15M,
+                "1h": SMCConfig.SWING_LOOKBACK_1H,
+                "4h": SMCConfig.SWING_LOOKBACK_4H,
+                "1d": SMCConfig.SWING_LOOKBACK_1D
+            }
+            lookback = lookback_map.get(timeframe, SMCConfig.DEFAULT_LOOKBACK_PERIOD)
+        
         swing_lows = []
 
         for i in range(lookback, len(candlesticks) - lookback):
