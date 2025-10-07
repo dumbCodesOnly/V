@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
-**Last Updated:** October 5, 2025  
-**Version:** 2.3 (All Phases Complete + All Critical Issues Fixed)  
-**Status:** ✅ **All Issues Resolved** (Issues #1-21 complete)
+**Last Updated:** October 7, 2025  
+**Version:** 2.4 (Extended Daily Candles + 6 Critical Issues Identified)  
+**Status:** ⚠️ **6 New Critical Issues Identified** (Issues #25-30 - Extended 200-Candle Implementation)
 
 ---
 
@@ -64,6 +64,157 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 - ✅ Updated RSI thresholds to SMC standards (30/70)
 - ✅ Optimized ATR filter placement for performance
 - ✅ Improved 15m missing data handling
+
+### ⚠️ CRITICAL ISSUES - Extended 200-Candle Implementation (October 7, 2025)
+
+**6 Critical Issues Identified with Extended Daily Candles:**
+
+#### 🔴 Issue #30: HTF Bias Trend Calculation KeyError (CRITICAL - CAUSES CRASH)
+- **Severity:** CRITICAL (Application Crash)
+- **Location:** `api/smc_analyzer.py` line 1455
+- **Problem:** Combines swing_highs + swing_lows dictionaries and accesses non-existent "price" key
+  - Swing highs have "high" key
+  - Swing lows have "low" key  
+  - No "price" key exists in either
+- **Impact:** KeyError crash when calculating daily trend in `_get_htf_bias`
+- **Fix Required:**
+  ```python
+  # CURRENT (BROKEN):
+  d1_trend = self._calculate_trend(self._find_swing_highs(d1_data) + self._find_swing_lows(d1_data), "price")
+  
+  # FIX OPTION 1: Separate trend calculations
+  high_trend = self._calculate_trend(self._find_swing_highs(d1_data), "high")
+  low_trend = self._calculate_trend(self._find_swing_lows(d1_data), "low")
+  d1_trend = "up" if high_trend == "up" and low_trend == "up" else "down" if high_trend == "down" and low_trend == "down" else "neutral"
+  
+  # FIX OPTION 2: Normalize swing points before combining
+  swing_points = [{"price": p["high"], "timestamp": p["timestamp"]} for p in self._find_swing_highs(d1_data)]
+  swing_points += [{"price": p["low"], "timestamp": p["timestamp"]} for p in self._find_swing_lows(d1_data)]
+  d1_trend = self._calculate_trend(sorted(swing_points, key=lambda x: x["timestamp"]), "price")
+  ```
+- **Priority:** URGENT - Must fix immediately to prevent analyzer crashes
+
+#### 🟠 Issue #25: Insufficient 200-Candle Validation
+- **Severity:** HIGH
+- **Location:** `api/smc_analyzer.py` line 1422 (`_get_htf_bias` method)
+- **Problem:** Only checks if `d1_data` exists, not if it contains 200 candles
+- **Impact:** May perform institutional analysis with insufficient data, missing critical patterns
+- **Fix Required:**
+  ```python
+  # CURRENT:
+  if not d1_data or not h4_data:
+      return {"bias": "neutral", "confidence": 0.0, ...}
+  
+  # FIX:
+  if not d1_data or len(d1_data) < SMCConfig.TIMEFRAME_1D_LIMIT or not h4_data:
+      logging.warning(f"Insufficient daily data for institutional analysis: {len(d1_data) if d1_data else 0} / {SMCConfig.TIMEFRAME_1D_LIMIT} required")
+      return {"bias": "neutral", "confidence": 0.0, "liquidity_targets": [], 
+              "reason": f"Insufficient daily data ({len(d1_data) if d1_data else 0}/{SMCConfig.TIMEFRAME_1D_LIMIT})"}
+  ```
+- **Priority:** HIGH - Critical for accurate institutional structure detection
+
+#### 🟠 Issue #27: Order Blocks Lack Age Expiration
+- **Severity:** HIGH
+- **Location:** `api/smc_analyzer.py` - `find_order_blocks` method
+- **Problem:** Unlike FVGs (max age 150 candles), OBs never expire regardless of age
+- **Impact:** Very old OBs from 200-candle lookback treated as equally valid as recent ones
+- **Fix Required:**
+  ```python
+  # Add to config.py SMCConfig:
+  OB_MAX_AGE_CANDLES = 150  # Maximum age for OB validity (same as FVG)
+  
+  # Update find_order_blocks to filter by age:
+  current_time = candlesticks[-1]["timestamp"]
+  valid_obs = []
+  for ob in order_blocks:
+      age = len([c for c in candlesticks if c["timestamp"] > ob.timestamp])
+      if age <= SMCConfig.OB_MAX_AGE_CANDLES and not ob.mitigated:
+          valid_obs.append(ob)
+  return valid_obs[-15:]  # Return last 15 valid OBs
+  ```
+- **Priority:** HIGH - Ensures OB relevance with extended daily data
+
+#### 🟡 Issue #29: Swing Detection Lookback Not Scaled
+- **Severity:** MEDIUM
+- **Location:** `api/smc_analyzer.py` - `_find_swing_highs` / `_find_swing_lows` methods
+- **Problem:** Uses fixed `lookback=5` for all timeframes
+- **Impact:** On daily timeframe with 200 candles, too granular for institutional swing points
+- **Fix Required:**
+  ```python
+  # Add to config.py SMCConfig:
+  SWING_LOOKBACK_15M = 3   # 15m: tight swings
+  SWING_LOOKBACK_1H = 5    # 1h: standard
+  SWING_LOOKBACK_4H = 7    # 4h: broader swings  
+  SWING_LOOKBACK_1D = 15   # 1d: institutional swings (200-candle context)
+  
+  # Update method signature to accept timeframe:
+  def _find_swing_highs(self, candlesticks: List[Dict], lookback: int = None, timeframe: str = "1h") -> List[Dict]:
+      if lookback is None:
+          lookback_map = {
+              "15m": SMCConfig.SWING_LOOKBACK_15M,
+              "1h": SMCConfig.SWING_LOOKBACK_1H,
+              "4h": SMCConfig.SWING_LOOKBACK_4H,
+              "1d": SMCConfig.SWING_LOOKBACK_1D
+          }
+          lookback = lookback_map.get(timeframe, SMCConfig.DEFAULT_LOOKBACK_PERIOD)
+  ```
+- **Priority:** MEDIUM - Improves institutional swing point detection
+
+#### 🟡 Issue #28: Fixed Liquidity Pool Lookback
+- **Severity:** MEDIUM
+- **Location:** `api/smc_analyzer.py` line 690 (`find_liquidity_pools` method)
+- **Problem:** Uses fixed `RECENT_SWING_LOOKBACK=5` regardless of available data
+- **Impact:** With 200 daily candles, misses significant institutional liquidity zones
+- **Fix Required:**
+  ```python
+  # Update config.py SMCConfig:
+  RECENT_SWING_LOOKBACK_1D = 20  # Daily: look back 20 swings with 200 candles
+  RECENT_SWING_LOOKBACK_DEFAULT = 5  # Other timeframes
+  
+  # Update find_liquidity_pools method:
+  def find_liquidity_pools(self, candlesticks: List[Dict], timeframe: str = "4h") -> List[LiquidityPool]:
+      swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
+      swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
+      
+      lookback = SMCConfig.RECENT_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT
+      
+      for high in swing_highs[-lookback:]:
+          # ... liquidity pool creation
+  ```
+- **Priority:** MEDIUM - Captures more institutional liquidity with extended data
+
+#### 🟡 Issue #26: Market Structure Using Only Last 3 Swing Points
+- **Severity:** MEDIUM
+- **Location:** `api/smc_analyzer.py` lines 462-463 (`detect_market_structure` method)
+- **Problem:** With 200 daily candles, only analyzes last 3 swing points for structure
+- **Impact:** Misses longer-term institutional structure, causes false consolidation signals
+- **Fix Required:**
+  ```python
+  # Add to config.py SMCConfig:
+  STRUCTURE_SWING_LOOKBACK_1D = 7   # Daily: analyze 7 swing points with 200 candles
+  STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # Other timeframes
+  
+  # Update detect_market_structure:
+  def detect_market_structure(self, candlesticks: List[Dict], timeframe: str = "1h") -> MarketStructure:
+      swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
+      swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
+      
+      lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.STRUCTURE_SWING_LOOKBACK_DEFAULT
+      recent_highs = swing_highs[-lookback:]
+      recent_lows = swing_lows[-lookback:]
+      # ... rest of structure detection logic
+  ```
+- **Priority:** MEDIUM - Reduces false consolidation signals during rallies
+
+**Summary of Required Fixes:**
+1. ✅ **Issue #30** - Fix HTF bias trend KeyError (URGENT - causes crash)
+2. ✅ **Issue #25** - Add 200-candle validation in HTF bias
+3. ✅ **Issue #27** - Implement OB age expiration (OB_MAX_AGE_CANDLES = 150)
+4. ✅ **Issue #29** - Scale swing lookback per timeframe (1d: 15, others: 3-7)
+5. ✅ **Issue #28** - Scale liquidity pool lookback (1d: 20, others: 5)
+6. ✅ **Issue #26** - Scale market structure swing lookback (1d: 7, others: 3)
+
+**Impact:** These fixes ensure the extended 200-candle daily lookback functions correctly for institutional-grade analysis without crashes or false signals.
 
 ---
 
