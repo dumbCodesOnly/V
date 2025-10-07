@@ -1,21 +1,22 @@
 # SMC Analyzer - Complete Documentation
 
 **Last Updated:** October 7, 2025  
-**Version:** 3.0 (Institutional-Grade Complete)  
-**Status:** ✅ **ALL 10 ISSUES FIXED** - Full Institutional Migration Complete (Issues #33-#42)
+**Version:** 3.1 (Institutional-Grade with Phase 4 Migration)  
+**Status:** ✅ **Phase 4 Migration Complete** + ⚠️ **15 Logic Issues Identified for Resolution**
 
 ---
 
 ## Table of Contents
 1. [Overview](#overview)
 2. [Current Status](#current-status)
-3. [Key Features](#key-features)
-4. [Architecture](#architecture)
-5. [Configuration](#configuration)
-6. [Implementation Phases](#implementation-phases)
-7. [Recent Fixes](#recent-fixes)
-8. [Usage Guide](#usage-guide)
-9. [API Reference](#api-reference)
+3. [Phase 4 Migration Summary](#phase-4-migration-summary)
+4. [Identified Issues & Recommended Fixes](#identified-issues--recommended-fixes)
+5. [Key Features](#key-features)
+6. [Architecture](#architecture)
+7. [Configuration](#configuration)
+8. [Implementation Phases](#implementation-phases)
+9. [Usage Guide](#usage-guide)
+10. [API Reference](#api-reference)
 
 ---
 
@@ -26,2539 +27,814 @@ The Smart Money Concepts (SMC) Analyzer is an institutional-grade multi-timefram
 ### Purpose
 - Identify institutional trading patterns using Smart Money Concepts
 - Generate high-probability trade signals with multi-timeframe confirmation
-- Provide precise entry zones, stop-losses, and take-profit levels
+- Provide precise entry zones, stop-losses, and take-profit levels using **institutional scaled entry strategy**
 - Filter out low-quality setups using institutional-grade risk filters
 
 ---
 
 ## Current Status
 
-### ✅ All 7 Phases Complete (October 2025)
+### ✅ Phase 4 Migration Complete (October 7, 2025)
 
-| Phase | Feature | Status | Completed |
-|-------|---------|--------|-----------|
-| Phase 1 | 15m Execution Timeframe | ✅ Complete | Oct 2025 |
-| Phase 2 | Multi-Timeframe Workflow | ✅ Complete | Oct 2025 |
-| Phase 3 | Enhanced Confidence Scoring | ✅ Complete | Oct 4, 2025 |
-| Phase 4 | Scaling Entry Management | ✅ Complete | Oct 4, 2025 |
-| Phase 5 | Refined Stop-Loss (15m Swings) | ✅ Complete | Oct 4, 2025 |
-| Phase 6 | Multi-Take Profit Management | ✅ Complete | Oct 4, 2025 |
-| Phase 7 | ATR Risk Filter | ✅ Complete | Oct 4, 2025 |
+**Institutional Scaled Entry Format Successfully Implemented:**
 
-### Recent Improvements (October 5, 2025)
+| Component | Migration Status | Details |
+|-----------|-----------------|---------|
+| SMCSignal Dataclass | ✅ Complete | Now requires `scaled_entries`, `htf_bias`, `intermediate_structure` fields |
+| Database Schema | ✅ Complete | Added new fields, made legacy fields nullable |
+| Cache Conversion | ✅ Complete | Fixed `to_smc_signal()` and `from_smc_signal()` methods |
+| API Endpoints | ✅ Complete | All endpoints return institutional format |
+| Admin Templates | ✅ Complete | Updated to display scaled entries |
+| Mini App | ✅ Complete | Chart annotations use scaled entries |
 
-**Code Quality & Bug Fixes (All 9 Issues Resolved):**
-- ✅ **Issue #10:** Fixed short entry premium zone validation logic
-- ✅ **Issue #11:** Reordered stop-loss validation logic sequence
-- ✅ **Issue #12:** Added explicit take profit ordering validation with auto-correction
-- ✅ **Issue #13:** Centralized ATR calculation for consistency across methods
-- ✅ **Issue #14:** Increased 15m missing data default score (0.3 → 0.4) for better edge handling
-- ✅ **Issue #15:** Added scaled entry validation with automatic ordering correction
-- ✅ **Issue #16:** Made zone distance threshold adaptive based on volatility regime (3%-10%)
-- ✅ **Issue #17:** Fixed timestamp mutation by creating copies before modification
-- ✅ **Issue #18:** Added division by zero protection with logging for edge cases
+**Error Fixed:** `'SMCSignal' object has no attribute 'entry_price'` - completely resolved
 
-**Earlier Improvements:**
-- ✅ Fixed type safety with `@overload` decorators (LSP errors: 117 → 49)
-- ✅ Eliminated confidence score triple-counting
-- ✅ Updated RSI thresholds to SMC standards (30/70)
-- ✅ Optimized ATR filter placement for performance
-- ✅ Improved 15m missing data handling
+### ⚠️ Outstanding Issues (15 Total)
 
-### ✅ CRITICAL ISSUES RESOLVED - Extended 200-Candle Implementation (October 7, 2025)
-
-**All 6 Critical Issues Fixed with Extended Daily Candles:**
-
-#### ✅ Issue #30: HTF Bias Trend Calculation KeyError (CRITICAL - FIXED)
-- **Severity:** CRITICAL (Application Crash)
-- **Location:** `api/smc_analyzer.py` lines 1482-1484
-- **Problem:** Combined swing_highs + swing_lows dictionaries and accessed non-existent "price" key causing KeyError crash
-- **Solution Implemented:**
-  ```python
-  # Normalize swing points to uniform structure before trend calculation
-  swing_points = [{"price": p["high"], "timestamp": p["timestamp"]} for p in self._find_swing_highs(d1_data, timeframe="1d")]
-  swing_points += [{"price": p["low"], "timestamp": p["timestamp"]} for p in self._find_swing_lows(d1_data, timeframe="1d")]
-  d1_trend = self._calculate_trend(sorted(swing_points, key=lambda x: x["timestamp"]), "price")
-  ```
-- **Result:** ✅ No more KeyError crashes - application runs smoothly with normalized swing point structure
-
-#### ✅ Issue #25: Insufficient 200-Candle Validation (FIXED)
-- **Severity:** HIGH
-- **Location:** `api/smc_analyzer.py` lines 1428-1439 (`_get_htf_bias` method)
-- **Problem:** Only checked if `d1_data` existed, not if it contained 200 candles required for institutional analysis
-- **Solution Implemented:**
-  ```python
-  if len(d1_data) < SMCConfig.TIMEFRAME_1D_LIMIT:
-      logging.warning(f"Insufficient daily data for institutional analysis: {len(d1_data)} / {SMCConfig.TIMEFRAME_1D_LIMIT} required")
-      return {
-          "bias": "neutral", 
-          "confidence": 0.0, 
-          "liquidity_targets": [], 
-          "reason": f"Insufficient daily data ({len(d1_data)}/{SMCConfig.TIMEFRAME_1D_LIMIT})",
-          "d1_structure": "unknown",
-          "h4_structure": "unknown",
-          "bullish_signals": 0,
-          "bearish_signals": 0
-      }
-  ```
-- **Result:** ✅ Validates 200-candle minimum before institutional analysis, prevents analysis with insufficient data
-
-#### ✅ Issue #27: Order Blocks Lack Age Expiration (FIXED)
-- **Severity:** HIGH
-- **Location:** `api/smc_analyzer.py` lines 581-594, `config.py` line 376
-- **Problem:** Unlike FVGs (max age 150 candles), OBs never expired regardless of age
-- **Solution Implemented:**
-  ```python
-  # Added to config.py SMCConfig:
-  OB_MAX_AGE_CANDLES = 150  # Maximum age for OB validity (same as FVG)
-  
-  # Added age filtering in find_order_blocks:
-  if order_blocks and len(candlesticks) > 0:
-      current_time = candlesticks[-1]["timestamp"]
-      valid_obs = []
-      for ob in order_blocks:
-          age = len([c for c in candlesticks if c["timestamp"] > ob.timestamp])
-          if age <= SMCConfig.OB_MAX_AGE_CANDLES and not ob.mitigated:
-              valid_obs.append(ob)
-      order_blocks = valid_obs
-  return order_blocks[-15:]
-  ```
-- **Result:** ✅ Order blocks now expire after 150 candles, matching FVG expiration logic
-
-#### ✅ Issue #29: Swing Detection Lookback Not Scaled (FIXED)
-- **Severity:** MEDIUM
-- **Location:** `api/smc_analyzer.py` lines 2269-2327, `config.py` lines 364-367
-- **Problem:** Used fixed `lookback=5` for all timeframes, too granular for daily with 200 candles
-- **Solution Implemented:**
-  ```python
-  # Added to config.py SMCConfig:
-  SWING_LOOKBACK_15M = 3   # 15m: tight swings for precise execution
-  SWING_LOOKBACK_1H = 5    # 1h: standard swing detection
-  SWING_LOOKBACK_4H = 7    # 4h: broader swings for intermediate structure
-  SWING_LOOKBACK_1D = 15   # 1d: institutional swings (200-candle context)
-  
-  # Updated _find_swing_highs and _find_swing_lows with timeframe parameter:
-  def _find_swing_highs(self, candlesticks: List[Dict], lookback: int = None, timeframe: str = "1h") -> List[Dict]:
-      if lookback is None:
-          lookback_map = {
-              "15m": SMCConfig.SWING_LOOKBACK_15M,
-              "1h": SMCConfig.SWING_LOOKBACK_1H,
-              "4h": SMCConfig.SWING_LOOKBACK_4H,
-              "1d": SMCConfig.SWING_LOOKBACK_1D
-          }
-          lookback = lookback_map.get(timeframe, SMCConfig.DEFAULT_LOOKBACK_PERIOD)
-  ```
-- **Result:** ✅ Timeframe-aware swing detection improves institutional swing point detection on daily timeframe
-
-#### ✅ Issue #28: Fixed Liquidity Pool Lookback (FIXED)
-- **Severity:** MEDIUM
-- **Location:** `api/smc_analyzer.py` lines 699-724, `config.py` lines 383-385
-- **Problem:** Used fixed `RECENT_SWING_LOOKBACK=5` regardless of timeframe, missing institutional liquidity on daily
-- **Solution Implemented:**
-  ```python
-  # Added to config.py SMCConfig:
-  RECENT_SWING_LOOKBACK_1D = 20  # Daily: look back 20 swings with 200 candles
-  RECENT_SWING_LOOKBACK_DEFAULT = 5  # Other timeframes: standard lookback
-  
-  # Updated find_liquidity_pools with timeframe parameter:
-  def find_liquidity_pools(self, candlesticks: List[Dict], timeframe: str = "4h") -> List[LiquidityPool]:
-      lookback = SMCConfig.RECENT_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT
-      
-      swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
-      swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
-      
-      for high in swing_highs[-lookback:]:
-          # ... liquidity pool creation
-  ```
-- **Result:** ✅ Captures 20 institutional liquidity zones on daily vs. 5 on other timeframes
-
-#### ✅ Issue #26: Market Structure Using Only Last 3 Swing Points (FIXED)
-- **Severity:** MEDIUM
-- **Location:** `api/smc_analyzer.py` lines 449-469, `config.py` lines 361-362
-- **Problem:** With 200 daily candles, only analyzed last 3 swing points causing false consolidation signals
-- **Solution Implemented:**
-  ```python
-  # Added to config.py SMCConfig:
-  STRUCTURE_SWING_LOOKBACK_1D = 7   # Daily: analyze 7 swing points with 200 candles
-  STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # Other timeframes: analyze 3 recent swing points
-  
-  # Updated detect_market_structure with timeframe parameter:
-  def detect_market_structure(self, candlesticks: List[Dict], timeframe: str = "1h") -> MarketStructure:
-      lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.STRUCTURE_SWING_LOOKBACK_DEFAULT
-      
-      swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
-      swing_lows = self._find_swing_lows(candlesticks, timeframe=timeframe)
-      
-      recent_highs = swing_highs[-lookback:]
-      recent_lows = swing_lows[-lookback:]
-      # ... structure detection logic
-  ```
-- **Result:** ✅ Analyzes 7 swing points on daily timeframe, reducing false consolidation signals during rallies
-
-**Summary of Implemented Fixes:**
-1. ✅ **Issue #30** - Fixed HTF bias trend KeyError (normalized swing points structure)
-2. ✅ **Issue #25** - Added 200-candle validation in HTF bias (prevents insufficient data analysis)
-3. ✅ **Issue #27** - Implemented OB age expiration (OB_MAX_AGE_CANDLES = 150)
-4. ✅ **Issue #29** - Scaled swing lookback per timeframe (1d: 15, 1h: 5, 4h: 7, 15m: 3)
-5. ✅ **Issue #28** - Scaled liquidity pool lookback (1d: 20, others: 5)
-6. ✅ **Issue #26** - Scaled market structure swing lookback (1d: 7, others: 3)
-
-**Impact:** All fixes successfully implemented and tested. The extended 200-candle daily lookback now functions correctly for institutional-grade analysis without crashes or false signals. Application is running smoothly on port 5000.
-
-### ✅ TYPE SAFETY FIXES - Type Safety Improvements (October 7, 2025)
-
-**2 Type Errors Found and FIXED via LSP Analysis:**
-
-#### ✅ Issue #31: Type Error in _find_swing_highs (FIXED)
-- **Severity:** MEDIUM (LSP Type Error)
-- **Location:** `api/smc_analyzer.py` line 2275
-- **Problem:** Function parameter `lookback: int = None` is invalid - `int` type cannot have `None` as default value
-- **Error Message:** `Expression of type "None" cannot be assigned to parameter of type "int"`
-- **Current Code:**
-  ```python
-  def _find_swing_highs(
-      self,
-      candlesticks: List[Dict],
-      lookback: int = None,  # ❌ Type error: int cannot be None
-      timeframe: str = "1h"
-  ) -> List[Dict]:
-  ```
-- **Solution Required:**
-  ```python
-  def _find_swing_highs(
-      self,
-      candlesticks: List[Dict],
-      lookback: Optional[int] = None,  # ✅ Correct: Optional[int] allows None
-      timeframe: str = "1h"
-  ) -> List[Dict]:
-  ```
-- **Impact:** Type safety issue - doesn't cause runtime errors but violates type contract
-
-#### ✅ Issue #32: Type Error in _find_swing_lows (FIXED)
-- **Severity:** MEDIUM (LSP Type Error)
-- **Location:** `api/smc_analyzer.py` line 2318
-- **Problem:** Function parameter `lookback: int = None` is invalid - `int` type cannot have `None` as default value
-- **Error Message:** `Expression of type "None" cannot be assigned to parameter of type "int"`
-- **Current Code:**
-  ```python
-  def _find_swing_lows(
-      self,
-      candlesticks: List[Dict],
-      lookback: int = None,  # ❌ Type error: int cannot be None
-      timeframe: str = "1h"
-  ) -> List[Dict]:
-  ```
-- **Solution Required:**
-  ```python
-  def _find_swing_lows(
-      self,
-      candlesticks: List[Dict],
-      lookback: Optional[int] = None,  # ✅ Correct: Optional[int] allows None
-      timeframe: str = "1h"
-  ) -> List[Dict]:
-  ```
-- **Impact:** Type safety issue - doesn't cause runtime errors but violates type contract
-
-**Fix Implementation:**
-1. ✅ Verified `Optional` was already imported from `typing` module
-2. ✅ Updated both function signatures to use `Optional[int]` instead of `int` for the `lookback` parameter
-3. ✅ Verified LSP errors are resolved (0 diagnostics found)
-4. ✅ Application verified to be running without regression
-
-**Result:** All type safety issues resolved. LSP diagnostics show 0 errors.
+The following logic flaws, inconsistencies, and potential bugs have been identified and require resolution:
 
 ---
 
-### ⚠️ NEW ISSUES IDENTIFIED - Code Review (October 7, 2025)
+## Phase 4 Migration Summary
 
-**10 New Issues Found During Comprehensive Code Review (Issues #33-#42):**
+### What Changed
 
-**First Batch: Core Logic Fixes (Issues #33-#38) - ✅ COMPLETED**
+#### 1. **SMCSignal Structure**
+**Before (Legacy):**
+```python
+@dataclass
+class SMCSignal:
+    entry_price: float
+    stop_loss: float
+    take_profit_levels: List[float]
+    # ... other fields
+```
 
-#### ⚠️ Issue #33: Deprecated datetime.utcnow() Usage (MEDIUM)
-- **Severity:** MEDIUM (Future Compatibility Issue)
-- **Locations:** `api/smc_analyzer.py` lines 1740, 1774, 2250
-- **Problem:** Uses deprecated `datetime.utcnow()` method which will be removed in future Python versions (3.12+)
-- **Current Code:**
-  ```python
-  current_time = datetime.utcnow().timestamp()  # Line 1740
-  expiry_time = datetime.utcnow().timestamp() + self.signal_timeout  # Line 1774
-  timestamp=datetime.utcnow()  # Line 2250
-  ```
-- **Required Fix:**
-  ```python
-  # Replace all instances with timezone-aware version
-  current_time = datetime.now(timezone.utc).timestamp()
-  expiry_time = datetime.now(timezone.utc).timestamp() + self.signal_timeout
-  timestamp=datetime.now(timezone.utc)
-  ```
-- **Impact:** Will cause DeprecationWarning in Python 3.12+ and break in future versions
-- **Status:** ✅ FIXED (October 7, 2025) - All instances replaced with `datetime.now(timezone.utc)`
-
-#### ⚠️ Issue #34: Hardcoded Lookback in _find_15m_swing_levels (LOW)
-- **Severity:** LOW (Configuration Inconsistency)
-- **Location:** `api/smc_analyzer.py` line 3653
-- **Problem:** Uses hardcoded `lookback = 2` instead of config constant `SMCConfig.SWING_LOOKBACK_15M` (which is 3)
-- **Current Code:**
-  ```python
-  def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
-      # ...
-      swing_highs = []
-      swing_lows = []
-      lookback = 2  # ❌ Hardcoded instead of using config
-  ```
-- **Required Fix:**
-  ```python
-  def _find_15m_swing_levels(self, m15_data: List[Dict]) -> Dict:
-      # ...
-      swing_highs = []
-      swing_lows = []
-      lookback = SMCConfig.SWING_LOOKBACK_15M  # ✅ Use config constant (value: 3)
-  ```
-- **Impact:** Inconsistency between configuration and actual behavior - Phase 5 swing detection uses looser criteria than documented
-- **Status:** ✅ FIXED (October 7, 2025) - Changed to use `SMCConfig.SWING_LOOKBACK_15M` constant
-
-#### ⚠️ Issue #35: Potential Missing Recent Order Blocks (MEDIUM)
-- **Severity:** MEDIUM (Logic Issue)
-- **Location:** `api/smc_analyzer.py` line 511
-- **Problem:** Loop range `range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES)` excludes the last N candles, potentially missing recent valid order blocks
-- **Current Code:**
-  ```python
-  for i in range(3, len(candlesticks) - SMCConfig.OB_DISPLACEMENT_CANDLES):
-      # OB_DISPLACEMENT_CANDLES = 3, so if len = 100, loops through [3, 97)
-      # This SKIPS candles 97, 98, 99 - missing potential recent OBs
-  ```
-- **Issue:** When `OB_DISPLACEMENT_CANDLES = 3` and we have 100 candles, the loop only goes to index 96. We need to check if a candle at index 97 forms an OB (by looking at candles 97-99 for displacement). Current logic skips this.
-- **Required Fix:**
-  ```python
-  # Option 1: Reduce the subtraction to allow checking recent candles
-  for i in range(3, len(candlesticks) - 1):  # Stop at second-to-last candle
-      # Still check for impulsive displacement, which handles the lookback
-      impulsive_exit = self._check_impulsive_move(candlesticks, i, direction)
-      # _check_impulsive_move already validates we have enough candles ahead
-  ```
-- **Impact:** May miss valid order blocks from the most recent 3-4 candles, reducing signal quality
-- **Status:** ✅ FIXED (October 7, 2025) - Loop range adjusted to `len(candlesticks) - 1` with bounds checking in `_check_impulsive_move`
-
-#### ⚠️ Issue #36: Potential KeyError in _calculate_trend (LOW)
-- **Severity:** LOW (Edge Case Handling)
-- **Location:** `api/smc_analyzer.py` line 2397
-- **Problem:** Accesses `point[price_key]` without verifying the key exists in the dictionary
-- **Current Code:**
-  ```python
-  def _calculate_trend(self, swing_points: List[Dict], price_key: str) -> str:
-      if len(swing_points) < 2:
-          return "neutral"
-      
-      recent_prices = [point[price_key] for point in swing_points[-3:]]  # ❌ No key validation
-  ```
-- **Issue:** If swing_points contain dictionaries without the expected price_key, will raise KeyError
-- **Required Fix:**
-  ```python
-  def _calculate_trend(self, swing_points: List[Dict], price_key: str) -> str:
-      if len(swing_points) < 2:
-          return "neutral"
-      
-      # Validate all points have the required key
-      recent_prices = []
-      for point in swing_points[-3:]:
-          if price_key not in point:
-              logging.warning(f"Missing '{price_key}' in swing point: {point}")
-              return "neutral"
-          recent_prices.append(point[price_key])
-  ```
-- **Impact:** Currently mitigated by Issue #30 fix (swing points are normalized before passing to this method), but defensive programming would improve robustness
-- **Status:** ✅ FIXED (October 7, 2025) - Added key validation with warning logs before accessing dictionary values
-
-#### ⚠️ Issue #37: No Validation for Empty Liquidity Pools (LOW)
-- **Severity:** LOW (Missing Validation)
-- **Location:** `api/smc_analyzer.py` line 3757 (`_find_liquidity_target` method)
-- **Problem:** Method doesn't handle the case when `liquidity_pools` list is empty or None
-- **Current Code:**
-  ```python
-  def _find_liquidity_target(
-      self,
-      entry_price: float,
-      direction: str,
-      liquidity_pools: List[LiquidityPool],
-      min_distance: float
-  ) -> Optional[float]:
-      # ❌ No check if liquidity_pools is empty or None
-      if direction == "long":
-          # Filter for sell-side liquidity above entry
-          targets = [pool for pool in liquidity_pools if ...]
-  ```
-- **Required Fix:**
-  ```python
-  def _find_liquidity_target(
-      self,
-      entry_price: float,
-      direction: str,
-      liquidity_pools: List[LiquidityPool],
-      min_distance: float
-  ) -> Optional[float]:
-      # ✅ Add validation
-      if not liquidity_pools:
-          logging.debug("Phase 6: No liquidity pools available for target selection")
-          return None
-      
-      if direction == "long":
-          # Filter for sell-side liquidity above entry
-          targets = [pool for pool in liquidity_pools if ...]
-  ```
-- **Impact:** May cause errors if liquidity detection fails and returns empty list
-- **Status:** ✅ FIXED (October 7, 2025) - Added validation with debug logging for empty/None liquidity pools
-
-#### ⚠️ Issue #38: Duplicate Alignment Score Logic (LOW)
-- **Severity:** LOW (Code Redundancy)
-- **Locations:** 
-  - `api/smc_analyzer.py` line 2981 (`_calculate_15m_alignment_score`)
-  - `api/smc_analyzer.py` line 1609 (`_get_execution_signal_15m`)
-- **Problem:** Both methods calculate 15m alignment scores with similar logic, creating maintenance burden and potential inconsistency
-- **Current State:**
-  ```python
-  # Method 1: _calculate_15m_alignment_score (line 2981)
-  def _calculate_15m_alignment_score(self, m15_structure, htf_bias, ...):
-      alignment_score = 0.0
-      if htf_bias == "bullish":
-          if m15_structure in [MarketStructure.BULLISH_BOS, ...]:
-              alignment_score += 0.5
-      # ... similar logic
-  
-  # Method 2: _get_execution_signal_15m (line 1609)
-  def _get_execution_signal_15m(self, m15_data, htf_bias, ...):
-      alignment_score = 0.0
-      if htf_bias["bias"] == "bullish":
-          if m15_structure in [MarketStructure.BULLISH_BOS, ...]:
-              alignment_score += 0.5
-      # ... nearly identical logic
-  ```
-- **Impact:** 
-  - Duplicate code increases maintenance burden
-  - Risk of inconsistency if one is updated and the other isn't
-  - Both methods appear to be used in different contexts (Phase 2 vs Phase 3)
-- **Recommended Fix:**
-  ```python
-  # Consolidate into single method used by both callers
-  def _calculate_alignment_score_internal(self, m15_structure, htf_bias_value, intermediate_structure, poi_levels, current_price):
-      # Unified alignment score logic
-      # ... single source of truth
-  ```
-- **Status:** 📝 DOCUMENTED - Refactoring recommended for future optimization sprint (not critical)
-
----
-
-**Second Batch: Legacy Signal Fields & UI Issues (Issues #39-#42) - ✅ COMPLETED (October 7, 2025)**
-
-#### ✅ Issue #39: SMCSignal Class Legacy Fields Removed - FIXED (HIGH)
-- **Severity:** HIGH (Architecture Mismatch)
-- **Location:** `api/smc_analyzer.py` lines 102-114 (SMCSignal dataclass)
-- **Problem:** The `SMCSignal` dataclass still contains legacy single-entry fields (`entry_price`, `stop_loss`, `take_profit_levels`) alongside the new institutional `scaled_entries` field
-- **Current Structure:**
-  ```python
-  @dataclass
-  class SMCSignal:
-      symbol: str
-      direction: str
-      entry_price: float              # ❌ Legacy: Single entry price
-      stop_loss: float                # ❌ Legacy: Single stop loss
-      take_profit_levels: List[float] # ❌ Legacy: Simple TP list
-      confidence: float
-      reasoning: List[str]
-      signal_strength: SignalStrength
-      risk_reward_ratio: float
-      timestamp: datetime
-      current_market_price: float
-      scaled_entries: Optional[List['ScaledEntry']] = None  # ✅ New: Institutional
-  ```
-- **Institutional Conflict:** 
-  - Institutional traders use **scaled entries** (50%/25%/25%) with **zone-based pricing** and **entry-specific stop losses**
-  - Legacy fields represent **retail-style** single entry/exit approach
-  - Having BOTH creates confusion and data inconsistency
-- **Required Architectural Fix:**
-  ```python
-  @dataclass
-  class SMCSignal:
-      symbol: str
-      direction: str
-      # Remove legacy fields - use scaled_entries exclusively
-      # entry_price: float              # ❌ REMOVE
-      # stop_loss: float                # ❌ REMOVE  
-      # take_profit_levels: List[float] # ❌ REMOVE
-      confidence: float
-      reasoning: List[str]
-      signal_strength: SignalStrength
-      risk_reward_ratio: float
-      timestamp: datetime
-      current_market_price: float
-      
-      # Institutional-grade fields (always present)
-      scaled_entries: List['ScaledEntry']  # ✅ Make required, not Optional
-      htf_bias: str  # ✅ Add: Daily/H4 bias for context
-      intermediate_structure: str  # ✅ Add: H4/H1 structure
-      execution_timeframe: str = "15m"  # ✅ Add: Execution TF
-  ```
-- **Impact:** 
-  - Current dual-field approach is confusing for users
-  - API responses inconsistent (sometimes legacy fields, sometimes scaled entries)
-  - Chart annotations use legacy fields instead of institutional scaled entries
-- **Status:** ✅ FIXED (October 7, 2025) - All legacy fields removed, scaled_entries now required
-- **Solution Implemented:**
-  - Removed `entry_price`, `stop_loss`, and `take_profit_levels` fields from SMCSignal dataclass
-  - Made `scaled_entries` required (no longer Optional)
-  - Added institutional fields: `htf_bias`, `intermediate_structure`, `execution_timeframe`
-  - Updated all references to use scaled_entries instead of legacy fields
-  - Fixed signal validation logic to check all scaled entry stop losses and take profits
-
-#### ✅ Issue #40: Frontend UI Updated to Institutional Format - FIXED (HIGH)
-- **Severity:** HIGH (UX/UI Mismatch)
-- **Location:** `api/templates/mini_app.html` lines 6350-6357
-- **Problem:** SMC Signals tab displays legacy single-entry fields instead of institutional scaled entries
-- **Current Display Logic:**
-  ```javascript
-  // ❌ Shows legacy fields (even when scaled_entries exist)
-  <div class="smc-detail-item compact">
-      <div class="smc-detail-label">ENTRY</div>
-      <div class="smc-detail-value">$${signal.entry_price?.toFixed(4) || 'N/A'}</div>
-  </div>
-  <div class="smc-detail-item compact">
-      <div class="smc-detail-label">STOP LOSS</div>
-      <div class="smc-detail-value">$${signal.stop_loss?.toFixed(4) || 'N/A'}</div>
-  </div>
-  ```
-- **Issue:** The UI shows BOTH legacy fields AND scaled entries section, creating visual clutter and confusion
-- **Required UI Fix:**
-  ```javascript
-  // ✅ Only show institutional scaled entries (remove legacy fields completely)
-  ${signal.scaled_entries && signal.scaled_entries.length > 0 ? `
-      <div class="institutional-strategy-banner">
-          📊 INSTITUTIONAL SCALED ENTRY STRATEGY
-      </div>
-      <div class="scaled-entries-grid">
-          ${signal.scaled_entries.map((entry, idx) => `
-              <div class="scaled-entry-card">
-                  <div class="entry-header">
-                      Entry ${idx + 1}: ${entry.order_type.toUpperCase()}
-                  </div>
-                  <div class="entry-details">
-                      <span class="price">$${entry.entry_price.toFixed(4)}</span>
-                      <span class="allocation">${entry.allocation_percent}%</span>
-                  </div>
-                  <div class="entry-sl">
-                      SL: $${entry.stop_loss.toFixed(4)}
-                  </div>
-                  <div class="entry-tps">
-                      ${entry.take_profits.map(tp => `
-                          TP: $${tp[0].toFixed(4)} (${tp[1]}%)
-                      `).join('')}
-                  </div>
-              </div>
-          `).join('')}
-      </div>
-      <div class="strategy-summary">
-          <strong>HTF Bias:</strong> ${signal.htf_bias} | 
-          <strong>Structure:</strong> ${signal.intermediate_structure}
-      </div>
-  ` : `
-      <div class="no-signal-message">
-          No institutional signal available
-      </div>
-  `}
-  ```
-- **Impact:** 
-  - Users see confusing mixed signals (legacy + institutional)
-  - Doesn't reflect the actual multi-timeframe SMC analysis being performed
-  - Undermines the institutional-grade positioning
-- **Status:** ✅ FIXED (October 7, 2025) - Frontend now displays only institutional scaled entries
-- **Solution Implemented:**
-  - Removed legacy entry_price and stop_loss display fields
-  - Made scaled entries the primary display (not secondary)
-  - Added HTF Bias and Structure context to signal cards
-  - Updated modal detail view to show all scaled entries with TPs/SLs
-  - Enhanced visual styling to emphasize institutional strategy
-
-#### ✅ Issue #41: Chart Annotations Updated for Scaled Entries - FIXED (MEDIUM)
-- **Severity:** MEDIUM (Visualization Issue)
-- **Location:** `api/templates/mini_app.html` lines 6821-6878
-- **Problem:** Chart.js annotations display legacy `entry_price`, `stop_loss_price`, `take_profit_price` instead of institutional scaled entries
-- **Current Chart Code:**
-  ```javascript
-  // ❌ Legacy single entry/sl/tp annotation
-  annotations[`signal_entry_${annotationId++}`] = {
-      type: 'line',
-      mode: 'horizontal',
-      scaleID: 'y',
-      value: signal.entry_price,  // ❌ Single entry
-      borderColor: signalColors.entryBorder,
-      label: {
-          content: `Entry: $${signal.entry_price.toFixed(4)}`,
-          // ...
-      }
-  };
-  
-  annotations[`signal_sl_${annotationId++}`] = {
-      // ...
-      value: signal.stop_loss_price,  // ❌ Single SL
-      // ...
-  };
-  ```
-- **Required Chart Fix:**
-  ```javascript
-  // ✅ Show all 3 scaled entries with color gradients
-  if (signal.scaled_entries && signal.scaled_entries.length > 0) {
-      signal.scaled_entries.forEach((entry, idx) => {
-          const opacity = 1.0 - (idx * 0.2); // Fade for depth
-          
-          // Entry level annotation
-          annotations[`scaled_entry_${idx}_${annotationId++}`] = {
-              type: 'line',
-              mode: 'horizontal',
-              scaleID: 'y',
-              value: entry.entry_price,
-              borderColor: `rgba(59, 130, 246, ${opacity})`,
-              borderWidth: 2,
-              borderDash: idx === 0 ? [] : [4, 2],  // Solid for market, dashed for limits
-              label: {
-                  display: true,
-                  content: `E${idx + 1} (${entry.allocation_percent}%): $${entry.entry_price.toFixed(4)} - ${entry.order_type}`,
-                  position: idx % 2 === 0 ? 'start' : 'end',
-                  backgroundColor: `rgba(59, 130, 246, ${opacity * 0.8})`,
-                  color: '#ffffff',
-                  font: { size: 10, weight: 'bold' }
-              }
-          };
-          
-          // Entry-specific SL annotation
-          annotations[`scaled_sl_${idx}_${annotationId++}`] = {
-              type: 'line',
-              mode: 'horizontal',
-              scaleID: 'y',
-              value: entry.stop_loss,
-              borderColor: `rgba(239, 68, 68, ${opacity})`,
-              borderWidth: 1,
-              borderDash: [6, 3],
-              label: {
-                  content: `SL${idx + 1}: $${entry.stop_loss.toFixed(4)}`,
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  // ...
-              }
-          };
-      });
-      
-      // Add HTF bias indicator box
-      annotations[`htf_bias_${annotationId++}`] = {
-          type: 'box',
-          xMin: /* ... */,
-          xMax: /* ... */,
-          yMin: /* ... */,
-          yMax: /* ... */,
-          backgroundColor: signal.htf_bias === 'bullish' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-          borderColor: signal.htf_bias === 'bullish' ? '#22c55e' : '#ef4444',
-          borderWidth: 1,
-          label: {
-              content: `HTF Bias: ${signal.htf_bias.toUpperCase()}`,
-              enabled: true,
-              position: 'start'
-          }
-      };
-  }
-  ```
-- **Impact:** 
-  - Charts don't visualize the actual institutional strategy (3 entries, zone-based SLs)
-  - Users can't see the scaling strategy on the chart
-  - Misses opportunity to educate users on SMC concepts visually
-- **Status:** ✅ FIXED (October 7, 2025) - Chart now visualizes all scaled entries
-- **Solution Implemented:**
-  - Replaced single entry/SL/TP lines with multi-entry visualization
-  - Each scaled entry shown with unique color opacity (fading for depth)
-  - Market orders shown as solid lines, limit orders as dashed
-  - Entry-specific stop losses displayed for each entry
-  - HTF Bias indicator box added to chart
-  - Visual hierarchy: Entry 1 (50%) → Entry 2 (25%) → Entry 3 (25%)
-
-#### ✅ Issue #42: API Response Standardized to Institutional Format - FIXED (LOW)
-- **Severity:** LOW (API Design Issue)
-- **Location:** `api/app.py` lines 4117-4130 (`/api/smc-signals` endpoint)
-- **Problem:** API conditionally returns legacy fields for backward compatibility, creating inconsistent response structure
-- **Current API Logic:**
-  ```python
-  # Build signal data
-  signal_data = {
-      "direction": signal.direction,
-      "confidence": signal.confidence,
-      "reasoning": signal.reasoning[:3],
-      "signal_strength": signal.signal_strength.value,
-      "risk_reward_ratio": signal.risk_reward_ratio,
-      "timestamp": signal.timestamp.isoformat(),
-      "cache_source": True,
-  }
-  
-  # If using institutional scaled entries, ONLY return those (not legacy fields)
-  if scaled_entries_data:
-      signal_data["scaled_entries"] = scaled_entries_data
-      # ❌ BUT signal object still has entry_price, stop_loss fields
-  else:
-      # ❌ Falls back to legacy single-entry format (shouldn't happen with Phase 4 complete)
-      signal_data["entry_price"] = signal.entry_price
-      signal_data["stop_loss"] = signal.stop_loss
-      signal_data["take_profit_levels"] = signal.take_profit_levels
-  ```
-- **Issue:** 
-  - Response structure differs based on whether scaled_entries exist
-  - Frontend must handle both formats
-  - Legacy code path should be removed since Phase 4 (Scaled Entries) is complete
-- **Required API Fix:**
-  ```python
-  # ✅ Always return institutional format (Phase 4+ complete)
-  signal_data = {
-      "direction": signal.direction,
-      "confidence": signal.confidence,
-      "reasoning": signal.reasoning,  # Full reasoning, not truncated
-      "signal_strength": signal.signal_strength.value,
-      "risk_reward_ratio": signal.risk_reward_ratio,
-      "timestamp": signal.timestamp.isoformat(),
-      "htf_bias": signal.htf_bias,  # Add HTF context
-      "intermediate_structure": signal.intermediate_structure,  # Add structure
-      "execution_timeframe": signal.execution_timeframe,
-      "scaled_entries": [
-          {
-              "entry_price": entry.entry_price,
-              "allocation_percent": entry.allocation_percent,
-              "order_type": entry.order_type,
-              "stop_loss": entry.stop_loss,
-              "take_profits": [{"price": tp[0], "allocation": tp[1]} for tp in entry.take_profits]
-          }
-          for entry in signal.scaled_entries
-      ],
-      "cache_source": cached_signal is not None
-  }
-  # ❌ Remove all legacy field references
-  ```
-- **Impact:** 
-  - Inconsistent API responses confuse frontend developers
-  - Harder to maintain with dual code paths
-  - Doesn't enforce the institutional-grade approach
-- **Status:** ✅ FIXED (October 7, 2025) - API now always returns institutional format
-- **Solution Implemented:**
-  - Removed conditional legacy field fallback logic
-  - Always return `scaled_entries` with full details (entry_price, allocation, stop_loss, take_profits)
-  - Added `htf_bias`, `intermediate_structure`, and `execution_timeframe` to all responses
-  - Removed dual code paths - single institutional format only
-  - Updated both `/api/smc-signals` and `/api/smc-analysis/<symbol>` endpoints
-
-**Summary of Issues #39-#42 Implementation:**
-
-All 4 pending issues have been successfully resolved with a complete migration to institutional-grade format:
-
-1. ✅ **Issue #39** - SMCSignal dataclass refactored (legacy fields removed, scaled_entries required)
-2. ✅ **Issue #40** - Frontend UI displays only institutional scaled entries  
-3. ✅ **Issue #41** - Chart annotations visualize all scaled entries with HTF bias
-4. ✅ **Issue #42** - API responses standardized to institutional format only
-
-**Impact:** The system now operates 100% in institutional mode with no legacy field remnants. All components (backend, frontend, API, charts) use the scaled entry strategy exclusively.
-
----
-
-**Summary of All Issues:**
-- ✅ **Issues #33-#37** - FIXED (Core logic, Python 3.12+ compatibility, defensive programming)
-- 📝 **Issue #38** - DOCUMENTED (Code refactoring - future optimization)
-- ⚠️ **Issues #39-#42** - PENDING (Legacy field migration & UI update)
-
-**Critical Next Steps:**
-1. **HIGH Priority (Issues #39-#40):** Remove legacy fields from SMCSignal dataclass and update UI to display only institutional scaled entries
-2. **MEDIUM Priority (Issue #41):** Update chart annotations to visualize scaled entry strategy
-3. **LOW Priority (Issue #42):** Standardize API response to always return institutional format
-
-**Migration Path:**
-1. Add new institutional fields to SMCSignal (htf_bias, intermediate_structure, execution_timeframe)
-2. Make scaled_entries required (not Optional)
-3. Remove legacy fields (entry_price, stop_loss, take_profit_levels)
-4. Update frontend UI to display institutional strategy exclusively
-5. Update chart to show all 3 scaled entries with proper visualization
-6. Standardize API responses to remove dual-format logic
-
-**Impact:** These legacy field issues prevent users from fully experiencing the institutional-grade multi-timeframe SMC analysis. Current mixed approach (retail + institutional) undermines the advanced analysis being performed.
-
----
-
-## Key Features
-
-### 📊 Multi-Timeframe Analysis
-- **Hierarchical Workflow:** Daily → H4/H1 → 15m execution
-- **Timeframe Support:** 15m, 1h, 4h, 1d with optimized data limits
-- **HTF Bias Detection:** Identifies macro trend from Daily and H4 structure
-- **15m Execution:** Precise entry timing with HTF alignment validation
-
-### 🎯 Institutional Filtering
-- **ATR Risk Filter:** Rejects low-volatility choppy conditions
-  - Minimum 0.8% ATR on 15m timeframe
-  - Minimum 1.2% ATR on H1 timeframe
-- **Auto-Volatility Detection:** Dynamic parameter tuning based on market conditions
-- **Volatility Regimes:** Low, Normal, High with adaptive thresholds
-
-### 📈 Smart Entry Scaling
-- **50%/25%/25% Allocation Strategy:**
-  - Entry 1: 50% market order (aggressive)
-  - Entry 2: 25% limit order at OB/FVG zone midpoint
-  - Entry 3: 25% limit order at OB/FVG zone deep level
-- **Zone-Based Placement:** Uses Order Blocks and Fair Value Gaps
-- **Fallback Logic:** Fixed percentage offsets when zones unavailable
-
-### 🛡️ Precision Stop-Loss
-- **15m Swing Levels:** Uses recent swing highs/lows for tight stops
-- **ATR Buffers:** Adaptive buffer based on volatility (0.5x - 1.0x ATR)
-- **Minimum Distance:** Ensures stop-loss at least 0.5% from entry
-- **Dynamic Refinement:** Improves stop-loss precision vs. basic methods
-
-### 💰 R:R-Based Take Profits
-- **Risk/Reward Targets:** 1R, 2R, and liquidity-based levels
-- **Default Allocations:** 40% @ TP1, 30% @ TP2, 30% @ TP3
-- **Liquidity Targeting:** Identifies and targets institutional liquidity pools
-- **Trailing Stop Option:** Move stop to breakeven after TP1 (configurable)
-
-### 🧠 Dynamic Confidence Scoring
-- **Multi-Timeframe Alignment:** Bonus for HTF/15m confluence
-- **Liquidity Sweep Confirmation:** +0.1 confidence for confirmed sweeps
-- **POI Entry Bonus:** +0.1 confidence for entries from HTF Order Blocks/FVGs
-- **15m Alignment Bonus:** +0.2 confidence for perfect alignment (score ≥ 0.8)
-
-### 🔧 Optional Features
-- **Dynamic Position Sizing:** Adjust size based on ATR volatility
-- **Trailing Stop-Loss:** Move to breakeven after TP1 hit
-- **Signal Caching:** Prevents duplicate signals (1-hour timeout)
-
----
-
-## Architecture
-
-### Core Components
-
-#### 1. SMCAnalyzer Class (`api/smc_analyzer.py`)
-Main analysis engine with the following key methods:
-
-**Signal Generation:**
-- `generate_trade_signal(symbol: str, return_diagnostics: bool = False)` - Main entry point
-- Returns `SMCSignal` object or tuple with diagnostics
-
-**Multi-Timeframe Analysis:**
-- `_get_htf_bias(d1_data, h4_data)` - High timeframe bias (Phase 2)
-- `_get_intermediate_structure(h1_data, h4_data)` - H4/H1 structure (Phase 2)
-- `_get_execution_signal_15m(m15_data, htf_bias, intermediate_structure)` - 15m execution (Phase 2)
-
-**Entry Management:**
-- `_calculate_scaled_entries()` - Zone-based scaling (Phase 4)
-- `_determine_trade_direction_and_levels_hybrid()` - Hybrid logic for direction
-
-**Risk Management:**
-- `_find_15m_swing_levels(m15_data)` - Swing level detection (Phase 5)
-- `_calculate_refined_sl_with_atr()` - Stop-loss refinement (Phase 5)
-- `_calculate_rr_based_take_profits()` - Take profit calculation (Phase 6)
-
-**Filtering & Validation:**
-- `_check_atr_filter(m15_data, h1_data, current_price)` - Volatility filter (Phase 7)
-- `_calculate_signal_strength_and_confidence()` - Confidence scoring (Phase 3)
-
-**Pattern Detection:**
-- `detect_market_structure()` - BOS/CHoCH/Consolidation detection
-- `find_order_blocks()` - Order Block identification
-- `find_fair_value_gaps()` - FVG detection
-- `find_liquidity_pools()` - Liquidity level analysis
-- `detect_liquidity_sweeps()` - Sweep confirmation
-
-#### 2. Data Models
-
-**SMCSignal (dataclass):**
+**After (Institutional):**
 ```python
 @dataclass
 class SMCSignal:
     symbol: str
-    direction: str  # "long" | "short" | "hold"
-    entry_price: float
-    stop_loss: float
-    take_profit_levels: List[float]
-    confidence: float  # 0.0-1.0
+    direction: str
+    confidence: float
     reasoning: List[str]
     signal_strength: SignalStrength
     risk_reward_ratio: float
     timestamp: datetime
     current_market_price: float
-    scaled_entries: Optional[List[ScaledEntry]] = None
+    scaled_entries: List[ScaledEntry]  # ← NEW: Institutional format
+    htf_bias: str                       # ← NEW: Higher timeframe context
+    intermediate_structure: str         # ← NEW: Structure context
+    execution_timeframe: str = "15m"    # ← NEW: Execution TF
 ```
 
-**ScaledEntry (dataclass):**
+#### 2. **Database Schema Updates**
+```sql
+-- New required fields
+ALTER TABLE smc_signal_cache 
+ADD COLUMN htf_bias VARCHAR(50),
+ADD COLUMN intermediate_structure VARCHAR(100),
+ADD COLUMN execution_timeframe VARCHAR(10) DEFAULT '15m';
+
+-- Legacy fields made nullable
+ALTER TABLE smc_signal_cache 
+ALTER COLUMN entry_price DROP NOT NULL,
+ALTER COLUMN stop_loss DROP NOT NULL,
+ALTER COLUMN take_profit_levels DROP NOT NULL;
+
+-- Scaled entries made required
+ALTER TABLE smc_signal_cache 
+ALTER COLUMN scaled_entries SET NOT NULL;
+```
+
+#### 3. **Cache Conversion Logic**
+- `SMCSignalCache.to_smc_signal()` now properly constructs SMCSignal with institutional fields
+- Includes fallback logic for old cache entries
+- `SMCSignalCache.from_smc_signal()` saves all new fields and extracts legacy fields from first scaled entry
+
+---
+
+## Identified Issues & Recommended Fixes
+
+### CRITICAL ISSUES
+
+#### ❌ Issue #43: Circular Dependency in TradeConfiguration.to_trade_config()
+**Severity:** CRITICAL  
+**Location:** `api/models.py` lines 278-342  
+**Problem:**
 ```python
-@dataclass
-class ScaledEntry:
-    entry_price: float
-    allocation_percent: float
-    order_type: str  # "market" | "limit"
-    stop_loss: float
-    take_profits: List[Tuple[float, float]]
-    status: str  # "pending" | "filled" | "cancelled"
+def to_trade_config(self):
+    from . import app  # ← CIRCULAR DEPENDENCY
+    config = app.TradeConfig(self.trade_id, self.name)
+```
+The method imports `app` from current package, creating circular dependency if `app.py` also imports from `models.py`.
+
+**Recommended Fix:**
+```python
+def to_trade_config(self):
+    # Lazy import to avoid circular dependency
+    from .app import TradeConfig
+    config = TradeConfig(self.trade_id, self.name)
+    # ... rest of method
 ```
 
-#### 3. Configuration (`config.py`)
+**Impact:** Can cause import errors, especially during testing or module reloading
 
-**TradingConfig Class:**
-All SMC settings are centralized in the `TradingConfig` class within `config.py`.
+---
+
+### HIGH PRIORITY ISSUES
+
+#### ❌ Issue #44: Inconsistent Breakeven After Handling
+**Severity:** HIGH  
+**Location:** `api/models.py` lines 292-309, 362-377  
+**Problem:**
+- `to_trade_config()` converts string representations ('tp1', 'tp2') to floats
+- `from_trade_config()` has similar logic but inconsistent handling
+- Database can store either strings or floats, leading to data corruption
+
+**Recommended Fix:**
+```python
+# Standardize on numeric representation in database
+# Always store as float: 0.0 (disabled), 1.0 (after TP1), 2.0 (after TP2), 3.0 (after TP3)
+
+def from_trade_config(user_id, config):
+    # Convert all string representations to float before storage
+    if hasattr(config, "breakeven_after"):
+        breakeven_value = config.breakeven_after
+        if isinstance(breakeven_value, str):
+            breakeven_map = {"disabled": 0.0, "tp1": 1.0, "tp2": 2.0, "tp3": 3.0}
+            db_config.breakeven_after = breakeven_map.get(breakeven_value, 0.0)
+        else:
+            db_config.breakeven_after = float(breakeven_value) if breakeven_value else 0.0
+    else:
+        db_config.breakeven_after = 0.0
+```
+
+**Impact:** Data corruption, incorrect breakeven SL trigger logic
+
+---
+
+#### ❌ Issue #45: Breakeven SL Price Calculated in Wrong Location
+**Severity:** HIGH  
+**Location:** `api/models.py` lines 311-314  
+**Problem:**
+```python
+# WRONG: Calculated during database load
+config.breakeven_sl_price = (
+    self.entry_price if config.breakeven_sl_triggered else 0.0
+)
+```
+Breakeven SL price should be calculated dynamically during trade execution/monitoring, not stored statically.
+
+**Recommended Fix:**
+```python
+# Remove static calculation from to_trade_config()
+# Instead, calculate in monitoring logic:
+
+def update_breakeven_stop_loss(config):
+    """Calculate breakeven SL dynamically during monitoring"""
+    if config.breakeven_sl_triggered and config.entry_price > 0:
+        return config.entry_price
+    return 0.0
+```
+
+**Impact:** Incorrect breakeven SL prices if entry price changes
+
+---
+
+#### ❌ Issue #46: LONG TP Ordering Validation Weak
+**Severity:** HIGH  
+**Location:** `api/smc_analyzer.py` lines 1015-1020  
+**Problem:**
+```python
+if not (take_profits[0] < take_profits[1] < take_profits[2]):
+    # Auto-correct but doesn't handle duplicates or edge cases
+    take_profits = sorted(take_profits)
+```
+Doesn't robustly handle duplicates or invalid values.
+
+**Recommended Fix:**
+```python
+# Robust validation with duplicate handling
+def validate_long_tp_ordering(take_profits, entry_price):
+    """Ensure valid LONG TP ordering with duplicate handling"""
+    # Remove duplicates
+    unique_tps = sorted(list(set(take_profits)))
+    
+    # Ensure we have at least 3 levels
+    if len(unique_tps) < 3:
+        # Generate missing levels using fixed percentages
+        tp_percentages = [2.0, 4.0, 6.0]  # 2%, 4%, 6%
+        take_profits = [entry_price * (1 + pct/100) for pct in tp_percentages]
+    else:
+        take_profits = unique_tps[:3]
+    
+    # Verify strict ordering
+    assert take_profits[0] < take_profits[1] < take_profits[2], "LONG TP ordering failed"
+    return take_profits
+```
+
+**Impact:** Invalid TP levels, potential trade execution failures
+
+---
+
+#### ❌ Issue #47: SHORT TP Ordering Validation Weak
+**Severity:** HIGH  
+**Location:** `api/smc_analyzer.py` lines 1203-1208  
+**Problem:** Same as Issue #46 but for SHORT positions
+
+**Recommended Fix:**
+```python
+def validate_short_tp_ordering(take_profits, entry_price):
+    """Ensure valid SHORT TP ordering with duplicate handling"""
+    # Remove duplicates
+    unique_tps = sorted(list(set(take_profits)), reverse=True)
+    
+    # Ensure we have at least 3 levels
+    if len(unique_tps) < 3:
+        # Generate missing levels using fixed percentages
+        tp_percentages = [2.0, 4.0, 6.0]  # 2%, 4%, 6%
+        take_profits = [entry_price * (1 - pct/100) for pct in tp_percentages]
+    else:
+        take_profits = unique_tps[:3]
+    
+    # Verify strict ordering (descending for SHORT)
+    assert take_profits[0] > take_profits[1] > take_profits[2], "SHORT TP ordering failed"
+    return take_profits
+```
+
+**Impact:** Invalid TP levels for short positions
+
+---
+
+### MEDIUM PRIORITY ISSUES
+
+#### ❌ Issue #48: Redundant Volume Confirmation Check
+**Severity:** MEDIUM  
+**Location:** `api/smc_analyzer.py` lines 516-521  
+**Problem:**
+```python
+volume_confirmed = (
+    current["volume"] >= avg_volume * self.ob_volume_multiplier
+)
+if not volume_confirmed:
+    continue  # Skip but then never use volume_confirmed flag properly
+```
+
+**Recommended Fix:**
+```python
+# Remove early continue, use volume_confirmed in final OB creation
+volume_confirmed = (
+    current["volume"] >= avg_volume * self.ob_volume_multiplier
+)
+
+# Later in code...
+if continuation_strength >= 2 and impulsive_exit and volume_confirmed:
+    order_block = OrderBlock(...)
+```
+
+**Impact:** May allow low-volume OBs to pass through
+
+---
+
+#### ❌ Issue #49: Inconsistent Order Block Age Filtering
+**Severity:** MEDIUM  
+**Location:** `api/smc_analyzer.py` lines 583-595  
+**Problem:**
+```python
+# Filters by age using OB_MAX_AGE_CANDLES
+# But then returns last 15 blocks regardless of age
+return order_blocks[-15:]
+```
+
+**Recommended Fix:**
+```python
+# Return all valid OBs, not just last 15
+# Let calling code decide how many to use
+return valid_obs  # or return valid_obs[-15:] with clear comment
+```
+
+**Impact:** May return irrelevant old order blocks
+
+---
+
+#### ❌ Issue #50: Inefficient FVG Alignment Score Calculation
+**Severity:** MEDIUM  
+**Location:** `api/smc_analyzer.py` lines 628-638, 664-673  
+**Problem:**
+```python
+for i in range(1, len(candlesticks) - 1):
+    if i >= 10:
+        recent_structure = self.detect_market_structure(candlesticks[:i+2])  # Called repeatedly!
+```
+
+**Recommended Fix:**
+```python
+# Calculate structure once before loop
+market_structure = self.detect_market_structure(candlesticks)
+
+for i in range(1, len(candlesticks) - 1):
+    if i >= 10:
+        # Use pre-calculated structure
+        alignment_score = 0.8 if market_structure in bullish_structures else 0.3
+```
+
+**Impact:** Performance degradation with large datasets
+
+---
+
+#### ❌ Issue #51: Potential Zero Division in Trade Level Calculations
+**Severity:** MEDIUM  
+**Location:** `api/smc_analyzer.py` lines 934, 1120  
+**Problem:**
+```python
+min_risk_distance = current_price * 0.005  # If current_price is 0 or very small...
+```
+
+**Recommended Fix:**
+```python
+# Add zero/near-zero protection
+if current_price <= 0:
+    logging.error(f"Invalid current_price: {current_price}")
+    raise ValueError("Current price must be positive")
+
+min_risk_distance = max(current_price * 0.005, 0.01)  # Ensure minimum value
+```
+
+**Impact:** Potential division by zero errors in edge cases
+
+---
+
+#### ❌ Issue #52: Lack of Scaled Entry Validation
+**Severity:** MEDIUM  
+**Location:** `api/smc_analyzer.py` `_calculate_scaled_entries` method  
+**Problem:** Generated scaled entries lack validation for:
+- Entry prices ordered correctly
+- Allocations sum to 100%
+- Valid price ranges
+
+**Recommended Fix:**
+```python
+def validate_scaled_entries(scaled_entries, direction):
+    """Validate scaled entry logic and ordering"""
+    if not scaled_entries:
+        raise ValueError("No scaled entries generated")
+    
+    # Check allocations sum to 100%
+    total_allocation = sum(e.allocation_percent for e in scaled_entries)
+    if not (99.0 <= total_allocation <= 101.0):  # Allow 1% tolerance
+        logging.warning(f"Scaled entry allocations sum to {total_allocation}%, expected 100%")
+    
+    # Check entry price ordering
+    entry_prices = [e.entry_price for e in scaled_entries]
+    if direction == "long":
+        assert entry_prices == sorted(entry_prices), "LONG scaled entries not in ascending order"
+    else:
+        assert entry_prices == sorted(entry_prices, reverse=True), "SHORT scaled entries not in descending order"
+    
+    return True
+```
+
+**Impact:** Invalid scaled entry configurations
+
+---
+
+### LOW PRIORITY ISSUES
+
+#### ⚠️ Issue #53: Potential Infinite Loop in get_valid_signal
+**Severity:** LOW  
+**Location:** `api/models.py` `SMCSignalCache.get_valid_signal` method  
+**Problem:** If `SIGNAL_MIN_CONFIDENCE` is too low, signals may consistently fail validation
+
+**Recommended Fix:**
+```python
+# Add iteration limit
+MAX_VALIDATION_ATTEMPTS = 3
+for attempt in range(MAX_VALIDATION_ATTEMPTS):
+    signal = cls.query.filter(...).first()
+    if validate_signal(signal):
+        return signal
+return None  # No valid signal after max attempts
+```
+
+**Impact:** Performance degradation if misconfigured
+
+---
+
+#### ⚠️ Issue #54: Hardcoded Values Should Be Configurable
+**Severity:** LOW  
+**Location:** Throughout `api/smc_analyzer.py`  
+**Problem:** Values like `CONTINUATION_LOOKAHEAD`, `OB_MAX_AGE_CANDLES` are hardcoded
+
+**Recommended Fix:**
+```python
+# Move all to SMCConfig class
+class SMCConfig:
+    CONTINUATION_LOOKAHEAD = 5
+    OB_MAX_AGE_CANDLES = 150
+    FVG_MAX_AGE_CANDLES = 150
+    # ... all other configurable values
+```
+
+**Impact:** Limited flexibility for optimization
+
+---
+
+#### ⚠️ Issue #55: Inconsistent Timezone Handling
+**Severity:** LOW  
+**Location:** Various timestamp handling locations  
+**Problem:** Some parts assume naive UTC, others use timezone-aware
+
+**Recommended Fix:**
+```python
+# Standardize on timezone-aware UTC everywhere
+def normalize_timestamp(dt):
+    """Always return timezone-aware UTC datetime"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+```
+
+**Impact:** Potential timezone bugs in comparisons
+
+---
+
+#### ⚠️ Issue #56: Timestamp Type Handling in get_candlestick_data
+**Severity:** LOW  
+**Location:** `api/smc_analyzer.py` lines 233-238  
+**Problem:** Assumes all timestamps are UTC without validation
+
+**Recommended Fix:**
+```python
+try:
+    timestamp_value = float(kline[0]) if isinstance(kline[0], str) else kline[0]
+    # Validate timestamp is in reasonable range
+    if timestamp_value < 0 or timestamp_value > 9999999999999:
+        raise ValueError(f"Timestamp out of range: {timestamp_value}")
+    
+    timestamp = datetime.fromtimestamp(timestamp_value / 1000, tz=timezone.utc)
+except (ValueError, TypeError, OSError) as e:
+    logging.warning(f"Invalid timestamp in kline data: {kline[0]} - {e}")
+    continue
+```
+
+**Impact:** Potential incorrect timestamp conversions
+
+---
+
+#### ⚠️ Issue #57: ATR Floor May Be Too Low
+**Severity:** LOW  
+**Location:** `api/smc_analyzer.py` lines 934, 1120, 606-608  
+**Problem:** `min_atr = current_price * 0.001` (0.1%) may be too small for some assets
+
+**Recommended Fix:**
+```python
+# Make ATR floor configurable per asset class
+class SMCConfig:
+    ATR_FLOOR_PERCENTAGE = 0.001  # 0.1% default
+    ATR_FLOOR_ABSOLUTE = {
+        'crypto': 0.01,  # Absolute minimum for crypto
+        'forex': 0.0001,  # Absolute minimum for forex
+        'stocks': 0.10   # Absolute minimum for stocks
+    }
+
+# In code:
+asset_type = get_asset_type(symbol)
+min_atr = max(
+    current_price * SMCConfig.ATR_FLOOR_PERCENTAGE,
+    SMCConfig.ATR_FLOOR_ABSOLUTE.get(asset_type, 0.01)
+)
+```
+
+**Impact:** May produce too-tight stop losses for certain assets
+
+---
+
+## Summary of Issues
+
+| Priority | Count | Issues |
+|----------|-------|--------|
+| CRITICAL | 1 | #43 (Circular Dependency) |
+| HIGH | 4 | #44-47 (Data consistency, TP ordering) |
+| MEDIUM | 5 | #48-52 (Performance, validation) |
+| LOW | 5 | #53-57 (Edge cases, configuration) |
+| **TOTAL** | **15** | **All documented above** |
+
+---
+
+## Key Features
+
+### Multi-Timeframe Analysis
+- **Daily (1d):** Institutional bias and major liquidity zones
+- **4-Hour (4h):** Intermediate structure and order flow
+- **1-Hour (1h):** Tactical structure and setup confirmation  
+- **15-Minute (15m):** Precise entry timing and execution
+
+### Institutional Pattern Recognition
+- Order Blocks (OB): High-volume institutional entry zones
+- Fair Value Gaps (FVG): Price imbalances for institutional fills
+- Liquidity Pools: Buy/sell-side liquidity targets
+- Change of Character (CHoCH): Trend reversal signals
+- Break of Structure (BOS): Trend continuation confirmation
+
+### Phase 4: Institutional Scaled Entry Strategy
+- **50% @ Market:** Immediate execution at current price
+- **25% @ Discount (LONG) / Premium (SHORT):** Better entry on pullback
+- **25% @ Deep Discount/Premium:** Optimal institutional entry zone
+- Each entry has independent SL and TP levels
+
+---
+
+## Architecture
+
+### Signal Generation Workflow
+
+```
+1. Data Acquisition (15m, 1h, 4h, 1d)
+   ↓
+2. HTF Bias Analysis (Daily → 4H structure)
+   ↓
+3. Multi-Timeframe Structure Detection
+   ↓
+4. Pattern Identification (OB, FVG, Liquidity)
+   ↓
+5. Signal Strength Scoring
+   ↓
+6. Phase 4: Institutional Scaled Entry Calculation
+   ↓
+7. Phase 5: Swing-Based Stop Loss (15m precision)
+   ↓
+8. Phase 6: Multi-TP Management (Liquidity targets)
+   ↓
+9. Phase 7: ATR Risk Filter
+   ↓
+10. Cache & Return SMCSignal
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE smc_signal_cache (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    
+    -- Legacy fields (nullable for backward compatibility)
+    entry_price FLOAT,
+    stop_loss FLOAT,
+    take_profit_levels TEXT,
+    
+    -- Required institutional fields
+    confidence FLOAT NOT NULL,
+    reasoning TEXT NOT NULL,
+    signal_strength VARCHAR(20) NOT NULL,
+    risk_reward_ratio FLOAT NOT NULL,
+    scaled_entries TEXT NOT NULL,  -- JSON array (Phase 4)
+    htf_bias VARCHAR(50),
+    intermediate_structure VARCHAR(100),
+    execution_timeframe VARCHAR(10) DEFAULT '15m',
+    
+    -- Metadata
+    created_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    market_price_at_signal FLOAT NOT NULL,
+    
+    INDEX idx_symbol_expires (symbol, expires_at)
+);
+```
 
 ---
 
 ## Configuration
 
-### Phase 1: 15m Execution Timeframe
+### SMCConfig (config.py)
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `TIMEFRAME_15M_LIMIT` | 400 | 15m candles to fetch (~4 days) |
-| `TARGET_CANDLES_15M` | 400 | Rolling window target for 15m |
-| `CLEANUP_BUFFER_15M` | 100 | Buffer before cleanup (500 total) |
-| `ENABLED_15M` | True | Enable 15m timeframe |
-| `KLINES_15M_CACHE_TTL` | 1 | Cache TTL in minutes for 15m |
-
-### Phase 2: Multi-Timeframe Workflow
-
-**Hierarchical Analysis Flow:**
+```python
+class SMCConfig:
+    # Timeframe candle limits
+    TIMEFRAME_15M_LIMIT = 400
+    TIMEFRAME_1H_LIMIT = 300
+    TIMEFRAME_4H_LIMIT = 100
+    TIMEFRAME_1D_LIMIT = 200  # Institutional 200-day analysis
+    
+    # Signal cache durations (dynamic based on strength)
+    SIGNAL_CACHE_DURATION_VERY_STRONG = 20  # minutes
+    SIGNAL_CACHE_DURATION_STRONG = 15
+    SIGNAL_CACHE_DURATION_MODERATE = 10
+    SIGNAL_CACHE_DURATION_WEAK = 5
+    
+    # Validation thresholds
+    SIGNAL_MIN_CONFIDENCE = 0.6
+    MIN_CANDLESTICKS_FOR_STRUCTURE = 20
+    MIN_SWING_POINTS = 2
+    
+    # Order Block settings
+    OB_MAX_AGE_CANDLES = 150
+    OB_VOLUME_MULTIPLIER = 1.0  # Dynamic tuning
+    CONTINUATION_LOOKAHEAD = 5
+    
+    # FVG settings
+    FVG_ATR_MULTIPLIER = 0.3
+    MIN_CANDLESTICKS_FOR_FVG = 3
+    FVG_MAX_AGE_CANDLES = 150
+    
+    # Swing detection
+    STRUCTURE_SWING_LOOKBACK_DEFAULT = 3
+    STRUCTURE_SWING_LOOKBACK_1D = 5
 ```
-Daily (1d)  → HTF bias & liquidity targets
-    ↓
-H4 + H1     → Intermediate structure (OBs, FVGs, BOS/CHoCH)
-    ↓
-15m         → Execution signal (must align with HTF)
-```
-
-**Key Settings:**
-- Daily bias weight: 2.0x multiplier
-- Minimum confluence score: 3.0
-- Alignment required: True (enforce H1/H4 alignment)
-
-### Phase 3: Enhanced Confidence Scoring
-
-| Bonus Type | Value | Condition |
-|------------|-------|-----------|
-| 15m Perfect Alignment | +0.2 | Alignment score ≥ 0.8 |
-| Confirmed Liquidity Sweep | +0.1 | Sweep matches signal direction |
-| HTF POI Entry | +0.1 | Entry within 0.5% of OB/FVG |
-
-**Signal Strength Thresholds:**
-- Very Strong: ≥ 0.9 confidence
-- Strong: ≥ 0.8 confidence
-- Moderate: ≥ 0.7 confidence
-- Weak: < 0.7 confidence
-
-### Phase 4: Scaling Entry Management
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `USE_SCALED_ENTRIES` | True | Enable scaled entry strategy |
-| `SCALED_ENTRY_ALLOCATIONS` | [50, 25, 25] | % allocation per entry |
-| `SCALED_ENTRY_MIN_ZONE_SIZE` | 0.003 | Min zone size (0.3%) |
-| `SCALED_ENTRY_MAX_ZONE_SIZE` | 0.015 | Max zone size (1.5%) |
-
-**Entry Logic:**
-- Long: Entry 1 @ zone top, Entry 2 @ midpoint, Entry 3 @ bottom
-- Short: Entry 1 @ zone bottom, Entry 2 @ midpoint, Entry 3 @ top
-- Fallback: Fixed depths [0.004, 0.010] if no zones found
-
-### Phase 5: Refined Stop-Loss
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `USE_15M_SWING_SL` | True | Use 15m swing levels for SL |
-| `SL_ATR_BUFFER_MULTIPLIER` | 0.5 | ATR buffer for swing SL |
-| `SL_MIN_DISTANCE_PERCENT` | 0.005 | Min SL distance (0.5%) |
-
-**Calculation Logic:**
-1. Find last swing high/low on 15m
-2. Add ATR buffer (0.5x ATR default)
-3. Ensure minimum distance from entry
-4. Compare with base SL, use tighter option
-
-### Phase 6: Multi-Take Profit Management
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `USE_RR_BASED_TPS` | True | Use R:R-based take profits |
-| `TP_RR_RATIOS` | [1.0, 2.0, 3.0] | Risk/Reward ratios |
-| `TP_ALLOCATIONS` | [40, 30, 30] | % allocation per TP |
-| `USE_TRAILING_STOP` | False | Trail stop after TP1 |
-
-**TP Calculation:**
-- TP1 = Entry + (1R × risk)
-- TP2 = Entry + (2R × risk)
-- TP3 = Entry + (3R × risk) OR nearest liquidity pool
-
-### Phase 7: ATR Risk Filter
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `USE_ATR_FILTER` | True | Enable ATR risk filter |
-| `MIN_ATR_15M_PERCENT` | 0.6 | Min ATR % on 15m (0.6%, lowered Oct 2025) |
-| `MIN_ATR_H1_PERCENT` | 0.9 | Min ATR % on H1 (0.9%, lowered Oct 2025) |
-| `USE_DYNAMIC_POSITION_SIZING` | False | Adjust size by ATR |
-
-**Pair-Specific ATR Thresholds (Lowered Oct 2025):**
-- **BTCUSDT**: 0.45% (15m), 0.75% (H1) - Low volatility pair
-- **ETHUSDT**: 0.6% (15m), 0.9% (H1) - Medium volatility
-- **SOLUSDT**: 0.9% (15m), 1.35% (H1) - High volatility
-- **BNBUSDT**: 0.6% (15m), 0.9% (H1) - Medium volatility
-- **XRPUSDT**: 1.1% (15m), 1.5% (H1) - High volatility
-- **ADAUSDT**: 0.75% (15m), 1.1% (H1) - Medium volatility
-
-**Filter Logic:**
-1. Calculate ATR% = (ATR / current_price) × 100
-2. Check 15m ATR% ≥ threshold AND H1 ATR% ≥ threshold (pair-specific or default)
-3. Reject if either threshold not met
-4. Optional: Scale position size by volatility
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: 15m Execution Timeframe ✅
-
-**Objective:** Add 15-minute timeframe for precise execution
-
-**Files Modified:**
-- `api/smc_analyzer.py` - Added "15m" to timeframes
-- `config.py` - Added 15m limits and cache settings
-- `api/unified_data_sync_service.py` - Added 15m sync
-- `api/models.py` - Added 15m timestamp flooring
-
-**Key Changes:**
-- Timeframes: `["15m", "1h", "4h", "1d"]`
-- 15m limit: 400 candles (~4 days)
-- Cache TTL: 1 minute for 15m open candles
-
-### Phase 2: Multi-Timeframe Analysis Workflow ✅
-
-**Objective:** Implement Daily → H4/H1 → 15m hierarchical analysis
-
-**Key Methods Added:**
-1. `_get_htf_bias()` - HTF bias from Daily/H4
-2. `_get_intermediate_structure()` - H4/H1 structure analysis
-3. `_get_execution_signal_15m()` - 15m execution with alignment
-
-**Analysis Flow:**
-```
-1. Determine HTF bias (Daily + H4)
-2. Analyze intermediate structure (H4 + H1)
-3. Generate 15m execution signal
-4. Validate 15m alignment with HTF
-5. Reject if alignment score < 0.3
-```
-
-### Phase 3: Enhanced Confidence Scoring ✅
-
-**Objective:** Dynamic confidence based on alignment and confluence
-
-**Key Method:**
-- `_calculate_signal_strength_and_confidence()` - Enhanced scoring
-
-**Confidence Bonuses:**
-- Base confidence from signal confluence
-- +0.2 for perfect 15m alignment (≥ 0.8)
-- +0.1 for confirmed liquidity sweeps
-- +0.1 for entry from HTF POI (OB/FVG)
-
-### Phase 4: Scaling Entry Management ✅
-
-**Objective:** Zone-based scaled entries using OBs/FVGs
-
-**Key Method:**
-- `_calculate_scaled_entries()` - Zone-based entry calculation
-
-**Entry Strategy:**
-- 50% aggressive (market/limit at zone edge)
-- 25% balanced (limit at zone midpoint)
-- 25% deep (limit at zone opposite edge)
-
-**Zone Detection:**
-- Find nearest OB/FVG in signal direction
-- Merge overlapping zones
-- Adjust for volatility regime
-- Fallback to fixed % if no zones
-
-### Phase 5: Refined Stop-Loss with 15m Swings ✅
-
-**Objective:** Precision stop-loss using 15m swing levels
-
-**Key Methods:**
-- `_find_15m_swing_levels()` - Detect swing highs/lows
-- `_calculate_refined_sl_with_atr()` - Calculate refined SL
-
-**SL Calculation:**
-1. Find last swing high/low on 15m (5-candle lookback)
-2. Add ATR buffer (0.5x multiplier)
-3. Ensure min 0.5% distance from entry
-4. Use tighter of refined vs. base SL
-
-### Phase 6: Multi-Take Profit Management ✅
-
-**Objective:** R:R-based TPs targeting liquidity
-
-**Key Methods:**
-- `_calculate_rr_based_take_profits()` - Calculate TP levels
-- `_find_liquidity_target()` - Find institutional targets
-- `_should_trail_stop_after_tp1()` - Trailing stop logic
-
-**TP Logic:**
-- Calculate 1R, 2R, 3R based on risk
-- Check for liquidity pools near 3R
-- Use liquidity target if within 0.5%
-- Allocate 40%/30%/30% by default
-
-### Phase 7: ATR Risk Filter ✅
-
-**Objective:** Filter low-volatility choppy markets
-
-**Key Methods:**
-- `_check_atr_filter()` - Volatility threshold check
-- `_calculate_dynamic_position_size()` - Optional sizing
-
-**Filter Logic:**
-1. Check filter BEFORE analysis (optimization)
-2. Calculate 15m ATR% and H1 ATR%
-3. Require 15m ≥ 0.8% AND H1 ≥ 1.2%
-4. Reject if either fails
-5. Optional: Adjust position size by volatility
-
----
-
-## Recent Fixes (October 5, 2025)
-
-### Issue 1: Type Safety ✅
-**Problem:** Union return type causing 117 LSP errors  
-**Solution:** Added `@overload` decorators with `Literal[True]` and `Literal[False]`  
-**Result:** LSP errors reduced to 49 (58% improvement)
-
-### Issue 2: Counter-Trend Logic ✅
-**Problem:** Duplicate RSI/sweep validation creating conflicting rejection reasons  
-**Solution:** Removed duplicate checks from rejection logic  
-**Result:** Clean rejection reasons, validation happens once
-
-### Issue 3: Confidence Triple Counting ✅
-**Problem:** Same evidence counted 3 times (hybrid → metrics → Phase 3)  
-**Solution:** Removed duplicate bonuses, Phase 3 is single source of truth  
-**Result:** Accurate confidence scores, no artificial inflation
-
-### Issue 4: RSI Thresholds ✅
-**Problem:** Using 35/65 instead of SMC standard 30/70  
-**Solution:** Updated thresholds to 30 (oversold) and 70 (overbought)  
-**Result:** More accurate reversal signal detection
-
-### Issue 5: ATR Filter Placement ✅
-**Problem:** Volatility tuning ran before ATR filter check  
-**Solution:** Moved ATR filter check BEFORE parameter tuning  
-**Result:** Saves computation on rejected trades
-
-### Issue 6: 15m Missing Data ✅
-**Problem:** Missing data scored 0.5 (neutral), better than 0.2 (conflict)  
-**Solution:** Changed missing data default to 0.3 (borderline)  
-**Result:** Proper risk assessment when 15m unavailable
-
----
-
-## Known Issues & Fixes (October 5, 2025)
-
-### Issue Summary
-
-**Total Issues Identified:** 21 (18 previous + 3 new from Oct 6)  
-**Fixed:** 21 (100%) ✅  
-**Pending Fix:** 0 (0%)
-
-**By Priority:**
-- **High Priority (Immediate):** 4 issues (4 fixed ✅)
-- **Medium Priority (Important):** 8 issues (8 fixed ✅)
-- **Low Priority (Maintenance):** 6 issues (6 fixed ✅)
-
-**By Category:**
-- **Critical Logic Flaws:** Issues #1, #4, #10, #15 (4 fixed ✅)
-- **Validation & Consistency:** Issues #2, #3, #5, #11, #12, #13 (6 fixed ✅)
-- **Configuration & Thresholds:** Issues #8, #14, #16 (3 fixed ✅)
-- **Code Quality:** Issues #6, #7, #9, #17, #18 (5 fixed ✅)
-
----
-
-### Critical Issues
-
-#### Issue 1: Swing Point KeyError in 15m Execution ❌ **URGENT**
-**Location:** `_get_execution_signal_15m()` (lines 1597-1598, 1604-1605)
-
-**Problem:**
-```python
-last_swing_low = min([sw["price"] for sw in m15_swing_lows[-3:]])  # ❌ KeyError
-last_swing_high = max([sw["price"] for sw in m15_swing_highs[-3:]])  # ❌ KeyError
-```
-Swing point dictionaries use keys `"low"` and `"high"`, not `"price"`. This will crash at runtime.
-
-**Solution:**
-```python
-last_swing_low = min([sw["low"] for sw in m15_swing_lows[-3:]])
-last_swing_high = max([sw["high"] for sw in m15_swing_highs[-3:]])
-```
-
-**Impact:** HIGH - Will cause runtime crash when 15m execution logic runs  
-**Status:** ✅ FIXED - Changed dict key access from "price" to "low"/"high"
-
----
-
-#### Issue 2: Liquidity Pool Lookback Inconsistency ⚠️
-**Location:** `find_liquidity_pools()` (lines 644, 651)
-
-**Problem:**
-```python
-for high in swing_highs[-SMCConfig.RECENT_SWING_LOOKBACK:]:  # Uses config
-for low in swing_lows[-5:]:  # ❌ Hardcoded to 5
-```
-Sell-side liquidity uses configurable lookback, buy-side uses hardcoded value. Creates asymmetric analysis.
-
-**Solution:**
-```python
-for low in swing_lows[-SMCConfig.RECENT_SWING_LOOKBACK:]:  # Use config consistently
-```
-
-**Impact:** MEDIUM - Asymmetric liquidity detection  
-**Status:** ✅ FIXED - Changed hardcoded -5 to use SMCConfig.RECENT_SWING_LOOKBACK
-
----
-
-#### Issue 3: FVG Gap Boundary Logic Inconsistency ⚠️
-**Location:** `find_fair_value_gaps()` (lines 584-621)
-
-**Problem:**
-Gap boundary assignment is inverted between bullish and bearish FVGs:
-- Bullish: `gap_high=next_candle["low"]`, `gap_low=prev_candle["high"]`
-- Bearish: `gap_high=prev_candle["low"]`, `gap_low=next_candle["high"]`
-
-This creates confusion about which candle (prev vs next) forms the gap boundary.
-
-**Solution:**
-Standardize gap boundary logic to consistently use the middle candle that created the imbalance:
-- Bullish gap UP: Gap between prev high and next low
-- Bearish gap DOWN: Gap between prev low and next high
-
-**Impact:** MEDIUM - Affects FVG zone accuracy  
-**Status:** ✅ VERIFIED CORRECT - Logic is correct, no fix needed
-
----
-
-#### Issue 4: Stop Loss Can Exceed Entry Price ⚠️
-**Location:** `_calculate_long_trade_levels()` (lines 982-983)
-
-**Problem:**
-```python
-stop_loss = max(stop_loss, current_price * 0.01)  # Floor at 1% of price
-stop_loss = min(stop_loss, entry_price * 0.99)   # Cap at 99% of entry
-```
-If `current_price` differs significantly from `entry_price` (e.g., discount entry), the `max()` operation could push SL above entry in edge cases.
-
-**Solution:**
-Add validation before applying floors:
-```python
-if stop_loss >= entry_price:
-    stop_loss = entry_price * 0.995  # Force below entry
-stop_loss = max(stop_loss, current_price * 0.01)
-stop_loss = min(stop_loss, entry_price * 0.99)
-```
-
-**Impact:** MEDIUM - Invalid stop loss in edge cases  
-**Status:** ✅ FIXED - Added pre-validation check for both long and short positions
-
----
-
-### Logic Flaws
-
-#### Issue 5: Order Block Entry When Already Inside Zone ⚠️
-**Location:** `_calculate_long_trade_levels()` (lines 920-934)
-
-**Problem:**
-```python
-if ob.price_low <= current_price <= ob.price_high:
-    entry_price = ob.price_high  # ❌ Entry at/above current price
-```
-When price is already inside the OB, using `price_high` means entering at same level or higher than current price, which doesn't make sense for a discount entry.
-
-**Solution:**
-```python
-if ob.price_low <= current_price <= ob.price_high:
-    entry_price = current_price  # Use current price as entry
-    # Or use midpoint: entry_price = (ob.price_low + ob.price_high) / 2
-```
-
-**Impact:** MEDIUM - Illogical entry prices when inside OB  
-**Status:** ✅ FIXED - Changed to use current_price for immediate entry when inside OB
-
----
-
-#### Issue 6: Duplicate Entry Calculation Methods 🔄
-**Location:** Multiple functions
-
-**Problem:**
-Two different entry calculation methods exist:
-1. `_calculate_long_trade_levels()` - Uses structural scoring (lines 890-945)
-2. `_calculate_long_prices()` - Uses simple distance-based selection (lines 2854-2882)
-
-The second method appears to be unused legacy code but creates maintenance confusion.
-
-**Solution:**
-Remove `_calculate_long_prices()` and `_calculate_short_prices()` methods as they are not called anywhere in the codebase.
-
-**Impact:** LOW - Code maintenance issue  
-**Status:** ✅ FIXED - Removed _calculate_long_prices(), _calculate_short_prices(), and generate_enhanced_signal()
-
----
-
-### Inconsistencies
-
-#### Issue 7: ATR Floor Calculation Comments 📝
-**Location:** Multiple locations (lines 575, 866, 1045)
-
-**Problem:**
-Inconsistent commenting style for ATR floor:
-- Line 575: `atr = current_price * 0.001  # 0.1% floor` (confusing)
-- Line 866: `min_atr = current_price * 0.001  # 0.1% minimum ATR` (clear)
-
-**Solution:**
-Standardize all ATR floor comments:
-```python
-atr = current_price * 0.001  # 0.1% minimum ATR
-```
-
-**Impact:** LOW - Documentation clarity  
-**Status:** ✅ FIXED - Standardized all comments to "0.1% minimum ATR"
-
----
-
-#### Issue 8: Volatility Regime Adjustment Timing ⏱️
-**Location:** `generate_trade_signal()` (lines 1777-1821)
-
-**Problem:**
-Auto-volatility parameter tuning happens AFTER the ATR filter check but BEFORE pattern detection:
-1. ATR filter uses default/cached multipliers
-2. Pattern detection uses newly adjusted multipliers
-
-This creates parameter mismatch between filter and analysis.
-
-**Solution:**
-Move volatility regime adjustment before ATR filter OR ensure consistent multipliers throughout:
-```python
-# Option 1: Move tuning before filter
-volatility_regime = self._detect_volatility_regime(h1_candlesticks, current_price)
-self._adjust_parameters_for_volatility(volatility_regime)
-if not self._check_atr_filter(m15_candlesticks, h1_candlesticks, current_price):
-    return None
-```
-
-**Impact:** MEDIUM - Inconsistent parameter application  
-**Status:** ✅ FIXED - Moved volatility regime adjustment BEFORE ATR filter
-
----
-
-### Minor Issues
-
-#### Issue 9: Unused Default Value in Swing Strength 🔧
-**Location:** `find_liquidity_pools()` (line 651)
-
-**Problem:**
-```python
-pool = LiquidityPool(
-    price=low["low"], type="buy_side", strength=low.get("strength", 1.0)
-)
-```
-Swing lows always have a "strength" key (added in `_find_swing_lows()`), so the default `1.0` is never used.
-
-**Solution:**
-Use direct access since key always exists:
-```python
-strength=low["strength"]
-```
-
-**Impact:** LOW - Unnecessary defensive code  
-**Status:** ❌ Not Fixed
-
----
-
-#### Issue 10: Short Entry Price Premium Zone Logic Flaw ⚠️ **HIGH PRIORITY**
-**Location:** `_calculate_short_trade_levels()` (lines 1073-1130)
-
-**Problem:**
-The entry price calculation for shorts has a logical inconsistency where it searches for bearish order blocks above current price (premium zone), but the fallback logic can place entry below current price:
-
-```python
-# Line 1105: Looking for OB above current price (premium zone)
-if ob.price_low > current_price:  # Must be above current price for short entry
-    best_ob = ob
-    break
-
-# Lines 1122-1126: Fallback uses swing high minus buffer
-if swing_highs:
-    recent_swing_high = swing_highs[-1]["high"]
-    entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)
-    entry_price = recent_swing_high - entry_buffer  # ❌ Could be below current price!
-```
-
-**Why This Matters:**
-SMC principles require short entries from premium zones (price above equilibrium). If the recent swing high is close to current price, subtracting the buffer places entry below current price, violating premium zone entry rules.
-
-**Solution:**
-Add validation to ensure short entry is always >= current price for premium zone compliance:
-```python
-if swing_highs:
-    recent_swing_high = swing_highs[-1]["high"]
-    entry_buffer = max(atr * 0.2, recent_swing_high * 0.003)
-    entry_price = recent_swing_high - entry_buffer
-    # Ensure premium zone entry
-    if entry_price < current_price:
-        entry_price = current_price + max(atr * 0.3, current_price * 0.003)
-```
-
-**Impact:** HIGH - Can generate invalid premium zone entries  
-**Status:** ✅ FIXED - Added validation to ensure short entry >= current price for premium zone compliance
-
----
-
-#### Issue 11: Stop Loss Validation Logic Ordering ⚠️
-**Location:** `_calculate_long_trade_levels()` and `_calculate_short_trade_levels()` (lines 983-987, 1165-1168)
-
-**Problem:**
-The final safety checks apply operations in an order that can cause unnecessary computation and potential precision errors:
-
-```python
-# Long position validation (lines 984-987)
-if stop_loss >= entry_price:
-    stop_loss = entry_price * 0.995  # Forces 0.5% below
-stop_loss = max(stop_loss, current_price * 0.01)  # ❌ Could push SL above entry!
-stop_loss = min(stop_loss, entry_price * 0.99)   # Then forces below again
-```
-
-**Why This Matters:**
-The `max()` operation on line 986 could potentially push stop_loss above entry_price if current_price differs significantly from entry_price, then line 987 forces it back down. This creates redundant computation and could mask issues.
-
-**Solution:**
-Reorder validation logic to check constraints in proper sequence:
-```python
-# First, ensure minimum price floor
-stop_loss = max(stop_loss, current_price * 0.01)
-
-# Then, ensure it's below entry price
-if stop_loss >= entry_price:
-    stop_loss = entry_price * 0.995
-
-# Finally, cap at maximum
-stop_loss = min(stop_loss, entry_price * 0.99)
-```
-
-**Impact:** MEDIUM - Potential precision issues in edge cases  
-**Status:** ✅ FIXED - Reordered validation logic to check constraints in proper sequence
-
----
-
-#### Issue 12: Take Profit Ordering Not Explicitly Validated ⚠️
-**Location:** `_calculate_long_trade_levels()` and `_calculate_short_trade_levels()` (lines 1032-1040, 1225-1240)
-
-**Problem:**
-The code uses `sorted(list(set()))` to deduplicate and order TPs, but doesn't explicitly validate the final ordering:
-
-```python
-# Long TPs (lines 1033-1040)
-take_profits = sorted(list(set(take_profits)))  # Ascending order
-if len(take_profits) < 3:
-    while len(take_profits) < 3:
-        last_tp = take_profits[-1]
-        next_tp = last_tp * 1.01  # ❌ Could create TP2 < TP1 if duplicates removed
-        take_profits.append(next_tp)
-```
-
-**Why This Matters:**
-If the `set()` operation removes a duplicate and changes the expected order, the fill logic could create incorrectly ordered TPs (e.g., TP2 might end up less than TP1 after filling missing levels).
-
-**Solution:**
-Add explicit validation after TP generation:
-```python
-# For longs - ensure ascending order
-take_profits = sorted(list(set(take_profits)))
-# Fill missing TPs
-while len(take_profits) < 3:
-    last_tp = take_profits[-1]
-    next_tp = last_tp * 1.01
-    take_profits.append(next_tp)
-
-# Explicit validation
-assert len(take_profits) >= 3, "Must have at least 3 TPs"
-assert take_profits[0] < take_profits[1] < take_profits[2], "TPs must be in ascending order for longs"
-```
-
-**Impact:** MEDIUM - Could generate invalid TP sequences  
-**Status:** ✅ FIXED - Added explicit validation with auto-correction for TP ordering
-
----
-
-#### Issue 13: ATR Calculation Inconsistency Between Methods ⚠️
-**Location:** `_calculate_short_trade_levels()` (lines 1045-1067) vs `calculate_atr()` (line 690)
-
-**Problem:**
-The fallback ATR calculation in trade level methods uses a simple average, while `calculate_atr()` uses exponential smoothing:
-
-```python
-# In _calculate_short_trade_levels (lines 1052-1063):
-for i in range(1, min(len(candlesticks), 20)):
-    # Calculate true range
-    tr = max(current["high"] - current["low"], ...)
-    true_ranges.append(tr)
-atr = sum(true_ranges) / len(true_ranges)  # ❌ Simple average
-
-# In calculate_atr() (lines 690-742):
-# Uses exponential moving average with smoothing factor
-```
-
-**Why This Matters:**
-Different ATR calculation methods can produce different values, leading to inconsistent risk management across the system. A simple average is more reactive to recent volatility, while EMA is smoother.
-
-**Solution:**
-Always use the centralized `calculate_atr()` method:
-```python
-# Replace manual calculation with centralized method
-atr = self.calculate_atr(candlesticks)
-if atr <= 0:
-    atr = min_atr  # Only fallback to minimum if method fails
-```
-
-**Impact:** MEDIUM - Inconsistent ATR values across system  
-**Status:** ✅ FIXED - Refactored to use centralized calculate_atr() method consistently
-
----
-
-#### Issue 14: 15m Missing Data Score Too Restrictive ⚠️
-**Location:** `_get_execution_signal_15m()` - alignment score calculation
-
-**Problem:**
-According to the documentation (line 422), when 15m data is missing or insufficient, the alignment score defaults to 0.3 (borderline). However, the rejection threshold is also 0.3 (line 313: "Reject if alignment score < 0.3").
-
-**Why This Matters:**
-A score of 0.3 is at the exact rejection threshold, meaning missing 15m data results in automatic rejection. This is too harsh - if the HTF (Daily, H4, H1) all align perfectly, rejecting solely due to missing 15m data wastes good opportunities.
-
-**Solution:**
-Increase the missing data default score to 0.35 or 0.4 to allow borderline signals when 15m data is temporarily unavailable:
-```python
-# Current (from documentation):
-m15_alignment_score = 0.3  # Missing data default
-
-# Proposed:
-m15_alignment_score = 0.4  # Allow borderline signals with strong HTF alignment
-```
-
-**Impact:** MEDIUM - May reject valid signals with strong HTF alignment  
-**Status:** ✅ FIXED - Increased default score from 0.3 to 0.4 for better edge case handling
-
----
-
-#### Issue 15: Scaled Entry Validation Logs Error But Doesn't Prevent Invalid Orders ⚠️
-**Location:** `_calculate_scaled_entries()` (lines 3261-3269)
-
-**Problem:**
-The code detects invalid entry ordering and logs an error, but doesn't prevent the invalid entries from being created:
-
-```python
-# Lines 3261-3269
-if direction == "long":
-    # ... calculate entries ...
-    if not (entry1_price >= entry2_price >= entry3_price):
-        logging.error(f"Invalid LONG entry ordering: {entry1_price:.4f} >= {entry2_price:.4f} >= {entry3_price:.4f}")
-    # ❌ No return or correction - invalid entries still added to list!
-
-# Entries are still appended even if ordering is invalid
-scaled_entries.append(entry1)
-scaled_entries.append(entry2)
-scaled_entries.append(entry3)
-```
-
-**Why This Matters:**
-If entries are in the wrong order (e.g., Entry2 > Entry1 for longs), limit orders could fill before market orders, or deep entries could fill before balanced entries, violating the scaling strategy.
-
-**Solution:**
-Either fix the ordering automatically or raise an exception:
-```python
-# Option 1: Fix ordering automatically
-if not (entry1_price >= entry2_price >= entry3_price):
-    logging.warning(f"Correcting invalid LONG entry ordering")
-    entry2_price = min(entry2_price, entry1_price * 0.996)
-    entry3_price = min(entry3_price, entry2_price * 0.996)
-
-# Option 2: Raise exception to prevent invalid trades
-if not (entry1_price >= entry2_price >= entry3_price):
-    raise ValueError(f"Invalid LONG entry ordering: {entry1_price} >= {entry2_price} >= {entry3_price}")
-```
-
-**Impact:** HIGH - Can generate invalid scaled entry sequences  
-**Status:** ✅ FIXED - Added validation with automatic ordering correction
-
----
-
-#### Issue 16: Zone Distance Threshold May Be Too Restrictive ⚠️
-**Location:** `_calculate_scaled_entries()` (lines 3214-3219, 3238-3243)
-
-**Problem:**
-The 5% maximum distance check rejects zones that are too far from current price, which may be appropriate for ranging markets but too restrictive for trending markets:
-
-```python
-# Lines 3214-3219
-zone_distance = abs(current_price - float(base_zone["high"]))
-max_distance = current_price * 0.05  # ❌ Fixed 5% maximum
-
-if zone_distance > max_distance:
-    logging.warning(f"Zone too far from current price, using fallback")
-    base_zone = None  # Rejects potentially valid institutional zone
-```
-
-**Why This Matters:**
-In strong trending markets, highly relevant order blocks can be 5-10% away but still represent key institutional zones. Rejecting these forces the system to use less accurate percentage-based fallbacks.
-
-**Solution:**
-Make max_distance configurable or scale it based on volatility regime:
-```python
-# Adjust max distance based on volatility
-if volatility_regime == "high":
-    max_distance = current_price * 0.10  # 10% in high volatility
-elif volatility_regime == "low":
-    max_distance = current_price * 0.03  # 3% in low volatility  
-else:
-    max_distance = current_price * 0.05  # 5% normal
-```
-
-**Impact:** MEDIUM - May reject valid institutional zones in trending markets  
-**Status:** ✅ FIXED - Made threshold adaptive based on volatility regime (3%-10%)
-
----
-
-#### Issue 17: Timestamp Timezone Normalization Mutates Original Data ⚠️
-**Location:** `get_candlestick_data()` (lines 300-320)
-
-**Problem:**
-The timezone normalization logic directly mutates the original candle dictionaries:
-
-```python
-# Lines 304-314
-for candle in combined_data:
-    if isinstance(candle["timestamp"], datetime):
-        # ... normalization logic ...
-        candle["timestamp"] = normalized_timestamp  # ❌ Mutates original dict!
-```
-
-**Why This Matters:**
-If the `combined_data` references are reused elsewhere in the codebase, unexpected mutations could cause subtle bugs. This violates functional programming principles and makes debugging harder.
-
-**Solution:**
-Create new dictionaries instead of mutating:
-```python
-unique_data = []
-for candle in combined_data:
-    # Create a copy
-    normalized_candle = candle.copy()
-    
-    if isinstance(candle["timestamp"], datetime):
-        # Normalize on the copy
-        if candle["timestamp"].tzinfo is None:
-            normalized_candle["timestamp"] = candle["timestamp"].replace(tzinfo=timezone.utc)
-        else:
-            normalized_candle["timestamp"] = candle["timestamp"].astimezone(timezone.utc)
-    
-    timestamp_key = normalized_candle["timestamp"].isoformat()
-    if timestamp_key not in seen_timestamps:
-        seen_timestamps.add(timestamp_key)
-        unique_data.append(normalized_candle)
-```
-
-**Impact:** LOW - Potential side effects from data mutation  
-**Status:** ✅ FIXED - Refactored to create copies before modifying timestamps
-
----
-
-#### Issue 18: Division by Zero Defaults Need Logging 📝
-**Location:** Multiple locations calculating risk/reward ratios
-
-**Problem:**
-When risk = 0, the code defaults to 1.0 R:R ratio without logging:
-
-```python
-# Line 1334
-rr_ratio = reward / risk if risk > 0 else 1.0  # ❌ Silent default
-```
-
-**Why This Matters:**
-If entry_price equals stop_loss due to rounding errors or edge cases, defaulting to 1.0 R:R masks the underlying issue. This makes debugging harder and could allow invalid trades to pass through.
-
-**Solution:**
-Add logging when defaulting:
-```python
-if risk > 0:
-    rr_ratio = reward / risk
-else:
-    logging.warning(f"Risk is zero (entry={entry_price}, sl={stop_loss}), defaulting to 1.0 R:R")
-    rr_ratio = 1.0
-```
-
-**Impact:** LOW - Edge case debugging difficulty  
-**Status:** ✅ FIXED - Added division by zero protection with logging in _check_impulsive_move()
-
----
-
-### Recommendations
-
-**✅ ALL ISSUES RESOLVED (October 5, 2025)**
-
-**Priority 1 (Immediate - High Impact):** ALL FIXED ✅
-1. ✅ Fix Issue #1 (Swing point KeyError) - Will crash at runtime
-2. ✅ Fix Issue #4 (Stop loss validation) - Can generate invalid trades
-3. ✅ Fix Issue #10 (Short entry premium zone logic) - Can generate invalid premium zone entries
-4. ✅ Fix Issue #15 (Scaled entry validation) - Can generate invalid scaled entry sequences
-
-**Priority 2 (Important - Medium Impact):** ALL FIXED ✅
-5. ✅ Fix Issue #2 (Liquidity pool consistency)
-6. ✅ Fix Issue #3 (FVG gap logic standardization)
-7. ✅ Fix Issue #5 (Order block entry logic)
-8. ✅ Fix Issue #11 (Stop loss ordering) - Potential precision issues in edge cases
-9. ✅ Fix Issue #12 (Take profit validation) - Could generate invalid TP sequences
-10. ✅ Fix Issue #13 (ATR calculation consistency) - Inconsistent ATR values across system
-11. ✅ Fix Issue #14 (15m missing data score) - May reject valid signals with strong HTF alignment
-12. ✅ Fix Issue #16 (Zone distance threshold) - May reject valid institutional zones in trending markets
-
-**Priority 3 (Maintenance - Low Impact):** ALL FIXED ✅
-13. ✅ Fix Issue #6 (Remove duplicate methods)
-14. ✅ Fix Issue #8 (Volatility timing)
-15. ✅ Fix Issue #7 (Comment standardization)
-16. ✅ Fix Issue #17 (Timestamp mutation) - Potential side effects from data mutation
-17. ✅ Fix Issue #18 (Division by zero logging) - Edge case debugging difficulty
-18. ✅ Fix Issue #9 (Unused default value) - Unnecessary defensive code (Low priority, keeping defensive code)
-
-**New Testing Recommendations:**
-- **Integration Tests:**
-  - Price inside OB scenarios
-  - Extreme volatility conditions
-  - Premium/discount zone entry validation
-  - Scaled entry ordering in various market conditions
-  
-- **Validation Tests:**
-  - Dictionary key validation to prevent KeyError crashes
-  - Entry/stop loss calculations with various market conditions
-  - TP ordering validation for both long and short positions
-  - Premium zone compliance for short entries
-  - Discount zone compliance for long entries
-  
-- **Edge Case Tests:**
-  - Missing 15m data with strong HTF alignment
-  - Entry price equals stop loss scenarios
-  - Zero risk/reward ratio handling
-  - Zone distance validation in trending vs ranging markets
-  - ATR calculation consistency across methods
-
-**Code Quality Improvements:**
-- Centralize ATR calculation to avoid duplication
-- Add explicit assertions for critical validations
-- Implement data immutability in timestamp normalization
-- Add comprehensive logging for edge cases
-- Create configuration for adaptive thresholds based on volatility regime
-
----
-
-## Critical Issues Identified (October 5, 2025 - Latest Analysis)
-
-### Issue Summary - New Critical Findings
-
-**Total New Issues Identified:** 3  
-**Fixed:** 3 (100%) ✅  
-**Pending Fix:** 0 (0%)
-
-**By Priority:**
-- **Critical Priority (Data Integrity):** 2 issues (Issues #19, #20) - ✅ FIXED
-- **Medium Priority (Configuration):** 1 issue (Issue #21) - ✅ FIXED
-
----
-
-### Issue 19: Configuration Values Being Ignored ❌ **CRITICAL**
-
-**Location:** `api/smc_analyzer.py` lines 128-129, 501
-
-**Problem:**
-The order block detection uses a **hardcoded** volume multiplier instead of the configured value from `SMCConfig`:
-
-```python
-# In __init__ (line 128-129)
-self.ob_volume_multiplier = 1.1  # ❌ Hardcoded, ignores config
-
-# In find_order_blocks (line 501)
-volume_confirmed = (
-    current["volume"] >= avg_volume * self.ob_volume_multiplier  # Uses 1.1
-)
-
-# But config.py defines (line 339):
-OB_VOLUME_MULTIPLIER = 1.2  # ⚠️ This value is NEVER used
-```
-
-**Impact:**
-- **HIGH** - Order block sensitivity is incorrect
-- Any configuration changes to `OB_VOLUME_MULTIPLIER` have **no effect**
-- Weaker order blocks may pass through (20% looser than intended)
-- Tuning the config cannot adjust OB detection behavior
-- Similar issue may exist for other dynamic multipliers (`atr_multiplier`, `fvg_multiplier`)
-
-**Why This Happened:**
-The `SMCAnalyzer` class initializes instance variables with hardcoded defaults, then only updates them during volatility regime detection (lines 1794-1797). The initial configuration value from `SMCConfig.OB_VOLUME_MULTIPLIER` is never read.
-
-**Solution:**
-
-**Option 1: Wire Configuration to Instance Variables (Recommended)**
-```python
-# In SMCAnalyzer.__init__() (line 120-129)
-def __init__(self):
-    from config import SMCConfig
-    
-    self.timeframes = ["15m", "1h", "4h", "1d"]
-    self.active_signals = {}
-    self.signal_timeout = 3600
-    
-    # Initialize from config instead of hardcoded values
-    self.atr_multiplier = 1.0  # Will be adjusted by volatility regime
-    self.fvg_multiplier = SMCConfig.FVG_ATR_MULTIPLIER  # Use config
-    self.ob_volume_multiplier = SMCConfig.OB_VOLUME_MULTIPLIER  # Use config ✅
-    self.scaled_entry_depths = [
-        TradingConfig.SCALED_ENTRY_DEPTH_1,
-        TradingConfig.SCALED_ENTRY_DEPTH_2
-    ]
-```
-
-**Option 2: Use Config Directly in Detection Methods**
-```python
-# In find_order_blocks() (line 501)
-from config import SMCConfig
-
-volume_confirmed = (
-    current["volume"] >= avg_volume * SMCConfig.OB_VOLUME_MULTIPLIER  # Direct config use ✅
-)
-```
-
-**Recommended Fix:** Use Option 1 to maintain the volatility regime scaling behavior while respecting the base configuration values.
-
-**Fix Implemented (October 5, 2025):**
-Updated `SMCAnalyzer.__init__()` to initialize multipliers from config:
-```python
-self.fvg_multiplier = SMCConfig.FVG_ATR_MULTIPLIER
-self.ob_volume_multiplier = SMCConfig.OB_VOLUME_MULTIPLIER
-```
-
-**Status:** ✅ **FIXED**
-
----
-
-### Issue 20: Stale Data from Incomplete Cache Refresh ❌ **CRITICAL**
-
-**Location:** `api/smc_analyzer.py` lines 167-202 (in `get_candlestick_data()`)
-
-**Problem:**
-The cache gap-filling logic has a **critical flaw** that can leave historical data gaps unfilled:
-
-```python
-# Lines 176-191
-if len(cached_data) > 0:
-    # Check if we have current open candle already
-    current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
-    if current_open_candle:
-        # ❌ PROBLEM: Only fetches 1 candle, ignoring historical gaps
-        fetch_limit = 1
-        logging.info(
-            f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
-        )
-    else:
-        # Fetch only latest 2 candles (current + previous for gap filling)
-        fetch_limit = min(2, gap_info["fetch_count"])
-```
-
-**Scenario:**
-1. User requests SMC analysis for BTCUSDT
-2. Cache has 350 candles (gaps: missing candles 100-150)
-3. System checks for open candle → finds one
-4. Sets `fetch_limit = 1` (only updates the current candle)
-5. **Historical gap (100-150) remains unfilled**
-6. SMC analysis runs on incomplete data (350 candles with gaps)
-
-**Impact:**
-- **CRITICAL** - All SMC analysis phases operate on incomplete data
-- Market structure detection (BOS/CHoCH) uses partial history → incorrect structure
-- Order blocks and FVGs detected from incomplete windows → missed opportunities
-- HTF bias (Daily/H4) calculated from gapped data → wrong trend direction
-- Phase 2-7 confidence scoring based on faulty analysis → unreliable signals
-- **User receives signals based on corrupted historical data**
-
-**Root Cause:**
-The "efficiency optimization" for open candle updates prioritizes performance over data integrity. It assumes cached data is complete, but doesn't verify this assumption.
-
-**Solution:**
-
-**Fix Cache Refresh Logic:**
-```python
-# Lines 167-202 (modified)
-try:
-    gap_info = KlinesCache.get_data_gaps(symbol, timeframe, limit)
-    if not gap_info["needs_fetch"]:
-        logging.debug(
-            f"CACHE SUFFICIENT: Using existing cached data for {symbol} {timeframe}"
-        )
-        return KlinesCache.get_cached_data(symbol, timeframe, limit)
-
-    # ✅ FIX: Always respect minimum fetch count from gap analysis
-    min_required_fetch = gap_info["fetch_count"]
-    
-    if len(cached_data) > 0:
-        # Check if we have current open candle already
-        current_open_candle = KlinesCache.get_current_open_candle(symbol, timeframe)
-        if current_open_candle and min_required_fetch <= 2:
-            # SAFE: Only use efficient update when no historical gaps exist
-            fetch_limit = 1
-            logging.info(
-                f"EFFICIENT OPEN CANDLE UPDATE: Fetching only current candle for {symbol} {timeframe}"
-            )
-        else:
-            # SAFE: Fetch minimum required to fill gaps
-            fetch_limit = min_required_fetch
-            if min_required_fetch > 2:
-                logging.warning(
-                    f"HISTORICAL GAPS DETECTED: Fetching {fetch_limit} candles for {symbol} {timeframe} to fill gaps"
-                )
-            else:
-                logging.info(
-                    f"CACHE UPDATE: Fetching latest {fetch_limit} candles for {symbol} {timeframe} to stay current"
-                )
-    else:
-        # No cache data - fetch full amount 
-        fetch_limit = min_required_fetch
-        logging.info(
-            f"CACHE MISS: Fetching {fetch_limit} candles for {symbol} {timeframe}"
-        )
-
-except Exception as e:
-    logging.warning(f"Gap analysis failed for {symbol} {timeframe}: {e}")
-    # ✅ FIX: Conservative fallback should fetch more data when uncertain
-    fetch_limit = min(10, limit) if len(cached_data) > 0 else limit
-```
-
-**Additional Validation:**
-```python
-# After fetching data, verify completeness
-def verify_data_completeness(symbol: str, timeframe: str, data: List[Dict]) -> bool:
-    """Verify candlestick data has no gaps"""
-    if len(data) < 2:
-        return True
-    
-    # Check for timestamp gaps larger than expected interval
-    interval_seconds = {
-        "15m": 900,
-        "1h": 3600,
-        "4h": 14400,
-        "1d": 86400
-    }
-    expected_gap = interval_seconds.get(timeframe, 3600)
-    
-    for i in range(1, len(data)):
-        time_diff = (data[i]["timestamp"] - data[i-1]["timestamp"]).total_seconds()
-        if time_diff > expected_gap * 1.5:  # Allow 50% tolerance
-            logging.warning(
-                f"Gap detected in {symbol} {timeframe} between {data[i-1]['timestamp']} and {data[i]['timestamp']}"
-            )
-            return False
-    return True
-```
-
-**Fix Implemented (October 5, 2025):**
-Updated cache gap-filling logic in `get_candlestick_data()` to:
-- Always respect `min_required_fetch` from gap analysis
-- Only use efficient 1-candle update when `min_required_fetch <= 2`
-- Fetch full required amount when historical gaps detected (>2 candles)
-- Conservative fallback now fetches `min(10, limit)` instead of just 1 candle
-
-**Status:** ✅ **FIXED**
-
----
-
-### Issue 21: Pair-Specific ATR Thresholds Not Implemented ⚠️ **MEDIUM**
-
-**Location:** `api/smc_analyzer.py` lines 3844-3845, `config.py` lines 212-219, 244-243
-
-**Problem:**
-The Phase 7 ATR filter uses **fixed percentage thresholds** for all trading pairs, despite different assets having vastly different volatility profiles:
-
-```python
-# config.py - Asset profiles define BASE_ATR but not filter thresholds
-ASSET_PROFILES = {
-    "BTCUSDT": {"BASE_ATR": 100, "VOL_CLASS": "low"},      # ~$60k price
-    "ETHUSDT": {"BASE_ATR": 60, "VOL_CLASS": "medium"},    # ~$3k price
-    "SOLUSDT": {"BASE_ATR": 1.5, "VOL_CLASS": "high"},     # ~$100 price
-    "XRPUSDT": {"BASE_ATR": 0.0035, "VOL_CLASS": "high"},  # ~$0.50 price
-}
-
-# But ATR filter uses same thresholds for ALL pairs:
-MIN_ATR_15M_PERCENT = 0.8  # 0.8% for everyone
-MIN_ATR_H1_PERCENT = 1.2   # 1.2% for everyone
-```
-
-**Current Behavior:**
-- **BTC** at $60,000: 0.8% = **$480 minimum ATR** (reasonable)
-- **XRP** at $0.50: 0.8% = **$0.004 minimum ATR** (may be too strict/loose)
-- **SOL** at $100: 0.8% = **$0.80 minimum ATR** (different market dynamics)
-
-**Inconsistency:**
-The system **already** has pair-specific `BASE_ATR` values and `VOL_CLASS` classifications, but the ATR **filter thresholds** ignore these differences entirely.
-
-**Impact:**
-- **MEDIUM** - ATR filter may be too strict for some pairs, too loose for others
-- Low-volatility assets (BTC) may pass filter during choppy conditions
-- High-volatility assets (SOL, XRP) may get rejected during normal conditions
-- Inconsistent signal quality across different trading pairs
-
-**Why This Matters:**
-Different assets have different "normal" volatility levels:
-- **Large-cap (BTC, ETH):** Lower volatility, tighter ranges
-- **Mid-cap (BNB, SOL):** Medium volatility, moderate ranges
-- **Small-cap (XRP, ADA):** Higher volatility, wider ranges
-
-Using the same percentage threshold treats all assets identically, which doesn't match market reality.
-
-**Solution:**
-
-**Add Pair-Specific ATR Filter Thresholds:**
-
-```python
-# config.py - TradingConfig class (update ASSET_PROFILES)
-ASSET_PROFILES = {
-    "BTCUSDT": {
-        "BASE_ATR": 100,
-        "VOL_CLASS": "low",
-        "MIN_ATR_15M_PERCENT": 0.6,  # ✅ Lower threshold for stable asset
-        "MIN_ATR_H1_PERCENT": 1.0
-    },
-    "ETHUSDT": {
-        "BASE_ATR": 60,
-        "VOL_CLASS": "medium",
-        "MIN_ATR_15M_PERCENT": 0.8,  # ✅ Standard threshold
-        "MIN_ATR_H1_PERCENT": 1.2
-    },
-    "SOLUSDT": {
-        "BASE_ATR": 1.5,
-        "VOL_CLASS": "high",
-        "MIN_ATR_15M_PERCENT": 1.2,  # ✅ Higher threshold for volatile asset
-        "MIN_ATR_H1_PERCENT": 1.8
-    },
-    "BNBUSDT": {
-        "BASE_ATR": 4.0,
-        "VOL_CLASS": "medium",
-        "MIN_ATR_15M_PERCENT": 0.8,
-        "MIN_ATR_H1_PERCENT": 1.2
-    },
-    "XRPUSDT": {
-        "BASE_ATR": 0.0035,
-        "VOL_CLASS": "high",
-        "MIN_ATR_15M_PERCENT": 1.5,  # ✅ Much higher for very volatile asset
-        "MIN_ATR_H1_PERCENT": 2.0
-    },
-    "ADAUSDT": {
-        "BASE_ATR": 0.0025,
-        "VOL_CLASS": "medium",
-        "MIN_ATR_15M_PERCENT": 1.0,
-        "MIN_ATR_H1_PERCENT": 1.5
-    }
-}
-
-# Keep global defaults for unlisted pairs
-MIN_ATR_15M_PERCENT = 0.8  # Default fallback
-MIN_ATR_H1_PERCENT = 1.2   # Default fallback
-```
-
-**Update ATR Filter Logic:**
-
-```python
-# api/smc_analyzer.py - _check_atr_filter() (lines 3844-3845)
-def _check_atr_filter(
-    self,
-    m15_data: List[Dict],
-    h1_data: List[Dict],
-    current_price: float,
-    symbol: str = None  # ✅ Add symbol parameter
-) -> Dict:
-    from config import TradingConfig
-    
-    # Calculate ATR on both timeframes
-    atr_15m = self.calculate_atr(m15_data, period=14) if len(m15_data) >= 15 else 0.0
-    atr_h1 = self.calculate_atr(h1_data, period=14) if len(h1_data) >= 15 else 0.0
-    
-    # Calculate ATR as percentage of current price
-    atr_15m_percent = (atr_15m / current_price) * 100 if current_price > 0 else 0.0
-    atr_h1_percent = (atr_h1 / current_price) * 100 if current_price > 0 else 0.0
-    
-    # ✅ Get pair-specific thresholds from ASSET_PROFILES
-    symbol_upper = symbol.upper() if symbol else "UNKNOWN"
-    profile = getattr(TradingConfig, "ASSET_PROFILES", {}).get(symbol_upper, {})
-    
-    # Use pair-specific thresholds if available, otherwise use defaults
-    min_atr_15m = profile.get(
-        'MIN_ATR_15M_PERCENT',
-        getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)
-    )
-    min_atr_h1 = profile.get(
-        'MIN_ATR_H1_PERCENT',
-        getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)
-    )
-    
-    # Check if both timeframes meet minimum requirements
-    passes_filter = (atr_15m_percent >= min_atr_15m and atr_h1_percent >= min_atr_h1)
-    
-    # Generate reason message with pair-specific info
-    if not passes_filter:
-        reason = (
-            f"Phase 7: ATR filter failed for {symbol_upper} - "
-            f"15m ATR: {atr_15m_percent:.2f}% (min {min_atr_15m}%), "
-            f"H1 ATR: {atr_h1_percent:.2f}% (min {min_atr_h1}%)"
-        )
-    else:
-        reason = (
-            f"Phase 7: ATR filter passed for {symbol_upper} - "
-            f"15m ATR: {atr_15m_percent:.2f}%, H1 ATR: {atr_h1_percent:.2f}%"
-        )
-    
-    logging.info(reason)
-    
-    return {
-        "passes": passes_filter,
-        "atr_15m": atr_15m,
-        "atr_h1": atr_h1,
-        "atr_15m_percent": atr_15m_percent,
-        "atr_h1_percent": atr_h1_percent,
-        "min_atr_15m_threshold": min_atr_15m,  # ✅ Return thresholds used
-        "min_atr_h1_threshold": min_atr_h1,
-        "reason": reason
-    }
-```
-
-**Update Function Call:**
-
-```python
-# In generate_trade_signal() - Pass symbol to ATR filter
-atr_check = self._check_atr_filter(m15_data, h1_data, current_price, symbol=symbol)
-```
-
-**Benefits:**
-- ✅ Respects natural volatility differences between assets
-- ✅ More accurate signal filtering per pair
-- ✅ Reduces false positives on low-volatility pairs
-- ✅ Reduces false negatives on high-volatility pairs
-- ✅ Maintains backward compatibility with default thresholds
-
-**Fix Implemented (October 5, 2025):**
-1. Updated `ASSET_PROFILES` in config.py to include pair-specific thresholds:
-   - Added `MIN_ATR_15M_PERCENT` and `MIN_ATR_H1_PERCENT` for each asset
-   - BTC: 0.6%/1.0% (low volatility), ETH: 0.8%/1.2% (medium), SOL/XRP: 1.2-1.5%/1.8-2.0% (high)
-
-2. Updated `_check_atr_filter()` method:
-   - Added `symbol` parameter
-   - Retrieves pair-specific thresholds from ASSET_PROFILES
-   - Falls back to global defaults for unlisted pairs
-   - Returns thresholds used in result dictionary
-
-3. Updated call site in `generate_trade_signal()`:
-   - Passes `symbol` parameter to ATR filter
-
-**Status:** ✅ **FIXED**
-
----
-
-### Recommendations for New Issues
-
-**✅ ALL CRITICAL ISSUES RESOLVED (October 5, 2025)**
-
-**Priority 1 (Critical - Data Integrity):**
-1. ✅ **FIXED Issue #20** - Cache gap-filling now respects minimum fetch requirements
-2. ✅ **FIXED Issue #19** - Configuration values properly wired from SMCConfig
-
-**Priority 2 (Important - Accuracy):**
-3. ✅ **FIXED Issue #21** - Pair-specific ATR thresholds implemented and active
-
-**Testing Requirements:**
-- **Issue #19 Testing:**
-  - Modify `OB_VOLUME_MULTIPLIER` in config and verify it affects order block detection
-  - Test with different volatility regimes to ensure dynamic scaling still works
-  - Verify other multipliers (ATR, FVG) are also wired correctly
-
-- **Issue #20 Testing:**
-  - Simulate cache with gaps (delete random historical candles)
-  - Verify gap detection triggers full refetch
-  - Test open candle updates don't skip historical gaps
-  - Add data completeness validation checks
-
-- **Issue #21 Testing:**
-  - Test ATR filter with BTC (low volatility) vs SOL (high volatility)
-  - Verify pair-specific thresholds are applied correctly
-  - Test fallback to defaults for unlisted pairs
-  - Validate signal quality improves per asset class
-
-**Code Quality Improvements:**
-- Add configuration validation on startup
-- Implement data completeness checks in cache layer
-- Create unit tests for cache gap-filling logic
-- Add integration tests for pair-specific configurations
-
----
-
-## Active Issues (October 6, 2025 - Code Review)
-
-### Issue Summary
-
-**Total New Issues Identified:** 3  
-**All Issues Fixed:** ✅ **3/3 (100%)**
-**Priority Breakdown:**
-- **High Priority:** 2 issues (both fixed ✅)
-- **Medium Priority:** 1 issue (fixed ✅)
-
----
-
-### Issue 22: Alignment Score Conflict Logic Flaw ❌ **HIGH PRIORITY**
-
-**Location:** `api/smc_analyzer.py`, lines 2907-2941 (`_calculate_15m_alignment_score`)
-
-**Problem:**
-When 15m structure conflicts with HTF bias, the alignment score is set to 0.1 (indicating conflict), but then bonuses are still added for intermediate structure alignment (+0.3) and POI proximity (+0.2). This is logically inconsistent.
-
-**Example:**
-```python
-# If 15m is bearish but HTF is bullish:
-alignment_score = 0.1  # Conflict detected
-
-# But then bonuses still apply:
-if intermediate_structure_direction.startswith(htf_bias):
-    alignment_score += 0.3  # Now 0.4
-if poi near price:
-    alignment_score += 0.2  # Now 0.6
-```
-
-**Impact:**
-- A conflicting 15m structure could still get a moderate alignment score (0.6)
-- Defeats the purpose of conflict detection
-- Could allow low-quality signals to pass through
-
-**Solution:**
-```python
-# When conflict detected, exit early without bonuses
-if m15_structure conflicts with htf_bias:
-    alignment_score = 0.1
-    return min(alignment_score, 1.0)  # Exit early
-
-# Only add bonuses if no conflict
-if intermediate_structure_direction and intermediate_structure_direction.startswith(htf_bias):
-    alignment_score += 0.3
-```
-
-**Status:** ✅ **FIXED** (October 6, 2025)
-
-**Fix Applied:**
-- Added early return when conflict detected (alignment_score = 0.1)
-- Bonuses only applied when no conflict exists
-- Prevents conflicting 15m structure from getting moderate alignment scores
-
----
-
-### Issue 23: FVG Alignment Score Not Calculated ⚠️ **MEDIUM PRIORITY**
-
-**Location:** `api/smc_analyzer.py`, lines 580-649 (`find_fair_value_gaps`)
-
-**Problem:**
-The `FairValueGap` dataclass has an `alignment_score` field, but it's never populated during FVG detection. It defaults to 0.0 and is used later in `_get_intermediate_structure` (line 1510) where it affects POI strength.
-
-**Current Code:**
-```python
-fvg = FairValueGap(
-    gap_high=next_candle["low"],
-    gap_low=prev_candle["high"],
-    timestamp=current["timestamp"],
-    direction="bullish",
-    atr_size=gap_size / atr,
-    age_candles=0,
-    # alignment_score missing - defaults to 0.0
-)
-```
-
-**Impact:**
-- FVGs are not prioritized by their alignment with market structure
-- POI strength always gets 0.0 for FVGs (line 1510: `"strength": fvg.alignment_score`)
-- Reduces effectiveness of FVG-based confluence scoring
-
-**Solution:**
-Calculate alignment score based on FVG direction vs current market structure:
-```python
-# Calculate alignment with current trend
-alignment_score = 0.0
-current_structure = self.detect_market_structure(candlesticks[:i+2])
-if direction == "bullish" and current_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
-    alignment_score = 0.8
-elif direction == "bearish" and current_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
-    alignment_score = 0.8
-else:
-    alignment_score = 0.3
-
-fvg = FairValueGap(
-    ...
-    alignment_score=alignment_score
-)
-```
-
-**Status:** ✅ **FIXED** (October 6, 2025)
-
-**Fix Applied:**
-- Calculates alignment_score based on market structure during FVG detection
-- Bullish FVG with bullish structure: 0.8 alignment
-- Bearish FVG with bearish structure: 0.8 alignment
-- Consolidation or counter-trend: 0.3-0.5 alignment
-- Now properly used in POI strength calculations
-
----
-
-### Issue 24: ATR Filter Default Values Outdated ❌ **HIGH PRIORITY**
-
-**Location:** `api/smc_analyzer.py`, lines 3877-3884 (`_check_atr_filter`)
-
-**Problem:**
-The ATR filter has hardcoded default fallback values (0.8 for 15m, 1.2 for H1) that don't match the recently updated config values (0.6 for 15m, 0.9 for H1 - updated Oct 6, 2025).
-
-**Current Code:**
-```python
-min_atr_15m = profile.get(
-    'MIN_ATR_15M_PERCENT',
-    getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.8)  # ❌ Old default
-)
-min_atr_h1 = profile.get(
-    'MIN_ATR_H1_PERCENT',
-    getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 1.2)  # ❌ Old default
-)
-```
-
-**Impact:**
-- If `TradingConfig` somehow fails to load, the system falls back to the stricter old values
-- Inconsistent with the current configuration intent
-- Could reject valid signals using outdated thresholds
-
-**Solution:**
-Update hardcoded defaults to match current config:
-```python
-min_atr_15m = profile.get(
-    'MIN_ATR_15M_PERCENT',
-    getattr(TradingConfig, 'MIN_ATR_15M_PERCENT', 0.6)  # ✅ Updated
-)
-min_atr_h1 = profile.get(
-    'MIN_ATR_H1_PERCENT',
-    getattr(TradingConfig, 'MIN_ATR_H1_PERCENT', 0.9)  # ✅ Updated
-)
-```
-
-**Status:** ✅ **FIXED** (October 6, 2025)
-
-**Fix Applied:**
-- Updated hardcoded fallback defaults from 0.8/1.2 to 0.6/0.9
-- Now consistent with current configuration (updated Oct 6, 2025)
-- Ensures proper fallback behavior if config fails to load
-
----
-
-### Code Quality Observations
-
-**Strengths:**
-- ✅ Extensive error handling and logging throughout
-- ✅ Well-documented fix comments (18 ISSUE #X fixes documented)
-- ✅ Proper use of type hints in critical methods
-- ✅ Good separation of concerns with helper methods
-- ✅ Comprehensive validation of trade levels
-
-**Recent Improvements (Oct 6, 2025):**
-- ✅ Alignment score conflict logic fixed (Issue #22)
-- ✅ FVG alignment scoring implemented (Issue #23)
-- ✅ ATR filter defaults updated (Issue #24)
-- ✅ All 21 identified issues now resolved
-
-**Future Considerations:**
-- 🔧 Some methods exceed 100 lines (consider further breakdown)
-- 🔧 Magic numbers could be moved to config (e.g., 0.1, 0.3, 0.5 in alignment scoring)
-- 🔧 Add more unit tests for edge cases
+### ✅ Phase 1: 15m Execution Timeframe
+- Precise entry timing using 15m candles
+- Swing high/low detection for SL placement
+- Fine-tuned entry zones
+
+### ✅ Phase 2: Multi-Timeframe Workflow  
+- Daily → 4H → 1H → 15m analysis
+- Hierarchical structure detection
+- Top-down confirmation
+
+### ✅ Phase 3: Enhanced Confidence Scoring
+- 15m alignment bonus (+0.2 confidence)
+- Liquidity sweep confirmation (+0.1)
+- HTF POI entry bonus (+0.1)
+- Eliminated triple-counting bug
+
+### ✅ Phase 4: Institutional Scaled Entry Management
+- 50% market entry
+- 25% discount/premium entry
+- 25% deep entry
+- Independent SL/TP per entry
+
+### ✅ Phase 5: Refined Stop-Loss (15m Swings)
+- Swing-based SL placement (15m precision)
+- ATR buffer for volatility
+- Minimum risk distance validation
+- Breakeven SL trigger logic
+
+### ✅ Phase 6: Multi-Take Profit Management
+- Liquidity pool targeting
+- Risk-reward ratio optimization
+- Allocation percentages (50%, 30%, 20%)
+- Swing high/low natural targets
+
+### ✅ Phase 7: ATR Risk Filter
+- Volatility regime detection
+- Position size adjustment
+- High volatility filtering
+- Risk percentage limits
 
 ---
 
 ## Usage Guide
 
-### Basic Usage
+### Generate SMC Signal
 
 ```python
 from api.smc_analyzer import SMCAnalyzer
 
-# Initialize analyzer
 analyzer = SMCAnalyzer()
-
-# Generate signal
 signal = analyzer.generate_trade_signal("BTCUSDT")
 
 if signal:
     print(f"Direction: {signal.direction}")
-    print(f"Entry: ${signal.entry_price}")
-    print(f"Stop Loss: ${signal.stop_loss}")
-    print(f"Take Profits: {signal.take_profit_levels}")
     print(f"Confidence: {signal.confidence:.2%}")
-    print(f"Risk/Reward: {signal.risk_reward_ratio:.2f}R")
+    print(f"HTF Bias: {signal.htf_bias}")
+    print(f"Structure: {signal.intermediate_structure}")
     
-    # Access scaled entries
-    if signal.scaled_entries:
-        for i, entry in enumerate(signal.scaled_entries, 1):
-            print(f"Entry {i}: ${entry.entry_price} ({entry.allocation_percent}%)")
+    # Display scaled entries
+    for i, entry in enumerate(signal.scaled_entries, 1):
+        print(f"\nEntry {i}: {entry.allocation_percent}% @ ${entry.entry_price}")
+        print(f"  SL: ${entry.stop_loss}")
+        print(f"  TPs: {[f'${tp[0]} ({tp[1]}%)' for tp in entry.take_profits]}")
 ```
 
-### With Diagnostics
+### API Endpoint Usage
 
-```python
-# Get signal with diagnostics
-signal, diagnostics = analyzer.generate_trade_signal("ETHUSDT", return_diagnostics=True)
+```bash
+# Get single signal
+curl http://localhost:5000/api/smc-signal/BTCUSDT
 
-if signal:
-    print("Signal generated successfully")
-    print(f"HTF Bias: {diagnostics['details']['htf_bias']}")
-    print(f"15m Alignment: {diagnostics['details'].get('m15_alignment_score', 'N/A')}")
-else:
-    print("Signal rejected:")
-    for reason in diagnostics['rejection_reasons']:
-        print(f"  - {reason}")
-```
-
-### Configuration
-
-```python
-from config import TradingConfig
-
-# Enable/disable features
-TradingConfig.USE_ATR_FILTER = True
-TradingConfig.USE_SCALED_ENTRIES = True
-TradingConfig.USE_15M_SWING_SL = True
-TradingConfig.USE_RR_BASED_TPS = True
-
-# Adjust thresholds
-TradingConfig.MIN_ATR_15M_PERCENT = 1.0  # More strict
-TradingConfig.TP_RR_RATIOS = [1.5, 3.0, 4.5]  # Higher targets
+# Response:
+{
+  "symbol": "BTCUSDT",
+  "direction": "long",
+  "confidence": 0.75,
+  "signal_strength": "strong",
+  "risk_reward_ratio": 2.5,
+  "htf_bias": "bullish",
+  "intermediate_structure": "H4 bullish_break_of_structure, H1 bullish_change_of_character",
+  "execution_timeframe": "15m",
+  "scaled_entries": [
+    {
+      "entry_price": 45000.0,
+      "allocation_percent": 50.0,
+      "order_type": "market",
+      "stop_loss": 44500.0,
+      "take_profits": [
+        {"price": 45900.0, "allocation": 50.0},
+        {"price": 46800.0, "allocation": 30.0},
+        {"price": 47700.0, "allocation": 20.0}
+      ]
+    },
+    {
+      "entry_price": 44800.0,
+      "allocation_percent": 25.0,
+      "order_type": "limit",
+      "stop_loss": 44300.0,
+      "take_profits": [...]
+    },
+    {
+      "entry_price": 44600.0,
+      "allocation_percent": 25.0,
+      "order_type": "limit",
+      "stop_loss": 44100.0,
+      "take_profits": [...]
+    }
+  ],
+  "reasoning": [
+    "H4 bullish_break_of_structure",
+    "H1 bullish_change_of_character",
+    "Price at bullish order block",
+    "Price in bullish FVG",
+    "RSI oversold",
+    "Buy-side liquidity swept"
+  ],
+  "timestamp": "2025-10-07T12:30:00Z",
+  "cache_source": false
+}
 ```
 
 ---
 
 ## API Reference
 
-### Main Methods
+### SMCAnalyzer Class
 
-#### `generate_trade_signal(symbol: str, return_diagnostics: bool = False)`
-**Purpose:** Main entry point for signal generation
+#### Methods
 
-**Parameters:**
-- `symbol`: Trading pair (e.g., "BTCUSDT")
-- `return_diagnostics`: Return diagnostics dict if True
+- `generate_trade_signal(symbol: str) -> Optional[SMCSignal]`
+- `get_multi_timeframe_data(symbol: str) -> Dict[str, List[Dict]]`
+- `detect_market_structure(candlesticks: List[Dict], timeframe: str) -> MarketStructure`
+- `find_order_blocks(candlesticks: List[Dict]) -> List[OrderBlock]`
+- `find_fair_value_gaps(candlesticks: List[Dict]) -> List[FairValueGap]`
+- `find_liquidity_pools(candlesticks: List[Dict]) -> List[LiquidityPool]`
 
-**Returns:**
-- If `return_diagnostics=False`: `Optional[SMCSignal]`
-- If `return_diagnostics=True`: `Tuple[Optional[SMCSignal], Dict]`
+### SMCSignal Dataclass
 
-**Example:**
 ```python
-signal = analyzer.generate_trade_signal("BTCUSDT")
-signal, diagnostics = analyzer.generate_trade_signal("BTCUSDT", return_diagnostics=True)
+@dataclass
+class SMCSignal:
+    symbol: str
+    direction: str  # 'long' or 'short'
+    confidence: float
+    reasoning: List[str]
+    signal_strength: SignalStrength
+    risk_reward_ratio: float
+    timestamp: datetime
+    current_market_price: float
+    scaled_entries: List[ScaledEntry]
+    htf_bias: str
+    intermediate_structure: str
+    execution_timeframe: str = "15m"
 ```
 
-### Signal Properties
+### ScaledEntry Dataclass
 
-**SMCSignal Object:**
-- `symbol`: str - Trading pair
-- `direction`: str - "long", "short", or "hold"
-- `entry_price`: float - Primary entry price
-- `stop_loss`: float - Stop-loss price
-- `take_profit_levels`: List[float] - TP prices
-- `confidence`: float - 0.0 to 1.0
-- `reasoning`: List[str] - Analysis reasoning
-- `signal_strength`: SignalStrength - Enum value
-- `risk_reward_ratio`: float - R:R ratio
-- `timestamp`: datetime - Signal generation time
-- `current_market_price`: float - Market price at generation
-- `scaled_entries`: Optional[List[ScaledEntry]] - Entry details
-
-### Helper Methods
-
-**Pattern Detection:**
-- `detect_market_structure(data)` → MarketStructure
-- `find_order_blocks(data)` → List[OrderBlock]
-- `find_fair_value_gaps(data)` → List[FairValueGap]
-- `find_liquidity_pools(data)` → List[LiquidityPool]
-- `detect_liquidity_sweeps(data)` → Dict
-
-**Technical Indicators:**
-- `calculate_rsi(data, period=14)` → float
-- `calculate_atr(data, period=14)` → float
-- `calculate_moving_averages(data)` → Dict
+```python
+@dataclass
+class ScaledEntry:
+    entry_price: float
+    allocation_percent: float
+    order_type: str  # 'market' or 'limit'
+    stop_loss: float
+    take_profits: List[Tuple[float, float]]  # [(price, allocation), ...]
+    status: str = 'pending'
+```
 
 ---
 
-## Troubleshooting
+## Next Steps
 
-### Common Issues
+### Immediate Actions Required (Priority Order)
 
-**1. No Signal Generated**
-- Check diagnostics for rejection reasons
-- Verify sufficient data (min 100 candles per timeframe)
-- Ensure ATR filter thresholds aren't too strict
+1. **CRITICAL:** Fix circular dependency (#43) - `api/models.py`
+2. **HIGH:** Standardize breakeven_after handling (#44) - `api/models.py`
+3. **HIGH:** Move breakeven SL calculation to runtime (#45) - `api/models.py`
+4. **HIGH:** Robust TP ordering validation (#46, #47) - `api/smc_analyzer.py`
+5. **MEDIUM:** Add scaled entry validation (#52) - `api/smc_analyzer.py`
 
-**2. Low Confidence Scores**
-- Check multi-timeframe alignment
-- Verify liquidity sweeps are confirmed
-- Ensure entries are near HTF POIs
+### Recommended Enhancements
 
-**3. Missing 15m Data**
-- System will use default alignment score of 0.3
-- Signals still generated but with lower confidence
-- Check data sync service status
-
-**4. ATR Filter Always Rejecting**
-- Lower MIN_ATR thresholds in config
-- Check if market is in consolidation
-- Verify current volatility regime
+- Implement comprehensive unit tests for all 15 identified issues
+- Add integration tests for Phase 4 institutional format
+- Create monitoring dashboard for signal quality metrics
+- Document edge case handling for each issue
+- Add logging for all validation failures
 
 ---
 
-## Performance Notes
-
-- ATR filter runs BEFORE analysis (optimization)
-- Signal caching prevents duplicate analysis (1-hour timeout)
-- Rolling window limits database queries
-- Multi-timeframe data fetched in parallel
-
----
-
-## Version History
-
-- **v2.7** (Oct 7, 2025) - Code review: 6 new issues identified (Issues #33-38: datetime deprecation, config inconsistency, logic flaws, code redundancy)
-- **v2.6** (Oct 7, 2025) - Type safety fixes complete (Issues #31-32: Optional[int] for swing detection parameters)
-- **v2.5** (Oct 7, 2025) - Extended 200-candle implementation (Issues #25-30: Daily data validation, OB expiration, timeframe-aware swing detection, liquidity lookback)
-- **v2.4** (Oct 6, 2025) - All issues resolved: Fixed alignment score logic, FVG scoring, and ATR defaults (Issues #22, #23, #24)
-- **v2.3** (Oct 6, 2025) - Code review: 3 new issues identified (alignment score logic, FVG scoring, ATR defaults)
-- **v2.2** (Oct 5, 2025) - Critical issue analysis: Configuration values, stale data, pair-specific ATR
-- **v2.1** (Oct 5, 2025) - All 18 issues resolved, production ready
-- **v2.0** (Oct 5, 2025) - Logic fixes, type safety improvements
-- **v1.7** (Oct 4, 2025) - Phase 7 complete (ATR filter)
-- **v1.6** (Oct 4, 2025) - Phase 6 complete (Multi-TP)
-- **v1.5** (Oct 4, 2025) - Phase 5 complete (Refined SL)
-- **v1.4** (Oct 4, 2025) - Phase 4 complete (Scaled entries)
-- **v1.3** (Oct 4, 2025) - Phase 3 complete (Confidence scoring)
-- **v1.2** (Oct 2025) - Phase 2 complete (MTF workflow)
-- **v1.1** (Oct 2025) - Phase 1 complete (15m timeframe)
-- **v1.0** (Initial) - Basic SMC analysis
-
----
-
-## License & Credits
-
-Part of the Multi-Exchange Trading Bot project.  
-Implements institutional Smart Money Concepts methodology.
-
-For issues or questions, refer to the project documentation or open an issue.
+**End of Documentation**
