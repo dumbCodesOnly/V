@@ -2186,16 +2186,26 @@
                 document.getElementById('signal-direction').textContent = details.direction || '-';
                 document.getElementById('signal-direction').className = `badge ${details.direction === 'long' ? 'bg-success' : 'bg-danger'}`;
                 
-                document.getElementById('signal-entry').textContent = details.entry_price ? `$${Number(details.entry_price).toLocaleString()}` : '-';
-                document.getElementById('signal-sl').textContent = details.stop_loss ? `$${Number(details.stop_loss).toLocaleString()}` : '-';
+                // Display institutional format (scaled entries)
+                const scaledEntries = details.scaled_entries || [];
+                if (scaledEntries.length > 0) {
+                    const firstEntry = scaledEntries[0];
+                    document.getElementById('signal-entry').textContent = `$${Number(firstEntry.entry_price).toLocaleString()} (${firstEntry.allocation_percent}%)`;
+                    document.getElementById('signal-sl').textContent = `$${Number(firstEntry.stop_loss).toLocaleString()}`;
+                    
+                    // Display take profits from first entry
+                    const tps = firstEntry.take_profits || [];
+                    document.getElementById('signal-tps').textContent = tps.map(tp => `$${Number(tp.price).toLocaleString()} (${tp.allocation}%)`).join(', ') || '-';
+                } else {
+                    document.getElementById('signal-entry').textContent = '-';
+                    document.getElementById('signal-sl').textContent = '-';
+                    document.getElementById('signal-tps').textContent = '-';
+                }
+                
                 document.getElementById('signal-confidence').textContent = details.confidence ? `${(details.confidence * 100).toFixed(1)}%` : '-';
                 document.getElementById('signal-strength').textContent = details.signal_strength || '-';
                 document.getElementById('signal-strength').className = 'badge bg-info';
                 document.getElementById('signal-rr').textContent = details.risk_reward_ratio ? `1:${details.risk_reward_ratio.toFixed(1)}` : '-';
-                
-                // Take profits
-                const tps = details.take_profits || [];
-                document.getElementById('signal-tps').textContent = tps.map(tp => `$${Number(tp).toLocaleString()}`).join(', ') || '-';
                 
                 // Reasoning
                 const reasoning = details.reasoning || [];
