@@ -1452,7 +1452,9 @@ class SMCAnalyzer:
                 bearish_bias_count += 1
                 reasoning.append("H4 bearish structure alignment")
             
-            d1_trend = self._calculate_trend(self._find_swing_highs(d1_data) + self._find_swing_lows(d1_data), "price")
+            swing_points = [{"price": p["high"], "timestamp": p["timestamp"]} for p in self._find_swing_highs(d1_data)]
+            swing_points += [{"price": p["low"], "timestamp": p["timestamp"]} for p in self._find_swing_lows(d1_data)]
+            d1_trend = self._calculate_trend(sorted(swing_points, key=lambda x: x["timestamp"]), "price")
             if d1_trend == "bullish":
                 bullish_bias_count += 1
                 reasoning.append("Daily trend is bullish")
