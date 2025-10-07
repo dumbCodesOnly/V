@@ -1548,8 +1548,8 @@ class SMCAnalyzer:
             h1_fvgs = self.find_fair_value_gaps(h1_data)
             h4_fvgs = self.find_fair_value_gaps(h4_data)
             
-            h1_structure = self.detect_market_structure(h1_data)
-            h4_structure = self.detect_market_structure(h4_data)
+            h1_structure = self.detect_market_structure(h1_data, timeframe="1h")
+            h4_structure = self.detect_market_structure(h4_data, timeframe="4h")
             
             unmitigated_h1_obs = [ob for ob in h1_order_blocks if not ob.mitigated]
             unmitigated_h4_obs = [ob for ob in h4_order_blocks if not ob.mitigated]
@@ -1637,11 +1637,11 @@ class SMCAnalyzer:
                     "reason": "No clear HTF bias"
                 }
             
-            m15_structure = self.detect_market_structure(m15_data)
+            m15_structure = self.detect_market_structure(m15_data, timeframe="15m")
             current_price = m15_data[-1]["close"]
             
-            m15_swing_highs = self._find_swing_highs(m15_data, lookback=3)
-            m15_swing_lows = self._find_swing_lows(m15_data, lookback=3)
+            m15_swing_highs = self._find_swing_highs(m15_data, timeframe="15m")
+            m15_swing_lows = self._find_swing_lows(m15_data, timeframe="15m")
             
             alignment_score = 0.0
             signal_direction = None
@@ -1960,15 +1960,15 @@ class SMCAnalyzer:
                 logging.warning(f"15m data unavailable or insufficient for {symbol} ({len(m15_data) if m15_data else 0} candles), proceeding with standard analysis")
 
             # Analyze market structure across timeframes
-            h1_structure = self.detect_market_structure(h1_data)
-            h4_structure = self.detect_market_structure(h4_data)
+            h1_structure = self.detect_market_structure(h1_data, timeframe="1h")
+            h4_structure = self.detect_market_structure(h4_data, timeframe="4h")
             analysis_details["h1_structure"] = h1_structure.value if hasattr(h1_structure, 'value') else str(h1_structure)
             analysis_details["h4_structure"] = h4_structure.value if hasattr(h4_structure, 'value') else str(h4_structure)
 
             # Find key SMC elements
             order_blocks = self.find_order_blocks(h1_data)
             fvgs = self.find_fair_value_gaps(h1_data)
-            liquidity_pools = self.find_liquidity_pools(h4_data)
+            liquidity_pools = self.find_liquidity_pools(h4_data, timeframe="4h")
             analysis_details["order_blocks_count"] = len(order_blocks)
             analysis_details["fvgs_count"] = len(fvgs)
             analysis_details["liquidity_pools_count"] = len(liquidity_pools)
