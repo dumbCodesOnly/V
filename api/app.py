@@ -1063,16 +1063,17 @@ db.init_app(app)
 # Initialize unified data sync service (combines cache cleanup and klines workers)
 # Only start if enabled in system settings (persists across app restarts)
 try:
-    from api.models import SystemSettings
-    worker_enabled = SystemSettings.get_worker_enabled()
-    
-    if worker_enabled:
-        start_unified_data_sync_service(app)
-        logging.info("Unified data sync service started (enabled in system settings)")
-    else:
-        logging.info("Unified data sync service NOT started (disabled in system settings)")
+    with app.app_context():
+        from api.models import SystemSettings
+        worker_enabled = SystemSettings.get_worker_enabled()
+        
+        if worker_enabled:
+            start_unified_data_sync_service(app)
+            logging.info("Unified data sync service started (enabled in system settings)")
+        else:
+            logging.info("Unified data sync service NOT started (disabled in system settings)")
 except Exception as e:
-    # If settings table doesn't exist yet (first run), default to enabled
+    # If settings table doesn't exist yet (first run), default to DISABLED
     logging.warning(f"Could not check worker state from database (table may not exist yet): {e}")
     logging.info("Defaulting to DISABLED - Admin can enable via admin panel")
     # Don't start worker on first run - let admin enable it manually

@@ -230,8 +230,8 @@ class SystemSettings(db.Model):
 
     @staticmethod
     def get_worker_enabled() -> bool:
-        """Check if data sync worker is enabled"""
-        return SystemSettings.get_setting("data_sync_worker_enabled", "true") == "true"
+        """Check if data sync worker is enabled (defaults to DISABLED for safety)"""
+        return SystemSettings.get_setting("data_sync_worker_enabled", "false") == "true"
 
     @staticmethod
     def set_worker_enabled(enabled: bool, updated_by: str = "admin") -> None:
