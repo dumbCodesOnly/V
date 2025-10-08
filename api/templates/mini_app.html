@@ -6575,50 +6575,6 @@
                                             </div>
                                         `}
                                         
-                                        ${data.take_profit_levels && data.take_profit_levels.length > 0 ? `
-                                            <h6 class="mb-1 fs-7">Take Profit Levels</h6>
-                                            <div class="row mb-2 g-2">
-                                                ${data.take_profit_levels.map((tp, index) => `
-                                                    <div class="col-4">
-                                                        <div class="smc-detail-item compact">
-                                                            <div class="smc-detail-label">TP ${index + 1}</div>
-                                                            <div class="smc-detail-value">$${tp?.toFixed(4)}</div>
-                                                        </div>
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        ` : ''}
-                                        
-                                        ${data.scaled_entries && data.scaled_entries.length > 0 ? `
-                                            <div class="p-3 mb-3" style="background: var(--tg-theme-card-bg); border-radius: 8px; border: 1px solid rgba(108, 117, 125, 0.2);">
-                                                ${data.scaled_entries.map((entry, idx) => `
-                                                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 ${idx < data.scaled_entries.length - 1 ? 'border-bottom' : ''}" style="border-color: rgba(108, 117, 125, 0.15) !important;">
-                                                        <div>
-                                                            <span style="font-size: 0.85rem; font-weight: 600; color: ${entry.order_type === 'market' ? '#28a745' : '#ffc107'};">
-                                                                ${entry.order_type === 'market' ? '🟢 Market Order' : '🟡 Limit Order'} 
-                                                            </span>
-                                                            <div style="font-size: 0.7rem; color: #6c757d; margin-top: 2px;">
-                                                                Entry ${idx + 1} • ${entry.allocation_percent?.toFixed(0) || 0}% allocation
-                                                            </div>
-                                                        </div>
-                                                        <div style="text-align: right;">
-                                                            <div style="font-size: 0.9rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">
-                                                                $${entry.entry_price?.toFixed(4) || 'N/A'}
-                                                            </div>
-                                                            <div style="font-size: 0.7rem; color: #6c757d;">
-                                                                ${entry.entry_price && data.entry_price ? ((Math.abs(entry.entry_price - data.entry_price) / data.entry_price) * 100).toFixed(2) + '% from market' : 'N/A'}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                `).join('')}
-                                                <div class="mt-2 pt-2" style="border-top: 1px dashed rgba(108, 117, 125, 0.3);">
-                                                    <small style="color: #6c757d; font-size: 0.7rem;">
-                                                        <strong>Strategy:</strong> Institutional-grade DCA with POI alignment
-                                                    </small>
-                                                </div>
-                                            </div>
-                                        ` : ''}
-                                        
                                         <!-- Chart Visualization Section -->
                                         <div class="mb-4">
                                             <div class="d-flex justify-content-between align-items-center mb-3">
