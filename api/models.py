@@ -194,6 +194,58 @@ class UserCredentials(db.Model):
         return f"<UserCredentials {self.telegram_user_id}:{self.exchange_name}>"
 
 
+class SystemSettings(db.Model):
+    """Store system-wide configuration settings"""
+
+    __tablename__ = "system_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    setting_key = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    setting_value = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = db.Column(db.String(100))  # Admin username
+
+    @staticmethod
+    def get_setting(key: str, default: str = None) -> Optional[str]:
+        """Get a system setting value"""
+        setting = SystemSettings.query.filter_by(setting_key=key).first()
+        return setting.setting_value if setting else default
+
+    @staticmethod
+    def set_setting(key: str, value: str, updated_by: str = "system") -> None:
+        """Set a system setting value"""
+        setting = SystemSettings.query.filter_by(setting_key=key).first()
+        if setting:
+            setting.setting_value = value
+            setting.updated_by = updated_by
+            setting.updated_at = datetime.utcnow()
+        else:
+            setting = SystemSettings(
+                setting_key=key,
+                setting_value=value,
+                updated_by=updated_by
+            )
+            db.session.add(setting)
+        db.session.commit()
+
+    @staticmethod
+    def get_worker_enabled() -> bool:
+        """Check if data sync worker is enabled"""
+        return SystemSettings.get_setting("data_sync_worker_enabled", "true") == "true"
+
+    @staticmethod
+    def set_worker_enabled(enabled: bool, updated_by: str = "admin") -> None:
+        """Set data sync worker enabled state"""
+        SystemSettings.set_setting(
+            "data_sync_worker_enabled",
+            "true" if enabled else "false",
+            updated_by
+        )
+
+    def __repr__(self):
+        return f"<SystemSettings {self.setting_key}={self.setting_value}>"
+
+
 class UserTradingSession(db.Model):
     """Track user trading sessions and API usage"""
 
