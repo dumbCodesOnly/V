@@ -6426,6 +6426,13 @@
         async function viewSignalDetails(symbol) {
             try {
                 const response = await fetch(`/api/smc-analysis/${symbol}`);
+                
+                // Check if response is ok before parsing
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 
                 if (data.status === 'cached_signal' || data.status === 'new_signal_generated') {
@@ -6636,7 +6643,8 @@
                 }
             } catch (error) {
                 console.error('Error fetching signal details:', error);
-                alert('❌ Error loading signal details');
+                const errorMessage = error.message || 'Unknown error occurred';
+                alert(`❌ Error loading signal details: ${errorMessage}`);
             }
         }
 
