@@ -1,8 +1,8 @@
 # SMC Analyzer - Complete Documentation
 
-**Last Updated:** October 7, 2025  
-**Version:** 3.2 (Institutional-Grade with Phase 4 Migration + Issue Resolution)  
-**Status:** ✅ **Phase 4 Migration Complete** + ✅ **All Critical & High Priority Issues Resolved**
+**Last Updated:** October 8, 2025  
+**Version:** 3.3 (Institutional-Grade with Scaled Entry Stop Loss Fix)  
+**Status:** ✅ **Phase 4 Migration Complete** + ✅ **All Critical & High Priority Issues Resolved** + ✅ **Scaled Entry SL Solution Documented**
 
 ---
 
@@ -10,13 +10,14 @@
 1. [Overview](#overview)
 2. [Current Status](#current-status)
 3. [Phase 4 Migration Summary](#phase-4-migration-summary)
-4. [Resolved Issues & Implementation Details](#resolved-issues--implementation-details)
-5. [Key Features](#key-features)
-6. [Architecture](#architecture)
-7. [Configuration](#configuration)
-8. [Implementation Phases](#implementation-phases)
-9. [Usage Guide](#usage-guide)
-10. [API Reference](#api-reference)
+4. [Scaled Entry Stop Loss Solution](#scaled-entry-stop-loss-solution)
+5. [Resolved Issues & Implementation Details](#resolved-issues--implementation-details)
+6. [Key Features](#key-features)
+7. [Architecture](#architecture)
+8. [Configuration](#configuration)
+9. [Implementation Phases](#implementation-phases)
+10. [Usage Guide](#usage-guide)
+11. [API Reference](#api-reference)
 
 ---
 
@@ -120,6 +121,166 @@ ALTER COLUMN scaled_entries SET NOT NULL;
 - `SMCSignalCache.to_smc_signal()` now properly constructs SMCSignal with institutional fields
 - Includes fallback logic for old cache entries
 - `SMCSignalCache.from_smc_signal()` saves all new fields and extracts legacy fields from first scaled entry
+
+---
+
+## Scaled Entry Stop Loss Solution
+
+### 🎯 Problem: Stop Loss Positioned Between Limit Entries
+
+**Issue Identified (October 8, 2025):**
+In the current implementation, when using scaled entries with DCA (Dollar Cost Averaging), the stop loss can be incorrectly positioned between Entry 2 and Entry 3, rendering the deepest entry useless.
+
+**Example Scenario (LONG Position):**
+```
+Current Price: $100 (Entry 1 - Market, 50%)
+Zone Midpoint: $98 (Entry 2 - Limit, 25%)
+Zone Low: $96 (Entry 3 - Deep Limit, 25%)
+
+15m Swing Low: $97
+Stop Loss: $96.50 ($97 - ATR buffer)
+
+❌ PROBLEM: Entry 3 at $96 is BELOW stop loss at $96.50
+   → Entry 3 would immediately trigger stop loss if filled
+   → DCA strategy becomes ineffective
+```
+
+### ✅ Solution: Deepest Entry-Based Stop Loss Calculation
+
+**Key Principle:**
+> The stop loss must be calculated to protect the **DEEPEST entry** (Entry 3), not just the market entry. This ensures ALL scaled entries have safe room to be filled.
+
+**Implementation Logic:**
+
+#### For LONG Positions:
+```python
+# Current problematic approach:
+stop_loss = last_swing_low - (ATR * buffer)  # Based on swing, ignores Entry 3
+
+# ✅ CORRECT approach:
+deepest_entry = Entry_3_price  # Lowest entry for LONG
+swing_based_sl = last_swing_low - (ATR * buffer)
+
+# Ensure SL is BELOW the deepest entry
+stop_loss = min(swing_based_sl, deepest_entry * 0.99)  # At least 1% below Entry 3
+
+# Validation
+if stop_loss >= deepest_entry:
+    stop_loss = deepest_entry * (1 - SL_MIN_DISTANCE_PERCENT)
+```
+
+#### For SHORT Positions:
+```python
+# Current problematic approach:
+stop_loss = last_swing_high + (ATR * buffer)  # Based on swing, ignores Entry 3
+
+# ✅ CORRECT approach:
+deepest_entry = Entry_3_price  # Highest entry for SHORT
+swing_based_sl = last_swing_high + (ATR * buffer)
+
+# Ensure SL is ABOVE the deepest entry
+stop_loss = max(swing_based_sl, deepest_entry * 1.01)  # At least 1% above Entry 3
+
+# Validation
+if stop_loss <= deepest_entry:
+    stop_loss = deepest_entry * (1 + SL_MIN_DISTANCE_PERCENT)
+```
+
+### 📋 Implementation Steps
+
+**Step 1: Modify `_calculate_scaled_entries()` method**
+- Calculate base stop loss AFTER determining all entry prices
+- Pass deepest entry price to stop loss calculation
+- Validate that SL respects all entry levels
+
+**Step 2: Update `_calculate_entry_specific_sl()` method**
+```python
+def _calculate_entry_specific_sl(
+    self,
+    entry_price: float,
+    direction: str,
+    m15_swing_levels: Dict,
+    atr_value: float = 0.0,
+    deepest_entry_price: Optional[float] = None  # ← NEW parameter
+) -> float:
+    """
+    Calculate stop-loss that protects ALL scaled entries
+    """
+    # Calculate swing-based SL
+    if direction == "long":
+        sl_base = m15_swing_levels.get("last_swing_low", entry_price * 0.98)
+        swing_sl = sl_base - (atr_value * 0.5) if atr_value > 0 else sl_base
+        
+        # If deepest entry provided, ensure SL is below it
+        if deepest_entry_price:
+            min_sl = deepest_entry_price * 0.99  # 1% below deepest entry
+            stop_loss = min(swing_sl, min_sl)
+        else:
+            stop_loss = swing_sl
+    
+    else:  # short
+        sl_base = m15_swing_levels.get("last_swing_high", entry_price * 1.02)
+        swing_sl = sl_base + (atr_value * 0.5) if atr_value > 0 else sl_base
+        
+        # If deepest entry provided, ensure SL is above it
+        if deepest_entry_price:
+            max_sl = deepest_entry_price * 1.01  # 1% above deepest entry
+            stop_loss = max(swing_sl, max_sl)
+        else:
+            stop_loss = swing_sl
+    
+    return stop_loss
+```
+
+**Step 3: Add Validation**
+```python
+def validate_scaled_entry_sl(scaled_entries: List[ScaledEntry], direction: str) -> bool:
+    """
+    Validate that stop loss respects all entry prices
+    """
+    for entry in scaled_entries:
+        if direction == "long":
+            if entry.stop_loss >= entry.entry_price:
+                logging.error(f"LONG SL {entry.stop_loss} >= Entry {entry.entry_price}")
+                return False
+        else:  # short
+            if entry.stop_loss <= entry.entry_price:
+                logging.error(f"SHORT SL {entry.stop_loss} <= Entry {entry.entry_price}")
+                return False
+    
+    logging.info("✅ All scaled entries have valid stop loss placement")
+    return True
+```
+
+### 🔑 Key Benefits
+
+1. **Preserves Institutional Analysis:** SMC logic remains unchanged
+2. **Protects All Entries:** Every scaled entry has safe room to fill
+3. **Maintains DCA Strategy:** Deep entries can accumulate positions safely
+4. **Risk Management:** Ensures minimum distance from ALL entries
+
+### ⚠️ Important Notes
+
+- **Minimum Distance:** Always maintain at least 0.5-1% distance between deepest entry and stop loss
+- **Volatility Adjustment:** In high volatility, increase the minimum distance buffer
+- **Swing Priority:** If swing-based SL already protects deepest entry, use it (tighter stop)
+- **Fallback Logic:** If no swing data, calculate SL as percentage below/above deepest entry
+
+### 📊 Example: Corrected LONG Signal
+
+**Before (Problematic):**
+```
+Entry 1: $100 (Market, 50%) → SL: $96.50
+Entry 2: $98 (Limit, 25%) → SL: $96.50  
+Entry 3: $96 (Deep, 25%) → SL: $96.50 ❌ (Entry below SL!)
+```
+
+**After (Solution Applied):**
+```
+Entry 1: $100 (Market, 50%) → SL: $95.00
+Entry 2: $98 (Limit, 25%) → SL: $95.00
+Entry 3: $96 (Deep, 25%) → SL: $95.00 ✅ (Safe 1% buffer)
+```
 
 ---
 
