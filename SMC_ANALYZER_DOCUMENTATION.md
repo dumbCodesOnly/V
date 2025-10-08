@@ -129,20 +129,25 @@ ALTER COLUMN scaled_entries SET NOT NULL;
 ### 🎯 Problem: Stop Loss Positioned Between Limit Entries
 
 **Issue Identified (October 8, 2025):**
-In the current implementation, when using scaled entries with DCA (Dollar Cost Averaging), the stop loss can be incorrectly positioned between Entry 2 and Entry 3, rendering the deepest entry useless.
+In the current implementation, when using scaled entries with DCA (Dollar Cost Averaging), the stop loss can be incorrectly positioned between Entry 2 and Entry 3, **blocking access to the MOST OPTIMIZED ENTRY**.
+
+**Critical Context:**
+> **Entry 3 is the BEST entry price** - it's the institutional "deep discount" (LONG) or "premium" (SHORT) level where smart money accumulates positions. If the stop loss prevents Entry 3 from filling, you're missing the optimal entry that provides the best risk-reward ratio.
 
 **Example Scenario (LONG Position):**
 ```
-Current Price: $100 (Entry 1 - Market, 50%)
-Zone Midpoint: $98 (Entry 2 - Limit, 25%)
-Zone Low: $96 (Entry 3 - Deep Limit, 25%)
+Current Price: $100 (Entry 1 - Market, 50%) ← Acceptable entry
+Zone Midpoint: $98 (Entry 2 - Limit, 25%) ← Better entry
+Zone Low: $96 (Entry 3 - Deep Limit, 25%) ← 🎯 OPTIMAL ENTRY (best price!)
 
 15m Swing Low: $97
 Stop Loss: $96.50 ($97 - ATR buffer)
 
-❌ PROBLEM: Entry 3 at $96 is BELOW stop loss at $96.50
+❌ CRITICAL PROBLEM: Entry 3 at $96 is BELOW stop loss at $96.50
    → Entry 3 would immediately trigger stop loss if filled
+   → You're BLOCKED from getting the BEST ENTRY PRICE
    → DCA strategy becomes ineffective
+   → Missing the institutional accumulation zone
 ```
 
 ### ✅ Solution: Deepest Entry-Based Stop Loss Calculation
@@ -255,9 +260,10 @@ def validate_scaled_entry_sl(scaled_entries: List[ScaledEntry], direction: str) 
 ### 🔑 Key Benefits
 
 1. **Preserves Institutional Analysis:** SMC logic remains unchanged
-2. **Protects All Entries:** Every scaled entry has safe room to fill
-3. **Maintains DCA Strategy:** Deep entries can accumulate positions safely
-4. **Risk Management:** Ensures minimum distance from ALL entries
+2. **Enables Optimal Entry Access:** Entry 3 (the BEST price) can now fill safely
+3. **Protects All Entries:** Every scaled entry has safe room to fill
+4. **Maintains DCA Strategy:** Deep entries can accumulate positions at optimal institutional levels
+5. **Risk Management:** Ensures minimum distance from ALL entries, especially the most important one (Entry 3)
 
 ### ⚠️ Important Notes
 
