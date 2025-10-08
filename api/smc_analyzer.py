@@ -3548,13 +3548,10 @@ class SMCAnalyzer:
                     logging.info(f"Corrected to: {entry1_price:.4f} <= {entry2_price:.4f} <= {entry3_price:.4f}")
             
             # SCALED ENTRY STOP LOSS SOLUTION: Calculate shared stop loss that protects Entry 3
-            if m15_swing_levels:
-                shared_stop_loss = self._calculate_shared_stop_loss(
-                    entry_3_price, direction, m15_swing_levels, atr_value
-                )
-            else:
-                # Fallback to base stop-loss if no swing data
-                shared_stop_loss = base_stop_loss
+            # ALWAYS use shared SL calculation (even without swing data) to ensure Entry 3 is protected
+            shared_stop_loss = self._calculate_shared_stop_loss(
+                entry3_price, direction, m15_swing_levels or {}, atr_value
+            )
             
             # Create scaled entries with SHARED stop loss and take profits
             entry1 = ScaledEntry(
@@ -3616,13 +3613,10 @@ class SMCAnalyzer:
             )
             
             # SCALED ENTRY STOP LOSS SOLUTION: Calculate shared stop loss that protects Entry 3
-            if m15_swing_levels:
-                shared_stop_loss = self._calculate_shared_stop_loss(
-                    entry3_price, direction, m15_swing_levels, atr_value
-                )
-            else:
-                # Fallback to base stop-loss if no swing data
-                shared_stop_loss = base_stop_loss
+            # ALWAYS use shared SL calculation (even without swing data) to ensure Entry 3 is protected
+            shared_stop_loss = self._calculate_shared_stop_loss(
+                entry3_price, direction, m15_swing_levels or {}, atr_value
+            )
             
             # Create scaled entries with SHARED stop loss and take profits
             entry1 = ScaledEntry(
