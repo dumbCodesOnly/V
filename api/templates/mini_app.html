@@ -6490,12 +6490,12 @@
                                                                     <span style="font-weight: 600; color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'};">
                                                                         ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type.toUpperCase()})
                                                                     </span>
-                                                                    <span style="font-weight: 700;">${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}</span>
+                                                                    <span style="font-weight: 700;">${entry.allocation_percent?.toFixed(0) || 0}% @ $${entry.entry_price?.toFixed(4) || 'N/A'}</span>
                                                                 </div>
                                                                 <div style="font-size: 0.75rem; color: #64748b;">
-                                                                    <strong>SL:</strong> $${entry.stop_loss.toFixed(4)}
+                                                                    <strong>SL:</strong> $${entry.stop_loss?.toFixed(4) || 'N/A'}
                                                                     ${entry.take_profits && entry.take_profits.length > 0 ? `
-                                                                        <br><strong>TPs:</strong> ${entry.take_profits.map(tp => `$${tp[0].toFixed(4)} (${tp[1].toFixed(0)}%)`).join(', ')}
+                                                                        <br><strong>TPs:</strong> ${entry.take_profits.map(tp => `$${tp[0]?.toFixed(4) || 'N/A'} (${tp[1]?.toFixed(0) || 0}%)`).join(', ')}
                                                                     ` : ''}
                                                                 </div>
                                                             </div>
@@ -6532,15 +6532,15 @@
                                                                 ${entry.order_type === 'market' ? '🟢 Market Order' : '🟡 Limit Order'} 
                                                             </span>
                                                             <div style="font-size: 0.7rem; color: #6c757d; margin-top: 2px;">
-                                                                Entry ${idx + 1} • ${entry.allocation_percent.toFixed(0)}% allocation
+                                                                Entry ${idx + 1} • ${entry.allocation_percent?.toFixed(0) || 0}% allocation
                                                             </div>
                                                         </div>
                                                         <div style="text-align: right;">
                                                             <div style="font-size: 0.9rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">
-                                                                $${entry.entry_price.toFixed(4)}
+                                                                $${entry.entry_price?.toFixed(4) || 'N/A'}
                                                             </div>
                                                             <div style="font-size: 0.7rem; color: #6c757d;">
-                                                                ${((Math.abs(entry.entry_price - data.entry_price) / data.entry_price) * 100).toFixed(2)}% from market
+                                                                ${entry.entry_price && data.entry_price ? ((Math.abs(entry.entry_price - data.entry_price) / data.entry_price) * 100).toFixed(2) + '% from market' : 'N/A'}
                                                             </div>
                                                         </div>
                                                     </div>
