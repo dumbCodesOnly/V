@@ -212,21 +212,31 @@ class SystemSettings(db.Model):
         return setting.setting_value if setting else default
 
     @staticmethod
-    def set_setting(key: str, value: str, updated_by: str = "system") -> None:
-        """Set a system setting value"""
-        setting = SystemSettings.query.filter_by(setting_key=key).first()
-        if setting:
-            setting.setting_value = value
-            setting.updated_by = updated_by
-            setting.updated_at = datetime.utcnow()
-        else:
-            setting = SystemSettings(
-                setting_key=key,
-                setting_value=value,
-                updated_by=updated_by
-            )
-            db.session.add(setting)
-        db.session.commit()
+    def set_setting(key: str, value: str, updated_by: str = "system") -> bool:
+        """Set a system setting value with transaction safety
+        
+        Returns:
+            bool: True if successful, False if failed
+        """
+        try:
+            setting = SystemSettings.query.filter_by(setting_key=key).with_for_update().first()
+            if setting:
+                setting.setting_value = value
+                setting.updated_by = updated_by
+                setting.updated_at = datetime.utcnow()
+            else:
+                setting = SystemSettings(
+                    setting_key=key,
+                    setting_value=value,
+                    updated_by=updated_by
+                )
+                db.session.add(setting)
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Failed to set system setting {key}: {e}")
+            return False
 
     @staticmethod
     def get_worker_enabled() -> bool:
@@ -234,9 +244,13 @@ class SystemSettings(db.Model):
         return SystemSettings.get_setting("data_sync_worker_enabled", "false") == "true"
 
     @staticmethod
-    def set_worker_enabled(enabled: bool, updated_by: str = "admin") -> None:
-        """Set data sync worker enabled state"""
-        SystemSettings.set_setting(
+    def set_worker_enabled(enabled: bool, updated_by: str = "admin") -> bool:
+        """Set data sync worker enabled state
+        
+        Returns:
+            bool: True if successful, False if failed
+        """
+        return SystemSettings.set_setting(
             "data_sync_worker_enabled",
             "true" if enabled else "false",
             updated_by

@@ -10005,11 +10005,17 @@ def admin_stop_data_sync():
         
         admin_username = session.get("admin_username", "admin")
         
-        # Stop the unified data sync service
-        stop_unified_data_sync_service()
+        # First persist the stopped state to database (with transaction safety)
+        persist_success = SystemSettings.set_worker_enabled(False, updated_by=admin_username)
         
-        # Persist the stopped state to database so it stays stopped across app restarts
-        SystemSettings.set_worker_enabled(False, updated_by=admin_username)
+        if not persist_success:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to persist worker state to database - check logs for details'
+            }), 500
+        
+        # Only stop the worker after successfully persisting state
+        stop_unified_data_sync_service()
         
         logging.info(f"Data sync service stopped by admin {admin_username} - state persisted to database")
         
@@ -10034,10 +10040,16 @@ def admin_start_data_sync():
         
         admin_username = session.get("admin_username", "admin")
         
-        # Persist the enabled state to database so it stays enabled across app restarts
-        SystemSettings.set_worker_enabled(True, updated_by=admin_username)
+        # First persist the enabled state to database (with transaction safety)
+        persist_success = SystemSettings.set_worker_enabled(True, updated_by=admin_username)
         
-        # Start the unified data sync service
+        if not persist_success:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to persist worker state to database - check logs for details'
+            }), 500
+        
+        # Only start the worker after successfully persisting state
         start_unified_data_sync_service(app)
         
         logging.info(f"Data sync service started by admin {admin_username} - state persisted to database")
