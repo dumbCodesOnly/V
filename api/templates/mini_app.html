@@ -2131,20 +2131,37 @@
 
         /* SMC Signals Styling */
         .smc-signal-item {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--tg-theme-border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
+            background: linear-gradient(135deg, rgba(74, 93, 122, 0.08) 0%, rgba(33, 40, 54, 0.5) 100%);
+            border: 1px solid rgba(107, 139, 179, 0.25);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .smc-signal-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #4a5d7a, #6bb6ff);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .smc-signal-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
-            border-color: var(--tg-theme-button-color);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 28px rgba(107, 139, 179, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3);
+            border-color: rgba(107, 187, 255, 0.4);
+        }
+
+        .smc-signal-item:hover::before {
+            opacity: 1;
         }
 
         .smc-signal-header {
@@ -2245,10 +2262,12 @@
 
         .smc-reasoning {
             margin: 0.75rem 0;
-            padding: 0.75rem;
-            background: rgba(107, 139, 179, 0.05);
-            border-radius: 8px;
-            border-left: 3px solid var(--tg-theme-button-color);
+            padding: 1rem;
+            background: rgba(107, 139, 179, 0.08);
+            border-radius: 10px;
+            border: 1px solid rgba(107, 139, 179, 0.15);
+            border-left: 4px solid var(--tg-theme-link-color);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
         }
 
         .smc-reasoning-title {
@@ -6348,34 +6367,51 @@
                     </div>
                     
                     ${signal.scaled_entries && signal.scaled_entries.length > 0 ? `
-                        <div class="mt-2 p-3" style="background: var(--tg-theme-card-bg); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3);">
+                        <div class="mt-3 p-3" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(33, 40, 54, 0.4) 100%); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.25); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
                             
-                            <div class="mb-2" style="font-size: 0.7rem; color: #64748b;">
-                                <strong>HTF Bias:</strong> ${signal.htf_bias || 'N/A'} | 
-                                <strong>Structure:</strong> ${signal.intermediate_structure || 'N/A'}
+                            <div class="mb-2 pb-2" style="font-size: 0.7rem; color: #94a3b8; border-bottom: 1px solid rgba(107, 139, 179, 0.15);">
+                                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                                    <span style="color: #6bb6ff;">📊</span>
+                                    <strong style="color: #8b9dc3;">HTF Bias:</strong> ${signal.htf_bias || 'N/A'}
+                                </span>
+                                <span style="margin: 0 8px; color: rgba(107, 139, 179, 0.3);">|</span>
+                                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                                    <span style="color: #6bb6ff;">📈</span>
+                                    <strong style="color: #8b9dc3;">Structure:</strong> ${signal.intermediate_structure || 'N/A'}
+                                </span>
                             </div>
                             ${signal.scaled_entries.map((entry, idx) => `
-                                <div style="font-size: 0.75rem; margin-bottom: 6px; padding: 6px; background: var(--tg-theme-secondary-bg-color); border-radius: 4px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                                        <span style="color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'}; font-weight: 600;">
-                                            ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type.toUpperCase()})
+                                <div style="font-size: 0.75rem; margin-bottom: 8px; padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid rgba(107, 139, 179, 0.15); transition: all 0.2s ease;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <span style="color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'}; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                                            ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} 
+                                            <span style="font-size: 0.65rem; opacity: 0.8;">(${entry.order_type.toUpperCase()})</span>
                                         </span>
-                                        <span style="font-weight: 700; color: var(--tg-theme-text-color);">
+                                        <span style="font-weight: 700; color: var(--tg-theme-text-color); font-family: 'JetBrains Mono', monospace;">
                                             ${entry.allocation_percent.toFixed(0)}% @ $${entry.entry_price.toFixed(4)}
                                         </span>
                                     </div>
-                                    <div style="font-size: 0.65rem; color: var(--tg-theme-hint-color); display: flex; justify-content: space-between;">
-                                        <span>SL: $${entry.stop_loss.toFixed(4)}</span>
+                                    <div style="font-size: 0.65rem; color: var(--tg-theme-hint-color); display: flex; justify-content: space-between; padding-top: 4px; border-top: 1px dashed rgba(107, 139, 179, 0.1);">
+                                        <span style="display: flex; align-items: center; gap: 3px;">
+                                            <span style="color: #ff4d4f;">🛡️</span>
+                                            SL: <strong>$${entry.stop_loss.toFixed(4)}</strong>
+                                        </span>
                                         ${entry.take_profits && entry.take_profits.length > 0 ? `
-                                            <span>TPs: ${entry.take_profits.length} levels</span>
+                                            <span style="display: flex; align-items: center; gap: 3px;">
+                                                <span style="color: #52c41a;">🎯</span>
+                                                TPs: <strong>${entry.take_profits.length} levels</strong>
+                                            </span>
                                         ` : ''}
                                     </div>
                                 </div>
                             `).join('')}
                         </div>
                     ` : `
-                        <div class="mt-2 p-3" style="background: rgba(239, 68, 68, 0.1); border-radius: 6px; text-align: center;">
-                            <span style="font-size: 0.75rem; color: #dc2626;">No institutional signal available</span>
+                        <div class="mt-3 p-3" style="background: rgba(239, 68, 68, 0.08); border-radius: 10px; border: 1px solid rgba(239, 68, 68, 0.2); text-align: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);">
+                            <span style="font-size: 0.75rem; color: #ef4444; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <span>⚠️</span>
+                                No institutional signal available
+                            </span>
                         </div>
                     `}
                     
@@ -6438,74 +6474,104 @@
                     const modalHtml = `
                         <div class="modal fade" id="smcDetailsModal" tabindex="-1">
                             <div class="modal-dialog modal-xl">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h6 class="modal-title">SMC Analysis - ${symbol}</h6>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                <div class="modal-content" style="background: var(--tg-theme-bg-color); border: 1px solid rgba(107, 139, 179, 0.2);">
+                                    <div class="modal-header" style="background: linear-gradient(135deg, rgba(74, 93, 122, 0.15) 0%, rgba(33, 40, 54, 0.8) 100%); border-bottom: 1px solid rgba(107, 139, 179, 0.2);">
+                                        <h5 class="modal-title" style="color: var(--tg-theme-text-color); font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                                            <span style="color: #6bb6ff;">⚡</span> SMC Analysis - ${symbol}
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter: invert(1) opacity(0.6);"></button>
                                     </div>
-                                    <div class="modal-body">
-                                        <div class="row mb-2 g-2">
-                                            <div class="col-6">
-                                                <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Direction</div>
-                                                    <div class="smc-detail-value">${data.direction}</div>
+                                    <div class="modal-body" style="padding: 1.5rem;">
+                                        <!-- Key Metrics Section -->
+                                        <div class="mb-4 p-3" style="background: linear-gradient(135deg, rgba(107, 187, 255, 0.05) 0%, rgba(33, 40, 54, 0.3) 100%); border-radius: 12px; border: 1px solid rgba(107, 139, 179, 0.2); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+                                            <h6 class="mb-3" style="color: #6bb6ff; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">📊 Key Metrics</h6>
+                                            <div class="row g-3">
+                                                <div class="col-6">
+                                                    <div class="smc-detail-item compact" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.15); padding: 1rem; border-radius: 10px;">
+                                                        <div class="smc-detail-label">Direction</div>
+                                                        <div class="smc-detail-value" style="color: ${data.direction === 'long' ? '#52c41a' : '#ff4d4f'}; font-size: 1.1rem;">${data.direction}</div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div class="col-6">
-                                                <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Confidence</div>
-                                                    <div class="smc-detail-value">${(data.confidence * 100).toFixed(1)}%</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="row mb-2 g-2">
-                                            <div class="col-4">
-                                                <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">HTF Bias</div>
-                                                    <div class="smc-detail-value">${data.htf_bias || 'N/A'}</div>
-                                                </div>
-                                            </div>
-                                            <div class="col-4">
-                                                <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Structure</div>
-                                                    <div class="smc-detail-value">${data.intermediate_structure || 'N/A'}</div>
-                                                </div>
-                                            </div>
-                                            <div class="col-4">
-                                                <div class="smc-detail-item compact">
-                                                    <div class="smc-detail-label">Risk:Reward</div>
-                                                    <div class="smc-detail-value">1:${data.risk_reward_ratio?.toFixed(1)}</div>
+                                                <div class="col-6">
+                                                    <div class="smc-detail-item compact" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.15); padding: 1rem; border-radius: 10px;">
+                                                        <div class="smc-detail-label">Confidence</div>
+                                                        <div class="smc-detail-value" style="color: #6bb6ff; font-size: 1.1rem;">${(data.confidence * 100).toFixed(1)}%</div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                         
+                                        <!-- Market Context Section -->
+                                        <div class="mb-4 p-3" style="background: linear-gradient(135deg, rgba(107, 139, 179, 0.05) 0%, rgba(33, 40, 54, 0.3) 100%); border-radius: 12px; border: 1px solid rgba(107, 139, 179, 0.2); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+                                            <h6 class="mb-3" style="color: #8b9dc3; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">🎯 Market Context</h6>
+                                            <div class="row g-3">
+                                                <div class="col-4">
+                                                    <div class="smc-detail-item compact" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.15); padding: 1rem; border-radius: 10px;">
+                                                        <div class="smc-detail-label">HTF Bias</div>
+                                                        <div class="smc-detail-value">${data.htf_bias || 'N/A'}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="smc-detail-item compact" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.15); padding: 1rem; border-radius: 10px;">
+                                                        <div class="smc-detail-label">Structure</div>
+                                                        <div class="smc-detail-value">${data.intermediate_structure || 'N/A'}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="smc-detail-item compact" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.15); padding: 1rem; border-radius: 10px;">
+                                                        <div class="smc-detail-label">Risk:Reward</div>
+                                                        <div class="smc-detail-value" style="color: #52c41a;">1:${data.risk_reward_ratio?.toFixed(1)}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Institutional Entry Strategy -->
                                         ${data.scaled_entries && data.scaled_entries.length > 0 ? `
-                                            <div class="row g-2 mb-3">
-                                                ${data.scaled_entries.map((entry, idx) => `
-                                                    <div class="col-12">
-                                                        <div class="card" style="background: var(--tg-theme-card-bg); border: 1px solid rgba(59, 130, 246, 0.2);">
-                                                            <div class="card-body p-2">
-                                                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                                                    <span style="font-weight: 600; color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'};">
-                                                                        ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} (${entry.order_type.toUpperCase()})
-                                                                    </span>
-                                                                    <span style="font-weight: 700;">${entry.allocation_percent?.toFixed(0) || 0}% @ $${entry.entry_price?.toFixed(4) || 'N/A'}</span>
-                                                                </div>
-                                                                <div style="font-size: 0.75rem; color: #64748b;">
-                                                                    <strong>SL:</strong> $${entry.stop_loss?.toFixed(4) || 'N/A'}
-                                                                    ${entry.take_profits && entry.take_profits.length > 0 ? `
-                                                                        <br><strong>TPs:</strong> ${entry.take_profits.map(tp => `$${tp[0]?.toFixed(4) || 'N/A'} (${tp[1]?.toFixed(0) || 0}%)`).join(', ')}
-                                                                    ` : ''}
+                                            <div class="mb-4 p-3" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(33, 40, 54, 0.3) 100%); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.25); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+                                                <h6 class="mb-3" style="color: #3b82f6; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px;">💼 Institutional Entry Strategy</h6>
+                                                <div class="row g-3">
+                                                    ${data.scaled_entries.map((entry, idx) => `
+                                                        <div class="col-12">
+                                                            <div class="card" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(107, 139, 179, 0.2); border-radius: 10px; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);">
+                                                                <div class="card-body p-3">
+                                                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                                                        <span style="font-weight: 700; color: ${entry.order_type === 'market' ? '#10b981' : '#f59e0b'}; display: flex; align-items: center; gap: 6px;">
+                                                                            ${entry.order_type === 'market' ? '🟢' : '🟡'} Entry ${idx + 1} 
+                                                                            <span style="font-size: 0.7rem; opacity: 0.8; background: rgba(255, 255, 255, 0.1); padding: 2px 8px; border-radius: 12px;">${entry.order_type.toUpperCase()}</span>
+                                                                        </span>
+                                                                        <span style="font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--tg-theme-text-color); font-size: 1rem;">${entry.allocation_percent?.toFixed(0) || 0}% @ $${entry.entry_price?.toFixed(4) || 'N/A'}</span>
+                                                                    </div>
+                                                                    <div style="font-size: 0.8rem; color: #8b9dc3; display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px dashed rgba(107, 139, 179, 0.2);">
+                                                                        <span style="display: flex; align-items: center; gap: 4px;">
+                                                                            <span style="color: #ff4d4f;">🛡️</span>
+                                                                            <strong>SL:</strong> <span style="font-family: 'JetBrains Mono', monospace;">$${entry.stop_loss?.toFixed(4) || 'N/A'}</span>
+                                                                        </span>
+                                                                        ${entry.take_profits && entry.take_profits.length > 0 ? `
+                                                                            <span style="display: flex; align-items: center; gap: 4px;">
+                                                                                <span style="color: #52c41a;">🎯</span>
+                                                                                <strong>TPs:</strong> <span style="font-family: 'JetBrains Mono', monospace;">${entry.take_profits.map(tp => `$${tp[0]?.toFixed(4) || 'N/A'} (${tp[1]?.toFixed(0) || 0}%)`).join(', ')}</span>
+                                                                            </span>
+                                                                        ` : ''}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                `).join('')}
+                                                    `).join('')}
+                                                </div>
+                                                <div class="mt-3 pt-3" style="border-top: 1px solid rgba(107, 139, 179, 0.15);">
+                                                    <small style="color: #8b9dc3; font-size: 0.75rem; display: flex; align-items: center; gap: 6px;">
+                                                        <span style="color: #6bb6ff;">💡</span>
+                                                        <strong>Strategy:</strong> Institutional-grade DCA with POI alignment
+                                                    </small>
+                                                </div>
                                             </div>
                                         ` : `
-                                            <div class="alert alert-warning" role="alert">
-                                                No institutional scaled entry data available
+                                            <div class="mb-4 p-3" style="background: rgba(239, 68, 68, 0.08); border-radius: 10px; border: 1px solid rgba(239, 68, 68, 0.2); text-align: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);">
+                                                <span style="font-size: 0.85rem; color: #ef4444; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                                    <span style="font-size: 1.2rem;">⚠️</span>
+                                                    No institutional scaled entry data available
+                                                </span>
                                             </div>
                                         `}
                                         
@@ -6604,15 +6670,26 @@
                                             </div>
                                         </div>
                                         
-                                        <h6 class="mb-1 fs-7">Analysis Reasoning</h6>
-                                        <ul class="smc-reasoning-list">
-                                            ${data.reasoning.map(reason => `<li>${reason}</li>`).join('')}
-                                        </ul>
+                                        <!-- Analysis Reasoning Section -->
+                                        <div class="mb-3 p-3" style="background: linear-gradient(135deg, rgba(107, 139, 179, 0.08) 0%, rgba(33, 40, 54, 0.3) 100%); border-radius: 12px; border: 1px solid rgba(107, 139, 179, 0.2); border-left: 4px solid #6bb6ff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);">
+                                            <h6 class="mb-3" style="color: #6bb6ff; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                                                <span>🧠</span> Analysis Reasoning
+                                            </h6>
+                                            <ul class="smc-reasoning-list" style="list-style: none; padding: 0; margin: 0;">
+                                                ${data.reasoning.map(reason => `
+                                                    <li style="font-size: 0.85rem; color: var(--tg-theme-hint-color); margin-bottom: 10px; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border-left: 3px solid rgba(107, 187, 255, 0.4); position: relative; padding-left: 2rem;">
+                                                        <span style="position: absolute; left: 12px; color: #6bb6ff; font-weight: 600;">▸</span>
+                                                        ${reason}
+                                                    </li>
+                                                `).join('')}
+                                            </ul>
+                                        </div>
                                     </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                                    <div class="modal-footer" style="background: linear-gradient(135deg, rgba(74, 93, 122, 0.08) 0%, rgba(33, 40, 54, 0.5) 100%); border-top: 1px solid rgba(107, 139, 179, 0.2);">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-color: rgba(107, 139, 179, 0.3);">Close</button>
                                         ${data.confidence >= 0.7 ? `
-                                            <button type="button" class="btn smc-auto-trade-btn" onclick="createAutoTrade('${symbol}'); bootstrap.Modal.getInstance(document.getElementById('smcDetailsModal')).hide();">
+                                            <button type="button" class="btn smc-auto-trade-btn" onclick="createAutoTrade('${symbol}'); bootstrap.Modal.getInstance(document.getElementById('smcDetailsModal')).hide();" style="background: linear-gradient(135deg, #52c41a, #73d13d); border: none; color: white; font-weight: 600; box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);">
+                                                <span style="margin-right: 6px;">⚡</span>
                                                 Create Auto Trade
                                             </button>
                                         ` : ''}
