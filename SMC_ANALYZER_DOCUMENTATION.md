@@ -150,100 +150,200 @@ Stop Loss: $96.50 ($97 - ATR buffer)
    → Missing the institutional accumulation zone
 ```
 
-### ✅ Solution: Deepest Entry-Based Stop Loss Calculation
+### ✅ Solution: Shared Stop Loss & Take Profits for Scaled Entries
 
 **Key Principle:**
-> The stop loss must be calculated to protect the **DEEPEST entry** (Entry 3), not just the market entry. This ensures ALL scaled entries have safe room to be filled.
+> **ALL entries (Entry 1, 2, and 3) share the SAME stop loss and take profits.** The stop loss is calculated to protect Entry 3 (the optimal entry), while take profits are calculated from Entry 1 (market price) to maintain institutional R:R ratios.
+
+**Why This Works:**
+1. **Entry 3 can fill safely** - SL is positioned below/above Entry 3
+2. **Simpler execution** - One SL and one set of TPs for the entire position
+3. **Better average R:R** - Entry 3 automatically gets superior R:R (same TPs, better entry price)
+4. **All entries stay alive** - No premature stop-outs while waiting for deeper entries to fill
 
 **Implementation Logic:**
 
 #### For LONG Positions:
 ```python
-# Current problematic approach:
-stop_loss = last_swing_low - (ATR * buffer)  # Based on swing, ignores Entry 3
+# Step 1: Calculate Entry 3 (deepest entry - the optimal price)
+entry_3_price = zone_low  # SMC zone bottom (best entry)
 
-# ✅ CORRECT approach:
-deepest_entry = Entry_3_price  # Lowest entry for LONG
+# Step 2: Calculate Stop Loss to protect Entry 3
 swing_based_sl = last_swing_low - (ATR * buffer)
 
-# Ensure SL is BELOW the deepest entry
-stop_loss = min(swing_based_sl, deepest_entry * 0.99)  # At least 1% below Entry 3
+# Ensure SL is BELOW Entry 3 (never invalidate the optimal entry)
+if swing_based_sl >= entry_3_price:
+    stop_loss = entry_3_price * (1 - SL_MIN_DISTANCE_PERCENT)  # At least 0.5-1% below
+else:
+    stop_loss = swing_based_sl  # Tighter is fine if swing allows
 
-# Validation
-if stop_loss >= deepest_entry:
-    stop_loss = deepest_entry * (1 - SL_MIN_DISTANCE_PERCENT)
+# Step 3: Calculate Take Profits from Entry 1 (market price)
+risk_amount = abs(entry_1_price - stop_loss)
+tp1 = entry_1_price + (risk_amount * 1.0)  # 1R
+tp2 = entry_1_price + (risk_amount * 2.0)  # 2R  
+tp3 = entry_1_price + (risk_amount * 3.0)  # 3R or liquidity target
+
+# Step 4: Apply SAME SL and TPs to ALL entries
+Entry 1: $100 → SL: $94.50, TPs: $102/$104/$106
+Entry 2: $98  → SL: $94.50, TPs: $102/$104/$106
+Entry 3: $96  → SL: $94.50, TPs: $102/$104/$106 ✅
 ```
 
 #### For SHORT Positions:
 ```python
-# Current problematic approach:
-stop_loss = last_swing_high + (ATR * buffer)  # Based on swing, ignores Entry 3
+# Step 1: Calculate Entry 3 (deepest entry - the optimal price)
+entry_3_price = zone_high  # SMC zone top (best entry)
 
-# ✅ CORRECT approach:
-deepest_entry = Entry_3_price  # Highest entry for SHORT
+# Step 2: Calculate Stop Loss to protect Entry 3
 swing_based_sl = last_swing_high + (ATR * buffer)
 
-# Ensure SL is ABOVE the deepest entry
-stop_loss = max(swing_based_sl, deepest_entry * 1.01)  # At least 1% above Entry 3
+# Ensure SL is ABOVE Entry 3 (never invalidate the optimal entry)
+if swing_based_sl <= entry_3_price:
+    stop_loss = entry_3_price * (1 + SL_MIN_DISTANCE_PERCENT)  # At least 0.5-1% above
+else:
+    stop_loss = swing_based_sl  # Tighter is fine if swing allows
 
-# Validation
-if stop_loss <= deepest_entry:
-    stop_loss = deepest_entry * (1 + SL_MIN_DISTANCE_PERCENT)
+# Step 3: Calculate Take Profits from Entry 1 (market price)
+risk_amount = abs(entry_1_price - stop_loss)
+tp1 = entry_1_price - (risk_amount * 1.0)  # 1R
+tp2 = entry_1_price - (risk_amount * 2.0)  # 2R
+tp3 = entry_1_price - (risk_amount * 3.0)  # 3R or liquidity target
+
+# Step 4: Apply SAME SL and TPs to ALL entries
+Entry 1: $100 → SL: $105.50, TPs: $98/$96/$94
+Entry 2: $102 → SL: $105.50, TPs: $98/$96/$94
+Entry 3: $104 → SL: $105.50, TPs: $98/$96/$94 ✅
 ```
 
 ### 📋 Implementation Steps
 
-**Step 1: Modify `_calculate_scaled_entries()` method**
-- Calculate base stop loss AFTER determining all entry prices
-- Pass deepest entry price to stop loss calculation
-- Validate that SL respects all entry levels
-
-**Step 2: Update `_calculate_entry_specific_sl()` method**
+**Step 1: Calculate Entry 3 First (Optimal Entry)**
 ```python
-def _calculate_entry_specific_sl(
-    self,
-    entry_price: float,
+# Determine Entry 3 price based on SMC zones
+if direction == "long":
+    entry_3_price = zone_low  # Best discount price
+elif direction == "short":
+    entry_3_price = zone_high  # Best premium price
+```
+
+**Step 2: Calculate Shared Stop Loss (Protects Entry 3)**
+```python
+def _calculate_shared_stop_loss(
+    entry_3_price: float,
     direction: str,
     m15_swing_levels: Dict,
-    atr_value: float = 0.0,
-    deepest_entry_price: Optional[float] = None  # ← NEW parameter
+    atr_value: float = 0.0
 ) -> float:
     """
-    Calculate stop-loss that protects ALL scaled entries
+    Calculate stop loss that protects the optimal entry (Entry 3)
     """
-    # Calculate swing-based SL
-    if direction == "long":
-        sl_base = m15_swing_levels.get("last_swing_low", entry_price * 0.98)
-        swing_sl = sl_base - (atr_value * 0.5) if atr_value > 0 else sl_base
-        
-        # If deepest entry provided, ensure SL is below it
-        if deepest_entry_price:
-            min_sl = deepest_entry_price * 0.99  # 1% below deepest entry
-            stop_loss = min(swing_sl, min_sl)
-        else:
-            stop_loss = swing_sl
+    from config import TradingConfig
+    min_distance = TradingConfig.SL_MIN_DISTANCE_PERCENT / 100.0
     
-    else:  # short
-        sl_base = m15_swing_levels.get("last_swing_high", entry_price * 1.02)
-        swing_sl = sl_base + (atr_value * 0.5) if atr_value > 0 else sl_base
+    if direction == "long":
+        # Calculate swing-based SL
+        swing_low = m15_swing_levels.get("last_swing_low", entry_3_price * 0.98)
+        swing_sl = swing_low - (atr_value * 0.5) if atr_value > 0 else swing_low
         
-        # If deepest entry provided, ensure SL is above it
-        if deepest_entry_price:
-            max_sl = deepest_entry_price * 1.01  # 1% above deepest entry
-            stop_loss = max(swing_sl, max_sl)
-        else:
-            stop_loss = swing_sl
+        # Ensure SL is BELOW Entry 3
+        min_sl = entry_3_price * (1 - min_distance)
+        stop_loss = min(swing_sl, min_sl)
+        
+    else:  # short
+        # Calculate swing-based SL  
+        swing_high = m15_swing_levels.get("last_swing_high", entry_3_price * 1.02)
+        swing_sl = swing_high + (atr_value * 0.5) if atr_value > 0 else swing_high
+        
+        # Ensure SL is ABOVE Entry 3
+        max_sl = entry_3_price * (1 + min_distance)
+        stop_loss = max(swing_sl, max_sl)
     
     return stop_loss
 ```
 
-**Step 3: Add Validation**
+**Step 3: Calculate Shared Take Profits (From Entry 1)**
 ```python
-def validate_scaled_entry_sl(scaled_entries: List[ScaledEntry], direction: str) -> bool:
+def _calculate_shared_take_profits(
+    entry_1_price: float,  # Market entry
+    stop_loss: float,
+    direction: str,
+    liquidity_targets: List[float] = None
+) -> List[Tuple[float, float]]:
     """
-    Validate that stop loss respects all entry prices
+    Calculate take profits from Entry 1 for consistent R:R ratios
     """
+    from config import TradingConfig
+    
+    risk_amount = abs(entry_1_price - stop_loss)
+    tp_allocations = TradingConfig.TP_ALLOCATIONS  # [40, 30, 30]
+    tp_rr_ratios = TradingConfig.TP_RR_RATIOS  # [1.0, 2.0, 3.0]
+    
+    take_profits = []
+    
+    if direction == "long":
+        tp1 = entry_1_price + (risk_amount * tp_rr_ratios[0])
+        tp2 = entry_1_price + (risk_amount * tp_rr_ratios[1])
+        tp3 = entry_1_price + (risk_amount * tp_rr_ratios[2])
+    else:  # short
+        tp1 = entry_1_price - (risk_amount * tp_rr_ratios[0])
+        tp2 = entry_1_price - (risk_amount * tp_rr_ratios[1])
+        tp3 = entry_1_price - (risk_amount * tp_rr_ratios[2])
+    
+    take_profits = [
+        (tp1, tp_allocations[0]),
+        (tp2, tp_allocations[1]),
+        (tp3, tp_allocations[2])
+    ]
+    
+    return take_profits
+```
+
+**Step 4: Apply Shared SL & TPs to All Entries**
+```python
+# Create scaled entries with SAME stop loss and take profits
+scaled_entries = [
+    ScaledEntry(
+        entry_price=entry_1_price,
+        allocation_percent=50,
+        order_type='market',
+        stop_loss=shared_stop_loss,  # ← Same for all
+        take_profits=shared_take_profits,  # ← Same for all
+        status='pending'
+    ),
+    ScaledEntry(
+        entry_price=entry_2_price,
+        allocation_percent=25,
+        order_type='limit',
+        stop_loss=shared_stop_loss,  # ← Same for all
+        take_profits=shared_take_profits,  # ← Same for all
+        status='pending'
+    ),
+    ScaledEntry(
+        entry_price=entry_3_price,
+        allocation_percent=25,
+        order_type='limit',
+        stop_loss=shared_stop_loss,  # ← Same for all
+        take_profits=shared_take_profits,  # ← Same for all
+        status='pending'
+    )
+]
+```
+
+**Step 5: Validation**
+```python
+def validate_scaled_entries(scaled_entries: List[ScaledEntry], direction: str) -> bool:
+    """
+    Validate that shared stop loss protects all entries
+    """
+    shared_sl = scaled_entries[0].stop_loss
+    
     for entry in scaled_entries:
+        # Verify SL is shared
+        if entry.stop_loss != shared_sl:
+            logging.error(f"Entry {entry.entry_price} has different SL: {entry.stop_loss} vs {shared_sl}")
+            return False
+        
+        # Verify SL doesn't invalidate entry
         if direction == "long":
             if entry.stop_loss >= entry.entry_price:
                 logging.error(f"LONG SL {entry.stop_loss} >= Entry {entry.entry_price}")
@@ -253,7 +353,7 @@ def validate_scaled_entry_sl(scaled_entries: List[ScaledEntry], direction: str) 
                 logging.error(f"SHORT SL {entry.stop_loss} <= Entry {entry.entry_price}")
                 return False
     
-    logging.info("✅ All scaled entries have valid stop loss placement")
+    logging.info("✅ All scaled entries have valid shared stop loss")
     return True
 ```
 
@@ -272,21 +372,46 @@ def validate_scaled_entry_sl(scaled_entries: List[ScaledEntry], direction: str) 
 - **Swing Priority:** If swing-based SL already protects deepest entry, use it (tighter stop)
 - **Fallback Logic:** If no swing data, calculate SL as percentage below/above deepest entry
 
-### 📊 Example: Corrected LONG Signal
+### 📊 Example: Corrected LONG Signal with Shared SL & TPs
 
-**Before (Problematic):**
+**Before (Problematic - Individual SLs or SL between entries):**
 ```
-Entry 1: $100 (Market, 50%) → SL: $96.50
-Entry 2: $98 (Limit, 25%) → SL: $96.50  
-Entry 3: $96 (Deep, 25%) → SL: $96.50 ❌ (Entry below SL!)
+Entry 1: $100 (Market, 50%) → SL: $96.50, TPs: $102/$104/$106
+Entry 2: $98 (Limit, 25%) → SL: $96.50, TPs: $102/$104/$106  
+Entry 3: $96 (Deep, 25%) → SL: $96.50, TPs: $102/$104/$106
+❌ PROBLEM: Entry 3 at $96 is BELOW stop loss at $96.50!
 ```
 
-**After (Solution Applied):**
+**After (Solution Applied - Shared SL protects Entry 3, Shared TPs from Entry 1):**
 ```
-Entry 1: $100 (Market, 50%) → SL: $95.00
-Entry 2: $98 (Limit, 25%) → SL: $95.00
-Entry 3: $96 (Deep, 25%) → SL: $95.00 ✅ (Safe 1% buffer)
+# Step 1: Entry 3 calculated first → $96 (optimal entry)
+# Step 2: SL calculated to protect Entry 3 → $94.50 (1.5% below Entry 3)
+# Step 3: TPs calculated from Entry 1 → Risk = $100 - $94.50 = $5.50
+
+Entry 1: $100 (Market, 50%)
+  → SL: $94.50 (shared)
+  → TPs: $105.50 (1R) / $111.00 (2R) / $116.50 (3R)
+  → R:R from Entry 1: 1:1, 1:2, 1:3 ✅
+
+Entry 2: $98 (Limit, 25%)
+  → SL: $94.50 (shared)
+  → TPs: $105.50 (1R) / $111.00 (2R) / $116.50 (3R)
+  → R:R from Entry 2: Better than Entry 1 ✅
+
+Entry 3: $96 (Deep, 25%)
+  → SL: $94.50 (shared, safe 1.5% buffer below entry)
+  → TPs: $105.50 (1R) / $111.00 (2R) / $116.50 (3R)
+  → R:R from Entry 3: BEST (6.9:1, 11.7:1, 14.5:1) ✅✅✅
+
+Average Entry (if all fill): $98.50
+Average R:R: Superior to Entry 1 alone
 ```
+
+**Key Points:**
+- ✅ Entry 3 can fill safely (SL is $94.50, below Entry 3 at $96)
+- ✅ All entries stay alive (shared SL prevents premature stop-outs)
+- ✅ Entry 3 gets the best R:R automatically (same TPs, better entry)
+- ✅ Average entry price improves overall position profitability
 
 ---
 
