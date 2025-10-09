@@ -779,6 +779,363 @@ BINANCE_4H_KLINES_DELAY = 7.0  # Dedicated delay for 4H 200-candle fetches
 
 ---
 
+### Admin Page UI Updates (api/templates/admin.html)
+
+The admin page requires several UI updates to properly display and communicate the 200 4H candle institutional upgrade:
+
+#### **1. SMC Configuration Info Modal (Line 1898)**
+
+**Current Text:**
+```javascript
+showInfo('SMC Institutional-Style Multi-Timeframe Analysis:\n\n• Daily (1d): Macro trend & liquidity targets (HTF bias)\n• H4 + H1: Intermediate structure (Order Blocks, FVGs, BOS/CHoCH)\n• 15m: Precise execution signals (must align with HTF)\n\n7-Phase Analysis:\n1. Data Acquisition (15m/1h/4h/1d)\n...');
+```
+
+**Updated Text (Reflects 200 4H Candles):**
+```javascript
+showInfo('SMC Institutional-Style Multi-Timeframe Analysis:\n\n• Daily (1d): 200 candles (~6.5 months) - Macro trend & liquidity targets (HTF bias)\n• H4: 200 candles (~33 days) - Institutional intermediate structure (Order Blocks, FVGs, BOS/CHoCH)\n• H1: 300 candles (~12.5 days) - Structure confirmation\n• 15m: 400 candles (~4 days) - Precise execution signals (must align with HTF)\n\n7-Phase Institutional Analysis:\n1. Data Acquisition (15m: 400, 1h: 300, 4h: 200, 1d: 200 candles)\n2. Market Structure Detection (all timeframes)\n3. HTF Bias Determination (Daily 200 + H4 200 candles)\n4. Intermediate Structure Analysis (H4 200 + H1 300 - OBs, FVGs)\n5. 15m Execution Signal Generation (400 candles)\n6. Enhanced Confidence Scoring (multi-timeframe alignment)\n7. ATR Risk Filter (0.35% min on 15m, 0.55% min on H1)\n\nInstitutional-Grade Data Windows:\n✅ All timeframes now provide institutional-level lookback\n✅ 200 4H candles capture multi-week institutional patterns\n✅ Enhanced OB/FVG detection from extended history\n✅ Superior liquidity analysis with 15-swing lookback\n\nThis diagnostic tool shows the complete step-by-step analysis process.');
+```
+
+**Changes:**
+- Added candle counts for each timeframe (Daily: 200, 4H: 200, 1H: 300, 15m: 400)
+- Updated data acquisition step to show exact candle counts
+- Emphasized "200 4H candles" for institutional intermediate structure
+- Added "Institutional-Grade Data Windows" section highlighting the upgrade
+- Updated ATR filter percentages to match current config
+
+---
+
+#### **2. Data Acquisition Step Display (Lines 623, 624)**
+
+**Current Display:**
+```html
+<div class="col-3">
+    <div class="text-center p-2 bg-white rounded">
+        <small class="text-muted d-block">4h (HTF)</small>
+        <strong id="step-1-h4-count">-</strong>
+    </div>
+</div>
+```
+
+**Enhanced Display (Add Visual Indicator for 200-Candle Target):**
+```html
+<div class="col-3">
+    <div class="text-center p-2 bg-white rounded">
+        <small class="text-muted d-block">4h (HTF)</small>
+        <strong id="step-1-h4-count">-</strong>
+        <div id="step-1-h4-progress" class="mt-1" style="display: none;">
+            <div class="progress" style="height: 4px;">
+                <div class="progress-bar bg-success" id="step-1-h4-progress-bar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted" style="font-size: 0.7rem;" id="step-1-h4-target">0/200</small>
+        </div>
+    </div>
+</div>
+```
+
+**JavaScript Enhancement (Add to processSMCAnalysisResult function):**
+```javascript
+// Line ~2138 - Update 4H candle count with progress indicator
+const h4Count = timeframes['4h']?.candles_count || 0;
+const h4Target = 200; // Institutional target
+
+document.getElementById('step-1-h4-count').textContent = h4Count;
+
+// Show progress indicator if data is still being collected
+if (h4Count < h4Target) {
+    const h4Progress = document.getElementById('step-1-h4-progress');
+    const h4ProgressBar = document.getElementById('step-1-h4-progress-bar');
+    const h4TargetText = document.getElementById('step-1-h4-target');
+    
+    h4Progress.style.display = 'block';
+    const percentage = (h4Count / h4Target) * 100;
+    h4ProgressBar.style.width = `${percentage}%`;
+    h4TargetText.textContent = `${h4Count}/${h4Target}`;
+    
+    // Warn if insufficient data
+    if (h4Count < 100) {
+        h4TargetText.classList.add('text-danger');
+        h4ProgressBar.classList.remove('bg-success');
+        h4ProgressBar.classList.add('bg-danger');
+    } else if (h4Count < 200) {
+        h4TargetText.classList.add('text-warning');
+        h4ProgressBar.classList.remove('bg-success');
+        h4ProgressBar.classList.add('bg-warning');
+    }
+} else {
+    // Hide progress if target reached
+    document.getElementById('step-1-h4-progress').style.display = 'none';
+}
+```
+
+**Reason:** Provides visual feedback on 4H data collection progress toward the 200-candle institutional target.
+
+---
+
+#### **3. Klines Debugging Section Enhancement**
+
+**Add 4H-Specific Monitoring Card:**
+
+**Location:** After line 492 (between "Expiring Soon" card and Symbol/Timeframe Analysis)
+
+```html
+<!-- 4H Institutional Data Status Card -->
+<div class="col-lg-3 col-md-6">
+    <div class="card h-100 border-0 bg-light">
+        <div class="card-body text-center">
+            <h6 class="card-title mb-3">
+                <i class="bi bi-graph-up text-info me-2"></i>4H Institutional
+            </h6>
+            <h4 id="h4-institutional-status" class="text-info">-</h4>
+            <small class="text-muted" id="h4-institutional-detail">Target: 200 candles</small>
+        </div>
+    </div>
+</div>
+```
+
+**JavaScript Update (in loadKlinesDebugData function):**
+```javascript
+// Calculate 4H institutional status
+const h4Symbols = klinesData.filter(k => k.timeframe === '4h');
+const h4Ready = h4Symbols.filter(k => k.candles_count >= 200).length;
+const h4Total = h4Symbols.length;
+
+const h4StatusElement = document.getElementById('h4-institutional-status');
+const h4DetailElement = document.getElementById('h4-institutional-detail');
+
+h4StatusElement.textContent = `${h4Ready}/${h4Total}`;
+h4DetailElement.textContent = `${h4Ready} symbols ready (200+ candles)`;
+
+// Color coding
+if (h4Ready === h4Total) {
+    h4StatusElement.className = 'text-success';
+} else if (h4Ready > h4Total / 2) {
+    h4StatusElement.className = 'text-warning';
+} else {
+    h4StatusElement.className = 'text-danger';
+}
+```
+
+**Reason:** Provides at-a-glance status of which symbols have sufficient 4H data for institutional analysis.
+
+---
+
+#### **4. System Status Enhancement**
+
+**Add to System Status Display (Line ~385):**
+
+**Current System Status:**
+- Database connection
+- Cache status
+- Data sync status
+
+**Add 4H Data Readiness Indicator:**
+
+```javascript
+// In loadDatabaseStats() function, add:
+const systemStatusHtml = `
+    <!-- Existing status items -->
+    <div class="mb-2">
+        <small class="text-muted">Database Connection:</small>
+        <span class="system-indicator healthy">
+            <i class="bi bi-check-circle-fill"></i>
+            Connected
+        </span>
+    </div>
+    
+    <!-- NEW: 4H Institutional Data Status -->
+    <div class="mb-2">
+        <small class="text-muted">4H Institutional Data:</small>
+        <span class="system-indicator ${h4DataClass}" id="h4-data-indicator">
+            <i class="bi ${h4DataIcon}"></i>
+            <span id="h4-data-status">Checking...</span>
+        </span>
+    </div>
+    
+    <!-- Rest of status items -->
+`;
+
+// Add API call to check 4H data status
+fetch('/api/admin/klines/4h-status')
+    .then(response => response.json())
+    .then(data => {
+        const indicator = document.getElementById('h4-data-indicator');
+        const statusText = document.getElementById('h4-data-status');
+        
+        if (data.ready_symbols === data.total_symbols) {
+            indicator.className = 'system-indicator healthy';
+            indicator.querySelector('i').className = 'bi bi-check-circle-fill';
+            statusText.textContent = `All symbols ready (200+ candles)`;
+        } else if (data.ready_symbols > 0) {
+            indicator.className = 'system-indicator warning';
+            indicator.querySelector('i').className = 'bi bi-exclamation-triangle-fill';
+            statusText.textContent = `${data.ready_symbols}/${data.total_symbols} ready`;
+        } else {
+            indicator.className = 'system-indicator error';
+            indicator.querySelector('i').className = 'bi bi-x-circle-fill';
+            statusText.textContent = `Collecting data...`;
+        }
+    });
+```
+
+**Backend API Endpoint (Add to api/app.py):**
+```python
+@app.route('/api/admin/klines/4h-status')
+@admin_required
+def get_4h_data_status():
+    """Get 4H institutional data readiness status"""
+    try:
+        # Query 4H candles for all symbols
+        symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'SOLUSDT', 'ADAUSDT']
+        ready_count = 0
+        
+        for symbol in symbols:
+            candles = KlinesCache.query.filter_by(
+                symbol=symbol,
+                timeframe='4h'
+            ).count()
+            
+            if candles >= 200:
+                ready_count += 1
+        
+        return jsonify({
+            'ready_symbols': ready_count,
+            'total_symbols': len(symbols),
+            'target_candles': 200,
+            'status': 'ready' if ready_count == len(symbols) else 'collecting'
+        })
+    except Exception as e:
+        logging.error(f"Error getting 4H status: {e}")
+        return jsonify({'error': str(e)}), 500
+```
+
+**Reason:** Provides real-time visibility into 4H institutional data collection progress across all symbols.
+
+---
+
+#### **5. Klines Symbol Stats Enhancement**
+
+**Update Symbol/Timeframe Analysis Table (Line ~500):**
+
+**Add 4H Target Column:**
+
+```javascript
+// In loadKlinesDebugData() function, update table rendering:
+const symbolStats = {};
+
+klinesData.forEach(kline => {
+    if (!symbolStats[kline.symbol]) {
+        symbolStats[kline.symbol] = {};
+    }
+    symbolStats[kline.symbol][kline.timeframe] = kline.candles_count;
+});
+
+let html = `
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Symbol</th>
+                <th class="text-center">15m</th>
+                <th class="text-center">1h</th>
+                <th class="text-center">4h</th>
+                <th class="text-center">1d</th>
+                <th class="text-center">4H Status</th>
+            </tr>
+        </thead>
+        <tbody>
+`;
+
+Object.entries(symbolStats).forEach(([symbol, timeframes]) => {
+    const h4Count = timeframes['4h'] || 0;
+    const h4Target = 200;
+    const h4Ready = h4Count >= h4Target;
+    
+    // Determine 4H status badge
+    let h4Badge = '';
+    if (h4Ready) {
+        h4Badge = '<span class="badge bg-success">✓ Ready</span>';
+    } else if (h4Count >= 100) {
+        h4Badge = `<span class="badge bg-warning">${h4Count}/200</span>`;
+    } else {
+        h4Badge = `<span class="badge bg-danger">${h4Count}/200</span>`;
+    }
+    
+    html += `
+        <tr>
+            <td><strong>${symbol}</strong></td>
+            <td class="text-center">${timeframes['15m'] || 0}</td>
+            <td class="text-center">${timeframes['1h'] || 0}</td>
+            <td class="text-center ${h4Ready ? 'text-success' : 'text-warning'}">
+                <strong>${h4Count}</strong>
+            </td>
+            <td class="text-center">${timeframes['1d'] || 0}</td>
+            <td class="text-center">${h4Badge}</td>
+        </tr>
+    `;
+});
+
+html += `
+        </tbody>
+    </table>
+    
+    <!-- 4H Institutional Target Legend -->
+    <div class="mt-3 p-2 bg-white rounded">
+        <small class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>4H Institutional Target:</strong> 200 candles (~33 days) for institutional-grade analysis. 
+            <span class="badge bg-success">✓ Ready</span> = 200+ candles, 
+            <span class="badge bg-warning">Collecting</span> = 100-199 candles, 
+            <span class="badge bg-danger">Insufficient</span> = <100 candles
+        </small>
+    </div>
+`;
+
+document.getElementById('klines-symbol-stats').innerHTML = html;
+```
+
+**Reason:** Clearly shows which symbols have sufficient 4H data for institutional analysis, with visual status indicators.
+
+---
+
+### Implementation Summary: Admin Page Updates
+
+**Priority Order:**
+
+1. **High Priority - Immediate User Visibility:**
+   - Update SMC Config info modal (Line 1898) ✅
+   - Add 4H progress indicator to Step 1 data acquisition ✅
+   - Add 4H status badge to symbol stats table ✅
+
+2. **Medium Priority - Enhanced Monitoring:**
+   - Add 4H Institutional Data status card to Klines Debugging ✅
+   - Add 4H data readiness to System Status ✅
+   - Create backend API endpoint for 4H status ✅
+
+3. **Low Priority - Polish & UX:**
+   - Add 4H target legend to tables ✅
+   - Color-code 4H candle counts based on target ✅
+
+**Testing Checklist:**
+
+- [ ] Verify SMC config modal displays correct 4H candle count (200)
+- [ ] Confirm Step 1 shows 4H progress bar when < 200 candles
+- [ ] Check 4H status badge appears in symbol stats table
+- [ ] Validate 4H institutional card shows correct ready count
+- [ ] Test system status indicator updates based on 4H data availability
+- [ ] Ensure API endpoint returns accurate 4H readiness data
+- [ ] Verify color coding: Green (200+), Yellow (100-199), Red (<100)
+
+**User Communication:**
+
+When 4H data is insufficient (<200 candles), the admin page should display:
+- ⚠️ **Warning badges** on affected symbols
+- **Progress bars** showing collection status
+- **ETA messages** estimating when 200 candles will be available
+- **Institutional analysis disabled** messages until 200 candles are collected
+
+This provides transparency during the data collection phase of the upgrade.
+
+---
+
 ## Resolved Issues & Implementation Details
 
 ### CRITICAL ISSUES - ✅ RESOLVED
