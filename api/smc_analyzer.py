@@ -784,8 +784,14 @@ class SMCAnalyzer:
         """Identify liquidity pools - areas where stops are likely clustered with timeframe-aware lookback"""
         liquidity_pools = []
 
-        # Determine lookback based on timeframe - more swings for daily with 200-candle context
-        lookback = SMCConfig.RECENT_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT
+        # Determine lookback based on timeframe - institutional-grade lookback for 1d and 4h (200-candle context)
+        lookback_map = {
+            "1d": SMCConfig.RECENT_SWING_LOOKBACK_1D,  # 20 swings for daily (200-candle context)
+            "4h": SMCConfig.RECENT_SWING_LOOKBACK_4H,  # 15 swings for 4H (200-candle context)
+            "1h": SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT,  # 5 swings for 1H
+            "15m": SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT  # 5 swings for 15m
+        }
+        lookback = lookback_map.get(timeframe, SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT)
 
         # Find recent swing highs and lows as potential liquidity areas with timeframe parameter
         swing_highs = self._find_swing_highs(candlesticks, timeframe=timeframe)
@@ -1532,6 +1538,21 @@ class SMCAnalyzer:
                     "confidence": 0.0, 
                     "liquidity_targets": [], 
                     "reason": f"Insufficient daily data ({len(d1_data)}/{SMCConfig.TIMEFRAME_1D_LIMIT})",
+                    "d1_structure": "unknown",
+                    "h4_structure": "unknown",
+                    "bullish_signals": 0,
+                    "bearish_signals": 0
+                }
+            
+            # Validate 4H data has sufficient candles for institutional analysis (200-candle requirement)
+            if len(h4_data) < SMCConfig.TIMEFRAME_4H_LIMIT:
+                logging.warning(f"Insufficient 4H data for institutional analysis: {len(h4_data)} / {SMCConfig.TIMEFRAME_4H_LIMIT} required - returning neutral bias")
+                # Return neutral/low-confidence bias when 4H data is insufficient
+                return {
+                    "bias": "neutral", 
+                    "confidence": 0.2,  # Low confidence due to insufficient 4H data
+                    "liquidity_targets": [], 
+                    "reason": f"Insufficient 4H data ({len(h4_data)}/{SMCConfig.TIMEFRAME_4H_LIMIT}) for institutional analysis",
                     "d1_structure": "unknown",
                     "h4_structure": "unknown",
                     "bullish_signals": 0,

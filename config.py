@@ -330,8 +330,8 @@ class CircuitBreakerConfig:
     LAST_STATE_CHANGES_DISPLAY = 5  # Number of recent state changes to show in stats
 
     # API-Specific Circuit Breaker Settings
-    BINANCE_FAILURE_THRESHOLD = 10  # Much less sensitive - allow more failures before opening (increased for extended 1D fetches)
-    BINANCE_RECOVERY_TIMEOUT = 180  # Longer recovery time to avoid hitting limits again (3 min for extended data)
+    BINANCE_FAILURE_THRESHOLD = 15  # Much less sensitive - allow more failures before opening (increased for extended 4H/1D fetches)
+    BINANCE_RECOVERY_TIMEOUT = 240  # Longer recovery time to avoid hitting limits again (4 min for extended data)
 
     TOOBIT_FAILURE_THRESHOLD = 3  # More sensitive for exchange operations
     TOOBIT_RECOVERY_TIMEOUT = 60  # Longer recovery for exchange APIs
@@ -362,25 +362,26 @@ class SMCConfig:
     DEFAULT_LOOKBACK_PERIOD = 5  # Default lookback period for swing highs/lows
     SWING_LOOKBACK_15M = 3   # 15m: tight swings for precise execution
     SWING_LOOKBACK_1H = 5    # 1h: standard swing detection
-    SWING_LOOKBACK_4H = 7    # 4h: broader swings for intermediate structure
+    SWING_LOOKBACK_4H = 10   # 4h: broader swings for institutional intermediate structure (200-candle context)
     SWING_LOOKBACK_1D = 15   # 1d: institutional swings (200-candle context requires wider lookback)
     CONTINUATION_LOOKAHEAD = 4  # Candles to look ahead for continuation strength
 
     # Fair Value Gap (FVG) Detection
     MIN_CANDLESTICKS_FOR_FVG = 3  # Minimum candles needed for FVG detection
     FVG_ATR_MULTIPLIER = 0.2  # Minimum FVG size as percentage of ATR (20% of ATR)
-    FVG_MAX_AGE_CANDLES = 150  # Maximum age for FVG validity (increased for 200-candle daily lookback - institutional zones)
+    FVG_MAX_AGE_CANDLES = 200  # Maximum age for FVG validity (institutional zones from 200-candle lookback)
 
     # Order Block Enhancement
     OB_IMPULSIVE_MOVE_THRESHOLD = 1.5  # Minimum displacement ratio for impulsive exit
     OB_VOLUME_MULTIPLIER = 1.2  # Minimum volume multiplier vs average
     OB_MAX_RETEST_COUNT = 2  # Maximum retests before OB becomes invalid
     OB_DISPLACEMENT_CANDLES = 3  # Candles to check for impulsive displacement
-    OB_MAX_AGE_CANDLES = 150  # Maximum age for OB validity (same as FVG - institutional zones from 200-candle daily lookback)
+    OB_MAX_AGE_CANDLES = 200  # Maximum age for OB validity (institutional zones from 200-candle lookback)
 
     # Liquidity Pool Analysis
     RECENT_SWING_LOOKBACK = 5  # Number of recent swing points to analyze for liquidity (default)
     RECENT_SWING_LOOKBACK_1D = 20  # Daily: look back 20 swings with 200 candles to capture institutional liquidity
+    RECENT_SWING_LOOKBACK_4H = 15  # 4H: look back 15 swings with 200 candles for institutional intermediate liquidity
     RECENT_SWING_LOOKBACK_DEFAULT = 5  # Other timeframes: standard lookback
     LIQUIDITY_SWEEP_WICK_RATIO = (
         0.3  # Minimum wick size vs candle body for sweep detection
@@ -410,7 +411,7 @@ class SMCConfig:
     # Timeframe Data Limits for Enhanced SMC Analysis - EXTENDED for institutional-grade structure detection
     TIMEFRAME_15M_LIMIT = 400  # 400 candles = ~4 days of 15m data for precise execution
     TIMEFRAME_1H_LIMIT = 300  # 300 candles = ~12.5 days of hourly data for better structure analysis
-    TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data for intermediate structure
+    TIMEFRAME_4H_LIMIT = 200  # 200 candles = ~33 days of 4h data for institutional intermediate structure
     TIMEFRAME_1D_LIMIT = 200   # 200 candles = ~6.5 months of daily data for institutional OB/FVG/structure detection
     
     # Signal Cache Configuration (used by SMCSignalCache model)
@@ -430,14 +431,14 @@ class RollingWindowConfig:
     # Target number of candles to keep per timeframe (not hard limits)
     TARGET_CANDLES_15M = 400  # Target: 400 15-minute candles (~4 days)
     TARGET_CANDLES_1H = 300   # Target: 300 hourly candles (~12.5 days)
-    TARGET_CANDLES_4H = 100   # Target: 100 4-hour candles (~16 days)
+    TARGET_CANDLES_4H = 200   # Target: 200 4-hour candles (~33 days for institutional structure)
     TARGET_CANDLES_1D = 200    # Target: 200 daily candles (~6.5 months for institutional structure)
     
     # Conservative cleanup buffers - only start cleanup when we have MUCH more data
     # This ensures recent candles are never deleted prematurely
     CLEANUP_BUFFER_15M = 100  # Only cleanup when we have 500+ 15m candles (100 buffer)
     CLEANUP_BUFFER_1H = 150   # Only cleanup when we have 450+ hourly candles (150 buffer)
-    CLEANUP_BUFFER_4H = 50    # Only cleanup when we have 150+ 4h candles (50 buffer)  
+    CLEANUP_BUFFER_4H = 100   # Only cleanup when we have 300+ 4h candles (100 buffer for institutional patterns)
     CLEANUP_BUFFER_1D = 100    # Only cleanup when we have 300+ daily candles (100 buffer for institutional patterns)
     
     # Batch cleanup settings - smaller batches to be gentler
