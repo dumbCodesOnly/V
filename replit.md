@@ -1,90 +1,13 @@
 # Multi-Exchange Trading Bot
 
-## Recent Changes
-
-### October 6, 2025 - Critical SMC Fix: Extended Daily Candles for Institutional Structure Detection
-- **🔧 ISSUE IDENTIFIED**: Only fetching 50 1D candles was insufficient for institutional OB/FVG/structure detection
-  - Resulted in false "HTF consolidation" signals even during strong rallies (BNB +70% in 10 days with Bullish BOS)
-  - Missed critical institutional order blocks and fair value gaps from macro timeframe
-  - Insufficient data for proper market structure analysis on daily timeframe
-  
-- **✅ SOLUTION IMPLEMENTED**:
-  - **Extended Daily Candles**: Increased from 50 to 200 candles (~6.5 months of daily data)
-  - **Rate Limiting Protection**: 
-    - Binance klines delay: 3.0s → 5.0s (12 requests/minute for extended fetches)
-    - API retry delay: 5.0s → 8.0s with 3.0x backoff multiplier
-    - Circuit breaker: 8 → 10 failure threshold, 120s → 180s recovery timeout
-  - **Enhanced Institutional Zone Detection**:
-    - FVG max age: 50 → 150 candles (captures older institutional zones)
-    - FVG return limit: 10 → 20 zones (more institutional levels)
-    - Order Block return limit: 5 → 15 blocks (comprehensive institutional footprint)
-  - **Rolling Window Updated**: 
-    - Daily target: 50 → 200 candles
-    - Daily cleanup buffer: 25 → 100 candles (300+ before cleanup)
-  
-- **RESULT**: Proper detection of institutional structure, OBs, and FVGs across 6+ months of daily data
-- **IMPACT**: Eliminates false consolidation signals during strong trending markets and rallies
-
-### October 6, 2025 - ATR Filter Further Reduced for Rally Conditions
-- **📊 ATR Filter Thresholds Significantly Lowered** (~40% reduction for rally conditions):
-  - Default: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
-  - BTCUSDT: 0.45% → 0.25% (15m), 0.75% → 0.45% (H1)
-  - ETHUSDT: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
-  - SOLUSDT: 0.9% → 0.55% (15m), 1.35% → 0.85% (H1)
-  - BNBUSDT: 0.6% → 0.35% (15m), 0.9% → 0.55% (H1)
-  - XRPUSDT: 1.1% → 0.7% (15m), 1.5% → 1.0% (H1)
-  - ADAUSDT: 0.75% → 0.45% (15m), 1.1% → 0.7% (H1)
-- **Result**: Much less restrictive filter allows signals during strong rallies and trending markets
-
-### October 6, 2025 - ATR Filter Optimization & Code Review
-- **📊 ATR Filter Thresholds Lowered** (~25% reduction for all pairs):
-  - Default: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
-  - BTCUSDT: 0.6% → 0.45% (15m), 1.0% → 0.75% (H1)
-  - ETHUSDT: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
-  - SOLUSDT: 1.2% → 0.9% (15m), 1.8% → 1.35% (H1)
-  - BNBUSDT: 0.8% → 0.6% (15m), 1.2% → 0.9% (H1)
-  - XRPUSDT: 1.5% → 1.1% (15m), 2.0% → 1.5% (H1)
-  - ADAUSDT: 1.0% → 0.75% (15m), 1.5% → 1.1% (H1)
-- **Result**: Less strict signal generation, more signals will pass ATR filter
-- **🔍 SMC Code Review & Fixes Completed**:
-  - Identified and fixed 3 issues (Issues #22, #23, #24)
-  - ✅ Issue #22: Fixed alignment score conflict logic - now exits early without bonuses
-  - ✅ Issue #23: Implemented FVG alignment scoring based on market structure
-  - ✅ Issue #24: Updated ATR filter defaults from 0.8/1.2 to 0.6/0.9
-  - All 21 total issues now resolved (100% fixed)
-
-### October 5, 2025 - SMC Bug Fixes & Code Cleanup
-- **🐛 Critical Bug Fixes**:
-  - Fixed swing point KeyError: Changed dict key access from "price" to "low"/"high" in `_get_execution_signal_15m()`
-  - Fixed stop loss validation: Added pre-validation to ensure SL doesn't exceed entry price in edge cases (both long/short)
-  - Fixed order block entry logic: Changed to use current_price when already inside OB zone for immediate entry
-  - Fixed liquidity pool inconsistency: Changed hardcoded -5 to use `SMCConfig.RECENT_SWING_LOOKBACK`
-- **🧹 Code Cleanup**:
-  - Removed 3 unused duplicate methods: `_calculate_long_prices()`, `_calculate_short_prices()`, `generate_enhanced_signal()`
-  - Standardized ATR floor comments to "0.1% minimum ATR" across all instances
-  - Moved volatility regime adjustment BEFORE ATR filter for consistent parameter application
-- **✅ Verified FVG gap logic as correct** - no changes needed
-- **📚 Updated Documentation**: Added comprehensive "Known Issues & Fixes" section to SMC_ANALYZER_DOCUMENTATION.md
-
-### October 5, 2025 - SMC Documentation Consolidated & Logic Fixes
-- **📚 Consolidated Documentation**: All SMC docs merged into `/SMC_ANALYZER_DOCUMENTATION.md`
-  - Archived 6 old documents to `docs/archive/` for historical reference
-  - Single source of truth for SMC features, configuration, and usage
-- **Fixed Type Safety**: Added `@overload` decorators to `generate_trade_signal()` method, reducing LSP errors from 117 to 49
-- **Fixed Counter-Trend Logic**: Removed duplicate RSI/sweep validation to eliminate conflicting rejection reasons
-- **Fixed Confidence Scoring**: Eliminated triple-counting of bonuses - now Phase 3 is single source of truth
-- **Updated RSI Thresholds**: Changed from 35/65 to 30/70 to align with SMC standards
-- **Optimized ATR Filter**: Moved volatility check BEFORE parameter tuning to save computation
-- **Improved 15m Data Handling**: Changed missing data default from 0.5 (neutral) to 0.3 (borderline) for better risk assessment
-
 ## Overview
-This project is a Telegram-based trading bot designed for USDT-M futures trading across Toobit and LBank exchanges. It allows users to manage multiple trading configurations conversationally through Telegram, offering advanced risk management, portfolio tracking, and real-time execution monitoring. The goal is to provide a powerful, user-friendly tool for active traders, leveraging Telegram for accessibility, with modular exchange support and a comprehensive suite of trading tools. The bot aims to be a robust solution for managing and automating trading strategies across multiple platforms.
+This project is a Telegram-based trading bot for USDT-M futures across Toobit and LBank exchanges. It enables users to manage multiple trading configurations conversationally via Telegram, providing advanced risk management, portfolio tracking, and real-time execution monitoring. The bot aims to be a powerful, user-friendly, and robust solution for automating and managing trading strategies across multiple platforms.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
-The application uses Flask for the Telegram Mini-App interface and webhook integration. A `MultiTradeManager` orchestrates concurrent `TradingBot` instances, ensuring user isolation for multiple trading configurations.
+The application uses Flask for the Telegram Mini-App interface and webhook integration. A `MultiTradeManager` orchestrates concurrent `TradingBot` instances for user isolation.
 
 **UI/UX Decisions:**
 The UI/UX features a dark blue theme with gradient backgrounds, high-contrast white text, and vibrant blue accents, optimized for mobile with responsive design. It uses professional trading platform symbols and typography from Google Fonts (Inter for text, JetBrains Mono for numerical data), with "Trading Expert" as the application title.
@@ -96,30 +19,24 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
 - Accurate margin, position size, and leverage calculations for futures trading.
 - Enhanced TP/SL display showing actual prices and profit/loss.
 - Real-time market data with multiple APIs and intelligent caching, prioritizing Toobit.
-- Detailed trade display before execution and for active positions, with real-time ROE and color-coded P&L.
 - Full Edit/Execute/Delete functionality in the web app with smart UI controls.
 - Collapsible/expandable functionality for positions and trading tabs.
 - Multi-symbol trading support with concurrent processing.
-- Correct display of "Position Size" alongside "Margin" and tracking of the last 5 closed positions.
 - API Keys management via a hamburger menu.
 - Accurate account balance calculation including realized P&L.
-- Comprehensive micro-interactions for trade management buttons.
-- PostgreSQL database persistence for `TradeConfiguration`, with Neon optimizations.
-- All timestamps (trade configurations, history) are in GMT+3:30 (Iran Standard Time).
+- PostgreSQL database persistence for `TradeConfiguration` with Neon optimizations.
+- All timestamps are in GMT+3:30 (Iran Standard Time).
 - Portfolio reset functionality.
 - Comprehensive Toobit and LBank exchange integration with dual-environment support.
-- Intelligent caching system to prevent excessive database queries.
 - Enhanced realized P&L tracking for partial take profit closures.
 - Fixed and enhanced stop loss trigger logic, including break-even stop loss.
 - Seamless support for Replit and Vercel/Neon deployments with shared codebase.
 - Automatic database migration system for schema updates.
-- Enhanced import system with fallback mechanisms.
 - Optimized Neon PostgreSQL connection pooling.
-- Corrected take profit progression logic, where triggered TP levels are removed.
-- Accurate partial take profit allocation calculations.
+- Corrected take profit progression logic and partial take profit allocation calculations.
 - Real Toobit exchange integration for order execution, position management, and risk management.
 - Testnet/mainnet toggle with real-time exchange balance display.
-- Paper trading mode for development testing, seamlessly integrated.
+- Paper trading mode for development testing.
 - Enhanced error reporting with specific messages.
 - Universal disabling of Toobit Testnet mode, forcing mainnet.
 - UptimeRobot integration for continuous monitoring.
@@ -129,20 +46,18 @@ The UI/UX features a dark blue theme with gradient backgrounds, high-contrast wh
 - Enhanced caching system with smart volatility-based TTL and user data caching, including a background cleanup worker.
 - Circuit breaker pattern for all external API calls.
 - Modular exchange client architecture with factory pattern for seamless multi-exchange operation and a unified API interface.
-- **Multi-Timeframe SMC Analysis** (All 7 Phases Complete - October 2025):
-  - **📚 Complete Documentation: See `/SMC_ANALYZER_DOCUMENTATION.md`**
-  - Institutional-grade top-down analysis across 4 timeframes (200x 1d → 4h/1h → 15m execution)
-  - HTF bias determination from Daily and H4 structure
-  - Intermediate structure analysis on H4/H1 (Order Blocks, FVGs, BOS/CHoCH)
-  - 15m execution signals with HTF alignment validation
-  - Enhanced confidence scoring with multi-timeframe alignment bonuses
-  - Scaling entry strategy: 50% market + 25% + 25% limit orders at OB/FVG zones
-  - Refined stop-loss using 15m swing levels + ATR buffers
-  - R:R-based take profits (1R, 2R, liquidity targets) with 40/30/30 allocation
-  - ATR risk filter rejecting low-volatility choppy conditions (lowered Oct 6: 0.35% min on 15m, 0.55% min on H1)
-  - Optional dynamic position sizing based on ATR volatility
-  - SMC signals correctly displayed and cached in the database with validation
-  - Recent fixes (Oct 5, 2025): Type safety, confidence scoring, RSI thresholds, ATR optimization
+- **Multi-Timeframe SMC Analysis**:
+  - Institutional-grade top-down analysis across 4 timeframes (200x 1d → 4h/1h → 15m execution).
+  - HTF bias determination from Daily and H4 structure.
+  - Intermediate structure analysis on H4/H1 (Order Blocks, FVGs, BOS/CHoCH).
+  - 15m execution signals with HTF alignment validation.
+  - Enhanced confidence scoring with multi-timeframe alignment bonuses.
+  - Scaling entry strategy: 50% market + 25% + 25% limit orders at OB/FVG zones.
+  - Refined stop-loss using 15m swing levels + ATR buffers.
+  - R:R-based take profits (1R, 2R, liquidity targets) with 40/30/30 allocation.
+  - ATR risk filter rejecting low-volatility choppy conditions (0.35% min on 15m, 0.55% min on H1).
+  - Optional dynamic position sizing based on ATR volatility.
+  - SMC signals correctly displayed and cached in the database with validation.
 
 **System Design Choices:**
 The system features a modular design with `TradeConfig` objects encapsulating parameters and `TradingBot` instances handling execution and state. Position management supports partial closing, and risk management includes breakeven stop loss and trailing stop. `PortfolioTracker` offers comprehensive analytics, including multi-user support and detailed trade history. Data management uses in-memory, dictionary-based structures for user data isolation, trade configuration persistence, and session management. API credentials are encrypted.
