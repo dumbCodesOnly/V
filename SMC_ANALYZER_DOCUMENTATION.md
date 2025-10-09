@@ -1136,6 +1136,333 @@ This provides transparency during the data collection phase of the upgrade.
 
 ---
 
+## 🔧 Critical Logic & Calculation Changes
+
+Beyond configuration updates, **4 logic changes** are required to properly handle the 200 4H candle upgrade:
+
+### **1. Add Minimum 4H Candle Validation** ⚠️ **CRITICAL - MUST IMPLEMENT**
+
+**File:** `api/smc_analyzer.py`  
+**Location:** Lines 1930-1937 in `analyze_symbol()` method
+
+**Current Code (INCORRECT):**
+```python
+if not h1_data or not h4_data:
+    rejection_reasons.append(f"Insufficient timeframe data...")
+    return None
+```
+
+**Problem:** Only checks if data EXISTS, not if we have ENOUGH candles for institutional analysis.
+
+**Required Fix:**
+```python
+# Add minimum candle count validation for institutional analysis
+MIN_H4_CANDLES_INSTITUTIONAL = 200  # Institutional requirement for deep structure
+MIN_H1_CANDLES = 100  # Minimum for structure analysis
+
+# Validate H1 data
+if not h1_data or len(h1_data) < MIN_H1_CANDLES:
+    rejection_reasons.append(
+        f"Insufficient H1 data: {len(h1_data) if h1_data else 0}/{MIN_H1_CANDLES} candles"
+    )
+    logging.warning(f"Skipping {symbol}: insufficient H1 data")
+    if return_diagnostics:
+        return None, {"rejection_reasons": rejection_reasons, "details": analysis_details}
+    return None
+
+# Validate 4H data for institutional analysis
+if not h4_data or len(h4_data) < MIN_H4_CANDLES_INSTITUTIONAL:
+    candle_count = len(h4_data) if h4_data else 0
+    missing = MIN_H4_CANDLES_INSTITUTIONAL - candle_count
+    rejection_reasons.append(
+        f"Insufficient 4H data for institutional analysis: {candle_count}/{MIN_H4_CANDLES_INSTITUTIONAL} candles (need {missing} more)"
+    )
+    logging.warning(
+        f"Institutional analysis blocked for {symbol}: {candle_count}/200 4H candles. "
+        f"Collecting ~{missing * 4} more hours of data..."
+    )
+    if return_diagnostics:
+        return None, {"rejection_reasons": rejection_reasons, "details": analysis_details}
+    return None
+```
+
+**Why This Fix Is Critical:**
+- Without this validation, the system will attempt institutional analysis with insufficient 4H data (e.g., only 50-150 candles)
+- This produces **degraded retail-quality signals** instead of institutional-grade analysis
+- Order blocks and FVGs detected with <200 candles miss longer-term institutional patterns
+- Liquidity pools with insufficient history generate false signals
+
+**Impact:** Prevents all low-quality signals during data collection phase.
+
+---
+
+### **2. HTF Bias Fallback Logic** 🟡 **HIGH PRIORITY**
+
+**File:** `api/smc_analyzer.py`  
+**Method:** `_get_htf_bias()` (or wherever HTF bias is calculated)
+
+**Add Institutional Data Validation:**
+```python
+def _get_htf_bias(self, symbol, d1_data, h4_data):
+    """
+    Get Higher Timeframe bias with institutional 4H validation.
+    
+    Returns:
+        dict: HTF bias information with confidence score
+    """
+    
+    # NEW: Validate institutional-grade 4H data
+    if len(h4_data) < 200:
+        logging.warning(
+            f"HTF bias degraded mode for {symbol}: only {len(h4_data)}/200 4H candles available. "
+            f"Using Daily-only bias until 4H data complete."
+        )
+        # Fallback to Daily-only bias when 4H data insufficient
+        return self._get_daily_only_bias(d1_data)
+    
+    # Continue with normal institutional H4 + Daily combined analysis
+    logging.debug(f"HTF bias using institutional mode: {len(h4_data)} 4H candles available")
+    
+    # Original HTF bias logic continues here...
+    bullish_count = 0
+    bearish_count = 0
+    
+    # Daily structure analysis
+    d1_structure = self.detect_market_structure(d1_data)
+    # ... rest of existing logic
+```
+
+**Add Daily-Only Fallback Method:**
+```python
+def _get_daily_only_bias(self, d1_data):
+    """
+    Fallback HTF bias using Daily timeframe only.
+    Used when 4H data is insufficient (<200 candles).
+    """
+    if len(d1_data) < 100:
+        return {
+            "bias": "neutral",
+            "confidence": 0.0,
+            "reasoning": "Insufficient Daily data for bias determination"
+        }
+    
+    d1_structure = self.detect_market_structure(d1_data)
+    
+    # Simplified Daily-only bias
+    if d1_structure in [MarketStructure.BULLISH_BOS, MarketStructure.BULLISH_CHoCH]:
+        return {
+            "bias": "bullish",
+            "confidence": 0.6,  # Lower confidence without 4H confirmation
+            "reasoning": f"Daily {d1_structure.value} (4H data pending)"
+        }
+    elif d1_structure in [MarketStructure.BEARISH_BOS, MarketStructure.BEARISH_CHoCH]:
+        return {
+            "bias": "bearish",
+            "confidence": 0.6,
+            "reasoning": f"Daily {d1_structure.value} (4H data pending)"
+        }
+    else:
+        return {
+            "bias": "neutral",
+            "confidence": 0.3,
+            "reasoning": "Daily consolidation (4H data pending)"
+        }
+```
+
+**Why This Fix Matters:**
+- Graceful degradation during 4H data collection phase
+- Prevents mixing retail-grade 4H analysis with institutional Daily analysis
+- Maintains signal quality by reducing confidence when 4H data incomplete
+- Clear user communication via reasoning field
+
+---
+
+### **3. Order Block & FVG Age Calculation** ✅ **ALREADY CORRECT - AUTO-ADJUSTING**
+
+**File:** `api/smc_analyzer.py`  
+**Lines:** 3019-3021 (FVG age factor), similar for Order Blocks
+
+**Current Code (CORRECT - No Change Needed):**
+```python
+# FVG age factor calculation
+age_factor = max(0.5, 1.0 - (fvg.age_candles / SMCConfig.FVG_MAX_AGE_CANDLES))
+fvg_weight = 0.2 * fvg.atr_size * age_factor
+```
+
+**How It Auto-Adjusts:**
+- When `FVG_MAX_AGE_CANDLES` changes from 150 → 200:
+  - **Before:** FVG aged 150 candles → `age_factor = max(0.5, 1.0 - 150/150) = 0.5` (minimum weight)
+  - **After:** FVG aged 150 candles → `age_factor = max(0.5, 1.0 - 150/200) = 0.75` (**higher weight!**)
+  - **After:** FVG aged 180 candles → `age_factor = max(0.5, 1.0 - 180/200) = 0.6` (still valid)
+
+- This means FVGs aged 150-200 candles (previously rejected) now get partial weight
+- Captures longer-term institutional FVGs that retail analysis missed
+
+**Order Block Age Works The Same Way:**
+```python
+# Order block age validation
+if ob.age_candles > SMCConfig.OB_MAX_AGE_CANDLES:
+    continue  # Reject too old
+```
+
+When `OB_MAX_AGE_CANDLES` changes 150 → 200, order blocks aged 150-200 become valid automatically.
+
+**Conclusion:** ✅ **No code change required** - the age calculations are already designed to scale with config changes.
+
+---
+
+### **4. Add 4H Data Collection Progress Tracking** 🟢 **RECOMMENDED FOR UX**
+
+**File:** `api/smc_analyzer.py`  
+**Location:** In `analyze_symbol()` method, before running institutional analysis
+
+**Add Progress Tracking:**
+```python
+# Track 4H data collection progress for user transparency
+h4_progress_pct = (len(h4_data) / 200) * 100
+
+if h4_progress_pct < 100:
+    logging.info(
+        f"{symbol} institutional 4H data collection: {h4_progress_pct:.1f}% complete "
+        f"({len(h4_data)}/200 candles, ~{(200 - len(h4_data)) * 4} hours remaining)"
+    )
+    
+    # Add to diagnostics for admin page display
+    if return_diagnostics:
+        analysis_details['h4_collection_progress'] = {
+            'candles_collected': len(h4_data),
+            'target_candles': 200,
+            'percentage_complete': round(h4_progress_pct, 1),
+            'institutional_ready': h4_progress_pct >= 100,
+            'estimated_hours_remaining': (200 - len(h4_data)) * 4
+        }
+else:
+    logging.info(f"{symbol} institutional 4H data: READY ({len(h4_data)} candles)")
+    if return_diagnostics:
+        analysis_details['h4_collection_progress'] = {
+            'institutional_ready': True,
+            'candles_collected': len(h4_data)
+        }
+```
+
+**Admin Page Integration:**
+```python
+# In admin diagnostic endpoint, return progress to frontend
+if 'h4_collection_progress' in analysis_details:
+    progress = analysis_details['h4_collection_progress']
+    if not progress['institutional_ready']:
+        # Display progress bar on admin page
+        step1['details']['h4_progress'] = {
+            'percentage': progress['percentage_complete'],
+            'candles': f"{progress['candles_collected']}/200",
+            'eta_hours': progress['estimated_hours_remaining']
+        }
+```
+
+**Why This Improves UX:**
+- Users see real-time progress: "BTCUSDT: 73.5% complete (147/200 candles, ~212 hours remaining)"
+- Reduces support requests: "Why aren't institutional signals generating?" → Progress bar shows data collecting
+- Clear expectations: Users know exactly when full institutional analysis will be available
+- Admin page displays collection status per symbol
+
+---
+
+## Implementation Checklist: Logic Changes
+
+**Priority Order:**
+
+### 🔴 **CRITICAL - Must Implement Before Production**
+- [ ] **Fix #1:** Add minimum 4H candle validation (200 candles) in `analyze_symbol()` (Line 1930)
+- [ ] Test rejection when `len(h4_data) < 200` returns proper error message
+- [ ] Verify no signals generated during 4H data collection phase
+
+### 🟡 **HIGH Priority - Required for Graceful Degradation**
+- [ ] **Fix #2:** Add HTF bias fallback logic in `_get_htf_bias()` method
+- [ ] Create `_get_daily_only_bias()` fallback method
+- [ ] Test HTF bias uses Daily-only when `len(h4_data) < 200`
+- [ ] Verify confidence score reduced when using fallback mode
+
+### ✅ **Already Correct - Verify Only**
+- [ ] **Fix #3:** Verify age calculations auto-adjust with new config values
+- [ ] Test FVGs aged 150-200 candles get proper weight
+- [ ] Test Order Blocks aged 150-200 candles are now valid
+
+### 🟢 **RECOMMENDED - UX Enhancement**
+- [ ] **Fix #4:** Add 4H progress tracking to `analyze_symbol()`
+- [ ] Return progress data in diagnostics dict
+- [ ] Display progress bars on admin page
+- [ ] Show ETA messages for data collection
+
+---
+
+## Testing Validation: Logic Changes
+
+**Test Case 1: Insufficient 4H Data (< 200 candles)**
+```python
+# Simulate partial 4H data
+h4_data = get_4h_candles("BTCUSDT", limit=150)  # Only 150 candles
+
+result = analyzer.analyze_symbol("BTCUSDT", return_diagnostics=True)
+
+# Expected: Signal rejected with clear reason
+assert result[0] is None
+assert "Insufficient 4H data" in result[1]['rejection_reasons'][0]
+assert "150/200 candles" in result[1]['rejection_reasons'][0]
+```
+
+**Test Case 2: HTF Bias Fallback**
+```python
+# Test HTF bias with insufficient 4H data
+htf_bias = analyzer._get_htf_bias("BTCUSDT", d1_data, h4_data_partial)
+
+# Expected: Fallback to Daily-only bias
+assert htf_bias['confidence'] <= 0.6  # Lower confidence
+assert "4H data pending" in htf_bias['reasoning']
+```
+
+**Test Case 3: Age Calculation Auto-Adjust**
+```python
+# Test FVG aged 175 candles (would be rejected with old 150 limit)
+fvg_175_candles_old = create_fvg(age=175)
+
+# With FVG_MAX_AGE_CANDLES = 200
+age_factor = max(0.5, 1.0 - (175 / 200))  # = 0.625
+
+# Expected: FVG is valid and weighted
+assert age_factor == 0.625
+assert fvg_175_candles_old.age_candles <= SMCConfig.FVG_MAX_AGE_CANDLES
+```
+
+**Test Case 4: Progress Tracking**
+```python
+# Test progress tracking
+result = analyzer.analyze_symbol("ETHUSDT", return_diagnostics=True)
+
+progress = result[1]['details']['h4_collection_progress']
+
+# Expected: Progress metadata returned
+assert 'percentage_complete' in progress
+assert 'estimated_hours_remaining' in progress
+assert progress['target_candles'] == 200
+```
+
+---
+
+## Summary: Configuration vs Logic Changes
+
+| Change Type | Files Affected | Auto-Adjusting? | Requires Code? |
+|-------------|----------------|-----------------|----------------|
+| **Config Values** | `config.py` | ✅ Yes (most) | ❌ No |
+| **4H Validation** | `smc_analyzer.py` | ❌ No | ✅ **YES - CRITICAL** |
+| **HTF Bias Fallback** | `smc_analyzer.py` | ❌ No | ✅ **YES - HIGH** |
+| **Age Calculations** | `smc_analyzer.py` | ✅ Yes | ❌ No |
+| **Progress Tracking** | `smc_analyzer.py` | ❌ No | ✅ YES - Recommended |
+
+**Key Takeaway:**  
+Configuration changes handle most of the upgrade, but you **MUST implement Fix #1 (minimum 4H validation)** or the system will generate degraded signals with insufficient data. Fix #2 (HTF fallback) is also highly recommended for graceful degradation during data collection.
+
+---
+
 ## Resolved Issues & Implementation Details
 
 ### CRITICAL ISSUES - ✅ RESOLVED
