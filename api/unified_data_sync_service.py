@@ -21,13 +21,13 @@ import requests
 
 # Import configuration constants
 try:
-    from config import CacheConfig, RollingWindowConfig, SMCConfig, TimeConfig, TradingConfig
+    from config import CacheConfig, CircuitBreakerConfig, RollingWindowConfig, SMCConfig, TimeConfig, TradingConfig
 except ImportError:
     import os
     import sys
 
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from config import CacheConfig, RollingWindowConfig, SMCConfig, TimeConfig, TradingConfig
+    from config import CacheConfig, CircuitBreakerConfig, RollingWindowConfig, SMCConfig, TimeConfig, TradingConfig
 
 from .circuit_breaker import circuit_manager, with_circuit_breaker
 
@@ -498,10 +498,11 @@ class UnifiedDataSyncService:
         
         logging.info("Unified data sync service initialized")
 
-    @with_circuit_breaker("binance_klines_bulk_api", failure_threshold=5, recovery_timeout=60, success_threshold=2)
+    @with_circuit_breaker("binance_klines_bulk_api", failure_threshold=CircuitBreakerConfig.BINANCE_FAILURE_THRESHOLD, recovery_timeout=CircuitBreakerConfig.BINANCE_RECOVERY_TIMEOUT, success_threshold=2)
     def _fetch_binance_klines(self, symbol: str, interval: str, limit: int = 1000) -> List[Dict]:
         """
         Fetch klines data from Binance API with circuit breaker protection
+        Updated for extended 4H candle fetches (200 candles) - uses config values: 15 failures, 240s timeout
         
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT')
@@ -553,14 +554,15 @@ class UnifiedDataSyncService:
             
         return klines
 
-    @with_circuit_breaker("binance_klines_gap_fill_api", failure_threshold=12, recovery_timeout=180, success_threshold=3)
+    @with_circuit_breaker("binance_klines_gap_fill_api", failure_threshold=CircuitBreakerConfig.BINANCE_FAILURE_THRESHOLD, recovery_timeout=CircuitBreakerConfig.BINANCE_RECOVERY_TIMEOUT, success_threshold=3)
     def _fetch_binance_klines_gap_fill(self, symbol: str, interval: str, limit: int = 10) -> List[Dict]:
         """
         Fetch klines data from Binance API specifically for gap filling with more conservative circuit breaker
+        Updated for extended 4H candle fetches (200 candles) - uses config values: 15 failures, 240s timeout
         
         This method uses separate circuit breaker settings optimized for incremental updates:
-        - Higher failure threshold (12 vs 5) to be less sensitive to individual failures
-        - Longer recovery timeout (180s vs 60s) to avoid rapid retry cycles
+        - Higher failure threshold (15) to handle extended 4H data fetches
+        - Longer recovery timeout (240s / 4 min) to avoid rapid retry cycles  
         - Smaller limit (max 10) for targeted gap fills
         
         Args:
