@@ -437,6 +437,348 @@ Average R:R: Superior to Entry 1 alone
 
 ---
 
+## 🎯 Institutional-Grade 4H Analysis Upgrade: 200 Candle Requirement
+
+### Overview
+To achieve institutional-grade analysis quality, the SMC analyzer requires **at least 200 4H candles** (~33 days of market data) instead of the current 100 candles (~16 days). This extended lookback period enables:
+
+1. **Enhanced Market Structure Detection** - Capture longer-term institutional patterns
+2. **Better Order Block & FVG Identification** - Identify key institutional zones from deeper history
+3. **Improved Liquidity Analysis** - Track liquidity pools across extended timeframes
+4. **More Accurate Swing Detection** - Recognize significant swing points with institutional context
+
+### Required Configuration Changes
+
+#### 1. **SMC Configuration (config.py - SMCConfig class)**
+
+**Current Settings:**
+```python
+# Line 413 - Timeframe Data Limits
+TIMEFRAME_4H_LIMIT = 100  # 100 candles = ~16 days of 4h data
+```
+
+**Required Changes:**
+```python
+# Line 413 - CHANGE: Increase 4H limit to 200 for institutional analysis
+TIMEFRAME_4H_LIMIT = 200  # 200 candles = ~33 days of 4h data for institutional structure
+
+# Line 365 - CHANGE: Increase 4H swing lookback for 200-candle context
+SWING_LOOKBACK_4H = 10   # Increase from 7 to 10 for broader institutional swings
+
+# Line 379 - CHANGE: Increase OB max age for 200-candle 4H lookback
+OB_MAX_AGE_CANDLES = 200  # Increase from 150 to 200 to capture institutional OBs
+
+# Line 372 - CHANGE: Increase FVG max age for 200-candle 4H lookback
+FVG_MAX_AGE_CANDLES = 200  # Increase from 150 to 200 for institutional FVG zones
+
+# ADD NEW: 4H-specific liquidity lookback configuration
+RECENT_SWING_LOOKBACK_4H = 15  # Look back 15 swings with 200 candles for 4H liquidity analysis
+```
+
+**Reason:** With 200 4H candles, we need wider lookback periods to capture institutional patterns. The swing lookback increases from 7 to 10, and age limits increase from 150 to 200 candles to accommodate the extended data window.
+
+---
+
+#### 2. **Circuit Breaker Configuration (config.py - CircuitBreakerConfig class)**
+
+**Current Settings:**
+```python
+# Line 333-334 - Circuit Breaker for Binance API
+BINANCE_FAILURE_THRESHOLD = 10  # Allow more failures for extended 1D fetches
+BINANCE_RECOVERY_TIMEOUT = 180  # 3 minutes recovery for extended data
+```
+
+**Required Changes:**
+```python
+# Line 333 - CHANGE: Increase failure threshold for 4H 200-candle fetches
+BINANCE_FAILURE_THRESHOLD = 15  # Increase from 10 to 15 for extended 4H fetches
+
+# Line 334 - CHANGE: Increase recovery timeout for 4H extended data
+BINANCE_RECOVERY_TIMEOUT = 240  # Increase from 180s (3min) to 240s (4min) for 4H data
+
+# ADD NEW: 4H-specific circuit breaker settings
+BINANCE_4H_FAILURE_THRESHOLD = 12  # Dedicated threshold for 4H timeframe
+BINANCE_4H_RECOVERY_TIMEOUT = 200  # Dedicated recovery timeout for 4H (3min 20s)
+```
+
+**Reason:** Fetching 200 4H candles (vs 100) doubles the API load and increases the risk of rate limiting. Higher thresholds and longer recovery times prevent premature circuit breaker trips during legitimate bulk fetches.
+
+**Implementation Note:** Consider adding dedicated circuit breaker for 4H fetches:
+```python
+# In api/smc_analyzer.py or unified_data_sync_service.py
+@with_circuit_breaker(
+    "binance_klines_4h_api", 
+    failure_threshold=CircuitBreakerConfig.BINANCE_4H_FAILURE_THRESHOLD,
+    recovery_timeout=CircuitBreakerConfig.BINANCE_4H_RECOVERY_TIMEOUT
+)
+def _fetch_4h_klines(symbol: str, limit: int = 200):
+    # 4H-specific fetch logic
+```
+
+---
+
+#### 3. **Rolling Window Configuration (config.py - RollingWindowConfig class)**
+
+**Current Settings:**
+```python
+# Line 433 - Target candles for 4H
+TARGET_CANDLES_4H = 100   # Target: 100 4-hour candles (~16 days)
+
+# Line 440 - Cleanup buffer for 4H
+CLEANUP_BUFFER_4H = 50    # Only cleanup when we have 150+ 4h candles
+```
+
+**Required Changes:**
+```python
+# Line 433 - CHANGE: Increase 4H target to 200 candles
+TARGET_CANDLES_4H = 200   # Target: 200 4-hour candles (~33 days for institutional structure)
+
+# Line 440 - CHANGE: Increase cleanup buffer proportionally
+CLEANUP_BUFFER_4H = 100   # Only cleanup when we have 300+ 4h candles (100 buffer)
+
+# Line 474 - UPDATE: Cleanup threshold calculation (auto-updates based on above)
+# Returns: TARGET_CANDLES_4H + CLEANUP_BUFFER_4H = 200 + 100 = 300 candles
+```
+
+**Reason:** Rolling window must store at least 200 4H candles at all times. The cleanup buffer ensures we don't prematurely delete recent institutional-grade data. Cleanup only triggers when we have 300+ candles (50% safety margin).
+
+---
+
+#### 4. **Structure Analysis Updates (api/smc_analyzer.py)**
+
+**Current Implementation:**
+```python
+# Line 788 - Liquidity pool lookback
+lookback = SMCConfig.RECENT_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT
+```
+
+**Required Changes:**
+```python
+# Line 788 - CHANGE: Add 4H-specific liquidity lookback
+lookback_map = {
+    "1d": SMCConfig.RECENT_SWING_LOOKBACK_1D,  # 20 swings for daily
+    "4h": SMCConfig.RECENT_SWING_LOOKBACK_4H,  # 15 swings for 4H (NEW)
+    "1h": SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT,  # 5 swings for 1H
+    "15m": SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT  # 5 swings for 15m
+}
+lookback = lookback_map.get(timeframe, SMCConfig.RECENT_SWING_LOOKBACK_DEFAULT)
+```
+
+**Additional Updates Required:**
+
+**Location: Line 2399-2402 (Swing High Detection)**
+```python
+# CURRENT
+lookback_map = {
+    "15m": SMCConfig.SWING_LOOKBACK_15M,  # 3
+    "1h": SMCConfig.SWING_LOOKBACK_1H,    # 5
+    "4h": SMCConfig.SWING_LOOKBACK_4H,    # 7 → CHANGE TO 10
+    "1d": SMCConfig.SWING_LOOKBACK_1D     # 15
+}
+```
+
+**Location: Line 2442-2445 (Swing Low Detection)**
+```python
+# Same as above - update 4H lookback from 7 to 10
+```
+
+**Reason:** 4H timeframe with 200 candles provides institutional-level context similar to daily data. Increasing swing lookback from 7 to 10 and liquidity lookback to 15 ensures we capture significant institutional swing points across the extended data window.
+
+---
+
+#### 5. **HTF Bias Analysis Enhancement (api/smc_analyzer.py)**
+
+**Current Implementation:**
+```python
+# Line 1542 - H4 structure detection
+h4_structure = self.detect_market_structure(h4_data, timeframe="4h")
+```
+
+**Enhancement Required:**
+```python
+# Line 1542 - ADD: Validation for 200-candle minimum
+if len(h4_data) < 200:
+    logging.warning(f"Insufficient 4H data for institutional analysis: {len(h4_data)} / 200 required")
+    # Consider downgrading confidence or using fallback logic
+
+# Line 1545 - ENHANCE: Use extended 4H data for deeper OB analysis
+h4_order_blocks = self.find_order_blocks(h4_data)  # Now analyzes 200 candles
+```
+
+**Reason:** With 200 4H candles, we can detect institutional order blocks and structure that were previously invisible with only 100 candles. This validation ensures the analyzer only generates high-confidence signals when sufficient 4H data is available.
+
+---
+
+#### 6. **Cache Configuration Enhancement (config.py - CacheConfig class)**
+
+**Current Settings:**
+```python
+# Line 539-540 - 4H klines cache TTL
+elif kind == "klines_open":
+    # For 4h: returns 240 minutes (4 hours)
+```
+
+**Recommended Enhancement:**
+```python
+# ADD: Dedicated cache settings for 200-candle 4H lookback
+KLINES_4H_COMPLETE_TTL = 21 * 24 * 3600  # 21 days for completed 4H candles
+KLINES_4H_OPEN_TTL = 4 * 3600  # 4 hours for open 4H candle
+
+# UPDATE: Line 540 - Reference new constants
+elif kind == "klines_open" and timeframe == "4h":
+    return CacheConfig.KLINES_4H_OPEN_TTL / 60  # Convert to minutes
+```
+
+**Reason:** 200 4H candles represent ~33 days of data. Completed candles should be cached longer (21 days) to reduce API load, while open candles refresh every 4 hours to capture the latest price action.
+
+---
+
+#### 7. **API Delay Configuration (config.py - TimeConfig class)**
+
+**Current Settings:**
+```python
+# Line 69-70 - Binance API delays
+BINANCE_API_DELAY = 1.0   # seconds - Conservative: ~60 requests/minute
+BINANCE_KLINES_DELAY = 5.0  # seconds - Conservative for klines endpoints
+```
+
+**Recommended Enhancement:**
+```python
+# Line 70 - CHANGE: Increase delay for 200-candle 4H fetches
+BINANCE_KLINES_DELAY = 6.0  # Increase from 5.0 to 6.0 seconds for extended 4H data
+
+# ADD NEW: 4H-specific delay configuration
+BINANCE_4H_KLINES_DELAY = 7.0  # Dedicated delay for 4H 200-candle fetches
+```
+
+**Reason:** Fetching 200 4H candles requires multiple API requests (Binance limit is 1000 candles per request, but 4H data may span multiple months). Increased delays prevent rate limiting during bulk 4H data initialization.
+
+---
+
+### Implementation Priority & Testing Checklist
+
+#### **Phase 1: Core Configuration (HIGH PRIORITY)**
+- [ ] Update `TIMEFRAME_4H_LIMIT` from 100 to 200 in `config.py` (Line 413)
+- [ ] Update `SWING_LOOKBACK_4H` from 7 to 10 in `config.py` (Line 365)
+- [ ] Update `OB_MAX_AGE_CANDLES` from 150 to 200 in `config.py` (Line 379)
+- [ ] Update `FVG_MAX_AGE_CANDLES` from 150 to 200 in `config.py` (Line 372)
+- [ ] Add `RECENT_SWING_LOOKBACK_4H = 15` to `config.py` SMCConfig class
+
+#### **Phase 2: Circuit Breaker Hardening (HIGH PRIORITY)**
+- [ ] Increase `BINANCE_FAILURE_THRESHOLD` from 10 to 15 in `config.py` (Line 333)
+- [ ] Increase `BINANCE_RECOVERY_TIMEOUT` from 180 to 240 in `config.py` (Line 334)
+- [ ] Add dedicated 4H circuit breaker settings: `BINANCE_4H_FAILURE_THRESHOLD = 12`
+- [ ] Add dedicated 4H recovery timeout: `BINANCE_4H_RECOVERY_TIMEOUT = 200`
+
+#### **Phase 3: Rolling Window Adjustment (MEDIUM PRIORITY)**
+- [ ] Update `TARGET_CANDLES_4H` from 100 to 200 in `config.py` (Line 433)
+- [ ] Update `CLEANUP_BUFFER_4H` from 50 to 100 in `config.py` (Line 440)
+- [ ] Verify cleanup threshold auto-calculates to 300 candles (200 + 100)
+
+#### **Phase 4: Structure Analysis Enhancement (MEDIUM PRIORITY)**
+- [ ] Update 4H swing lookback in `_find_swing_highs()` method (Line 2399-2402)
+- [ ] Update 4H swing lookback in `_find_swing_lows()` method (Line 2442-2445)
+- [ ] Add 4H-specific liquidity lookback in `find_liquidity_pools()` (Line 788)
+- [ ] Add 200-candle validation in `_get_htf_bias()` method (Line 1542)
+
+#### **Phase 5: API & Cache Optimization (LOW PRIORITY)**
+- [ ] Increase `BINANCE_KLINES_DELAY` from 5.0 to 6.0 seconds (Line 70)
+- [ ] Add dedicated `BINANCE_4H_KLINES_DELAY = 7.0` to TimeConfig
+- [ ] Add `KLINES_4H_COMPLETE_TTL` and `KLINES_4H_OPEN_TTL` to CacheConfig
+- [ ] Update klines cache TTL logic to use 4H-specific constants
+
+#### **Phase 6: Testing & Validation (CRITICAL)**
+- [ ] Test 4H data fetching with 200-candle limit across multiple symbols
+- [ ] Verify circuit breaker doesn't trip during legitimate 200-candle fetches
+- [ ] Validate swing detection identifies institutional swings correctly
+- [ ] Confirm order blocks and FVGs are detected from extended 4H history
+- [ ] Test liquidity pool analysis with 15-swing lookback
+- [ ] Verify rolling window cleanup preserves 200+ 4H candles
+- [ ] Monitor API rate limiting and adjust delays if needed
+- [ ] Validate cache hit rates for 4H completed vs open candles
+
+---
+
+### Performance Considerations
+
+**API Load Impact:**
+- **Before:** 100 4H candles = 1 API request (within 1000-candle limit)
+- **After:** 200 4H candles = 1 API request (still within 1000-candle limit)
+- **Impact:** Minimal - single request handles 200 candles
+
+**Database Storage:**
+- **Before:** ~100 candles × 6 symbols × OHLCV data = ~600 records
+- **After:** ~200 candles × 6 symbols × OHLCV data = ~1,200 records
+- **Impact:** 2x storage for 4H timeframe (acceptable for institutional analysis)
+
+**Processing Time:**
+- **Structure Detection:** O(n²) complexity - 200 candles = 4x processing time vs 100 candles
+- **Order Block Identification:** Linear scan - 2x processing time
+- **FVG Detection:** Linear scan - 2x processing time
+- **Mitigation:** Results are cached; analysis runs in background workers
+
+**Cache Efficiency:**
+- Completed 4H candles cached for 21 days (no repeated fetches)
+- Open candle refreshes every 4 hours (single API call)
+- 200-candle dataset provides 33 days of institutional context vs 16 days
+
+---
+
+### Migration Strategy
+
+**Step 1: Configuration Update (Non-Breaking)**
+1. Update all configuration values in `config.py`
+2. Deploy configuration changes (backward compatible - analyzers still work with 100 candles)
+3. Monitor logs for "Insufficient 4H data" warnings
+
+**Step 2: Data Backfill (Background Process)**
+1. Background workers automatically fetch additional 100 4H candles per symbol
+2. Circuit breaker prevents overload during bulk fetches
+3. Rolling window stores up to 300 candles before cleanup triggers
+
+**Step 3: Analysis Enhancement (Automatic)**
+1. Once 200 4H candles are available, institutional analysis automatically activates
+2. Order blocks, FVGs, and liquidity pools detected from extended history
+3. Signal quality improves with deeper market structure context
+
+**Step 4: Validation & Monitoring**
+1. Compare signal quality before/after 200-candle upgrade
+2. Monitor circuit breaker stats for any API rate limit issues
+3. Validate cache hit rates for 4H timeframe data
+4. Verify rolling window cleanup preserves institutional data
+
+---
+
+### Expected Benefits
+
+**1. Enhanced Market Structure Detection**
+- Capture multi-week institutional BOS/CHoCH patterns
+- Identify longer-term trend reversals with higher confidence
+- Detect accumulation/distribution phases spanning 3-4 weeks
+
+**2. Superior Order Block & FVG Quality**
+- Institutional order blocks from 33-day history vs 16-day history
+- Fair value gaps aligned with longer-term structure
+- Reduced false positives from noise in shorter timeframes
+
+**3. Improved Liquidity Analysis**
+- Track liquidity pools across extended institutional timeframes
+- Identify key sweep zones from 15 swing points (vs 5 swing points)
+- Better prediction of institutional liquidity runs
+
+**4. Higher Signal Confidence**
+- HTF bias informed by 200 4H candles + 200 daily candles
+- Multi-timeframe confluence across institutional-grade data windows
+- Reduced whipsaw trades from insufficient historical context
+
+**5. Institutional-Grade Analysis Parity**
+- Daily: 200 candles ✅ (6.5 months)
+- 4H: 200 candles ✅ (33 days) ← **NEW UPGRADE**
+- 1H: 300 candles ✅ (12.5 days)
+- 15m: 400 candles ✅ (4 days)
+
+---
+
 ## Resolved Issues & Implementation Details
 
 ### CRITICAL ISSUES - ✅ RESOLVED
