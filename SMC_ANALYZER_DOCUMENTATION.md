@@ -2187,4 +2187,407 @@ class ScaledEntry:
 
 ---
 
+## Phase 8: Auto-Analyzer Integration (Planned)
+
+**Last Updated:** October 10, 2025  
+**Status:** 📋 Documentation Complete - Ready for Implementation  
+**Objective:** Automated market monitoring and signal generation even when user is offline
+
+### Overview
+
+The Auto-Analyzer will integrate market event detection into the existing `UnifiedDataSyncService` to automatically trigger SMC analysis when significant market events occur. This ensures no trading opportunities are missed, even when the user is offline.
+
+### Integration Constraints
+
+- **Render Deployment Limitation:** Only 2 workers available
+- **Solution:** Extend existing `UnifiedDataSyncService` instead of creating new worker
+- **Approach:** Add event monitoring to existing klines update cycles
+
+### Market Event Triggers
+
+The system will detect and respond to four primary trigger types:
+
+#### 1. Volume Spike Detection
+**Trigger Condition:** Current volume > 150% of 20-period moving average
+
+**Implementation Location:** `UnifiedDataSyncService._update_klines_for_symbol()`
+
+**Logic:**
+```python
+# Pseudo-code for integration
+def _detect_volume_spike(candles: List[Dict]) -> bool:
+    if len(candles) < 20:
+        return False
+    
+    recent_volumes = [c['volume'] for c in candles[-20:]]
+    avg_volume = sum(recent_volumes) / len(recent_volumes)
+    current_volume = candles[-1]['volume']
+    
+    return current_volume > (avg_volume * 1.5)
+```
+
+**Database Field:** Add `trigger_type` to `UserTradingSession` to track what caused analysis
+
+#### 2. Volatility Spike Detection (ATR-based)
+**Trigger Condition:** Current ATR > 130% of 14-period average ATR
+
+**Implementation Location:** `UnifiedDataSyncService._update_klines_for_symbol()`
+
+**Logic:**
+```python
+# Pseudo-code for integration
+def _detect_volatility_spike(candles: List[Dict]) -> bool:
+    if len(candles) < 28:  # Need 2x ATR periods
+        return False
+    
+    # Calculate recent ATR (last 14 candles)
+    recent_atr = calculate_atr(candles[-14:])
+    
+    # Calculate historical ATR (previous 14 candles)
+    historical_atr = calculate_atr(candles[-28:-14])
+    
+    return recent_atr > (historical_atr * 1.3)
+```
+
+**Config Addition:** `TradingConfig.VOLATILITY_SPIKE_THRESHOLD = 1.3`
+
+#### 3. Market Structure Change Detection
+**Trigger Condition:** BOS or CHoCH detected on 15m, 1h, or 4h timeframes
+
+**Implementation Location:** Leverage existing `detect_market_structure()` method
+
+**Logic:**
+```python
+# Pseudo-code for integration
+def _detect_structure_change(symbol: str, timeframe: str) -> Optional[str]:
+    # Get last 2 market structure readings from cache
+    previous_structure = cache.get(f"{symbol}_{timeframe}_structure_prev")
+    current_structure = smc_analyzer.detect_market_structure(candles, timeframe)
+    
+    # Check for structure change
+    if previous_structure and current_structure != previous_structure:
+        # Filter for significant changes only
+        if current_structure in [
+            MarketStructure.BULLISH_BOS,
+            MarketStructure.BEARISH_BOS,
+            MarketStructure.BULLISH_CHoCH,
+            MarketStructure.BEARISH_CHoCH
+        ]:
+            cache.set(f"{symbol}_{timeframe}_structure_prev", current_structure)
+            return current_structure.value
+    
+    return None
+```
+
+**Cache Key:** `{symbol}_{timeframe}_structure_prev` to track previous structure
+
+#### 4. Significant Price Movement Detection
+**Trigger Condition:** Candle body > 1.5% of price (for impulsive moves)
+
+**Implementation Location:** `UnifiedDataSyncService._update_klines_for_symbol()`
+
+**Logic:**
+```python
+# Pseudo-code for integration
+def _detect_price_movement(candle: Dict, threshold: float = 0.015) -> bool:
+    body_size = abs(candle['close'] - candle['open'])
+    candle_midpoint = (candle['high'] + candle['low']) / 2
+    body_percent = body_size / candle_midpoint
+    
+    return body_percent > threshold
+```
+
+**Config Addition:** `TradingConfig.PRICE_MOVEMENT_THRESHOLD = 0.015`
+
+### Auto-Analysis Flow
+
+#### Integration Points in UnifiedDataSyncService
+
+**1. Main Update Loop Enhancement:**
+```python
+# In _klines_update_loop() method
+def _klines_update_loop(self):
+    while not self.stop_event.is_set():
+        for symbol in active_symbols:
+            for timeframe in self.timeframes:
+                # Existing klines update
+                self._update_klines_for_symbol(symbol, timeframe)
+                
+                # NEW: Event detection and auto-analysis
+                self._check_and_trigger_analysis(symbol, timeframe)
+        
+        time.sleep(update_interval)
+```
+
+**2. Event Detection Method (NEW):**
+```python
+# Add new method to UnifiedDataSyncService
+def _check_and_trigger_analysis(self, symbol: str, timeframe: str):
+    """Check for market events and trigger SMC analysis if conditions met"""
+    
+    # Get recent candles from cache
+    candles = KlinesCache.get_cached_data(symbol, timeframe, limit=30)
+    if not candles or len(candles) < 20:
+        return
+    
+    # Check all trigger conditions
+    triggers = []
+    
+    if self._detect_volume_spike(candles):
+        triggers.append("volume_spike")
+    
+    if self._detect_volatility_spike(candles):
+        triggers.append("volatility_spike")
+    
+    structure_change = self._detect_structure_change(symbol, timeframe)
+    if structure_change:
+        triggers.append(f"structure_change_{structure_change}")
+    
+    if self._detect_price_movement(candles[-1]):
+        triggers.append("price_movement")
+    
+    # If any trigger fired, run SMC analysis
+    if triggers:
+        self._run_auto_analysis(symbol, triggers, timeframe)
+```
+
+**3. Auto-Analysis Execution (NEW):**
+```python
+# Add new method to UnifiedDataSyncService
+def _run_auto_analysis(self, symbol: str, triggers: List[str], trigger_timeframe: str):
+    """Execute SMC analysis and store results"""
+    
+    try:
+        # Prevent duplicate analysis within cooldown period
+        last_analysis_key = f"auto_analysis_{symbol}_last"
+        last_analysis_time = self.cache.get(last_analysis_key)
+        
+        if last_analysis_time:
+            time_since_last = (datetime.utcnow() - last_analysis_time).seconds
+            if time_since_last < TradingConfig.AUTO_ANALYSIS_COOLDOWN:
+                return
+        
+        # Run SMC analysis
+        smc_signal = smc_analyzer.generate_trade_signal(symbol)
+        
+        if smc_signal and smc_signal.confidence >= TradingConfig.AUTO_ANALYSIS_MIN_CONFIDENCE:
+            # Store in database with trigger metadata
+            self._store_auto_analysis_result(
+                symbol=symbol,
+                signal=smc_signal,
+                triggers=triggers,
+                trigger_timeframe=trigger_timeframe
+            )
+            
+            # Update cache timestamp
+            self.cache.set(last_analysis_key, datetime.utcnow(), ttl=300)
+            
+            logging.info(f"Auto-analysis triggered for {symbol} by {triggers}")
+            
+    except Exception as e:
+        logging.error(f"Auto-analysis failed for {symbol}: {e}")
+```
+
+### Database Schema Updates
+
+#### UserTradingSession Table Additions
+
+**New Fields:**
+```sql
+ALTER TABLE user_trading_session ADD COLUMN trigger_type VARCHAR(100);
+ALTER TABLE user_trading_session ADD COLUMN trigger_timeframe VARCHAR(10);
+ALTER TABLE user_trading_session ADD COLUMN auto_generated BOOLEAN DEFAULT FALSE;
+ALTER TABLE user_trading_session ADD COLUMN trigger_metadata TEXT;
+```
+
+**Field Descriptions:**
+- `trigger_type`: Comma-separated list of triggers (e.g., "volume_spike,structure_change_bullish_bos")
+- `trigger_timeframe`: Timeframe where trigger was detected (e.g., "15m", "1h", "4h")
+- `auto_generated`: Boolean flag to differentiate auto vs manual analysis
+- `trigger_metadata`: JSON blob with additional trigger details (volumes, ATR values, etc.)
+
+### Configuration Updates
+
+#### New Config Values in TradingConfig
+
+```python
+class TradingConfig:
+    # ... existing config ...
+    
+    # Phase 8: Auto-Analyzer Configuration
+    ENABLE_AUTO_ANALYZER = True  # Master switch for auto-analysis
+    AUTO_ANALYSIS_COOLDOWN = 300  # Seconds between auto-analyses per symbol (5 min)
+    AUTO_ANALYSIS_MIN_CONFIDENCE = 0.70  # Minimum confidence to store signal
+    
+    # Event Detection Thresholds
+    VOLUME_SPIKE_MULTIPLIER = 1.5  # 150% of 20-period average
+    VOLATILITY_SPIKE_MULTIPLIER = 1.3  # 130% of historical ATR
+    PRICE_MOVEMENT_THRESHOLD = 0.015  # 1.5% candle body size
+    
+    # Active Monitoring Symbols (to limit resource usage)
+    AUTO_ANALYZER_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+    
+    # Active Monitoring Timeframes (primary triggers)
+    AUTO_ANALYZER_TIMEFRAMES = ["15m", "1h", "4h"]
+```
+
+### Notification System (Future Enhancement)
+
+**Telegram Integration Required:**
+
+The auto-analyzer should notify users when opportunities are detected. This requires:
+
+1. **Telegram Bot Setup:**
+   - Use Replit's Telegram integration (if available)
+   - Store user's Telegram chat_id in UserCredentials table
+   
+2. **Notification Message Format:**
+   ```
+   🚨 Auto-Analysis Alert: BTCUSDT
+   
+   Trigger: Volume Spike + Bullish BOS (1h)
+   Direction: LONG
+   Confidence: 85.3%
+   Entry: $67,250 (Market: 50%)
+   Stop Loss: $66,800
+   TP1: $67,700 (RR: 1:1)
+   
+   [View Details] [Start Trade] [Dismiss]
+   ```
+
+3. **Implementation:**
+   - Add `send_telegram_notification()` method to `UnifiedDataSyncService`
+   - Call after successful `_store_auto_analysis_result()`
+   - Include inline keyboard for user actions
+
+### Performance Considerations
+
+**Resource Optimization:**
+
+1. **Selective Monitoring:**
+   - Only monitor symbols in `AUTO_ANALYZER_SYMBOLS` list
+   - Only check triggers on specified timeframes
+   
+2. **Cooldown Periods:**
+   - 5-minute cooldown between analyses per symbol
+   - Prevents duplicate processing of same market event
+   
+3. **Threshold Tuning:**
+   - Start with conservative thresholds (1.5x volume, 1.3x ATR)
+   - Adjust based on false positive rate
+   
+4. **Cache Utilization:**
+   - Reuse existing candle data from cache
+   - Store structure state to detect changes efficiently
+
+### Implementation Priority
+
+**Phase 8A - Core Event Detection (High Priority):**
+1. ✅ Volume spike detection
+2. ✅ Volatility spike detection  
+3. ✅ Price movement detection
+4. ✅ Database schema updates
+
+**Phase 8B - Structure Monitoring (High Priority):**
+1. ✅ BOS/CHoCH detection integration
+2. ✅ Structure state caching
+3. ✅ Multi-timeframe coordination
+
+**Phase 8C - Auto-Analysis (Medium Priority):**
+1. ✅ Analysis cooldown logic
+2. ✅ Result storage with trigger metadata
+3. ✅ Configuration tuning
+
+**Phase 8D - Notifications (Low Priority - Future):**
+1. 🔄 Telegram bot integration
+2. 🔄 Message formatting
+3. 🔄 User action handlers
+
+### Testing Strategy
+
+**Unit Tests Required:**
+1. Volume spike calculation with edge cases
+2. Volatility spike calculation with insufficient data
+3. Structure change detection with cache states
+4. Cooldown period enforcement
+5. Trigger combination handling
+
+**Integration Tests Required:**
+1. End-to-end auto-analysis flow
+2. Database storage with trigger metadata
+3. Performance under high market activity
+4. Memory usage over 24-hour period
+
+**Manual Testing Checklist:**
+- [ ] Verify auto-analysis triggers on real volume spike
+- [ ] Confirm structure change detection works across timeframes
+- [ ] Check cooldown prevents duplicate analyses
+- [ ] Validate database records include all trigger metadata
+- [ ] Test with multiple simultaneous triggers
+
+### Rollout Plan
+
+**Step 1: Development (2-3 days)**
+- Implement event detection methods
+- Add auto-analysis trigger logic
+- Update database schema
+
+**Step 2: Testing (1-2 days)**
+- Run on testnet with verbose logging
+- Monitor trigger frequency and accuracy
+- Tune thresholds based on results
+
+**Step 3: Limited Production (3-5 days)**
+- Deploy with `ENABLE_AUTO_ANALYZER = True`
+- Monitor only 2 symbols initially (BTC, ETH)
+- Collect performance metrics
+
+**Step 4: Full Production**
+- Expand to all configured symbols
+- Enable Telegram notifications
+- Monitor and optimize
+
+### Success Metrics
+
+**Key Performance Indicators:**
+
+1. **Trigger Accuracy:**
+   - Target: >60% of auto-triggered analyses produce valid signals (confidence >70%)
+   - Measurement: `valid_signals / total_auto_analyses`
+
+2. **False Positive Rate:**
+   - Target: <40% false positives (low-confidence signals)
+   - Measurement: `low_confidence_signals / total_auto_analyses`
+
+3. **Opportunity Capture:**
+   - Target: Capture 80% of significant market moves (>2% in 4 hours)
+   - Measurement: Manual review of missed opportunities
+
+4. **Resource Usage:**
+   - Target: <10% increase in CPU/memory vs current baseline
+   - Measurement: Render monitoring dashboard
+
+5. **User Engagement:**
+   - Target: >70% of auto-generated signals reviewed by user within 24h
+   - Measurement: Signal view timestamps vs creation timestamps
+
+### Maintenance and Monitoring
+
+**Daily Monitoring:**
+- Review auto-analysis trigger frequency
+- Check false positive rate
+- Monitor system resource usage
+
+**Weekly Review:**
+- Analyze trigger accuracy by symbol
+- Tune thresholds if needed
+- Review user feedback on signal quality
+
+**Monthly Optimization:**
+- Performance profiling
+- Database cleanup of old auto-generated signals
+- Configuration adjustments based on market conditions
+
+---
+
 **End of Documentation**
