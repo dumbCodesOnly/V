@@ -330,7 +330,7 @@ class CircuitBreakerConfig:
     LAST_STATE_CHANGES_DISPLAY = 5  # Number of recent state changes to show in stats
 
     # API-Specific Circuit Breaker Settings
-    BINANCE_FAILURE_THRESHOLD = 15  # Much less sensitive - allow more failures before opening (increased for extended 4H/1D fetches)
+    BINANCE_FAILURE_THRESHOLD = 5  # Open circuit after 5 failures to prevent rate limiting (reduced for high klines usage)
     BINANCE_RECOVERY_TIMEOUT = 240  # Longer recovery time to avoid hitting limits again (4 min for extended data)
 
     TOOBIT_FAILURE_THRESHOLD = 3  # More sensitive for exchange operations
