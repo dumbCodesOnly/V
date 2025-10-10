@@ -210,42 +210,43 @@ class TradingConfig:
     # Asset-Specific Volatility Profiles for Auto-Tuning
     # BASE_ATR values represent typical 14-period ATR (Daily timeframe) for stable market conditions
     # MIN_ATR thresholds are customized per asset's typical volatility characteristics
+    # Reduced by 10% to allow more signal generation
     ASSET_PROFILES = {
         "BTCUSDT": {
             "BASE_ATR": 100,
             "VOL_CLASS": "low",
-            "MIN_ATR_15M_PERCENT": 0.25,
-            "MIN_ATR_H1_PERCENT": 0.45
+            "MIN_ATR_15M_PERCENT": 0.22,
+            "MIN_ATR_H1_PERCENT": 0.40
         },
         "ETHUSDT": {
             "BASE_ATR": 60,
             "VOL_CLASS": "medium",
-            "MIN_ATR_15M_PERCENT": 0.35,
-            "MIN_ATR_H1_PERCENT": 0.55
+            "MIN_ATR_15M_PERCENT": 0.32,
+            "MIN_ATR_H1_PERCENT": 0.50
         },
         "SOLUSDT": {
             "BASE_ATR": 1.5,
             "VOL_CLASS": "high",
-            "MIN_ATR_15M_PERCENT": 0.55,
-            "MIN_ATR_H1_PERCENT": 0.85
+            "MIN_ATR_15M_PERCENT": 0.50,
+            "MIN_ATR_H1_PERCENT": 0.77
         },
         "BNBUSDT": {
             "BASE_ATR": 4.0,
             "VOL_CLASS": "medium",
-            "MIN_ATR_15M_PERCENT": 0.35,
-            "MIN_ATR_H1_PERCENT": 0.55
+            "MIN_ATR_15M_PERCENT": 0.32,
+            "MIN_ATR_H1_PERCENT": 0.50
         },
         "XRPUSDT": {
             "BASE_ATR": 0.0035,
             "VOL_CLASS": "high",
-            "MIN_ATR_15M_PERCENT": 0.7,
-            "MIN_ATR_H1_PERCENT": 1.0
+            "MIN_ATR_15M_PERCENT": 0.63,
+            "MIN_ATR_H1_PERCENT": 0.90
         },
         "ADAUSDT": {
             "BASE_ATR": 0.0025,
             "VOL_CLASS": "medium",
-            "MIN_ATR_15M_PERCENT": 0.45,
-            "MIN_ATR_H1_PERCENT": 0.7
+            "MIN_ATR_15M_PERCENT": 0.40,
+            "MIN_ATR_H1_PERCENT": 0.63
         }
     }
     
@@ -269,8 +270,8 @@ class TradingConfig:
     
     # Phase 7: ATR Risk Filter Configuration
     USE_ATR_FILTER = True  # Enable ATR-based volatility filtering
-    MIN_ATR_15M_PERCENT = 0.35  # Minimum 0.35% ATR on 15m timeframe (lowered significantly for rally conditions)
-    MIN_ATR_H1_PERCENT = 0.55  # Minimum 0.55% ATR on H1 timeframe (lowered significantly for rally conditions)
+    MIN_ATR_15M_PERCENT = 0.32  # Minimum 0.32% ATR on 15m timeframe (reduced 10% for more signal generation)
+    MIN_ATR_H1_PERCENT = 0.50  # Minimum 0.50% ATR on H1 timeframe (reduced 10% for more signal generation)
     USE_DYNAMIC_POSITION_SIZING = False  # Adjust position size based on ATR volatility (optional)
 
 
