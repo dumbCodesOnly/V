@@ -128,7 +128,141 @@ FVG_MAX_AGE_CANDLES = 300  # Increased from 200 to utilize extended 4H data (400
 
 ---
 
-### 3. Kline Batch Fetch Updates
+### 3. BOS & CHOCH Detection Updates
+
+#### 3.1 Current BOS/CHOCH Configuration
+**File:** `config.py`  
+**Section:** `SMCConfig` class
+
+**Current Swing Detection Lookback:**
+```python
+SWING_LOOKBACK_15M = 3   # 15m: tight swings for precise execution
+SWING_LOOKBACK_1H = 5    # 1h: standard swing detection
+SWING_LOOKBACK_4H = 10   # 4h: broader swings (designed for 200-candle context)
+SWING_LOOKBACK_1D = 15   # 1d: institutional swings (200-candle context)
+```
+
+**Current Structure Analysis Lookback:**
+```python
+STRUCTURE_SWING_LOOKBACK_1D = 7      # Daily: analyze 7 swing points
+STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # Other timeframes: 3 swing points
+```
+
+#### 3.2 How BOS/CHOCH Detection Works
+
+**Break of Structure (BOS):**
+- **Bullish BOS:** Recent high breaks previous high AND recent low breaks previous low (upward)
+- **Bearish BOS:** Recent low breaks previous low AND recent high breaks previous high (downward)
+- **Purpose:** Confirms trend continuation with institutional backing
+
+**Change of Character (CHoCH):**
+- **Bullish CHoCH:** High trend is "down" but low trend is "up" (reversal signal)
+- **Bearish CHoCH:** High trend is "up" but low trend is "down" (reversal signal)
+- **Purpose:** Identifies potential trend reversals early
+
+**Current Limitation:**
+- 4H analysis with only 200 candles = limited swing point history
+- 1H analysis with only 300 candles = may miss broader structure shifts
+- Increased candles will capture more institutional swing points for accurate BOS/CHoCH detection
+
+#### 3.3 Recommended Updates for Increased Klines
+
+##### 3.3.1 Update 1H Swing Lookback
+**File:** `config.py`  
+**Section:** `SMCConfig`
+
+**Current:**
+```python
+SWING_LOOKBACK_1H = 5    # 1h: standard swing detection
+```
+
+**Recommended Change:**
+```python
+SWING_LOOKBACK_1H = 8    # 1h: enhanced swing detection with 600-candle context (was 5 for 300 candles)
+```
+
+**Rationale:** With 600 1H candles available (2x increase), we can look back further for more significant swing points without noise. Increasing from 5 to 8 provides ~60% more context while remaining conservative.
+
+##### 3.3.2 Update 4H Swing Lookback
+**File:** `config.py`  
+**Section:** `SMCConfig`
+
+**Current:**
+```python
+SWING_LOOKBACK_4H = 10   # 4h: broader swings for institutional intermediate structure (200-candle context)
+```
+
+**Recommended Change:**
+```python
+SWING_LOOKBACK_4H = 15   # 4h: institutional swings with 400-candle context (was 10 for 200 candles)
+```
+
+**Rationale:** With 400 4H candles (2x increase), increasing lookback from 10 to 15 allows detection of broader institutional swing points across the extended 66-day period. This captures weekly and bi-weekly patterns more reliably.
+
+##### 3.3.3 Update Structure Analysis Lookback
+**File:** `config.py`  
+**Section:** `SMCConfig`
+
+**Current:**
+```python
+STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # Other timeframes: analyze 3 recent swing points
+```
+
+**Recommended Change:**
+```python
+STRUCTURE_SWING_LOOKBACK_1H = 5      # 1h: analyze 5 swing points with 600-candle context
+STRUCTURE_SWING_LOOKBACK_4H = 5      # 4h: analyze 5 swing points with 400-candle context
+STRUCTURE_SWING_LOOKBACK_DEFAULT = 3  # 15m and others: keep at 3 swing points
+```
+
+**Rationale:** With extended candle data, analyzing 5 recent swing points (vs 3) provides better BOS/CHoCH detection by examining more structural patterns. This reduces false signals from short-term noise.
+
+#### 3.4 Impact on BOS/CHOCH Detection
+
+**Before (Current Configuration):**
+- 4H BOS/CHOCH: Based on 10-candle swing lookback over 200 candles (~33 days)
+- 1H BOS/CHOCH: Based on 5-candle swing lookback over 300 candles (~12.5 days)
+- Structure analysis: 3 swing points (all timeframes except daily)
+
+**After (New Configuration):**
+- 4H BOS/CHOCH: Based on 15-candle swing lookback over 400 candles (~66 days)
+- 1H BOS/CHOCH: Based on 8-candle swing lookback over 600 candles (~25 days)
+- Structure analysis: 5 swing points for 1H/4H, 7 for daily, 3 for 15m
+
+**Expected Improvements:**
+1. **Fewer False Signals:** More data = better swing point validation
+2. **Earlier Detection:** Extended lookback catches structure shifts sooner
+3. **Better Confluence:** More swing points allow multi-level structure confirmation
+4. **Institutional Alignment:** 66-day 4H data captures institutional weekly/monthly patterns
+
+#### 3.5 Update detect_market_structure() Method
+**File:** `api/smc_analyzer.py`  
+**Method:** `detect_market_structure()`
+
+**Current Logic (line 535):**
+```python
+# Determine swing lookback based on timeframe
+lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1D if timeframe == "1d" else SMCConfig.STRUCTURE_SWING_LOOKBACK_DEFAULT
+```
+
+**Recommended Update:**
+```python
+# Determine swing lookback based on timeframe - use extended lookback for 1H and 4H
+if timeframe == "1d":
+    lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1D
+elif timeframe == "4h":
+    lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_4H
+elif timeframe == "1h":
+    lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_1H
+else:
+    lookback = SMCConfig.STRUCTURE_SWING_LOOKBACK_DEFAULT
+```
+
+**Action Required:** Modify the method to use timeframe-specific lookback values for improved BOS/CHoCH accuracy.
+
+---
+
+### 4. Kline Batch Fetch Updates
 
 #### 3.1 Initial Population Logic
 **File:** `api/klines_background_worker_backup.py`  
@@ -466,7 +600,11 @@ WHERE id IN (
 ### Phase 2: Lookback Threshold Updates
 - [ ] Update `SMCConfig.OB_MAX_AGE_CANDLES` from 200 to 300
 - [ ] Update `SMCConfig.FVG_MAX_AGE_CANDLES` from 200 to 300
-- [ ] Review and update swing lookback periods if needed
+- [ ] Update `SMCConfig.SWING_LOOKBACK_1H` from 5 to 8
+- [ ] Update `SMCConfig.SWING_LOOKBACK_4H` from 10 to 15
+- [ ] Add `SMCConfig.STRUCTURE_SWING_LOOKBACK_1H = 5`
+- [ ] Add `SMCConfig.STRUCTURE_SWING_LOOKBACK_4H = 5`
+- [ ] Update `detect_market_structure()` method to use timeframe-specific structure lookback
 
 ### Phase 3: SMC Analyzer Enhancements
 - [ ] Add graceful degradation for partial data scenarios
@@ -502,6 +640,8 @@ WHERE id IN (
 - **Order Blocks:** 50% longer lookback (300 vs 200 candles) = better institutional zone identification
 - **Fair Value Gaps:** 50% longer lookback = capture older unfilled gaps
 - **Market Structure:** 2x 4H data (66 vs 33 days) = more reliable trend identification
+- **BOS Detection:** 50% wider swing lookback (15 vs 10 for 4H, 8 vs 5 for 1H) = fewer false breaks
+- **CHOCH Detection:** 67% more swing points analyzed (5 vs 3) = earlier reversal signals with higher confidence
 
 ### 2. Enhanced Signal Quality
 - **Reduced False Positives:** More historical context for validation
@@ -596,6 +736,56 @@ WHERE id IN (
 
 ---
 
-**Document Version:** 1.0  
+## BOS & CHOCH Improvement Summary
+
+### What's Changing:
+1. **Swing Detection Lookback:**
+   - 1H: 5 → 8 candles (+60% wider swing detection)
+   - 4H: 10 → 15 candles (+50% wider swing detection)
+
+2. **Structure Analysis Lookback:**
+   - 1H: 3 → 5 swing points (+67% more pattern analysis)
+   - 4H: 3 → 5 swing points (+67% more pattern analysis)
+
+3. **Historical Data Available:**
+   - 1H: 300 → 600 candles (2x data for 25-day structure)
+   - 4H: 200 → 400 candles (2x data for 66-day structure)
+
+### Why This Matters:
+
+**Break of Structure (BOS):**
+- **More Reliable Confirmation:** With 15-candle lookback on 4H (vs 10), BOS signals will only trigger when price breaks through well-established swing points across 66 days of institutional data
+- **Reduced Whipsaws:** Wider lookback filters out short-term noise that creates false BOS signals
+- **Better Trend Continuation Signals:** Extended data captures true institutional trend structures
+
+**Change of Character (CHOCH):**
+- **Earlier Reversal Detection:** Analyzing 5 swing points (vs 3) allows the system to spot trend exhaustion patterns sooner
+- **Higher Confidence Reversals:** More swing points = better trend direction calculation = fewer false reversal signals
+- **Institutional Reversal Zones:** 66-day 4H data captures major institutional position changes that create genuine CHOCH patterns
+
+### Real-World Impact:
+
+**Before (Current):**
+```
+4H CHOCH Detection:
+- Analyzes 3 recent swing points over 33 days
+- May miss earlier reversal signals
+- Higher risk of false reversals from short-term moves
+```
+
+**After (New Configuration):**
+```
+4H CHOCH Detection:
+- Analyzes 5 recent swing points over 66 days
+- Captures reversal patterns 1-2 weeks earlier
+- Filters out noise with institutional-grade data depth
+```
+
+**Practical Example:**
+If an asset has been in a bullish trend for 40 days, the current system (33-day 4H data) might miss the early CHOCH signals. The new system (66-day 4H data) will capture the full trend context and detect the reversal as soon as institutional structure shifts.
+
+---
+
+**Document Version:** 1.1  
 **Last Updated:** October 15, 2025  
-**Status:** Ready for Implementation
+**Status:** Ready for Implementation - Includes BOS/CHOCH Enhancement Details
